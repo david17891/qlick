@@ -1,0 +1,12 @@
+# Placeholder para que la carpeta migrations/ se versionee.
+#
+# Las migraciones reales se añadirán en la Fase 1 (Supabase Real Foundation),
+# una vez exista un proyecto Supabase aprobado y env vars configuradas.
+#
+# Convención de nombres: YYYYMMDDHHMMSS_descripcion.sql
+# Ejemplo: 20260701000000_init_users_courses.sql
+#
+# Reglas (docs/AGENT_SUPABASE_PROTOCOL.md):
+# - Una migración = un cambio atómico, idempotente cuando sea posible.
+# - RLS obligatorio en toda tabla con datos de usuario/cliente.
+# - Nunca ejecutar db push sin aprobación.

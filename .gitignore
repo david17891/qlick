@@ -34,6 +34,13 @@ yarn-error.log*
 # vercel
 .vercel
 
+# supabase
+# config.toml puede contener el project ref real del proyecto local;
+# se versiona solo la plantilla config.example.toml.
+/supabase/config.toml
+/supabase/.branches
+/supabase/.temp
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

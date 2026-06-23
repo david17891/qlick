@@ -302,3 +302,40 @@ decidió, por qué, qué alternativas se consideraron, el riesgo y cómo reverti
 - **Cómo revertir:** Cambiar `needsReview` a `false` sería una decisión de producto
   **separada**, solo para intents de bajo riesgo y con logging. Ver
   `docs/AI_AGENT_GUARDRAILS.md`.
+
+---
+
+## D-017 · Bootstrap de conexión a Supabase (sin migrar datos todavía)
+
+- **Fecha:** 2026-06-23
+- **Decisión:** Añadir la capa de conexión a Supabase — dependencias
+  (`@supabase/supabase-js`, `@supabase/ssr`), clientes browser/server/admin con
+  separación estricta de secretos, `config.ts` + `health.ts`, ruta interna de
+  diagnóstico (`/admin/system/supabase`), estructura `supabase/` con migraciones
+  versionadas placeholder, script `check:supabase` y docs (bootstrap, runbook
+  MCP, protocolo del agente, env vars Vercel) — **sin** crear proyecto Supabase,
+  **sin** tocar los mocks de LMS/CRM, **sin** auth real.
+- **Motivo:** Preparar la conexión controlada antes de la Fase 1 para que, cuando
+  se apruebe el proyecto, la migración sea sustitución de mocks por queries con
+  la misma firma (D-003/D-014). El build debe seguir pasando aunque ninguna env
+  var Supabase esté configurada (modo demo), igual que el resto de
+  abstracciones (D-005/D-013/D-015).
+- **Alternativas consideradas:**
+  1. Esperar a tener proyecto Supabase para añadir nada → retrasa la
+     preparación y obliga a un cambio más grande después.
+  2. Conectar Supabase y migrar mocks de una vez → rompe la regla de "sin
+     datos reales sin RLS + aviso de privacidad" y mezcla dos fases.
+  3. Bootstrap de conexión solo (esta opción). ✅
+- **Riesgos:**
+  - Alguien podría creer que Supabase ya está activo. Mitigado: el health-check
+    muestra "demo/fallback" y los mocks siguen siendo la fuente.
+  - Fuga de la `secret_key` al navegador. Mitigado: `admin.ts` valida
+    `typeof window === 'undefined'` y lanza; regla dura en
+    `AGENT_SUPABASE_PROTOCOL.md`.
+  - Costo por crear proyecto sin aprobación. Mitigado: el protocolo del agente
+    lo prohíbe.
+- **Cómo revertir:** Eliminar `src/lib/supabase/`, la ruta `/admin/system/supabase`,
+  la carpeta `supabase/`, el script `check-supabase-env.mjs` y desinstalar las
+  dependencias. Ningún componente existente depende de esta capa (es aditiva).
+
+---

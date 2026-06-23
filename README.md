@@ -60,6 +60,7 @@ Abre <http://localhost:3000>.
 | `npm run lint`       | ESLint                                       |
 | `npm run type-check` | Verificación de tipos sin emitir             |
 | `npm run audit:links`| Escanea `src/` en busca de links/botones sin acción |
+| `npm run check:supabase` | Valida variables de entorno de Supabase |
 
 ---
 
@@ -126,10 +127,18 @@ todas son para fases posteriores. Las más relevantes:
 | `NEXT_PUBLIC_AUTH_MODE`           | 1      | `mock` (actual) o `supabase`     |
 | `NEXT_PUBLIC_PAYMENT_PROVIDER`    | 2      | `mock` (actual), `mercadopago`, `stripe`, `conekta` |
 | `NEXT_PUBLIC_SUPABASE_URL`        | 1      | URL del proyecto Supabase        |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | 1 | Publishable key (publicable, RLS) |
+| `SUPABASE_SECRET_KEY`             | 1      | Secret key (server-only)         |
+| `SUPABASE_PROJECT_REF`            | 1      | Ref del proyecto (CLI/MCP)       |
 | `MERCADOPAGO_ACCESS_TOKEN`        | 2      | Token de Mercado Pago            |
 | `STRIPE_SECRET_KEY`               | 2      | Secret key de Stripe             |
 | `CONEKTA_API_KEY`                 | 2      | API key de Conekta               |
 | `CLOUDFLARE_STREAM_CUSTOMER_CODE` | 3      | Código de Cloudflare Stream      |
+
+> La capa de conexión a Supabase ya está preparada (bootstrap). La app sigue en
+> modo demo hasta que se cree el proyecto y se activen RLS + aviso de privacidad.
+> Ver [`docs/SUPABASE_CONNECTION_BOOTSTRAP.md`](docs/SUPABASE_CONNECTION_BOOTSTRAP.md).
+> Diagnóstico interno: `/admin/system/supabase`.
 
 ---
 
@@ -197,6 +206,10 @@ Detalle en [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — arquitectura y estructura
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — fases del proyecto
+- [`docs/SUPABASE_CONNECTION_BOOTSTRAP.md`](docs/SUPABASE_CONNECTION_BOOTSTRAP.md) — bootstrap de conexión a Supabase
+- [`docs/SUPABASE_MCP_RUNBOOK.md`](docs/SUPABASE_MCP_RUNBOOK.md) — runbook MCP/CLI de Supabase
+- [`docs/AGENT_SUPABASE_PROTOCOL.md`](docs/AGENT_SUPABASE_PROTOCOL.md) — reglas del agente sobre Supabase
+- [`docs/VERCEL_ENV_SETUP.md`](docs/VERCEL_ENV_SETUP.md) — variables de entorno en Vercel
 - [`docs/VIDEO_STRATEGY.md`](docs/VIDEO_STRATEGY.md) — estrategia de video
 - [`docs/PAYMENTS_MEXICO_STRATEGY.md`](docs/PAYMENTS_MEXICO_STRATEGY.md) — pagos
 - [`docs/CONTACT_AND_WHATSAPP_STRATEGY.md`](docs/CONTACT_AND_WHATSAPP_STRATEGY.md) — contacto y WhatsApp

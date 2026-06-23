@@ -47,8 +47,19 @@ mock. Lista para demostrar el producto y validar flujos.
 
 **Objetivo:** persistencia real de usuarios, inscripciones y progreso.
 
+**Bootstrap de conexión (✅ preparado)**
+- ✅ Dependencias: `@supabase/supabase-js`, `@supabase/ssr`.
+- ✅ Clientes browser/server/admin con separación de secretos
+  (`src/lib/supabase/`).
+- ✅ Health-check + ruta interna `/admin/system/supabase`.
+- ✅ Estructura `supabase/` (migraciones placeholder, seed, config).
+- ✅ Script `npm run check:supabase`.
+- ✅ Docs: `SUPABASE_CONNECTION_BOOTSTRAP.md`, `SUPABASE_MCP_RUNBOOK.md`,
+  `AGENT_SUPABASE_PROTOCOL.md`, `VERCEL_ENV_SETUP.md`.
+- ⏳ Sin proyecto Supabase creado todavía. App sigue en modo demo.
+
 **Tareas**
-- [ ] Configurar proyecto Supabase (auth + Postgres).
+- [ ] Configurar proyecto Supabase (auth + Postgres) — requiere aprobación.
 - [ ] Crear esquema de tablas mapeado a `src/types/index.ts`.
 - [ ] Reemplazar `lib/data/*` por queries a Supabase (misma firma pública).
 - [ ] Reemplazar `mock-auth` por Supabase Auth (`signIn`, `signOut`, `getCurrentUser`).
@@ -57,6 +68,7 @@ mock. Lista para demostrar el producto y validar flujos.
 - [ ] Activar registro de nuevos alumnos.
 - [ ] Panel admin funcional (CRUD real de cursos, módulos, lecciones).
 - [ ] Migrar assets de imágenes a Supabase Storage (opcional).
+- [ ] Activar RLS en todas las tablas + publicar aviso de privacidad.
 
 **Entregable**
 - Plataforma con cuentas reales, progreso persistente y admin que guarda.
