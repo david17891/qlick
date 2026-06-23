@@ -90,3 +90,21 @@ export function looksLikeKey(value: string): boolean {
   const parts = value.split(".");
   return parts.length >= 3 && parts.every((p) => p.length > 0);
 }
+
+/**
+ * true si Supabase está configurado para el cliente (modo "real").
+ *
+ * Client-safe: SOLO inspecciona `url` y `publishableKey`, que son variables
+ * `NEXT_PUBLIC_*` (designed para exponerse al navegador). NUNCA lee
+ * `secretKey`: el servidor no debe depender de ella para decidir el modo del
+ * UI, y el cliente no puede verla de todos modos.
+ *
+ * Devuelve true únicamente si AMBAS claves públicas están presentes Y tienen
+ * un formato válido. Si falta alguna → modo demo (false).
+ *
+ * Uso típico: elegir entre "Modo real" / "Modo demo" en la UI (badge del
+ * ContactForm) sin necesidad de state ni peticiones.
+ */
+export function isSupabaseConfigured(): boolean {
+  return isValidSupabaseUrl(supabaseConfig.url) && looksLikeKey(supabaseConfig.publishableKey);
+}
