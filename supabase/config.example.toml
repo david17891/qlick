@@ -1,0 +1,40 @@
+# ============================================================
+# Plantilla de configuración para la CLI de Supabase.
+# Copia este archivo como `config.toml` (NO se commitea — ver .gitignore).
+# Documentación: https://supabase.com/docs/reference/cli/config
+# ============================================================
+
+[project]
+# Reemplazar con el project ref real (mismo valor que SUPABASE_PROJECT_REF).
+# Obtnlo desde el Dashboard de Supabase > Project Settings > Reference ID.
+project_id = "qlick-marketing-integral"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000/auth/callback"]
+jwt_expiry = 3600
+enable_signup = false  # Cambiar a true cuando se habilite registro real.
+
+[auth.email]
+enable_signup = false
+double_confirm_changes = true
+enable_confirmations = true
+
+[studio]
+enabled = true
+port = 54323
+
+# Nota: NO poner claves aquí. Las claves viven en .env.local y Vercel.

@@ -1,0 +1,17 @@
+-- ============================================================
+-- Seed de desarrollo — Qlick Marketing Integral
+-- ============================================================
+-- ⚠️ PLACEHOLDER. No ejecutar todavía.
+--
+-- Este archivo alimentará la DB local de desarrollo cuando se cree el schema
+-- real en la Fase 1 (Supabase Real Foundation). Hoy está vacío a propósito:
+-- no existe proyecto Supabase ni tablas.
+--
+-- Reglas:
+-- - Datos ficticios únicamente (nombres inventados, teléfonos +52XXXXXXXXXX,
+--   emails @example.com). NUNCA datos de clientes reales.
+-- - Coherente con src/lib/data/* (mismas entidades y forma).
+-- - Solo para entornos de desarrollo, nunca producción.
+-- ============================================================
+
+-- (Las sentencias INSERT reales se añadirán en la Fase 1.)
