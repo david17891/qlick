@@ -74,10 +74,11 @@ export function ContactForm() {
       const provider = getContactProvider();
       const result = await provider.send(form);
 
-      // Registra el lead en el CRM (demo: no persiste).
+      // Crea el lead: persiste en Supabase si está configurado, o cae a demo.
+      // Server Action: el fallback demo/real lo decide el backend.
       const course = courses.find((c) => c.slug === form.courseSlug);
-      const { createLeadFromContactForm } = await import("@/lib/crm/crm-service");
-      const leadResult = createLeadFromContactForm({
+      const { submitLead } = await import("@/app/actions/leads");
+      const leadResult = await submitLead({
         name: form.name,
         email: form.email,
         phone: form.phone,
@@ -90,9 +91,11 @@ export function ContactForm() {
 
       setStatus("success");
       setResultNote(
-        leadResult.demo
-          ? "Lead registrado en modo demo. En producción se guardará en el CRM y se asignará a ventas."
-          : result.note
+        leadResult.persisted
+          ? "Lead guardado en Supabase y disponible en el CRM."
+          : leadResult.demo
+            ? "Lead registrado en modo demo. En producción se guardará en el CRM y se asignará a ventas."
+            : result.note
       );
       setForm(initialForm);
     } catch (err) {
