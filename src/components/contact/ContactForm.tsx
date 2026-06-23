@@ -8,8 +8,17 @@ import {
   type ValidationError
 } from "@/lib/contact";
 import { getAllCourses } from "@/lib/data/courses";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 type Status = "idle" | "loading" | "success" | "error";
+
+/**
+ * true cuando Supabase está realmente configurado (url + publishable key
+ * presentes y con formato válido). Se resuelve en build con variables
+ * NEXT_PUBLIC_*, así que es seguro llamarlo desde este Client Component.
+ * Define si el badge dice "Modo real" o "Modo demo".
+ */
+const realMode = isSupabaseConfigured();
 
 const initialForm: ContactMessage = {
   name: "",
@@ -34,9 +43,9 @@ const topics = [
 
 /**
  * Formulario de contacto con validación y estados claros.
- * MVP: usa mock-contact-provider (no envía nada real).
- * Además registra un lead demo en el CRM (createLeadFromContactForm, demo:true).
- * El mensaje de éxito deja explícito que es modo demo.
+ * Modo: si Supabase está configurado (realMode), el lead se persiste en la
+ * tabla `leads` vía server action (service role). Si no, cae a demo (mock).
+ * El badge y los textos reflejan dinámicamente qué modo está activo.
  */
 export function ContactForm() {
   const courses = getAllCourses();
@@ -74,10 +83,11 @@ export function ContactForm() {
       const provider = getContactProvider();
       const result = await provider.send(form);
 
-      // Registra el lead en el CRM (demo: no persiste).
+      // Crea el lead: persiste en Supabase si está configurado, o cae a demo.
+      // Server Action: el fallback demo/real lo decide el backend.
       const course = courses.find((c) => c.slug === form.courseSlug);
-      const { createLeadFromContactForm } = await import("@/lib/crm/crm-service");
-      const leadResult = createLeadFromContactForm({
+      const { submitLead } = await import("@/app/actions/leads");
+      const leadResult = await submitLead({
         name: form.name,
         email: form.email,
         phone: form.phone,
@@ -90,9 +100,11 @@ export function ContactForm() {
 
       setStatus("success");
       setResultNote(
-        leadResult.demo
-          ? "Lead registrado en modo demo. En producción se guardará en el CRM y se asignará a ventas."
-          : result.note
+        leadResult.persisted
+          ? "Lead guardado en Supabase y disponible en el CRM."
+          : leadResult.demo
+            ? "Lead registrado en modo demo. En producción se guardará en el CRM y se asignará a ventas."
+            : result.note
       );
       setForm(initialForm);
     } catch (err) {
@@ -118,7 +130,9 @@ export function ContactForm() {
           <h3 className="text-xl font-bold text-ink">¡Mensaje registrado!</h3>
           <p className="mt-2 text-ink-muted text-sm max-w-md mx-auto">
             {resultNote ??
-              "Mensaje registrado en modo demo. En producción se conectará a CRM, email o WhatsApp."}
+              (realMode
+                ? "Tu mensaje fue registrado como lead en el CRM. Te contactaremos pronto."
+                : "Mensaje registrado en modo demo. En producción se conectará a CRM, email o WhatsApp.")}
           </p>
           <Button
             variant="outline"
@@ -139,7 +153,15 @@ export function ContactForm() {
     <Card className="p-8">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-bold text-ink">Envíanos un mensaje</h2>
-        <Badge tone="warning">Modo demo</Badge>
+        {realMode ? (
+          <Badge tone="success" title="Los leads se guardan en Supabase.">
+            Modo real
+          </Badge>
+        ) : (
+          <Badge tone="warning" title="Faltan variables de Supabase; los leads van a mock.">
+            Modo demo
+          </Badge>
+        )}
       </div>
 
       <form onSubmit={handleSubmit} noValidate className="space-y-5">
@@ -290,7 +312,9 @@ export function ContactForm() {
 
         <div className="flex items-center justify-between gap-4">
           <p className="text-xs text-ink-muted">
-            Demo: este formulario no envía correos reales ni guarda datos reales todavía.
+            {realMode
+              ? "Los datos de este formulario se guardan como leads en el CRM."
+              : "Demo: este formulario no envía correos reales ni guarda datos reales todavía."}
           </p>
           <Button
             type="submit"

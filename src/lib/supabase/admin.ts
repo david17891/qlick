@@ -11,14 +11,19 @@
  * - Este módulo valida en runtime que se ejecute fuera del navegador.
  */
 
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/supabase";
 import { supabaseConfig, isValidSupabaseUrl } from "./config";
 
 /**
+ * Tipo del cliente admin, tipado contra el schema real (`Database` de
+ * `src/types/supabase.ts`). Así `.from("leads").select()` ya devuelve filas
+ * bien tipadas y `.insert()` chequea contra el schema, sin casts manuales.
+ *
  * Marker de tipo para que los revisores humanos y los linters futuros puedan
  * identificar rápidamente usos del cliente admin.
  */
-export type SupabaseAdminClient = ReturnType<typeof createClient>;
+export type SupabaseAdminClient = SupabaseClient<Database>;
 
 /**
  * true si estamos ejecutando en el navegador. Si esto es true, NUNCA debemos
@@ -60,7 +65,7 @@ export function createSupabaseAdminClient(): SupabaseAdminClient {
     );
   }
 
-  return createClient(url, secretKey, {
+  return createClient<Database>(url, secretKey, {
     auth: {
       // El cliente admin no debe persistir sesión de usuario.
       persistSession: false,

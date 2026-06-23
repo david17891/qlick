@@ -73,11 +73,38 @@ export function isValidSupabaseUrl(value: string): boolean {
 }
 
 /**
- * true si una clave tiene formato de JWT (tres segmentos separados por punto).
+ * true si una clave tiene un formato conocido de Supabase.
+ * Acepta los dos formatos vigentes:
+ *   - JWT clásico: tres segmentos separados por punto (proyectos pre-2025).
+ *   - Nuevo formato (2025+): prefijo `sb_publishable_…` / `sb_secret_…`.
  * No valida la firma ni el contenido: solo evita claves obviamente truncadas.
  */
 export function looksLikeKey(value: string): boolean {
   if (!value) return false;
+  // Formato nuevo (Supabase 2025): sb_publishable_… / sb_secret_…
+  // Longitud observada ~40-50 chars; exigimos un mínimo razonable.
+  if (/^sb_(publishable|secret)_[A-Za-z0-9_-]{20,}$/.test(value)) {
+    return true;
+  }
+  // Formato JWT clásico: tres segmentos separados por punto.
   const parts = value.split(".");
   return parts.length >= 3 && parts.every((p) => p.length > 0);
+}
+
+/**
+ * true si Supabase está configurado para el cliente (modo "real").
+ *
+ * Client-safe: SOLO inspecciona `url` y `publishableKey`, que son variables
+ * `NEXT_PUBLIC_*` (designed para exponerse al navegador). NUNCA lee
+ * `secretKey`: el servidor no debe depender de ella para decidir el modo del
+ * UI, y el cliente no puede verla de todos modos.
+ *
+ * Devuelve true únicamente si AMBAS claves públicas están presentes Y tienen
+ * un formato válido. Si falta alguna → modo demo (false).
+ *
+ * Uso típico: elegir entre "Modo real" / "Modo demo" en la UI (badge del
+ * ContactForm) sin necesidad de state ni peticiones.
+ */
+export function isSupabaseConfigured(): boolean {
+  return isValidSupabaseUrl(supabaseConfig.url) && looksLikeKey(supabaseConfig.publishableKey);
 }
