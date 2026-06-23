@@ -19,6 +19,7 @@ import {
 } from "@/components/ui";
 import { VideoPlayer } from "@/components/video";
 import { ModuleList } from "@/components/course";
+import { WhatsAppButton } from "@/components/contact/WhatsAppButton";
 import { formatDuration } from "@/lib/utils";
 
 export function LessonView({
@@ -60,11 +61,16 @@ export function LessonView({
             title="Esta lección requiere acceso"
             description="Inicia sesión con tu cuenta de alumno o inscríbrite en el curso para ver el contenido completo."
             action={
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2 justify-center">
                 <Button href="/login">Iniciar sesión</Button>
                 <Button href={`/cursos/${course.slug}`} variant="outline">
                   Ver detalles del curso
                 </Button>
+                <WhatsAppButton
+                  intent="enroll"
+                  courseName={course.title}
+                  variant="outline"
+                />
               </div>
             }
           />
@@ -83,9 +89,16 @@ export function LessonView({
           title="Aún no estás inscrito en este curso"
           description="Inscríbete para desbloquear todas las lecciones, recursos y el certificado."
           action={
-            <Button href={`/cursos/${course.slug}`}>
-              Inscribirme / Comprar
-            </Button>
+            <div className="flex flex-wrap gap-2 justify-center">
+              <Button href={`/cursos/${course.slug}`}>
+                Inscribirme / Comprar
+              </Button>
+              <WhatsAppButton
+                intent="enroll"
+                courseName={course.title}
+                variant="outline"
+              />
+            </div>
           }
         />
       </Container>
@@ -175,22 +188,46 @@ export function LessonView({
           {/* Recursos */}
           {lesson.resources.length > 0 && (
             <Card className="mt-6 p-6">
-              <h3 className="font-bold text-ink mb-3">Recursos de la lección</h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-bold text-ink">Recursos de la lección</h3>
+                <Badge tone="neutral">demo</Badge>
+              </div>
               <ul className="space-y-2">
-                {lesson.resources.map((r) => (
-                  <li
-                    key={r.id}
-                    className="flex items-center justify-between rounded-lg border border-brand-50 px-4 py-3 hover:bg-brand-50/40 transition"
-                  >
-                    <div>
-                      <p className="font-semibold text-ink text-sm">{r.title}</p>
-                      {r.description && (
-                        <p className="text-xs text-ink-muted">{r.description}</p>
+                {lesson.resources.map((r) => {
+                  const available = r.url && r.url !== "#";
+                  return (
+                    <li
+                      key={r.id}
+                      className={
+                        "flex items-center justify-between rounded-lg border border-brand-50 px-4 py-3 transition " +
+                        (available
+                          ? "hover:bg-brand-50/40"
+                          : "opacity-70")
+                      }
+                    >
+                      <div>
+                        <p className="font-semibold text-ink text-sm">{r.title}</p>
+                        {r.description && (
+                          <p className="text-xs text-ink-muted">{r.description}</p>
+                        )}
+                      </div>
+                      {available ? (
+                        <a
+                          href={r.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="shrink-0"
+                        >
+                          <Badge tone="brand">{r.type} · descargar</Badge>
+                        </a>
+                      ) : (
+                        <Badge tone="warning" title="Recurso demo — se habilitará cuando el curso se publique">
+                          {r.type} · próximamente
+                        </Badge>
                       )}
-                    </div>
-                    <Badge tone="brand">{r.type}</Badge>
-                  </li>
-                ))}
+                    </li>
+                  );
+                })}
               </ul>
             </Card>
           )}

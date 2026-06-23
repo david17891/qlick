@@ -196,7 +196,7 @@ export function AdminView() {
         <div className="space-y-4">
           <div className="flex justify-between items-center">
             <h2 className="text-xl font-bold text-ink">Gestión de cursos</h2>
-            <Button size="sm" variant="outline">+ Nuevo curso (demo)</Button>
+            <Button size="sm" variant="outline" disabled title="Función demo — no disponible en MVP">+ Nuevo curso (demo)</Button>
           </div>
           {courses.map((c) => {
             const stats = getCourseStats(c.id);
@@ -222,7 +222,7 @@ export function AdminView() {
                   </div>
                   <div className="flex flex-col gap-2 shrink-0">
                     <Button href={`/cursos/${c.slug}`} size="sm" variant="outline">Ver</Button>
-                    <Button size="sm" variant="ghost">Editar (demo)</Button>
+                    <Button size="sm" variant="ghost" disabled title="Función demo — no disponible en MVP">Editar (demo)</Button>
                   </div>
                 </div>
                 {/* Módulos y lecciones */}
@@ -248,7 +248,7 @@ export function AdminView() {
         <Card className="overflow-hidden">
           <div className="p-5 border-b border-brand-50 flex justify-between items-center">
             <h2 className="text-xl font-bold text-ink">Alumnos</h2>
-            <Button size="sm" variant="outline">+ Invitar (demo)</Button>
+            <Button size="sm" variant="outline" disabled title="Función demo — no disponible en MVP">+ Invitar (demo)</Button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

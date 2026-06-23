@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { Navbar, Footer } from "@/components/layout";
-import { Container, Card, Button, Badge, Field, Input, Textarea } from "@/components/ui";
+import { Container, Card, Button, Badge } from "@/components/ui";
+import { ContactForm } from "@/components/contact/ContactForm";
+import { WhatsAppButton } from "@/components/contact/WhatsAppButton";
+import { getContactEmail, getMailtoLink } from "@/lib/contact/whatsapp";
 
 export const metadata: Metadata = {
   title: "Contacto",
@@ -10,6 +13,8 @@ export const metadata: Metadata = {
 };
 
 export default function ContactoPage() {
+  const email = getContactEmail();
+
   return (
     <>
       <Navbar />
@@ -29,65 +34,29 @@ export default function ContactoPage() {
       <section className="py-16">
         <Container size="wide" className="grid lg:grid-cols-3 gap-10">
           <div className="lg:col-span-2">
-            <Card className="p-8">
-              {/* Formulario demo: en el MVP no envía nada real. */}
-              <form className="space-y-5" action="#" method="POST">
-                <div className="grid sm:grid-cols-2 gap-5">
-                  <Field label="Nombre" htmlFor="name">
-                    <Input id="name" name="name" placeholder="Tu nombre" required />
-                  </Field>
-                  <Field label="Email" htmlFor="email">
-                    <Input id="email" name="email" type="email" placeholder="tu@email.com" required />
-                  </Field>
-                </div>
-                <Field label="Teléfono / WhatsApp (opcional)" htmlFor="phone">
-                  <Input id="phone" name="phone" placeholder="+52 ..." />
-                </Field>
-                <Field label="¿Qué necesitas?" htmlFor="topic">
-                  <select
-                    id="topic"
-                    name="topic"
-                    className="w-full rounded-xl border border-brand-100 bg-white px-4 py-3 text-ink focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
-                  >
-                    <option>Quiero tomar un curso</option>
-                    <option>Capacitación para mi equipo</option>
-                    <option>Servicios de agencia</option>
-                    <option>Duda sobre pagos o facturación</option>
-                    <option>Otro</option>
-                  </select>
-                </Field>
-                <Field label="Mensaje" htmlFor="message">
-                  <Textarea
-                    id="message"
-                    name="message"
-                    rows={5}
-                    placeholder="Cuéntanos un poco más..."
-                    required
-                  />
-                </Field>
-                <div className="flex items-center justify-between gap-4">
-                  <p className="text-xs text-ink-muted">
-                    Demo: este formulario no envía correos reales todavía.
-                  </p>
-                  <Button type="submit" size="lg">
-                    Enviar mensaje
-                  </Button>
-                </div>
-              </form>
-            </Card>
+            <ContactForm />
           </div>
 
           <aside className="space-y-6">
             <Card className="p-6">
               <h3 className="font-bold text-ink mb-3">Otras vías</h3>
-              <ul className="space-y-3 text-sm">
+              <ul className="space-y-4 text-sm">
                 <li>
-                  <p className="font-semibold text-ink">WhatsApp</p>
-                  <p className="text-ink-muted">+52 1 22 22 22 22 22</p>
+                  <p className="font-semibold text-ink mb-1">WhatsApp ventas</p>
+                  <WhatsAppButton intent="sales" size="sm" variant="outline" />
                 </li>
                 <li>
-                  <p className="font-semibold text-ink">Email</p>
-                  <p className="text-ink-muted">hola@qlick.mx</p>
+                  <p className="font-semibold text-ink mb-1">WhatsApp soporte</p>
+                  <WhatsAppButton intent="support" size="sm" variant="outline" />
+                </li>
+                <li>
+                  <p className="font-semibold text-ink mb-1">Email</p>
+                  <a
+                    href={getMailtoLink("Contacto desde la web de Qlick")}
+                    className="text-brand-600 hover:underline font-medium"
+                  >
+                    {email}
+                  </a>
                 </li>
                 <li>
                   <p className="font-semibold text-ink">Horario</p>

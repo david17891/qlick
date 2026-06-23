@@ -8,14 +8,21 @@ import { cn } from "@/lib/utils";
 /**
  * Componente de marca reutilizable.
  *
- * Variantes (siguiendo la guía de identidad visual):
+ * Variantes de lockup:
  *  - "full"     → logo completo con tagline.
  *  - "tight"    → logo compacto con tagline.
- *  - "noTagline"→ logo sin tagline (para espacios reducidos).
- *  - "icon"     → solo isotipo Q/mouse (para favicon, avatar, etc.).
+ *  - "noTagline"→ logo sin tagline.
+ *  - "icon"     → solo isotipo Q/mouse.
  *  - "wordmark" → solo palabra "Qlick".
  *
- * `variant="white"` elige automáticamente los assets blancos para fondos oscuros.
+ * ⚠️ AUDITORÍA DE TRANSPARENCIA (ver docs/BRAND_ASSET_AUDIT.md):
+ * Los assets "white" NO son transparentes (rectángulos opacos). Por eso NO se
+ * deben usar el PNG blanco directo sobre fondos oscuros. Para fondos oscuros:
+ *   - Usa variant="original" (los assets morados SÍ son transparentes), o
+ *   - Usa el componente <BrandLockup variant="dark">.
+ *
+ * El isotipo morado (icon original) mantiene buen contraste sobre fondos
+ * oscuros (#0f0a1a) porque el morado #AB3FEA es brillante.
  */
 
 export type LogoLockup = "full" | "tight" | "noTagline" | "icon" | "wordmark";
@@ -27,8 +34,29 @@ interface LogoProps {
   height?: number;
   className?: string;
   href?: string;
-  showWordmark?: boolean;
   priority?: boolean;
+}
+
+function resolveAssetSrc(
+  lockup: LogoLockup,
+  variant: BrandVariant
+): { src: string; width: number; height: number } {
+  const group =
+    lockup === "icon"
+      ? brandManifest.assets.icon
+      : lockup === "wordmark"
+        ? brandManifest.assets.wordmark
+        : lockup === "noTagline"
+          ? brandManifest.assets.noTagline
+          : lockup === "tight"
+            ? brandManifest.assets.fullTight
+            : brandManifest.assets.full;
+
+  // group es un objeto indexado por variante (original/white) o "src".
+  const asset = (group as Record<string, { src: string; width: number; height: number }>)[
+    variant
+  ];
+  return asset;
 }
 
 export function Logo({
@@ -39,31 +67,13 @@ export function Logo({
   href,
   priority
 }: LogoProps) {
-  const src =
-    lockup === "icon"
-      ? brandManifest.assets.icon[variant]
-      : lockup === "wordmark"
-        ? brandManifest.assets.wordmark[variant]
-        : lockup === "noTagline"
-          ? brandManifest.assets.noTagline[variant]
-          : lockup === "tight"
-            ? brandManifest.assets.fullTight[variant]
-            : brandManifest.assets.full[variant];
-
-  // Relación de aspecto aproximada según el lockup.
-  const aspect =
-    lockup === "icon"
-      ? 1
-      : lockup === "wordmark"
-        ? 315 / 160
-        : lockup === "noTagline"
-          ? 500 / 300
-          : 500 / 361;
+  const asset = resolveAssetSrc(lockup, variant);
+  const aspect = asset.width / asset.height;
   const width = Math.round(height * aspect);
 
   const img = (
     <Image
-      src={src}
+      src={asset.src}
       alt={`${brandManifest.name} — logo`}
       width={width}
       height={height}
@@ -105,22 +115,92 @@ export function Isotipo({
   );
 }
 
-/** Wordmark Qlick sin símbolo. */
+/** Wordmark (solo la palabra "Qlick" con el dot naranja). Fondos claros. */
 export function Wordmark({
   variant = "original",
-  height = 32,
-  className
+  height = 28,
+  className,
+  href
 }: {
   variant?: BrandVariant;
   height?: number;
   className?: string;
+  href?: string;
 }) {
   return (
-    <Logo lockup="wordmark" variant={variant} height={height} className={className} />
+    <Logo
+      lockup="wordmark"
+      variant={variant}
+      height={height}
+      className={className}
+      href={href}
+    />
   );
 }
 
-/** Tagline "Marketing Integral". */
+/**
+ * Lockup seguro para fondos oscuros.
+ *
+ * Como los PNG blancos son opacos, este lockup renderiza el isotipo morado
+ * (transparente) + el texto "Qlick" en tipografía blanca + tagline opcional.
+ * Es la forma correcta de mostrar la marca sobre fondos oscuros sin cajas
+ * opacas accidentales.
+ */
+export function BrandLockup({
+  variant = "dark",
+  size = "md",
+  showTagline = false,
+  className,
+  href
+}: {
+  variant?: "dark" | "light";
+  size?: "sm" | "md" | "lg";
+  showTagline?: boolean;
+  className?: string;
+  href?: string;
+}) {
+  const iconSize = size === "sm" ? 24 : size === "lg" ? 40 : 32;
+  const textSize = size === "sm" ? "text-lg" : size === "lg" ? "text-2xl" : "text-xl";
+  const taglineSize = size === "sm" ? "text-[10px]" : "text-xs";
+
+  const textColor = variant === "dark" ? "text-white" : "text-ink";
+  const taglineColor =
+    variant === "dark" ? "text-white/60" : "text-ink-muted";
+
+  const content = (
+    <div className={cn("flex items-center gap-2.5", className)}>
+      <Image
+        src={brandManifest.assets.icon.original.src}
+        alt="Isotipo de Qlick"
+        width={iconSize}
+        height={iconSize}
+        priority
+        className="object-contain"
+      />
+      <div className="leading-none">
+        <span className={cn("font-bold font-display tracking-tight", textSize, textColor)}>
+          Qlick
+        </span>
+        {showTagline && (
+          <span className={cn("block mt-0.5 font-medium", taglineSize, taglineColor)}>
+            {brandManifest.tagline}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+
+  if (href) {
+    return (
+      <Link href={href} aria-label={brandManifest.name} className="inline-flex">
+        {content}
+      </Link>
+    );
+  }
+  return content;
+}
+
+/** Tagline "Marketing Integral" como imagen (solo fondos claros). */
 export function Tagline({
   variant = "original",
   height = 14,
@@ -130,9 +210,13 @@ export function Tagline({
   height?: number;
   className?: string;
 }) {
+  const asset =
+    brandManifest.assets.tagline[
+      variant as "original" | "white"
+    ] as unknown as { src: string };
   return (
     <Image
-      src={brandManifest.assets.tagline[variant]}
+      src={asset.src}
       alt={brandManifest.tagline}
       width={Math.round(height * (302 / 47))}
       height={height}
@@ -142,14 +226,26 @@ export function Tagline({
 }
 
 /** Punto naranja de acento (para bullets, highlights). */
-export function AccentDot({ className, size = 12 }: { className?: string; size?: number }) {
+export function AccentDot({
+  className,
+  size = 12
+}: {
+  className?: string;
+  size?: number;
+}) {
+  const dot = brandManifest.assets.accentDot as unknown as {
+    src: string;
+    width: number;
+    height: number;
+  };
+  const aspect = dot.width / dot.height;
   return (
     <Image
-      src={brandManifest.assets.accentDot}
+      src={dot.src}
       alt=""
       aria-hidden
       width={size}
-      height={size}
+      height={Math.round(size / aspect)}
       className={cn("inline-block", className)}
     />
   );

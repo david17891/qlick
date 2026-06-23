@@ -3,7 +3,8 @@ import Image from "next/image";
 import { Navbar, Footer } from "@/components/layout";
 import { Container, Button, Card, Badge, SectionHeading } from "@/components/ui";
 import { CourseCard } from "@/components/course";
-import { Logo } from "@/components/brand";
+import { Logo, Isotipo } from "@/components/brand";
+import { WhatsAppButton } from "@/components/contact/WhatsAppButton";
 import { getFeaturedCourses, getAllCourses } from "@/lib/data/courses";
 import { testimonials } from "@/lib/data/content";
 import { getInstructorById } from "@/lib/data/instructors";
@@ -302,7 +303,7 @@ export default function HomePage() {
           <div className="relative overflow-hidden rounded-3xl bg-brand-gradient px-8 py-16 sm:px-16 sm:py-20 text-center text-white shadow-glow">
             <div className="absolute inset-0 bg-brand-radial opacity-50" />
             <div className="relative">
-              <Logo lockup="icon" variant="white" height={48} className="mx-auto mb-6" />
+              <Isotipo size={48} className="mx-auto mb-6" />
               <h2 className="display-2 text-white">
                 Da el siguiente click a tu negocio.
               </h2>
@@ -314,13 +315,11 @@ export default function HomePage() {
                 <Button href="/cursos" variant="accent" size="lg">
                   Empezar ahora
                 </Button>
-                <Button
-                  href="/contacto"
+                <WhatsAppButton
+                  intent="sales"
                   size="lg"
-                  className="bg-white/10 text-white hover:bg-white/20"
-                >
-                  Hablar con un asesor
-                </Button>
+                  className="bg-white/10 text-white hover:bg-white/20 !shadow-none border-2 border-white/30"
+                />
               </div>
             </div>
           </div>

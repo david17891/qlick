@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Logo, Tagline } from "@/components/brand";
+import { BrandLockup } from "@/components/brand";
 import { Container } from "@/components/ui";
 
 const cols = [
@@ -35,8 +35,7 @@ export function Footer() {
       <Container size="wide" className="py-14">
         <div className="grid gap-10 md:grid-cols-4">
           <div className="space-y-4">
-            <Logo variant="white" lockup="noTagline" height={36} />
-            <Tagline variant="white" height={12} />
+            <BrandLockup href="/" variant="dark" showTagline size="md" />
             <p className="text-sm text-white/60 max-w-xs">
               Formación práctica en marketing, ventas, publicidad y automatización
               para hacer crecer negocios en México.

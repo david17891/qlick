@@ -12,6 +12,7 @@ import {
   EmptyState
 } from "@/components/ui";
 import { LevelBadge, StatusBadge } from "@/components/course";
+import { WhatsAppButton } from "@/components/contact/WhatsAppButton";
 import {
   getAllCourses,
   getCourseBySlug,
@@ -157,6 +158,16 @@ export default function CourseDetailPage({
                       >
                         Ver vista previa
                       </Button>
+                    )}
+                    {course.status !== "proximamente" && (
+                      <WhatsAppButton
+                        intent="enroll"
+                        courseName={course.title}
+                        variant="outline"
+                        size="lg"
+                        fullWidth
+                        label="Inscribirme por WhatsApp"
+                      />
                     )}
                   </div>
 

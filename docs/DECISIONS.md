@@ -165,3 +165,70 @@ decidió, por qué, qué alternativas se consideraron, el riesgo y cómo reverti
 - **Alternativas consideradas:** Vectorizar/recolorear → rompe las reglas.
 - **Riesgo:** Ninguno. Los assets son solo de lectura.
 - **Cómo revertir:** No aplica.
+
+---
+
+## D-011 · Dominio de email de marca: `@qlick.com`
+
+- **Fecha:** 2026-06-23
+- **Decisión:** Unificar los emails de demostración a `@qlick.com` (antes
+  `@click.com`) en `users.ts`, `login/page.tsx` y `mock-auth.ts`.
+- **Motivo:** Coherencia con D-001 (la marca es "Qlick"). Mantener `@click.com`
+  creaba una inconsistencia visible: la UI decía "Qlick" pero los correos demo
+  usaban "Click".
+- **Alternativas consideradas:**
+  1. Dejar `@click.com` → inconsistencia con el naming.
+  2. Usar `@qlick.mx` (dominio real de contacto) → mezcla cuenta real con cuenta
+     demo; mejor reservar `@qlick.mx` para el email de negocio
+     (`NEXT_PUBLIC_CONTACT_TO_EMAIL`).
+  3. `@qlick.com` para cuentas demo, `@qlick.mx` para contacto real. ✅
+- **Riesgo:** Mínimo. Cambio mecánico de strings.
+- **Cómo revertir:** Búsqueda global de `@qlick.com` en las cuentas demo y
+  reemplazo textual.
+
+---
+
+## D-012 · Transparencia de assets blancos: no usar directo sobre fondos oscuros
+
+- **Fecha:** 2026-06-23
+- **Decisión:** Sobre fondos oscuros se prohíbe el uso directo de los PNG
+  `white/*`; en su lugar se usa el isotipo `original` (morado transparente) o el
+  componente `<BrandLockup variant="dark">`.
+- **Motivo:** La auditoría técnica (ver `docs/BRAND_ASSET_AUDIT.md`) determinó que
+  los archivos `white/*` son `colorType: 2` (RGB, **sin canal alfa**): son
+  rectángulos opacos. Renderizarlos sobre un fondo oscuro produce una "caaja"
+  visible (el defecto que aparecía en footer y CTA del home).
+- **Alternativas consideradas:**
+  1. Recolorear/reexportar los PNG blancos con alfa → rompe la regla "no modificar
+     originales" (D-010) y requiere herramientas externas.
+  2. Pedir SVGs a diseño → correcto a medio plazo, pero no resuelve el MVP hoy.
+  3. Sustituir el uso por `BrandLockup dark` (isotipo morado + texto tipográfico
+     blanco) que da el mismo efecto visual sin el defecto. ✅
+- **Riesgo:** El `BrandLockup` no es el logo "oficial" tipográfico; es una
+  composición funcional. Si diseño entrega un logo blanco con transparencia real
+  o un SVG, se puede revertir a `Logo variant="white"`.
+- **Cómo revertir:** Tras recibir assets limpios, restaurar `variant="white"` en
+  footer/CTA. La verificación anti-regresión es `grep variant="white"` (hoy da 0).
+
+---
+
+## D-013 · Abstracción de contacto (`ContactProvider`) y helper de WhatsApp
+
+- **Fecha:** 2026-06-23
+- **Decisión:** Crear `src/lib/contact/` con una interfaz `ContactProvider` (mock
+  activo + stubs `resend`/`crm`) y un helper `getWhatsAppLink(intent)` con
+  fallback `configured:false`.
+- **Motivo:** Mismo principio que D-005 (video/pagos): aislar el canal externo
+  para que el MVP funcione sin configuración y la activación real sea una env var,
+  no un refactor. Además, evita botones/links "fantasma": cuando falta la env var,
+  el helper devuelve `configured:false` y la UI muestra un estado explícito
+  ("próximamente") en lugar de un `href="#"`.
+- **Alternativas consideradas:**
+  1. Hardcodear `wa.me` y un `<form>` con `action="mailto:..."` → frágil, sin
+     validación, sin fallback limpio.
+  2. Conectar Resend desde el inicio → requiere cuenta externa para el MVP.
+  3. Abstracción con proveedor mock activo y helper con fallback. ✅
+- **Riesgo:** El `mockContactProvider` no persiste mensajes (solo loggea). Está
+  etiquetado como demo en la UI.
+- **Cómo revertir:** `NEXT_PUBLIC_CONTACT_PROVIDER=resend` activa el proveedor de
+  email una vez completado su stub; los componentes no cambian.

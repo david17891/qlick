@@ -23,14 +23,18 @@ const tones: Record<Tone, string> = {
 export function Badge({
   children,
   tone = "neutral",
-  className
+  className,
+  title
 }: {
   children: ReactNode;
   tone?: Tone;
   className?: string;
+  /** Tooltip nativo (accesible) para aclarar el estado del badge. */
+  title?: string;
 }) {
   return (
     <span
+      title={title}
       className={cn(
         "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold",
         tones[tone],

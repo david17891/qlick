@@ -14,6 +14,7 @@ import { getCertificatesForUser } from "@/lib/data/certificates";
 import { getPaymentsForUser } from "@/lib/data/payments";
 import { getActivityForUser } from "@/lib/data/content";
 import { getAllCourses } from "@/lib/data/courses";
+import { WhatsAppButton } from "@/components/contact/WhatsAppButton";
 import {
   Container,
   Card,
@@ -290,6 +291,15 @@ export function DashboardView() {
                 })}
               </ul>
             )}
+          </Card>
+
+          <h2 className="text-xl font-bold text-ink mt-8 mb-4">¿Necesitas ayuda?</h2>
+          <Card className="p-6">
+            <p className="text-sm text-ink-muted mb-4">
+              Si tienes problemas con tu acceso, un curso o un pago, escríbenos
+              por WhatsApp y te ayudamos.
+            </p>
+            <WhatsAppButton intent="support" variant="outline" fullWidth />
           </Card>
         </section>
       </div>

@@ -8,9 +8,9 @@
  * de estas funciones (getCurrentUser, signIn, signOut). Ver docs/ROADMAP.md.
  *
  * Usuarios demo (ver src/lib/data/users.ts):
- *   - admin@click.com      (rol admin)
- *   - alumno@click.com     (rol student)
- *   - instructor@click.com (rol instructor)
+ *   - admin@qlick.com      (rol admin)
+ *   - alumno@qlick.com     (rol student)
+ *   - instructor@qlick.com (rol instructor)
  *
  * La contraseña de todos los usuarios demo es: qlick1234
  * (No se guarda como texto plano en producción; esto es solo demo.)

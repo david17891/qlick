@@ -58,6 +58,7 @@ Abre <http://localhost:3000>.
 | `npm run start`      | Sirve el build de producción                 |
 | `npm run lint`       | ESLint                                       |
 | `npm run type-check` | Verificación de tipos sin emitir             |
+| `npm run audit:links`| Escanea `src/` en busca de links/botones sin acción |
 
 ---
 
@@ -68,9 +69,9 @@ clic en cualquier cuenta demo para autocompletar:
 
 | Rol         | Email                  | Contraseña   |
 | ----------- | ---------------------- | ------------ |
-| Alumno      | `alumno@click.com`     | `qlick1234`  |
-| Admin       | `admin@click.com`      | `qlick1234`  |
-| Instructor  | `instructor@click.com` | `qlick1234`  |
+| Alumno      | `alumno@qlick.com`     | `qlick1234`  |
+| Admin       | `admin@qlick.com`      | `qlick1234`  |
+| Instructor  | `instructor@qlick.com` | `qlick1234`  |
 
 > ⚠️ Esto **no** es auth real. No hay hashes ni sesiones seguras. Es solo para
 > recorrer la plataforma. La autenticación real se activa en la Fase 1 con
@@ -153,6 +154,23 @@ cambiando una variable de entorno. Ver
 
 ---
 
+## 💬 Contacto y WhatsApp (modo demo)
+
+El formulario de `/contacto` y los botones de WhatsApp funcionan en **modo demo**
+sin configuración:
+
+- **Formulario:** valida, previene doble envío y muestra feedback. El mensaje se
+  procesa con un proveedor `mock` (no llega a un inbox real todavía). Hay un badge
+  "demo" visible.
+- **Botones de WhatsApp:** si las variables `NEXT_PUBLIC_WHATSAPP_*` están vacías,
+  los botones se muestran **deshabilitados** con la etiqueta "próximamente" (nunca
+  como links falsos). En cuanto se configuren los números, se habilitan solos.
+
+Para activar WhatsApp real, basta con añadir los números a `.env.local`
+(Ver [`docs/CONTACT_AND_WHATSAPP_STRATEGY.md`](docs/CONTACT_AND_WHATSAPP_STRATEGY.md)).
+
+---
+
 ## 📈 Roadmap
 
 | Fase | Objetivo                              | Estado |
@@ -173,8 +191,15 @@ Detalle en [`docs/ROADMAP.md`](docs/ROADMAP.md).
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — fases del proyecto
 - [`docs/VIDEO_STRATEGY.md`](docs/VIDEO_STRATEGY.md) — estrategia de video
 - [`docs/PAYMENTS_MEXICO_STRATEGY.md`](docs/PAYMENTS_MEXICO_STRATEGY.md) — pagos
+- [`docs/CONTACT_AND_WHATSAPP_STRATEGY.md`](docs/CONTACT_AND_WHATSAPP_STRATEGY.md) — contacto y WhatsApp
 - [`docs/DECISIONS.md`](docs/DECISIONS.md) — registro de decisiones (ADRs)
 - [`docs/GITHUB_WORKFLOW.md`](docs/GITHUB_WORKFLOW.md) — Git y GitHub
+
+### Auditoría (MVP Fase 0)
+
+- [`docs/AUDIT_REPORT.md`](docs/AUDIT_REPORT.md) — resumen ejecutivo técnico
+- [`docs/FUNCTIONAL_QA_REPORT.md`](docs/FUNCTIONAL_QA_REPORT.md) — links/botones/formularios
+- [`docs/BRAND_ASSET_AUDIT.md`](docs/BRAND_ASSET_AUDIT.md) — tabla de assets de marca
 
 ---
 

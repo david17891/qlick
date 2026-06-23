@@ -10,7 +10,7 @@ import type { User } from "@/types";
 export const users: User[] = [
   {
     id: "user_admin",
-    email: "admin@click.com",
+    email: "admin@qlick.com",
     name: "Mariana Quintero",
     role: "admin",
     avatarUrl: undefined,
@@ -20,7 +20,7 @@ export const users: User[] = [
   },
   {
     id: "user_alumno",
-    email: "alumno@click.com",
+    email: "alumno@qlick.com",
     name: "Diego Hernández",
     role: "student",
     avatarUrl: undefined,
@@ -30,7 +30,7 @@ export const users: User[] = [
   },
   {
     id: "user_instructor",
-    email: "instructor@click.com",
+    email: "instructor@qlick.com",
     name: "Sofía Ramírez",
     role: "instructor",
     avatarUrl: undefined,
@@ -40,7 +40,7 @@ export const users: User[] = [
   },
   {
     id: "user_alumno_2",
-    email: "valeria@click.com",
+    email: "valeria@qlick.com",
     name: "Valeria Núñez",
     role: "student",
     avatarUrl: undefined,
@@ -50,7 +50,7 @@ export const users: User[] = [
   },
   {
     id: "user_alumno_3",
-    email: "carlos@click.com",
+    email: "carlos@qlick.com",
     name: "Carlos Ortega",
     role: "student",
     avatarUrl: undefined,

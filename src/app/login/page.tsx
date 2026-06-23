@@ -10,9 +10,9 @@ import { signIn } from "@/lib/auth/mock-auth";
 import type { UserRole } from "@/types";
 
 const demoAccounts: { email: string; role: UserRole; label: string; desc: string }[] = [
-  { email: "alumno@click.com", role: "student", label: "Alumno", desc: "Ve tu panel y avanza cursos" },
-  { email: "admin@click.com", role: "admin", label: "Admin", desc: "Gestiona cursos y alumnos" },
-  { email: "instructor@click.com", role: "instructor", label: "Instructor", desc: "Crea y administra contenido" }
+  { email: "alumno@qlick.com", role: "student", label: "Alumno", desc: "Ve tu panel y avanza cursos" },
+  { email: "admin@qlick.com", role: "admin", label: "Admin", desc: "Gestiona cursos y alumnos" },
+  { email: "instructor@qlick.com", role: "instructor", label: "Instructor", desc: "Crea y administra contenido" }
 ];
 
 export default function LoginPage() {

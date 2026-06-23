@@ -22,10 +22,15 @@ mock. Lista para demostrar el producto y validar flujos.
 - ✅ Login mock con 3 roles (admin, alumno, instructor).
 - ✅ Abstracción de video (5 proveedores, YouTube activo).
 - ✅ Abstracción de pagos (4 proveedores, mock activo).
+- ✅ Abstracción de contacto (`ContactProvider` mock + stubs resend/crm).
+- ✅ Botones de WhatsApp centralizados con fallback "próximamente".
 - ✅ Diseño alineado a la identidad visual de Qlick.
-- ✅ Documentación (architecture, video, payments, decisions, github workflow).
+- ✅ Auditoría técnica, funcional y de marca (ver `docs/AUDIT_REPORT.md` y
+  relacionados).
+- ✅ Documentación (architecture, video, payments, contact, audit, decisions, github workflow).
 - ✅ SEO básico (metadata, sitemap, robots, Open Graph).
 - ✅ Build pasa, sin errores de tipos ni lint.
+- ✅ `npm run audit:links` limpio (sin anchors vacíos ni forms sin backend).
 
 **Criterios de salida**
 - `npm run build` genera 55 páginas estáticas.
@@ -102,7 +107,8 @@ mock. Lista para demostrar el producto y validar flujos.
 - [ ] Página pública de verificación de certificados (`/certificado/[code]`).
 - [ ] Comunidad (foro o canal integrado).
 - [ ] Integración con CRM (HubSpot / propio).
-- [ ] Integración con WhatsApp Business para soporte y ventas.
+- [ ] Integración con WhatsApp Business API (Cloud API) para mensajería outbound y plantillas.
+- [ ] Activar proveedor `resend`/`crm` de contacto (completar stubs de `src/lib/contact/`).
 - [ ] Automatizaciones de email marketing (bienvenida, abandono, follow-up).
 - [ ] Programa de afiliados.
 - [ ] Notificaciones push / in-app.
