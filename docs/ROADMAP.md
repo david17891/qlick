@@ -24,6 +24,11 @@ mock. Lista para demostrar el producto y validar flujos.
 - ✅ Abstracción de pagos (4 proveedores, mock activo).
 - ✅ Abstracción de contacto (`ContactProvider` mock + stubs resend/crm).
 - ✅ Botones de WhatsApp centralizados con fallback "próximamente".
+- ✅ CRM en modo demo: tipos, datos mock, servicios, UI completa (kanban, leads,
+  conversaciones, calendario, agente IA, configuración WhatsApp).
+- ✅ Abstracción de proveedor de WhatsApp (`WhatsAppProvider`: manual activo +
+  stubs Cloud API/BSP) y agente IA en modo sugerencia con guardrails.
+- ✅ Formulario de contacto con curso de interés y consentimiento obligatorio.
 - ✅ Diseño alineado a la identidad visual de Qlick.
 - ✅ Auditoría técnica, funcional y de marca (ver `docs/AUDIT_REPORT.md` y
   relacionados).
@@ -106,8 +111,13 @@ mock. Lista para demostrar el producto y validar flujos.
 - [ ] Generación real de certificados PDF con código verificable.
 - [ ] Página pública de verificación de certificados (`/certificado/[code]`).
 - [ ] Comunidad (foro o canal integrado).
-- [ ] Integración con CRM (HubSpot / propio).
-- [ ] Integración con WhatsApp Business API (Cloud API) para mensajería outbound y plantillas.
+- [x] Foundation del CRM lista (modo demo): tipos, servicios, UI y formulario con
+  consentimiento. Falta persistencia (Fase 1) y CRM externo.
+- [x] Abstracción `WhatsAppProvider` (manual activo + Cloud API/BSP como stubs).
+- [x] Agente IA en modo sugerencia con guardrails (proveedor mock activo).
+- [ ] WhatsApp Business Cloud API real: plantillas, opt-in, ventana 24h, webhook
+  (ver `docs/WHATSAPP_OFFICIAL_INTEGRATION_PLAN.md`).
+- [ ] Agente IA con LLM real (OpenRouter), manteniendo `needsReview`.
 - [ ] Activar proveedor `resend`/`crm` de contacto (completar stubs de `src/lib/contact/`).
 - [ ] Automatizaciones de email marketing (bienvenida, abandono, follow-up).
 - [ ] Programa de afiliados.

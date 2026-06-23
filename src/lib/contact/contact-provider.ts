@@ -16,6 +16,11 @@ export interface ContactMessage {
   message: string;
   /** Curso de interés si aplica (para ventas). */
   courseSlug?: string;
+  /**
+   * Consentimiento explícito para ser contactado (WhatsApp, llamada o correo).
+   * Obligatorio en la UI del formulario; el CRM no debe aceptar leads sin él.
+   */
+  consentToContact?: boolean;
 }
 
 export interface ContactResult {
@@ -75,6 +80,12 @@ export function validateContactMessage(
     errors.push({
       field: "message",
       message: "Cuéntanos un poco más (mínimo 10 caracteres)."
+    });
+  }
+  if (message.consentToContact === false) {
+    errors.push({
+      field: "consentToContact",
+      message: "Debes aceptar ser contactado para enviar el formulario."
     });
   }
 

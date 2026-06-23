@@ -18,7 +18,8 @@ la arquitectura para pagos reales en México.
   Vimeo, Cloudflare Stream, Mux y custom preparados).
 - 🎓 **Dashboard de alumno** con progreso, actividad, certificados y pagos.
 - 🛠️ **Panel admin** con métricas, gestión de cursos, alumnos, inscripciones y
-  pagos simulados.
+  pagos simulados, más una pestaña **CRM** (kanban, leads, conversaciones,
+  calendario, agente IA y configuración de WhatsApp — todo en modo demo).
 - 🔐 **Login mock** con 3 roles (admin, alumno, instructor).
 - 💳 **Arquitectura de pagos** para Mercado Pago, Stripe y Conekta (mock activo).
 - 🎨 **Diseño alineado** a la identidad visual de Qlick (morado + naranja).
@@ -159,15 +160,22 @@ cambiando una variable de entorno. Ver
 El formulario de `/contacto` y los botones de WhatsApp funcionan en **modo demo**
 sin configuración:
 
-- **Formulario:** valida, previene doble envío y muestra feedback. El mensaje se
-  procesa con un proveedor `mock` (no llega a un inbox real todavía). Hay un badge
-  "demo" visible.
+- **Formulario:** valida, previene doble envío y muestra feedback. Pide **curso de
+  interés** y requiere **consentimiento** para ser contactado. El mensaje se
+  procesa con un proveedor `mock` (no llega a un inbox real todavía) y registra un
+  lead demo en el CRM. Hay un badge "demo" visible.
 - **Botones de WhatsApp:** si las variables `NEXT_PUBLIC_WHATSAPP_*` están vacías,
   los botones se muestran **deshabilitados** con la etiqueta "próximamente" (nunca
   como links falsos). En cuanto se configuren los números, se habilitan solos.
 
 Para activar WhatsApp real, basta con añadir los números a `.env.local`
 (Ver [`docs/CONTACT_AND_WHATSAPP_STRATEGY.md`](docs/CONTACT_AND_WHATSAPP_STRATEGY.md)).
+
+> La pestaña **CRM** del panel admin (kanban, leads, conversaciones, agente IA) y
+> la integración del formulario están documentadas en
+> [`docs/CRM_STRATEGY.md`](docs/CRM_STRATEGY.md) y
+> [`docs/CRM_IMPLEMENTATION_REPORT.md`](docs/CRM_IMPLEMENTATION_REPORT.md). Todo es
+> modo demo: no se persisten datos reales todavía.
 
 ---
 
@@ -192,6 +200,11 @@ Detalle en [`docs/ROADMAP.md`](docs/ROADMAP.md).
 - [`docs/VIDEO_STRATEGY.md`](docs/VIDEO_STRATEGY.md) — estrategia de video
 - [`docs/PAYMENTS_MEXICO_STRATEGY.md`](docs/PAYMENTS_MEXICO_STRATEGY.md) — pagos
 - [`docs/CONTACT_AND_WHATSAPP_STRATEGY.md`](docs/CONTACT_AND_WHATSAPP_STRATEGY.md) — contacto y WhatsApp
+- [`docs/CRM_STRATEGY.md`](docs/CRM_STRATEGY.md) — estrategia del CRM (modo demo)
+- [`docs/WHATSAPP_AI_AGENT_STRATEGY.md`](docs/WHATSAPP_AI_AGENT_STRATEGY.md) — WhatsApp oficial + agente IA
+- [`docs/WHATSAPP_OFFICIAL_INTEGRATION_PLAN.md`](docs/WHATSAPP_OFFICIAL_INTEGRATION_PLAN.md) — plan Cloud API / BSP
+- [`docs/AI_AGENT_GUARDRAILS.md`](docs/AI_AGENT_GUARDRAILS.md) — reglas del agente IA
+- [`docs/CRM_IMPLEMENTATION_REPORT.md`](docs/CRM_IMPLEMENTATION_REPORT.md) — reporte de implementación
 - [`docs/DECISIONS.md`](docs/DECISIONS.md) — registro de decisiones (ADRs)
 - [`docs/GITHUB_WORKFLOW.md`](docs/GITHUB_WORKFLOW.md) — Git y GitHub
 

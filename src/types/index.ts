@@ -280,3 +280,10 @@ export interface ActivityEvent {
   lessonId?: string;
   createdAt: string;
 }
+
+/* ------------------------------------------------------------------ */
+/* CRM + WhatsApp AI Agent                                             */
+/* Ver src/types/crm.ts para el detalle.                              */
+/* ------------------------------------------------------------------ */
+
+export * from "./crm";

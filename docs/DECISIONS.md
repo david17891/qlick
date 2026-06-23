@@ -232,3 +232,73 @@ decidió, por qué, qué alternativas se consideraron, el riesgo y cómo reverti
   etiquetado como demo en la UI.
 - **Cómo revertir:** `NEXT_PUBLIC_CONTACT_PROVIDER=resend` activa el proveedor de
   email una vez completado su stub; los componentes no cambian.
+
+---
+
+## D-014 · CRM en modo demo (foundation, sin backend)
+
+- **Fecha:** 2026-06-23
+- **Decisión:** Construir la foundation completa del CRM (tipos, datos mock,
+  servicios de lectura/escritura, UI kanban/tabla/conversaciones/calendario y
+  integración del formulario de contacto) **sin** conectar Supabase ni un CRM
+  externo. Las escrituras (`createLeadFromContactForm`, `changeLeadStatus`)
+  devuelven `demo: true` y no persisten.
+- **Motivo:** Permite validar el flujo comercial completo y mostrar el producto a
+  ventas/QA sin acoplarse a un backend (regla D-003: sin ORM/DB en el MVP). La
+  firma pública de los servicios está pensada para migrar a Supabase sin tocar la
+  UI, igual que el resto de `src/lib/data/*`.
+- **Alternativas consideradas:**
+  1. Esperar a Supabase para tocar CRM → retrasa validación de producto.
+  2. Conectar un CRM externo (HubSpot) desde ya → rompe D-003 y requiere cuenta.
+  3. Foundation mock con misma forma que la DB futura. ✅
+- **Riesgo:** Alguien podría creer que los datos son reales. Mitigado: banner
+  "demo" en cada sección, etiquetas `demo:true` en escrituras, nota de privacidad
+  en `/contacto`.
+- **Cómo revertir:** Migrar `src/lib/data/crm-data.ts` a tablas Supabase con la
+  misma forma; los servicios mantienen su firma. Ver `docs/CRM_STRATEGY.md`.
+
+---
+
+## D-015 · Abstracción de proveedor de WhatsApp (`WhatsAppProvider`)
+
+- **Fecha:** 2026-06-23
+- **Decisión:** Crear `src/lib/whatsapp/` con una interfaz `WhatsAppProvider`
+  (manual click-to-chat activo + stubs `meta_cloud_api`/`bsp`) y webhooks
+  placeholder, siguiendo el mismo patrón que pagos/video/contacto (D-005/D-013).
+- **Motivo:** WhatsApp es el canal principal de ventas en México y el que más
+  riesgo de refactor y de ban trae (métodos no oficiales). Tener la abstracción
+  desde el inicio permite migrar manual → Cloud API → BSP sin tocar la UI ni el
+  CRM, y deja documentado que **solo** se usarán vías oficiales.
+- **Alternativas consideradas:**
+  1. Hardcodear `wa.me` y automatizar la app luego → deuda + riesgo de ban.
+  2. Conectar la Cloud API desde ya → requiere negocio verificado y opt-in.
+  3. Abstracción con manual activo y stubs oficiales documentados. ✅
+- **Riesgo:** El `manualWaProvider` no envía mensajes automatizados (solo
+  click-to-chat). Está etiquetado; el agente IA opera en modo sugerencia.
+- **Cómo revertir:** Completar `metaCloudApiProvider`/`bspProvider` y resolver el
+  activo por `NEXT_PUBLIC_WHATSAPP_PROVIDER`. La UI no cambia. Ver
+  `docs/WHATSAPP_OFFICIAL_INTEGRATION_PLAN.md`.
+
+---
+
+## D-016 · Agente IA en modo sugerencia con guardrails duros
+
+- **Fecha:** 2026-06-23
+- **Decisión:** El Agente IA (`src/lib/ai/`) opera **siempre** en modo sugerencia
+  (`AgentResult.needsReview: true`). Implementar guardrails en `guardrails.ts`
+  (`mustEscalateToHuman`, `validateAgentReply`, `recommendCourseHeuristic` que no
+  inventa) que aplican al proveedor mock actual **y** a cualquier LLM real futuro.
+  El agente nunca confirma pagos, accesos ni descuentos.
+- **Motivo:** Reducir riesgo de alucinaciones y de "commitments" no autorizados.
+  Un LLM puede inventar precios o "confirmar" un pago; los guardrails lo impiden
+  antes de que la propuesta llegue al humano. El proveedor `mock` (determinista)
+  sirve de baseline y para QA reproducible.
+- **Alternativas consideradas:**
+  1. Autoenvío desde el día 1 → inaceptable sin métricas de seguridad.
+  2. Agente solo cuando haya LLM → pierde baseline y validación de flujos.
+  3. Modo sugerencia + guardrails duros desde la foundation. ✅
+- **Riesgo:** Quitar `needsReview` por accidente habilitaría autoenvío. Mitigado:
+  el flag es explícito y la UI repite "revisa antes de enviar".
+- **Cómo revertir:** Cambiar `needsReview` a `false` sería una decisión de producto
+  **separada**, solo para intents de bajo riesgo y con logging. Ver
+  `docs/AI_AGENT_GUARDRAILS.md`.

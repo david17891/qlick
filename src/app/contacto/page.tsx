@@ -64,6 +64,18 @@ export default function ContactoPage() {
                 </li>
               </ul>
             </Card>
+            <Card className="p-6 border-amber-200 bg-amber-50/50">
+              <h3 className="font-bold text-ink mb-2 flex items-center gap-2">
+                <span>🔒</span> Privacidad y consentimiento
+              </h3>
+              <p className="text-sm text-ink-soft leading-relaxed">
+                Al enviarnos tu información aceptas ser contactado por Qlick por
+                WhatsApp, llamada o correo. El CRM de este sitio está en modo
+                <strong> demo</strong>: no almacena datos reales todavía. No lo
+                uses con información sensible hasta que exista un backend y un
+                aviso de privacidad publicado.
+              </p>
+            </Card>
             <Card className="p-6 bg-brand-gradient text-white">
               <h3 className="font-bold mb-2">¿Primera vez?</h3>
               <p className="text-sm text-white/90 mb-4">

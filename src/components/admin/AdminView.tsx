@@ -18,8 +18,9 @@ import { getAllUsers } from "@/lib/data/users";
 import { getAllPayments, sumRevenue } from "@/lib/data/payments";
 import { listPaymentProviders } from "@/lib/payments";
 import { formatMXN, formatDate, initials, formatDuration } from "@/lib/utils";
+import { CRMView } from "@/components/crm";
 
-type Tab = "resumen" | "cursos" | "alumnos" | "inscripciones" | "pagos" | "futuro";
+type Tab = "resumen" | "cursos" | "alumnos" | "inscripciones" | "pagos" | "crm" | "futuro";
 
 const statusTone: Record<PaymentStatus, "success" | "warning" | "danger" | "neutral" | "info"> = {
   approved: "success",
@@ -85,6 +86,7 @@ export function AdminView() {
     { id: "alumnos", label: "Alumnos", icon: "👥" },
     { id: "inscripciones", label: "Inscripciones", icon: "📝" },
     { id: "pagos", label: "Pagos", icon: "💳" },
+    { id: "crm", label: "CRM", icon: "🧲" },
     { id: "futuro", label: "Próximas integraciones", icon: "🚀" }
   ];
 
@@ -404,6 +406,9 @@ export function AdminView() {
         </Card>
       )}
 
+      {/* ----------------------- CRM ----------------------- */}
+      {tab === "crm" && <CRMView />}
+
       {/* ----------------------- PRÓXIMAS INTEGRACIONES ----------------------- */}
       {tab === "futuro" && (
         <div className="space-y-6">
@@ -435,8 +440,8 @@ export function AdminView() {
                 {
                   phase: "Fase 4",
                   title: "Certificados, CRM y comunidad",
-                  body: "Certificados PDF verificables, integración con CRM, WhatsApp y email marketing.",
-                  done: ["Modelo Certificate", "Tipos para activity", "Foundation lista"]
+                  body: "Certificados PDF verificables, CRM con WhatsApp y email marketing. La base del CRM ya está disponible en la pestaña CRM.",
+                  done: ["Modelo Certificate", "CRM + WhatsApp + Agente IA (demo)", "Foundation lista"]
                 }
               ].map((f) => (
                 <div key={f.title} className="rounded-xl border border-brand-100 p-5">

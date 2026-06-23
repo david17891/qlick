@@ -7,6 +7,7 @@ import {
   type ContactMessage,
   type ValidationError
 } from "@/lib/contact";
+import { getAllCourses } from "@/lib/data/courses";
 
 type Status = "idle" | "loading" | "success" | "error";
 
@@ -15,8 +16,13 @@ const initialForm: ContactMessage = {
   email: "",
   phone: "",
   topic: "Quiero tomar un curso",
-  message: ""
+  message: "",
+  courseSlug: "",
+  consentToContact: false
 };
+
+const CONSENT_TEXT =
+  "Acepto ser contactado por Qlick por WhatsApp, llamada o correo sobre mi consulta, y entiendo que mis datos se tratarán según el aviso de privacidad.";
 
 const topics = [
   "Quiero tomar un curso",
@@ -29,15 +35,17 @@ const topics = [
 /**
  * Formulario de contacto con validación y estados claros.
  * MVP: usa mock-contact-provider (no envía nada real).
+ * Además registra un lead demo en el CRM (createLeadFromContactForm, demo:true).
  * El mensaje de éxito deja explícito que es modo demo.
  */
 export function ContactForm() {
+  const courses = getAllCourses();
   const [form, setForm] = useState<ContactMessage>(initialForm);
   const [errors, setErrors] = useState<ValidationError[]>([]);
   const [status, setStatus] = useState<Status>("idle");
   const [resultNote, setResultNote] = useState<string | null>(null);
 
-  const update = (field: keyof ContactMessage, value: string) => {
+  const update = (field: keyof ContactMessage, value: string | boolean) => {
     setForm((f) => ({ ...f, [field]: value }));
     // Limpia el error del campo al editarlo.
     if (errors.some((e) => e.field === field)) {
@@ -65,8 +73,27 @@ export function ContactForm() {
       const { getContactProvider } = await import("@/lib/contact");
       const provider = getContactProvider();
       const result = await provider.send(form);
+
+      // Registra el lead en el CRM (demo: no persiste).
+      const course = courses.find((c) => c.slug === form.courseSlug);
+      const { createLeadFromContactForm } = await import("@/lib/crm/crm-service");
+      const leadResult = createLeadFromContactForm({
+        name: form.name,
+        email: form.email,
+        phone: form.phone,
+        courseOfInterest: course?.title,
+        intent: "course_information",
+        source: "website",
+        message: form.message,
+        consentToContact: true
+      });
+
       setStatus("success");
-      setResultNote(result.note);
+      setResultNote(
+        leadResult.demo
+          ? "Lead registrado en modo demo. En producción se guardará en el CRM y se asignará a ventas."
+          : result.note
+      );
       setForm(initialForm);
     } catch (err) {
       setStatus("error");
@@ -191,6 +218,23 @@ export function ContactForm() {
           </Field>
         </div>
 
+        <Field label="Curso de interés (opcional)" htmlFor="course">
+          <select
+            id="course"
+            name="course"
+            className="w-full rounded-xl border border-brand-100 bg-white px-4 py-3 text-ink focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+            value={form.courseSlug ?? ""}
+            onChange={(e) => update("courseSlug", e.target.value)}
+          >
+            <option value="">Aún no lo decido</option>
+            {courses.map((c) => (
+              <option key={c.slug} value={c.slug}>
+                {c.title}
+              </option>
+            ))}
+          </select>
+        </Field>
+
         <Field label="Mensaje" htmlFor="message">
           <Textarea
             id="message"
@@ -209,6 +253,35 @@ export function ContactForm() {
           )}
         </Field>
 
+        {/* Consentimiento obligatorio */}
+        <div>
+          <label
+            htmlFor="consent"
+            className="flex items-start gap-3 cursor-pointer rounded-xl border border-brand-100 bg-brand-50/30 px-4 py-3"
+          >
+            <input
+              id="consent"
+              name="consent"
+              type="checkbox"
+              className="mt-0.5 h-5 w-5 rounded border-brand-200 text-brand-600 focus:ring-brand-400 shrink-0"
+              checked={Boolean(form.consentToContact)}
+              onChange={(e) => update("consentToContact", e.target.checked)}
+              aria-invalid={Boolean(fieldError("consentToContact"))}
+              aria-describedby={
+                fieldError("consentToContact") ? "err-consent" : undefined
+              }
+            />
+            <span className="text-xs text-ink-soft leading-relaxed">
+              {CONSENT_TEXT}
+            </span>
+          </label>
+          {fieldError("consentToContact") && (
+            <p id="err-consent" className="mt-1 text-xs text-red-600">
+              {fieldError("consentToContact")}
+            </p>
+          )}
+        </div>
+
         {status === "error" && resultNote && (
           <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
             {resultNote}
@@ -217,7 +290,7 @@ export function ContactForm() {
 
         <div className="flex items-center justify-between gap-4">
           <p className="text-xs text-ink-muted">
-            Demo: este formulario no envía correos reales todavía.
+            Demo: este formulario no envía correos reales ni guarda datos reales todavía.
           </p>
           <Button
             type="submit"

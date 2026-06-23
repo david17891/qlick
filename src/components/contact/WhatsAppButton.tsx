@@ -19,6 +19,9 @@ import type { ButtonProps } from "@/components/ui";
 export function WhatsAppButton({
   intent = "sales",
   courseName,
+  courseTitle,
+  name,
+  customMessage,
   label,
   variant = "accent",
   size = "md",
@@ -27,6 +30,12 @@ export function WhatsAppButton({
 }: {
   intent?: WhatsAppIntent;
   courseName?: string;
+  /** Título legible del curso (alias de courseName). */
+  courseTitle?: string;
+  /** Nombre del lead/alumno para personalizar el saludo. */
+  name?: string;
+  /** Mensaje pre-armado; si se pasa, tiene prioridad sobre la plantilla. */
+  customMessage?: string;
   label?: string;
   variant?: ButtonProps["variant"];
   size?: ButtonProps["size"];
@@ -41,8 +50,10 @@ export function WhatsAppButton({
   } | null>(null);
 
   useEffect(() => {
-    setLink(getWhatsAppLink(intent, { courseName }));
-  }, [intent, courseName]);
+    setLink(
+      getWhatsAppLink(intent, { courseName, courseTitle, name, customMessage })
+    );
+  }, [intent, courseName, courseTitle, name, customMessage]);
 
   if (!link) {
     return (
