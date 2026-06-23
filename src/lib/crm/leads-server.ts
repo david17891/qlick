@@ -27,7 +27,6 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   mapLeadRowToLead,
   type InsertLeadPayload,
-  type LeadRow,
 } from "./leads-mapper";
 
 // Fallback a mocks (mismo módulo que usa hoy el CRM demo).
@@ -68,7 +67,7 @@ export async function getLeads(): Promise<Lead[]> {
     });
     return getLeadsMock();
   }
-  return (data ?? []).map((row) => mapLeadRowToLead(row as never));
+  return (data ?? []).map((row) => mapLeadRowToLead(row));
 }
 
 /**
@@ -91,7 +90,7 @@ export async function getLeadById(id: string): Promise<Lead | undefined> {
     return getLeadByIdMock(id);
   }
   if (!data) return undefined;
-  return mapLeadRowToLead(data as never);
+  return mapLeadRowToLead(data);
 }
 
 /* --------------------------- Escritura --------------------------- */
@@ -177,12 +176,9 @@ export async function createLead(
   };
 
   const supabase = createSupabaseAdminClient();
-  // El cliente admin no tiene `Database` tipado todavía (sin typegen de
-  // Supabase, que requiere proyecto creado). Casteamos la fila a LeadRow para
-  // mantener tipado seguro en el dominio sin acoplarse al query builder.
   const { data, error } = await supabase
     .from("leads")
-    .insert(payload as unknown as never[])
+    .insert(payload)
     .select("id")
     .single();
 
@@ -211,10 +207,9 @@ export async function createLead(
     };
   }
 
-  const row = data as unknown as Pick<LeadRow, "id">;
   return {
     ok: true,
-    leadId: row.id,
+    leadId: data.id,
     persisted: true,
     demo: false,
     note: "Lead guardado en Supabase y disponible en el CRM.",

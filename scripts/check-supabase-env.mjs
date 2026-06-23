@@ -91,15 +91,26 @@ function isValidSupabaseUrl(value) {
   }
 }
 
-function looksLikeJwt(value) {
+function looksLikeKey(value) {
   if (!value) return false;
+  // Formato nuevo de Supabase (2025+): sb_publishable_… / sb_secret_…
+  if (/^sb_(publishable|secret)_[A-Za-z0-9_-]{20,}$/.test(value)) {
+    return true;
+  }
+  // Formato JWT clásico (proyectos pre-2025): tres segmentos separados por punto.
   const parts = value.split(".");
   return parts.length >= 3 && parts.every((p) => p.length > 0);
 }
 
 function looksLikeProjectRef(value) {
-  // UUID v4-ish. No validamos estrictamente, solo forma.
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+  // Acepta dos formatos:
+  //   - UUID v4 (proyectos pre-2025): 8-4-4-4-12 hex.
+  //   - Ref nuevo (2025+): string alfanumérico de ~20 chars (ej. ugpejblymtbwtsoiykyj).
+  if (!value) return false;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
+    return true;
+  }
+  return /^[a-z0-9]{16,}$/i.test(value);
 }
 
 /** Enmascara un valor para mostrar longitud sin revelar contenido. */
@@ -159,13 +170,13 @@ async function main() {
           }
           break;
         case "key":
-          valid = looksLikeJwt(value);
-          status = valid ? "OK (JWT)" : "¿truncada?";
-          if (!valid) errors.push(`${v.name}: no parece un JWT (3 segmentos separados por punto).`);
+          valid = looksLikeKey(value);
+          status = valid ? "OK (clave válida)" : "¿truncada?";
+          if (!valid) errors.push(`${v.name}: no parece una clave de Supabase (JWT clásico o formato sb_publishable_/sb_secret_).`);
           break;
         case "ref":
           valid = looksLikeProjectRef(value);
-          status = valid ? "OK (UUID)" : "¿formato raro?";
+          status = valid ? "OK (ref válido)" : "¿formato raro?";
           // ref con formato raro no es error fatal (puede ser ref nuevo).
           break;
         default:

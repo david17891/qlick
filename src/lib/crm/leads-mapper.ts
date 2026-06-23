@@ -4,8 +4,13 @@
  *
  * Mantiene la firma pública del CRM (camelCase) desacoplada del schema físico
  * de la DB. Si la migración cambia un nombre de columna, solo se toca aquí.
+ *
+ * Los tipos de la fila vienen ahora del typegen de Supabase
+ * (`src/types/supabase.ts`), así que `LeadRow`/`LeadInsert` reflejan el schema
+ * real y el query builder del cliente admin queda tipado de punta a punta.
  */
 
+import type { Database } from "@/types/supabase";
 import type {
   Lead,
   LeadStatus,
@@ -14,30 +19,43 @@ import type {
 } from "@/types";
 
 /**
- * Forma de una fila de la tabla `public.leads` tal como la devuelve Supabase.
- * Alineada con supabase/migrations/20260623000001_init_leads.sql.
+ * Fila de `public.leads` tal como la devuelve Supabase. Derivada del typegen,
+ * así que cualquier cambio de schema se propaga en compilación.
  */
-export interface LeadRow {
-  id: string;
-  name: string;
-  email: string;
-  phone: string | null;
-  course_of_interest: string | null;
+export type LeadRow = Database["public"]["Tables"]["leads"]["Row"];
+
+/**
+ * Payload de inserción crudo según el schema. Útil para inserts genéricos.
+ */
+export type LeadInsert = Database["public"]["Tables"]["leads"]["Insert"];
+
+/**
+ * Payload de inserción DESDE EL FORMULARIO.
+ *
+ * Es un `LeadInsert` con los campos que el formulario siempre provee marcados
+ * como obligatorios (defensa en profundidad: la política de RLS y el server
+ * action también los exigen). `message` se conserva aquí (no en `Lead`) para
+ * que el texto del lead quede registrado pero no sea accesible por el dominio
+ * público.
+ */
+export type InsertLeadPayload = Omit<
+  LeadInsert,
+  "status" | "source" | "intent" | "consent_to_contact"
+> & {
   status: LeadStatus;
   source: LeadSource;
   intent: LeadIntent;
-  owner_id: string | null;
-  tags: string[] | null;
-  summary: string | null;
-  estimated_value_mxn: number | null;
-  next_follow_up_at: string | null;
   consent_to_contact: boolean;
-  message: string | null;
-  created_at: string;
-  updated_at: string;
-}
+};
 
-/** Convierte una fila de la DB a un `Lead` del dominio. */
+/**
+ * Convierte una fila de la DB a un `Lead` del dominio.
+ *
+ * Los enums de la DB (`Database["public"]["Enums"]`) son literales idénticos a
+ * los del dominio (`LeadStatus`/`LeadSource`/`LeadIntent`), por lo que la
+ * asignación es directa. Si algún día divergen, este mapper es el único punto
+ * donde añadir la conversión explícita.
+ */
 export function mapLeadRowToLead(row: LeadRow): Lead {
   return {
     id: row.id,
@@ -59,21 +77,4 @@ export function mapLeadRowToLead(row: LeadRow): Lead {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
-}
-
-/**
- * Payload de inserción desde el formulario. La columna `message` se conserva
- * aquí (no en Lead) para que el texto del lead quede registrado pero no sea
- * accesible por el dominio público.
- */
-export interface InsertLeadPayload {
-  name: string;
-  email: string;
-  phone: string | null;
-  course_of_interest: string | null;
-  status: LeadStatus;
-  source: LeadSource;
-  intent: LeadIntent;
-  consent_to_contact: boolean;
-  message: string | null;
 }

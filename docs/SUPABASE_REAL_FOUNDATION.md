@@ -138,3 +138,58 @@ nuevo endpoint (`force-dynamic`).
 - No `npm audit fix --force` (bumpa Next a 16, breaking).
 - Stack fijo: Next 14.2.35 · React 18.3.1 · TS 5.5.3 · Tailwind 3.4.6.
 - No crear proyecto Supabase sin confirmación explícita del usuario.
+
+---
+
+## 8. Findings de seguridad (no bloqueantes)
+
+### Finding pendiente: política INSERT `anon`/`publishable`
+
+La migración define la política `leads_public_insert_form` que permite `INSERT`
+a los roles `anon` y `authenticated` con checks (`consent_to_contact = true`,
+`status = 'new'`, nombre y email válidos). Esto se diseñó por si en el futuro
+se decide insertar leads **desde el navegador** con la publishable key.
+
+**Estado actual del flujo (MVP):** el insert **no** se hace desde el cliente.
+El camino real es:
+
+```
+ContactForm (cliente) → submitLead (Server Action) → createLead (server)
+  → createSupabaseAdminClient() (service role, bypass de RLS) → INSERT
+```
+
+Por lo tanto:
+
+- **No bloquea al MVP.** El insert funciona y se validó con un lead de prueba
+  (`217118df-2424-44b0-a6fd-cd3353734ef7`, status `new`, source `website`,
+  consent `true`).
+- **No se usa la publishable key para insertar leads.** El formulario nunca
+  escribe directamente en Supabase desde el navegador.
+- La política `anon` queda como **defensa en profundidad** por si alguna vez se
+  habilita el insert client-side, pero hoy no es el camino usado.
+
+**Recomendación:** mantener el insert server-side con service role. Cuando se
+decida permitir inserts directos desde el cliente (si alguna vez se decide),
+revisar esta política para:
+
+1. Endurecer los checks (p. ej. rate-limit por IP, Turnstile/honeypot) antes
+   de confiar en el `INSERT` anónimo.
+2. Confirmar que los defaults de la migración siguen forzando `status='new'` y
+   campos sensibles a sus defaults (no seleccionables por el cliente).
+
+Mientras tanto, la política no se elimina (es inofensiva: el único insert real
+viene del service role, que bypassa RLS) y se documenta aquí para trazabilidad.
+
+### Verificación de seguridad (2026-06-23)
+
+- `GET /api/admin/leads` → **HTTP 503** (`AUTH_READY = false`): el endpoint
+  está dormido y no sirve datos reales aunque Supabase esté configurado.
+- **RLS activo** en `public.leads`: `relrowsecurity = true` (verificado en
+  `pg_class` vía `supabase db query --linked`).
+- **Sin lectura pública:** un cliente con la publishable key (rol `anon`)
+  recibe **0 filas** al hacer `SELECT` sobre `leads` (RLS niega el SELECT a
+  `anon`; solo `authenticated` con `app_role` ∈ `admin`/`instructor` lee).
+- **Service role solo server-side:** `createSupabaseAdminClient()` lanza si se
+  invoca en el navegador (`typeof window`), y los logs de `leads-server.ts`
+  solo emiten `error.code` (nunca claves ni payloads sensibles).
+
