@@ -55,10 +55,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(loginUrl("callback"));
   }
 
-  // Respuesta sobre la que setearemos las cookies de sesión.
-  const res = NextResponse.next({
-    request: { headers: req.headers },
-  });
+  // Respuesta final de éxito: redirect a /admin. Las cookies de sesión se
+  // setean SOBRE esta respuesta (la que efectivamente devolvemos). Si las
+  // seteáramos en un NextResponse.next() intermedio y devolviéramos un redirect
+  // distinto, las Set-Cookie se perderían y el middleware nos rebotaría al
+  // login sin sesión (bug que teníamos antes de este cambio).
+  const adminUrl = req.nextUrl.clone();
+  adminUrl.pathname = "/admin";
+  adminUrl.search = "";
+  const successRes = NextResponse.redirect(adminUrl);
 
   const supabase = createServerClient(
     supabaseConfig.url,
@@ -70,7 +75,7 @@ export async function GET(req: NextRequest) {
         },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value, options }) => {
-            res.cookies.set(name, value, options);
+            successRes.cookies.set(name, value, options);
           });
         },
       },
@@ -89,13 +94,12 @@ export async function GET(req: NextRequest) {
   // Validación del allowlist: rechazo explícito si no es admin.
   if (!isAdmin(user?.email)) {
     // Cerramos sesión para no dejar cookies activas de un usuario no autorizado.
+    // El successRes (con las cookies de sesión) se descarta: devolvemos el
+    // redirect al login, así el navegador nunca recibe esa sesión.
     await supabase.auth.signOut();
     return NextResponse.redirect(loginUrl("forbidden"));
   }
 
-  // OK: redirigir al panel.
-  const adminUrl = req.nextUrl.clone();
-  adminUrl.pathname = "/admin";
-  adminUrl.search = "";
-  return NextResponse.redirect(adminUrl);
+  // OK: devolvemos el redirect a /admin con las cookies de sesión ya adjuntas.
+  return successRes;
 }
