@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { User, PaymentStatus } from "@/types";
 import { getCurrentUser } from "@/lib/auth/mock-auth";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { Container, Card, Button, Badge, EmptyState, ProgressBar } from "@/components/ui";
 import { StatCard } from "@/components/dashboard";
 import {
@@ -45,7 +46,16 @@ export function AdminView() {
   const [tab, setTab] = useState<Tab>("resumen");
 
   useEffect(() => {
+    const realMode = isSupabaseConfigured();
     const u = getCurrentUser();
+    if (realMode) {
+      // Modo real: el middleware ya validó sesión admin. No usamos mock-auth aquí.
+      // El saludo cae a un valor genérico si no hay sesión mock.
+      if (u) setUser(u);
+      setReady(true);
+      return;
+    }
+    // Modo demo: flujo mock existente.
     if (!u) {
       router.push("/login");
       return;
@@ -58,7 +68,7 @@ export function AdminView() {
     setReady(true);
   }, [router]);
 
-  if (!ready || !user) {
+  if (!ready) {
     return (
       <Container className="py-20">
         <p className="text-ink-muted text-center">Cargando panel…</p>
@@ -96,10 +106,10 @@ export function AdminView() {
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
         <div>
           <p className="text-sm text-ink-muted">Panel administrativo</p>
-          <h1 className="text-3xl font-bold text-ink">Hola, {user.name.split(" ")[0]}</h1>
+          <h1 className="text-3xl font-bold text-ink">Hola, {user?.name?.split(" ")[0] ?? "admin"}</h1>
         </div>
-        <Badge tone={user.role === "admin" ? "brand" : "info"}>
-          {user.role.toUpperCase()}
+        <Badge tone={user?.role === "admin" ? "brand" : "info"}>
+          {(user?.role ?? "admin").toUpperCase()}
         </Badge>
       </div>
 
