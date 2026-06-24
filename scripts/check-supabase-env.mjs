@@ -218,8 +218,18 @@ async function main() {
 
   console.log("");
   if (configured) {
-    console.log("✅ Supabase configurado (modo 'configured').");
-    console.log("   Recuerda: falta RLS + aviso de privacidad antes de datos reales.");
+    console.log("✅ Variables de entorno de Supabase configuradas (modo 'configured').");
+    console.log("");
+    console.log("   ⚠️  Este script SOLO verifica PRESENCIA y FORMATO de las env vars.");
+    console.log("   NO comprueba el estado de seguridad de la base de datos remota");
+    console.log("   (RLS, políticas, permisos) porque no abre conexión contra el proyecto.");
+    console.log("");
+    console.log("   Lista de verificación que NO cubre este script:");
+    console.log("     - RLS activa en las tablas (revisar desde el Dashboard o CLI):");
+    console.log("         npx supabase db dump --schema public  |  psql -c \"\\d+ leads\"");
+    console.log("     - Políticas por tabla (SELECT/INSERT/UPDATE/DELETE).");
+    console.log("     - Aviso de Privacidad publicado y enlazado (/privacidad).");
+    console.log("     - Consentimiento registrado con cada lead.");
   } else {
     console.log("ℹ️  Supabase NO configurado (modo 'demo').");
     console.log("   Esto es perfectamente válido: la app corre con mocks.");

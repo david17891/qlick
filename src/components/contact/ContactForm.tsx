@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Card, Field, Input, Textarea, Button, Badge } from "@/components/ui";
 import {
   validateContactMessage,
@@ -30,8 +31,15 @@ const initialForm: ContactMessage = {
   consentToContact: false
 };
 
-const CONSENT_TEXT =
-  "Acepto ser contactado por Qlick por WhatsApp, llamada o correo sobre mi consulta, y entiendo que mis datos se tratarán según el aviso de privacidad.";
+/**
+ * Texto de consentimiento del formulario. Refleja de forma clara y breve el
+ * alcance del tratamiento (contacto + seguimiento comercial) y enlaza al
+ * Aviso de Privacidad. La marca de este checkbox queda registrada con el lead
+ * (campo `consent_to_contact` en Supabase) como evidencia del consentimiento.
+ */
+const CONSENT_LEAD =
+  "Acepto que Qlick Marketing Integral use mis datos para contactarme sobre cursos, servicios y seguimiento comercial";
+const CONSENT_TAIL = "conforme al Aviso de Privacidad.";
 
 const topics = [
   "Quiero tomar un curso",
@@ -294,7 +302,15 @@ export function ContactForm() {
               }
             />
             <span className="text-xs text-ink-soft leading-relaxed">
-              {CONSENT_TEXT}
+              {CONSENT_LEAD}{" "}
+              <Link
+                href="/privacidad"
+                className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {CONSENT_TAIL}
+              </Link>
             </span>
           </label>
           {fieldError("consentToContact") && (

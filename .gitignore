@@ -52,3 +52,8 @@ next-env.d.ts
 
 # extractores temporales
 /_brand_extract
+
+# artefacto de MSYS/Git-Bash en Windows: `nul` es dispositivo reservado,
+# pero a veces se materializa como archivo suelto por redirecciones mal
+# interpretadas (ej. `2>nul`). Lo ignoramos para que nunca entre al repo.
+/nul
