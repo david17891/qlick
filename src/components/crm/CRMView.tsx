@@ -352,6 +352,14 @@ export function CRMView() {
         <LeadDetailDrawer
           lead={selectedLead}
           owners={owners}
+          realMode={realMode}
+          onLeadChanged={(updated) => {
+            // Refresca la fila en la lista real y mantiene el drawer en sincronía.
+            setRealLeads((prev) =>
+              prev ? prev.map((p) => (p.id === updated.id ? updated : p)) : prev,
+            );
+            setSelectedLead(updated);
+          }}
           onClose={() => setSelectedLead(null)}
         />
       )}

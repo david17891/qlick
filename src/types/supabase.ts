@@ -14,6 +14,153 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_audit_log: {
+        Row: {
+          actor_email: string
+          action: string
+          created_at: string
+          entity_id: string | null
+          entity_type: string
+          id: string
+          metadata: Json | null
+        }
+        Insert: {
+          actor_email: string
+          action: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type: string
+          id?: string
+          metadata?: Json | null
+        }
+        Update: {
+          actor_email?: string
+          action?: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string
+          id?: string
+          metadata?: Json | null
+        }
+        Relationships: []
+      }
+      crm_notes: {
+        Row: {
+          body: string
+          created_at: string
+          created_by_email: string
+          id: string
+          lead_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          created_by_email: string
+          id?: string
+          lead_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          created_by_email?: string
+          id?: string
+          lead_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_notes_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crm_tasks: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          created_by_email: string
+          description: string | null
+          due_at: string | null
+          id: string
+          lead_id: string
+          status: Database["public"]["Enums"]["crm_task_status"]
+          title: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          created_by_email: string
+          description?: string | null
+          due_at?: string | null
+          id?: string
+          lead_id: string
+          status?: Database["public"]["Enums"]["crm_task_status"]
+          title: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          created_by_email?: string
+          description?: string | null
+          due_at?: string | null
+          id?: string
+          lead_id?: string
+          status?: Database["public"]["Enums"]["crm_task_status"]
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crm_tasks_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_interactions: {
+        Row: {
+          channel: Database["public"]["Enums"]["interaction_channel"]
+          created_at: string
+          created_by_email: string
+          direction: Database["public"]["Enums"]["interaction_direction"]
+          id: string
+          lead_id: string
+          metadata: Json | null
+          summary: string
+        }
+        Insert: {
+          channel?: Database["public"]["Enums"]["interaction_channel"]
+          created_at?: string
+          created_by_email: string
+          direction?: Database["public"]["Enums"]["interaction_direction"]
+          id?: string
+          lead_id: string
+          metadata?: Json | null
+          summary: string
+        }
+        Update: {
+          channel?: Database["public"]["Enums"]["interaction_channel"]
+          created_at?: string
+          created_by_email?: string
+          direction?: Database["public"]["Enums"]["interaction_direction"]
+          id?: string
+          lead_id?: string
+          metadata?: Json | null
+          summary?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_interactions_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leads: {
         Row: {
           consent_to_contact: boolean
@@ -82,6 +229,14 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
+      crm_task_status: "pending" | "completed" | "cancelled"
+      interaction_channel:
+        | "whatsapp"
+        | "email"
+        | "phone"
+        | "form"
+        | "system"
+      interaction_direction: "inbound" | "outbound" | "system"
       lead_intent:
         | "course_information"
         | "enroll_course"
@@ -239,6 +394,9 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      crm_task_status: ["pending", "completed", "cancelled"],
+      interaction_channel: ["whatsapp", "email", "phone", "form", "system"],
+      interaction_direction: ["inbound", "outbound", "system"],
       lead_intent: [
         "course_information",
         "enroll_course",
