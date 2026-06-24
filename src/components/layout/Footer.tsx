@@ -16,7 +16,8 @@ const cols = [
     links: [
       { href: "/acerca", label: "Acerca de Qlick" },
       { href: "/beneficios", label: "Beneficios" },
-      { href: "/contacto", label: "Contacto" }
+      { href: "/contacto", label: "Contacto" },
+      { href: "/privacidad", label: "Aviso de Privacidad" }
     ]
   },
   {
