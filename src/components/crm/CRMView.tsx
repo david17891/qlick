@@ -39,6 +39,7 @@ import {
   appointmentStatusTone
 } from "@/lib/crm/appointments";
 import { getWhatsAppConfigStatus } from "@/lib/contact/whatsapp";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { LeadDetailDrawer } from "./LeadDetailDrawer";
 import { formatDate, formatMXN, initials } from "@/lib/utils";
 
@@ -71,10 +72,47 @@ export function CRMView() {
   const [section, setSection] = useState<Section>("resumen");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
 
-  const leads = getLeads();
+  // Modo real vs demo: en modo real hacemos fetch de los leads reales desde
+  // la API admin (protegida). En demo usamos los mocks.
+  const realMode = isSupabaseConfigured();
+  const [realLeads, setRealLeads] = useState<Lead[] | null>(null);
+  const [realLeadsError, setRealLeadsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!realMode) return;
+    let cancelled = false;
+    setRealLeadsError(null);
+    fetch("/api/admin/leads", { cache: "no-store" })
+      .then(async (res) => {
+        if (res.status === 401 || res.status === 403) {
+          // Sin sesión admin: no mostramos datos reales. El middleware redirige
+          // a /admin/login en /admin, pero este componente puede montarse antes.
+          if (!cancelled) setRealLeads(null);
+          return null;
+        }
+        const data = await res.json();
+        if (!cancelled) {
+          if (res.ok && data?.ok) {
+            setRealLeads(data.leads ?? []);
+          } else {
+            setRealLeads(null);
+            setRealLeadsError(data?.error ?? "No se pudieron cargar los leads.");
+          }
+        }
+        return null;
+      })
+      .catch(() => {
+        if (!cancelled) setRealLeadsError("Error de red al cargar leads.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [realMode]);
+
+  // Leads efectivos: reales si están cargados, null mientras cargan en modo real.
+  const mockLeads = getLeads();
   const owners = getSalesOwners();
   const overview = getCRMOverview();
-  const stages = getPipelineStages(leads);
   const conversations = getConversations();
   const upcomingTasks = getUpcomingCRMTasks();
   const overdueTasks = getOverdueCRMTasks();
@@ -83,13 +121,31 @@ export function CRMView() {
   const profile = getAIAgentProfile();
   const waProviders = getWhatsAppProviders();
 
+  // En modo real: si realLeads está null (cargando o sin sesión), mostramos
+  // estado de carga. Si está cargado (incluso vacío), lo usamos.
+  const loadingReal = realMode && realLeads === null && !realLeadsError;
+  const leads = realMode
+    ? realLeads ?? []
+    : mockLeads;
+  const stages = getPipelineStages(leads);
+
   return (
     <div className="space-y-6">
-      {/* Banner demo */}
-      <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
-        <strong>CRM en modo demo.</strong> Los datos son ficticios y las acciones no se
-        persisten. En producción se conecta a Supabase y a WhatsApp oficial.
-      </div>
+      {/* Banner modo real / demo */}
+      {realMode ? (
+        <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-800">
+          <strong>CRM en modo real.</strong> Leads leídos desde Supabase.{" "}
+          {loadingReal && "Cargando…"}
+          {realLeadsError && (
+            <span className="text-red-700"> {realLeadsError}</span>
+          )}
+        </div>
+      ) : (
+        <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
+          <strong>CRM en modo demo.</strong> Los datos son ficticios y las acciones no se
+          persisten. En producción se conecta a Supabase y a WhatsApp oficial.
+        </div>
+      )}
 
       {/* Sub-tabs */}
       <div className="flex flex-wrap gap-2 border-b border-brand-100 pb-3 overflow-x-auto">
