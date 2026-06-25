@@ -45,7 +45,15 @@ export async function GET(req: NextRequest) {
     return u;
   };
 
-  // Sin code no hay nada que intercambiar.
+  // Si Supabase redirige con parámetros de error (p. ej. otp_expired, el
+  // enlace ya no es válido), mapear a un error legible para el usuario.
+  const sbError = url.searchParams.get("error_code");
+  if (!code && sbError) {
+    const mapped = sbError === "otp_expired" ? "expired" : "callback";
+    return NextResponse.redirect(loginUrl(mapped));
+  }
+
+  // Sin code ni error de Supabase: nada que intercambiar.
   if (!code) {
     return NextResponse.redirect(loginUrl("callback"));
   }

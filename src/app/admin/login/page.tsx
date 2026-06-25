@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { Navbar, Footer } from "@/components/layout";
 import { Container, Card, Button, Field, Input, Badge } from "@/components/ui";
 import { Logo } from "@/components/brand";
-import { requestMagicLink } from "@/app/actions/admin-auth";
+import { requestMagicLinkClient } from "@/lib/auth/admin-auth-client";
 
 /**
  * Login admin real (Supabase Auth magic link).
@@ -23,19 +23,23 @@ import { requestMagicLink } from "@/app/actions/admin-auth";
 export default function AdminLoginPage() {
   const params = useSearchParams();
   const forbidden = params.get("error") === "forbidden";
+  const expired = params.get("error") === "expired";
+  const callbackErr = params.get("error") === "callback";
+  const serverError = forbidden || expired || callbackErr;
 
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
-  const [resultNote, setResultNote] = useState<string | null>(
-    forbidden
-      ? "Tu cuenta no está autorizada como administradora."
-      : null,
-  );
+  const [resultNote, setResultNote] = useState<string | null>(() => {
+    if (forbidden) return "Tu cuenta no está autorizada como administradora.";
+    if (expired) return "El enlace ha expirado. Pide uno nuevo.";
+    if (callbackErr) return "Error al procesar el enlace. Intenta de nuevo.";
+    return null;
+  });
   const [sent, setSent] = useState(false);
 
   useEffect(() => {
-    if (!forbidden) setResultNote(null);
-  }, [email, forbidden]);
+    if (!serverError) setResultNote(null);
+  }, [email, serverError]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,7 +47,7 @@ export default function AdminLoginPage() {
     setLoading(true);
     setResultNote(null);
     try {
-      const result = await requestMagicLink(email);
+      const result = await requestMagicLinkClient(email);
       setResultNote(result.note);
       setSent(result.sent);
     } catch {
@@ -113,8 +117,14 @@ export default function AdminLoginPage() {
                 </div>
               )}
 
-              {forbidden && !sent && (
-                <p className="mt-4 text-xs text-red-600">{resultNote}</p>
+              {resultNote && !sent && !serverError && (
+                <p className="mt-4 text-xs text-red-600 bg-red-50 rounded-lg p-2">
+                  {resultNote}
+                </p>
+              )}
+
+              {serverError && !sent && (
+                <p className="mt-4 text-xs text-red-600 bg-red-50 rounded-lg p-2">{resultNote}</p>
               )}
 
               <p className="mt-6 text-sm text-ink-muted text-center">

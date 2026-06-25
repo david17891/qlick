@@ -56,6 +56,18 @@ export async function requestMagicLink(
     // No filtramos el detalle del error al cliente; lo logueamos server-side.
     // eslint-disable-next-line no-console
     console.error("[admin-auth] signInWithOtp falló", { code: error.code });
+
+    // Rate-limit del mailer integrado de Supabase: el destinatario pidió
+    // demasiados enlaces en poco tiempo. Mensaje accionable (invita a esperar,
+    // no a spamear) y genérico (no confirma si el email es admin).
+    if (error.code === "over_email_send_rate_limit") {
+      return {
+        ok: false,
+        sent: false,
+        note: "Demasiados intentos en poco tiempo. Espera unos minutos (o hasta una hora) antes de pedir otro enlace.",
+      };
+    }
+
     return {
       ok: false,
       sent: false,

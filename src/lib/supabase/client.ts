@@ -12,15 +12,15 @@
 import { createBrowserClient } from "@supabase/ssr";
 import { supabaseConfig, isValidSupabaseUrl } from "./config";
 
-let cached: ReturnType<typeof createBrowserClient> | null = null;
-
 /**
- * Cliente browser singleton. Lanza si no hay proyecto configurado (modo demo),
- * con un mensaje accionable.
+ * Cliente browser. Crea una instancia nueva cada vez (sin cache singleton).
+ *
+ * El cache singleton puede causar problemas en dev (hot reload recrea el
+ * módulo pero el cache queda stale, o un primer render SSR fallido
+ * contamina las llamadas posteriores). createBrowserClient ya maneja su
+ * propio cache interno, así que no necesitamos doble cache.
  */
 export function createSupabaseBrowserClient() {
-  if (cached) return cached;
-
   const { url, publishableKey } = supabaseConfig;
   if (!isValidSupabaseUrl(url) || !publishableKey) {
     throw new Error(
@@ -30,6 +30,5 @@ export function createSupabaseBrowserClient() {
     );
   }
 
-  cached = createBrowserClient(url, publishableKey);
-  return cached;
+  return createBrowserClient(url, publishableKey);
 }
