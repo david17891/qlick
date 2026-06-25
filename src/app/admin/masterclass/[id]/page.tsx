@@ -176,7 +176,7 @@ export default async function AdminMasterclassDetailPage({ params }: Props) {
                           </Badge>
                           {lead && (
                             <Link
-                              href={`/admin/crm?leadId=${lead.id}`}
+                              href={`/admin?tab=crm&leadId=${lead.id}`}
                               className="text-brand-700 underline"
                             >
                               Ver lead en CRM →

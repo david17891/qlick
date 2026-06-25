@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { User, PaymentStatus } from "@/types";
 import { getCurrentUser } from "@/lib/auth/mock-auth";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -42,9 +42,29 @@ const statusLabel: Record<PaymentStatus, string> = {
 
 export function AdminView() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Permite deep-link a un tab específico vía ?tab=crm (usado por
+  // /admin/masterclass/[id] → "Ver lead en CRM").
+  const initialTab = (() => {
+    const t = searchParams.get("tab");
+    if (
+      t === "resumen" ||
+      t === "cursos" ||
+      t === "alumnos" ||
+      t === "inscripciones" ||
+      t === "pagos" ||
+      t === "crm" ||
+      t === "futuro"
+    ) {
+      return t;
+    }
+    return "resumen";
+  })();
+  // ?leadId=... abre el drawer del lead correspondiente en el tab CRM.
+  const initialLeadId = searchParams.get("leadId") ?? undefined;
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
-  const [tab, setTab] = useState<Tab>("resumen");
+  const [tab, setTab] = useState<Tab>(initialTab);
 
   useEffect(() => {
     const realMode = isSupabaseConfigured();
@@ -424,7 +444,7 @@ export function AdminView() {
       )}
 
       {/* ----------------------- CRM ----------------------- */}
-      {tab === "crm" && <CRMView />}
+      {tab === "crm" && <CRMView initialLeadId={initialLeadId} />}
 
       {/* ----------------------- PRÓXIMAS INTEGRACIONES ----------------------- */}
       {tab === "futuro" && (
