@@ -14,6 +14,16 @@
  * - El allowlist decide autorización (¿es admin?).
  * - Las operaciones CRM usan el cliente admin (service role, bypass de RLS),
  *   igual que el INSERT de leads hoy. No dependemos del `app_role` del JWT.
+ *
+ * Relación con el rol `student` (LMS v0.7.0):
+ * - Admin y student son roles **INDEPENDIENTES**. El allowlist de admin NO
+ *   se usa para alumnos: cualquier persona puede registrarse como alumno vía
+ *   magic link (`/login` + `/auth/callback-student`).
+ * - Una persona NO puede ser admin y alumno a la vez. `isStudentEmail()`
+ *   bloquea explícitamente el email si está en el allowlist admin. Ver
+ *   `student-auth.ts`.
+ * - El control fino de qué cursos/lecciones ve cada alumno vive en RLS
+ *   (auth.uid() = user_id) — el allowlist admin no interviene ahí.
  */
 
 import { checkSupabaseConfig } from "@/lib/supabase/health";
