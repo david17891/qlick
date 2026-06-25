@@ -339,3 +339,60 @@ decidió, por qué, qué alternativas se consideraron, el riesgo y cómo reverti
   dependencias. Ningún componente existente depende de esta capa (es aditiva).
 
 ---
+
+## D-018 · Auth admin con Supabase Auth + allowlist server-side
+
+- **Fecha:** 2026-06-25
+- **Decisión:** Proteger `/admin/*` y `/api/admin/*` con Supabase Auth
+  (magic link OTP) más un **allowlist server-side** (`ADMIN_EMAIL_ALLOWLIST`).
+  El cliente browser solo usa la publishable key (respeta RLS); la service
+  role key se usa exclusivamente desde route handlers server-side para
+  operaciones admin (status, notas, tareas, audit log) bypassing RLS por
+  necesidad de negocio. La validación de allowlist se hace en **dos puntos
+  independientes**: el callback (cierra sesión si no está) y el middleware
+  (rebota en cada request).
+- **Motivo:**
+  - **Anti-enumeración:** la action de "pedir magic link" no revela si un
+    email es admin (siempre devuelve éxito genérico). La validación real
+    ocurre en el callback y el middleware, donde el atacante no llega si
+    no tiene el enlace.
+  - **PKCE obligatorio:** `@supabase/ssr` usa PKCE por defecto. El
+    `code_verifier` debe persistir en cookies **del navegador**, no del
+    server. Por eso `signInWithOtp` se llama desde un Client Component
+    (`src/lib/auth/admin-auth-client.ts`) con acceso literal a
+    `process.env.NEXT_PUBLIC_*` (para que Next.js las inline en el bundle).
+  - **Service role para ops, RLS para todo lo demás:** los datos de leads
+    son accesibles para el admin sin filtrar por RLS (necesario para
+    gestión), pero **toda** operación admin se hace desde route handlers
+    con `requireAdmin()` validando allowlist — nunca desde el cliente.
+  - **Defensa en profundidad:** middleware filtra, callback cierra sesión
+    si no allowlisted, route handlers re-validan. Si una capa falla, las
+    otras contienen.
+- **Alternativas consideradas:**
+  1. Auth con email + password → más fricción para el usuario, recovery
+     flow propio que mantener.
+  2. Auth con OAuth (Google) → requiere configurar proveedor, scopes y
+     mapeo email → allowlist adicional.
+  3. Magic link OTP + allowlist server-side + service role solo en
+     handlers. ✅
+  4. Asumir "cualquier usuario autenticado es admin" → riesgoso: un
+     alumno registrado tendría acceso a `/admin`.
+- **Riesgos:**
+  - **Fuga de service role key al cliente.** Mitigado: `admin.ts` valida
+    `typeof window === 'undefined'` y lanza; regla dura en
+    `AGENT_SUPABASE_PROTOCOL.md`.
+  - **Rate-limit del plan free (2 emails/h).** Mitigable: subir a Pro
+    para prod, esperar entre iteraciones en dev.
+  - **Alguien agrega un email al allowlist por error.** Mitigado: el
+    allowlist está en `.env.local` (no comiteado) y se documenta que
+    cualquier cambio requiere OK.
+  - **Sesión caducada sin aviso claro.** Mitigado: el middleware
+    redirige a `/admin/login` con query param si la cookie expira
+    mientras el usuario navega.
+- **Cómo revertir:** Eliminar `middleware.ts`, los archivos en
+  `src/lib/auth/`, la ruta `/auth/callback`, `src/app/admin/login/`,
+  las rutas API admin, `src/lib/crm/` y la dependencia de
+  `@supabase/ssr`. Restaurar el panel admin en modo mock (D-004). El
+  CRM en demo (D-014) sigue funcionando con datos mock.
+
+---

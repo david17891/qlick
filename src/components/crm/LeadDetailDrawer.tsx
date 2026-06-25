@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Lead, LeadStatus, SalesOwner } from "@/types";
-import { Card, Badge, Button } from "@/components/ui";
+import { Card, Badge, Button, Input, Textarea, Spinner } from "@/components/ui";
 import {
   leadStatusLabel,
   statusTone,
@@ -21,6 +21,15 @@ import {
 import { getAppointmentsForLead } from "@/lib/crm/appointments";
 import { getAISuggestionsForLead, getAgentReplyTemplate } from "@/lib/crm/agent-utils";
 import { getWhatsAppConfigStatus } from "@/lib/contact/whatsapp";
+import {
+  patchLeadStatus,
+  fetchLeadNotes,
+  createLeadNote,
+  fetchLeadTasks,
+  createLeadTask,
+  type OpStatus
+} from "@/lib/crm/ops-client";
+import { mapNoteRow, mapTaskRow, type NoteView, type TaskView } from "@/lib/crm/rows-mapper";
 import { formatDate, formatMXN } from "@/lib/utils";
 import { WhatsAppButton } from "@/components/contact/WhatsAppButton";
 
@@ -28,20 +37,55 @@ import { WhatsAppButton } from "@/components/contact/WhatsAppButton";
  * Drawer (panel lateral) con el detalle completo de un lead.
  *
  * Muestra datos, historial, conversación, sugerencias IA y citas.
- * Las acciones que cambian estado son DEMO (no persisten): muestran etiqueta.
+ *
+ * Modos (v0.5.0):
+ * - `realMode`: las operaciones (cambiar etapa, crear nota, crear tarea) llaman
+ *   a las APIs reales `/api/admin/leads/[id]/*` y las notas/tareas se leen de la
+ *   BD. Cada acción tiene estados loading/success/error.
+ * - Demo (default): conserva el comportamiento mock original (acciones que no
+ *   persisten + datos ficticios). Las secciones puramente demo (conversación IA,
+ *   sugerencias, citas) se mantienen en ambos modos.
+ *
+ * `onLeadChanged` notifica al padre (CRMView) cuando un PATCH actualiza el lead,
+ * para refrescar la fila en la tabla/pipeline sin refetch completo.
+ *
  * Los botones de WhatsApp usan WhatsAppButton (wa.me si hay número configurado,
  * "próximamente" si no).
  */
 export function LeadDetailDrawer({
   lead,
   owners,
-  onClose
+  onClose,
+  realMode = false,
+  onLeadChanged
 }: {
   lead: Lead;
   owners: SalesOwner[];
   onClose: () => void;
+  /** true para activar operaciones reales contra la API (modo real). */
+  realMode?: boolean;
+  /** Callback cuando un PATCH actualiza el lead (p. ej. status). */
+  onLeadChanged?: (lead: Lead) => void;
 }) {
+  // Estado local del lead: en modo real puede cambiar al hacer PATCH.
+  const [currentLead, setCurrentLead] = useState<Lead>(lead);
+  useEffect(() => setCurrentLead(lead), [lead]);
+
+  // --- Estado de operaciones (máquina idle/loading/success/error) ---
   const [statusNote, setStatusNote] = useState<string | null>(null);
+  const [statusState, setStatusState] = useState<OpStatus>("idle");
+  const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [noteText, setNoteText] = useState("");
+  const [noteState, setNoteState] = useState<OpStatus>("idle");
+  const [noteMsg, setNoteMsg] = useState<string | null>(null);
+  const [taskForm, setTaskForm] = useState({ title: "", description: "", dueAt: "" });
+  const [taskState, setTaskState] = useState<OpStatus>("idle");
+  const [taskMsg, setTaskMsg] = useState<string | null>(null);
+
+  // --- Datos reales (solo se cargan en modo real) ---
+  const [realNotes, setRealNotes] = useState<NoteView[] | null>(null);
+  const [realTasks, setRealTasks] = useState<TaskView[] | null>(null);
+  const [dataError, setDataError] = useState<string | null>(null);
 
   // Cerrar con tecla Escape.
   useEffect(() => {
@@ -52,18 +96,116 @@ export function LeadDetailDrawer({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const risk = calculateLeadResponseRisk(lead);
-  const interactions = getLeadInteractions(lead.id);
-  const notes = getLeadNotes(lead.id);
-  const conversation = getLeadConversation(lead.id);
-  const suggestions = getAISuggestionsForLead(lead.id);
-  const appts = getAppointmentsForLead(lead.id);
-  const owner = owners.find((o) => o.id === lead.ownerId);
+  // Cargar notas y tareas reales al abrir el drawer (modo real).
+  useEffect(() => {
+    if (!realMode) return;
+    let cancelled = false;
+    setDataError(null);
+    setRealNotes(null);
+    setRealTasks(null);
+    Promise.all([fetchLeadNotes(currentLead.id), fetchLeadTasks(currentLead.id)])
+      .then(([n, t]) => {
+        if (cancelled) return;
+        setRealNotes(n.map(mapNoteRow));
+        setRealTasks(t.map(mapTaskRow));
+      })
+      .catch((err) => {
+        if (!cancelled) setDataError(err instanceof Error ? err.message : "Error cargando datos.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [realMode, currentLead.id]);
+
+  const risk = calculateLeadResponseRisk(currentLead);
+  const interactions = getLeadInteractions(currentLead.id);
+  const conversation = getLeadConversation(currentLead.id);
+  const suggestions = getAISuggestionsForLead(currentLead.id);
+  const appts = getAppointmentsForLead(currentLead.id);
+  const owner = owners.find((o) => o.id === currentLead.ownerId);
   const waConfigured = getWhatsAppConfigStatus().anyConfigured;
 
+  // Notas efectivas: reales (modo real) o mock (demo).
+  const notes = realMode
+    ? (realNotes ?? []).map((n) => ({ id: n.id, body: n.body, author: n.authorEmail, createdAt: n.createdAt }))
+    : getLeadNotes(currentLead.id);
+
   function handleStatusChange(next: LeadStatus, label: string) {
-    const res = changeLeadStatus(lead.id, next);
+    // Demo: mock sin persistencia.
+    const res = changeLeadStatus(currentLead.id, next);
     setStatusNote(`${label}: ${res.note}`);
+  }
+
+  // Real: PATCH contra la API.
+  async function handleRealStatusChange(next: LeadStatus) {
+    if (statusState === "loading") return;
+    const prevStatus = currentLead.status;
+    // Optimistic: actualiza el lead local al instante.
+    const optimistic = { ...currentLead, status: next };
+    setCurrentLead(optimistic);
+    setStatusState("loading");
+    setStatusMsg(null);
+    try {
+      const updated = await patchLeadStatus(currentLead.id, next);
+      setCurrentLead(updated);
+      onLeadChanged?.(updated);
+      setStatusState("success");
+      setStatusMsg(`Etapa actualizada a "${leadStatusLabel[updated.status]}".`);
+      setTimeout(() => setStatusState("idle"), 2500);
+    } catch (err) {
+      // Revierte al status previo.
+      setCurrentLead((c) => ({ ...c, status: prevStatus }));
+      setStatusState("error");
+      setStatusMsg(err instanceof Error ? err.message : "No se pudo actualizar.");
+    }
+  }
+
+  async function handleCreateNote(e: React.FormEvent) {
+    e.preventDefault();
+    if (noteState === "loading") return;
+    const text = noteText.trim();
+    if (!text) {
+      setNoteState("error");
+      setNoteMsg("La nota no puede estar vacía.");
+      return;
+    }
+    setNoteState("loading");
+    setNoteMsg(null);
+    try {
+      const row = await createLeadNote(currentLead.id, text);
+      setRealNotes((prev) => [mapNoteRow(row), ...(prev ?? [])]);
+      setNoteText("");
+      setNoteState("idle");
+    } catch (err) {
+      setNoteState("error");
+      setNoteMsg(err instanceof Error ? err.message : "No se pudo guardar la nota.");
+    }
+  }
+
+  async function handleCreateTask(e: React.FormEvent) {
+    e.preventDefault();
+    if (taskState === "loading") return;
+    const title = taskForm.title.trim();
+    if (!title) {
+      setTaskState("error");
+      setTaskMsg("El título es obligatorio.");
+      return;
+    }
+    setTaskState("loading");
+    setTaskMsg(null);
+    try {
+      const row = await createLeadTask(currentLead.id, {
+        title,
+        description: taskForm.description.trim() || undefined,
+        dueAt: taskForm.dueAt || undefined,
+      });
+      setRealTasks((prev) => [mapTaskRow(row), ...(prev ?? [])]);
+      setTaskForm({ title: "", description: "", dueAt: "" });
+      setTaskState("idle");
+    } catch (err) {
+      setTaskState("error");
+      setTaskMsg(err instanceof Error ? err.message : "No se pudo crear la tarea.");
+    }
   }
 
   return (
@@ -78,21 +220,25 @@ export function LeadDetailDrawer({
       <aside
         className="relative h-full w-full max-w-xl bg-white shadow-2xl overflow-y-auto"
         role="dialog"
-        aria-label={`Detalle de ${lead.name}`}
+        aria-label={`Detalle de ${currentLead.name}`}
       >
         {/* Header */}
         <div className="sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-brand-100 px-6 py-4 flex items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2 mb-1">
-              <Badge tone={statusTone[lead.status]}>{leadStatusLabel[lead.status]}</Badge>
+              <Badge tone={statusTone[currentLead.status]}>{leadStatusLabel[currentLead.status]}</Badge>
               <Badge tone={riskTone[risk.level]} title={risk.reasons.join(", ")}>
                 Riesgo {riskLabel[risk.level].toLowerCase()}
               </Badge>
-              <Badge tone="warning">demo</Badge>
+              {realMode ? (
+                <Badge tone="success">en vivo</Badge>
+              ) : (
+                <Badge tone="warning">demo</Badge>
+              )}
             </div>
-            <h2 className="text-xl font-bold text-ink truncate">{lead.name}</h2>
+            <h2 className="text-xl font-bold text-ink truncate">{currentLead.name}</h2>
             <p className="text-sm text-ink-muted truncate">
-              {lead.courseOfInterest ?? "Sin curso de interés"}
+              {currentLead.courseOfInterest ?? "Sin curso de interés"}
             </p>
           </div>
           <button
@@ -107,30 +253,30 @@ export function LeadDetailDrawer({
         <div className="p-6 space-y-6">
           {/* Datos */}
           <section className="grid sm:grid-cols-2 gap-3 text-sm">
-            <Info label="Email" value={lead.email} />
-            <Info label="Teléfono" value={lead.phone ?? "—"} />
-            <Info label="Fuente" value={leadSourceLabel[lead.source]} />
-            <Info label="Intención" value={leadIntentLabel[lead.intent]} />
+            <Info label="Email" value={currentLead.email} />
+            <Info label="Teléfono" value={currentLead.phone ?? "—"} />
+            <Info label="Fuente" value={leadSourceLabel[currentLead.source]} />
+            <Info label="Intención" value={leadIntentLabel[currentLead.intent]} />
             <Info
               label="Responsable"
               value={owner ? `${owner.name}` : "Sin asignar"}
             />
             <Info
               label="Próximo seguimiento"
-              value={lead.nextFollowUpAt ? formatDate(lead.nextFollowUpAt) : "—"}
+              value={currentLead.nextFollowUpAt ? formatDate(currentLead.nextFollowUpAt) : "—"}
             />
-            {lead.estimatedValueMXN !== undefined && lead.estimatedValueMXN > 0 && (
-              <Info label="Valor estimado" value={formatMXN(lead.estimatedValueMXN)} />
+            {currentLead.estimatedValueMXN !== undefined && currentLead.estimatedValueMXN > 0 && (
+              <Info label="Valor estimado" value={formatMXN(currentLead.estimatedValueMXN)} />
             )}
             <Info
               label="Consentimiento"
-              value={lead.consentToContact ? "Sí" : "No"}
+              value={currentLead.consentToContact ? "Sí" : "No"}
             />
           </section>
 
-          {lead.summary && (
+          {currentLead.summary && (
             <p className="text-sm text-ink-soft bg-brand-50/50 rounded-xl p-3">
-              {lead.summary}
+              {currentLead.summary}
             </p>
           )}
 
@@ -150,10 +296,10 @@ export function LeadDetailDrawer({
               Acciones de WhatsApp
             </h3>
             <div className="flex flex-wrap gap-2">
-              <WhatsAppButton intent="course_interest" name={lead.name} courseTitle={lead.courseOfInterest} customMessage={getAgentReplyTemplate(lead.intent, lead)} size="sm" variant="accent" label="Información" />
-              <WhatsAppButton intent="enroll" name={lead.name} courseTitle={lead.courseOfInterest} size="sm" variant="accent" label="Inscripción" />
-              <WhatsAppButton intent="payment_reminder" name={lead.name} courseTitle={lead.courseOfInterest} size="sm" variant="accent" label="Pago pendiente" />
-              <WhatsAppButton intent="follow_up" name={lead.name} courseTitle={lead.courseOfInterest} size="sm" variant="accent" label="Seguimiento" />
+              <WhatsAppButton intent="course_interest" name={currentLead.name} courseTitle={currentLead.courseOfInterest} customMessage={getAgentReplyTemplate(currentLead.intent, currentLead)} size="sm" variant="accent" label="Información" />
+              <WhatsAppButton intent="enroll" name={currentLead.name} courseTitle={currentLead.courseOfInterest} size="sm" variant="accent" label="Inscripción" />
+              <WhatsAppButton intent="payment_reminder" name={currentLead.name} courseTitle={currentLead.courseOfInterest} size="sm" variant="accent" label="Pago pendiente" />
+              <WhatsAppButton intent="follow_up" name={currentLead.name} courseTitle={currentLead.courseOfInterest} size="sm" variant="accent" label="Seguimiento" />
               <WhatsAppButton intent="group" size="sm" variant="accent" label="Grupo" />
               <WhatsAppButton intent="support" size="sm" variant="accent" label="Soporte" />
             </div>
@@ -164,34 +310,73 @@ export function LeadDetailDrawer({
             )}
           </section>
 
-          {/* Acciones de estado (demo) */}
-          <section>
-            <h3 className="text-sm font-bold uppercase text-brand-600 mb-2">
-              Cambiar etapa (demo)
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="outline" onClick={() => handleStatusChange("contacted", "Marcar contactado")}>
-                Contactado
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => handleStatusChange("payment_pending", "Pago pendiente")}>
-                Pago pendiente
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => handleStatusChange("enrolled", "Inscrito")}>
-                Inscrito
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => handleStatusChange("lost", "Perdido")}>
-                Perdido
-              </Button>
-            </div>
-            {statusNote && (
-              <p className="mt-2 text-xs text-amber-700 bg-amber-50 rounded-lg p-2">
-                {statusNote}
+          {/* Cambiar etapa */}
+          {realMode ? (
+            <section>
+              <h3 className="text-sm font-bold uppercase text-brand-600 mb-2">
+                Cambiar etapa
+              </h3>
+              {dataError && (
+                <p className="mb-2 text-xs text-red-700 bg-red-50 rounded-lg p-2">
+                  {dataError}
+                </p>
+              )}
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={currentLead.status}
+                  onChange={(e) => handleRealStatusChange(e.target.value as LeadStatus)}
+                  disabled={statusState === "loading"}
+                  className="rounded-xl border border-brand-100 bg-white px-3 py-2 text-sm text-ink focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 disabled:opacity-50"
+                >
+                  {Object.entries(leadStatusLabel).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                {statusState === "loading" && <Spinner className="h-4 w-4" />}
+                {statusState === "success" && <Badge tone="success">guardado</Badge>}
+              </div>
+              {statusState === "error" && statusMsg && (
+                <p className="mt-2 text-xs text-red-700 bg-red-50 rounded-lg p-2">
+                  {statusMsg}
+                </p>
+              )}
+              {statusState === "success" && statusMsg && (
+                <p className="mt-2 text-xs text-emerald-700 bg-emerald-50 rounded-lg p-2">
+                  {statusMsg}
+                </p>
+              )}
+            </section>
+          ) : (
+            <section>
+              <h3 className="text-sm font-bold uppercase text-brand-600 mb-2">
+                Cambiar etapa (demo)
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={() => handleStatusChange("contacted", "Marcar contactado")}>
+                  Contactado
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => handleStatusChange("payment_pending", "Pago pendiente")}>
+                  Pago pendiente
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => handleStatusChange("enrolled", "Inscrito")}>
+                  Inscrito
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => handleStatusChange("lost", "Perdido")}>
+                  Perdido
+                </Button>
+              </div>
+              {statusNote && (
+                <p className="mt-2 text-xs text-amber-700 bg-amber-50 rounded-lg p-2">
+                  {statusNote}
+                </p>
+              )}
+              <p className="mt-2 text-xs text-ink-muted">
+                Acción demo: el cambio no se persiste. En producción se guarda y dispara notificaciones.
               </p>
-            )}
-            <p className="mt-2 text-xs text-ink-muted">
-              Acción demo: el cambio no se persiste. En producción se guarda y dispara notificaciones.
-            </p>
-          </section>
+            </section>
+          )}
 
           {/* Historial */}
           <Section title="Historial de interacciones">
@@ -220,22 +405,118 @@ export function LeadDetailDrawer({
           </Section>
 
           {/* Notas */}
-          <Section title="Notas internas">
-            {notes.length === 0 ? (
-              <Empty text="Sin notas." />
-            ) : (
-              <ul className="space-y-2">
-                {notes.map((n) => (
-                  <li key={n.id} className="text-sm bg-brand-50/40 rounded-lg p-3">
-                    <p className="text-ink-soft">{n.body}</p>
-                    <p className="text-xs text-ink-muted mt-1">
-                      {n.author} · {formatDate(n.createdAt)}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Section>
+          {realMode ? (
+            <Section title="Notas internas">
+              {realNotes === null ? (
+                <Spinner className="h-4 w-4" />
+              ) : realNotes.length === 0 ? (
+                <Empty text="Sin notas." />
+              ) : (
+                <ul className="space-y-2">
+                  {realNotes.map((n) => (
+                    <li key={n.id} className="text-sm bg-brand-50/40 rounded-lg p-3">
+                      <p className="text-ink-soft">{n.body}</p>
+                      <p className="text-xs text-ink-muted mt-1">
+                        {n.authorEmail} · {formatDate(n.createdAt)}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <form onSubmit={handleCreateNote} className="mt-3 space-y-2">
+                <Textarea
+                  value={noteText}
+                  onChange={(e) => setNoteText(e.target.value)}
+                  placeholder="Escribe una nota interna…"
+                  rows={2}
+                  className="w-full"
+                />
+                {noteState === "error" && noteMsg && (
+                  <p className="text-xs text-red-700 bg-red-50 rounded-lg p-2">{noteMsg}</p>
+                )}
+                <Button type="submit" size="sm" disabled={noteState === "loading"}>
+                  {noteState === "loading" ? "Guardando…" : "Agregar nota"}
+                </Button>
+              </form>
+            </Section>
+          ) : (
+            <Section title="Notas internas (demo)">
+              {notes.length === 0 ? (
+                <Empty text="Sin notas." />
+              ) : (
+                <ul className="space-y-2">
+                  {notes.map((n) => (
+                    <li key={n.id} className="text-sm bg-brand-50/40 rounded-lg p-3">
+                      <p className="text-ink-soft">{n.body}</p>
+                      <p className="text-xs text-ink-muted mt-1">
+                        {n.author} · {formatDate(n.createdAt)}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Section>
+          )}
+
+          {/* Tareas (solo modo real) */}
+          {realMode && (
+            <Section title="Tareas de seguimiento">
+              {realTasks === null ? (
+                <Spinner className="h-4 w-4" />
+              ) : realTasks.length === 0 ? (
+                <Empty text="Sin tareas." />
+              ) : (
+                <ul className="space-y-2">
+                  {realTasks.map((t) => (
+                    <li key={t.id} className="text-sm border border-brand-100 rounded-lg p-3">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <Badge tone={t.status === "completed" ? "success" : t.status === "cancelled" ? "neutral" : "warning"}>
+                          {t.status === "completed" ? "completada" : t.status === "cancelled" ? "cancelada" : "pendiente"}
+                        </Badge>
+                        {t.dueAt && (
+                          <span className="text-xs text-ink-muted">vence {formatDate(t.dueAt)}</span>
+                        )}
+                      </div>
+                      <p className="text-ink-soft font-medium">{t.title}</p>
+                      {t.description && <p className="text-xs text-ink-muted mt-0.5">{t.description}</p>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <form onSubmit={handleCreateTask} className="mt-3 space-y-2">
+                <Input
+                  value={taskForm.title}
+                  onChange={(e) => setTaskForm((f) => ({ ...f, title: e.target.value }))}
+                  placeholder="Título de la tarea"
+                  className="w-full"
+                />
+                <Textarea
+                  value={taskForm.description}
+                  onChange={(e) => setTaskForm((f) => ({ ...f, description: e.target.value }))}
+                  placeholder="Descripción (opcional)"
+                  rows={2}
+                  className="w-full"
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="text-xs text-ink-muted flex items-center gap-1">
+                    Vence
+                    <input
+                      type="date"
+                      value={taskForm.dueAt}
+                      onChange={(e) => setTaskForm((f) => ({ ...f, dueAt: e.target.value }))}
+                      className="rounded-lg border border-brand-100 bg-white px-2 py-1 text-sm text-ink focus:outline-none focus:border-brand-400"
+                    />
+                  </label>
+                  <Button type="submit" size="sm" disabled={taskState === "loading"}>
+                    {taskState === "loading" ? "Creando…" : "Crear tarea"}
+                  </Button>
+                </div>
+                {taskState === "error" && taskMsg && (
+                  <p className="text-xs text-red-700 bg-red-50 rounded-lg p-2">{taskMsg}</p>
+                )}
+              </form>
+            </Section>
+          )}
 
           {/* Conversación */}
           <Section title="Conversación (WhatsApp · demo)">

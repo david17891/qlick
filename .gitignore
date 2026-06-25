@@ -57,3 +57,14 @@ next-env.d.ts
 # pero a veces se materializa como archivo suelto por redirecciones mal
 # interpretadas (ej. `2>nul`). Lo ignoramos para que nunca entre al repo.
 /nul
+
+# scripts de debug/auth de admin (no son parte del producto, son herramientas
+# locales de desarrollo: kill-dev.ps1 mata listeners 3000/3001;
+# generate-magic-link.mjs genera magic links via Admin API para debug PKCE).
+# Si los necesitas en otro equipo, regenera desde el handoff histórico:
+# docs/HANDOFF_v0.5.0_ADMIN_AUTH_LEADS.md
+/scripts/generate-magic-link.mjs
+/scripts/kill-dev.ps1
+
+# body temporal de PR (se borra después de crear el PR con `gh pr create`)
+/PR_BODY.md
