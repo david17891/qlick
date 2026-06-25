@@ -8,6 +8,8 @@ export const metadata: Metadata = {
   alternates: { canonical: "/admin" }
 };
 
+export const dynamic = "force-dynamic";
+
 export default function AdminPage() {
   return (
     <>

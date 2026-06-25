@@ -16,8 +16,8 @@ export type Database = {
     Tables: {
       admin_audit_log: {
         Row: {
-          actor_email: string
           action: string
+          actor_email: string
           created_at: string
           entity_id: string | null
           entity_type: string
@@ -25,8 +25,8 @@ export type Database = {
           metadata: Json | null
         }
         Insert: {
-          actor_email: string
           action: string
+          actor_email: string
           created_at?: string
           entity_id?: string | null
           entity_type: string
@@ -34,8 +34,8 @@ export type Database = {
           metadata?: Json | null
         }
         Update: {
-          actor_email?: string
           action?: string
+          actor_email?: string
           created_at?: string
           entity_id?: string | null
           entity_type?: string
@@ -221,6 +221,132 @@ export type Database = {
         }
         Relationships: []
       }
+      masterclass_registrations: {
+        Row: {
+          attendance_status: Database["public"]["Enums"]["masterclass_attendance_status"]
+          attended_at: string | null
+          commercial_status: Database["public"]["Enums"]["masterclass_commercial_status"]
+          consent_to_contact: boolean
+          email: string
+          id: string
+          lead_id: string | null
+          masterclass_id: string
+          name: string
+          notes: string | null
+          phone: string | null
+          registered_at: string
+          registration_status: Database["public"]["Enums"]["masterclass_registration_status"]
+          source: string
+          utm_campaign: string | null
+          utm_source: string | null
+        }
+        Insert: {
+          attendance_status?: Database["public"]["Enums"]["masterclass_attendance_status"]
+          attended_at?: string | null
+          commercial_status?: Database["public"]["Enums"]["masterclass_commercial_status"]
+          consent_to_contact?: boolean
+          email: string
+          id?: string
+          lead_id?: string | null
+          masterclass_id: string
+          name: string
+          notes?: string | null
+          phone?: string | null
+          registered_at?: string
+          registration_status?: Database["public"]["Enums"]["masterclass_registration_status"]
+          source?: string
+          utm_campaign?: string | null
+          utm_source?: string | null
+        }
+        Update: {
+          attendance_status?: Database["public"]["Enums"]["masterclass_attendance_status"]
+          attended_at?: string | null
+          commercial_status?: Database["public"]["Enums"]["masterclass_commercial_status"]
+          consent_to_contact?: boolean
+          email?: string
+          id?: string
+          lead_id?: string | null
+          masterclass_id?: string
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          registered_at?: string
+          registration_status?: Database["public"]["Enums"]["masterclass_registration_status"]
+          source?: string
+          utm_campaign?: string | null
+          utm_source?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "masterclass_registrations_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "masterclass_registrations_masterclass_id_fkey"
+            columns: ["masterclass_id"]
+            isOneToOne: false
+            referencedRelation: "masterclasses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      masterclasses: {
+        Row: {
+          cover_image_url: string | null
+          created_at: string
+          cta_label: string
+          description: string | null
+          duration_minutes: number | null
+          id: string
+          instructor_name: string | null
+          location: string | null
+          modality: Database["public"]["Enums"]["masterclass_modality"]
+          slug: string
+          starts_at: string | null
+          status: Database["public"]["Enums"]["masterclass_status"]
+          subtitle: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          cover_image_url?: string | null
+          created_at?: string
+          cta_label?: string
+          description?: string | null
+          duration_minutes?: number | null
+          id?: string
+          instructor_name?: string | null
+          location?: string | null
+          modality?: Database["public"]["Enums"]["masterclass_modality"]
+          slug: string
+          starts_at?: string | null
+          status?: Database["public"]["Enums"]["masterclass_status"]
+          subtitle?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          cover_image_url?: string | null
+          created_at?: string
+          cta_label?: string
+          description?: string | null
+          duration_minutes?: number | null
+          id?: string
+          instructor_name?: string | null
+          location?: string | null
+          modality?: Database["public"]["Enums"]["masterclass_modality"]
+          slug?: string
+          starts_at?: string | null
+          status?: Database["public"]["Enums"]["masterclass_status"]
+          subtitle?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -230,12 +356,7 @@ export type Database = {
     }
     Enums: {
       crm_task_status: "pending" | "completed" | "cancelled"
-      interaction_channel:
-        | "whatsapp"
-        | "email"
-        | "phone"
-        | "form"
-        | "system"
+      interaction_channel: "whatsapp" | "email" | "phone" | "form" | "system"
       interaction_direction: "inbound" | "outbound" | "system"
       lead_intent:
         | "course_information"
@@ -267,6 +388,20 @@ export type Database = {
         | "active_student"
         | "lost"
         | "archived"
+      masterclass_attendance_status: "pending" | "attended" | "no_show"
+      masterclass_commercial_status:
+        | "new"
+        | "interested"
+        | "not_interested"
+        | "converted"
+        | "lost"
+      masterclass_modality: "online" | "in_person" | "hybrid"
+      masterclass_registration_status:
+        | "registered"
+        | "cancelled"
+        | "no_show"
+        | "attended"
+      masterclass_status: "draft" | "published" | "archived"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -430,6 +565,22 @@ export const Constants = {
         "lost",
         "archived",
       ],
+      masterclass_attendance_status: ["pending", "attended", "no_show"],
+      masterclass_commercial_status: [
+        "new",
+        "interested",
+        "not_interested",
+        "converted",
+        "lost",
+      ],
+      masterclass_modality: ["online", "in_person", "hybrid"],
+      masterclass_registration_status: [
+        "registered",
+        "cancelled",
+        "no_show",
+        "attended",
+      ],
+      masterclass_status: ["draft", "published", "archived"],
     },
   },
 } as const

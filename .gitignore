@@ -68,3 +68,5 @@ next-env.d.ts
 
 # body temporal de PR (se borra después de crear el PR con `gh pr create`)
 /PR_BODY.md
+
+dev-server.log

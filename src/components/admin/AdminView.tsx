@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { User, PaymentStatus } from "@/types";
 import { getCurrentUser } from "@/lib/auth/mock-auth";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -20,6 +20,7 @@ import { getAllPayments, sumRevenue } from "@/lib/data/payments";
 import { listPaymentProviders } from "@/lib/payments";
 import { formatMXN, formatDate, initials, formatDuration } from "@/lib/utils";
 import { CRMView } from "@/components/crm";
+import Link from "next/link";
 
 type Tab = "resumen" | "cursos" | "alumnos" | "inscripciones" | "pagos" | "crm" | "futuro";
 
@@ -41,9 +42,29 @@ const statusLabel: Record<PaymentStatus, string> = {
 
 export function AdminView() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Permite deep-link a un tab específico vía ?tab=crm (usado por
+  // /admin/masterclass/[id] → "Ver lead en CRM").
+  const initialTab = (() => {
+    const t = searchParams.get("tab");
+    if (
+      t === "resumen" ||
+      t === "cursos" ||
+      t === "alumnos" ||
+      t === "inscripciones" ||
+      t === "pagos" ||
+      t === "crm" ||
+      t === "futuro"
+    ) {
+      return t;
+    }
+    return "resumen";
+  })();
+  // ?leadId=... abre el drawer del lead correspondiente en el tab CRM.
+  const initialLeadId = searchParams.get("leadId") ?? undefined;
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
-  const [tab, setTab] = useState<Tab>("resumen");
+  const [tab, setTab] = useState<Tab>(initialTab);
 
   useEffect(() => {
     const realMode = isSupabaseConfigured();
@@ -114,7 +135,7 @@ export function AdminView() {
       </div>
 
       {/* Tabs */}
-      <div className="flex flex-wrap gap-2 mb-8 border-b border-brand-100 pb-3 overflow-x-auto">
+      <div className="flex flex-wrap items-center gap-2 mb-8 border-b border-brand-100 pb-3 overflow-x-auto">
         {tabs.map((t) => (
           <button
             key={t.id}
@@ -130,6 +151,12 @@ export function AdminView() {
             {t.label}
           </button>
         ))}
+        <Link
+          href="/admin/masterclass"
+          className="ml-auto px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap text-ink-soft hover:bg-brand-50 border border-brand-200"
+        >
+          🎓 Masterclasses →
+        </Link>
       </div>
 
       {/* ----------------------- RESUMEN ----------------------- */}
@@ -417,7 +444,7 @@ export function AdminView() {
       )}
 
       {/* ----------------------- CRM ----------------------- */}
-      {tab === "crm" && <CRMView />}
+      {tab === "crm" && <CRMView initialLeadId={initialLeadId} />}
 
       {/* ----------------------- PRÓXIMAS INTEGRACIONES ----------------------- */}
       {tab === "futuro" && (

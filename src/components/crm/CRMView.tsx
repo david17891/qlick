@@ -75,7 +75,7 @@ const SECTIONS: { id: Section; label: string; icon: string }[] = [
  * Todo es demo/mock: lectura de datos ficticios y acciones que no persisten.
  * Las etiquetas "demo" son explícitas en cada sección crítica.
  */
-export function CRMView() {
+export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
   const [section, setSection] = useState<Section>("resumen");
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
 
@@ -86,6 +86,15 @@ export function CRMView() {
   const [realLeadsError, setRealLeadsError] = useState<string | null>(null);
   const [realOverview, setRealOverview] = useState<CRMOverview | null>(null);
   const [realOverviewError, setRealOverviewError] = useState<string | null>(null);
+
+  // Deep-link desde /admin?leadId=... (usado por masterclass funnel).
+  // Cuando los leads reales terminen de cargar, abre el drawer del lead
+  // correspondiente si su id coincide con initialLeadId.
+  useEffect(() => {
+    if (!initialLeadId || !realLeads) return;
+    const found = realLeads.find((l) => l.id === initialLeadId);
+    if (found) setSelectedLead(found);
+  }, [initialLeadId, realLeads]);
 
   useEffect(() => {
     if (!realMode) return;

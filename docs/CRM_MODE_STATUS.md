@@ -1,8 +1,8 @@
 # CRM Mode Status — Real vs Demo
 
-> **Versión:** v0.5.1
+> **Versión:** v0.6.0
 > **Fecha:** 2026-06-25
-> **Estado:** Cierre de la "CRM Truth Layer"
+> **Estado:** Cierre de la "CRM Truth Layer" (v0.5.1) + Masterclass Funnel Foundation (v0.6.0, en rama).
 
 Este documento describe el modo de operación actual de cada sección del CRM
 admin. La regla es:
@@ -29,6 +29,8 @@ Supabase están presentes y bien formadas.
 | **Tareas por lead**    | ✅ Real   | `public.crm_tasks`          | `public.crm_tasks`     | Vía `/api/admin/leads/[id]/tasks`.                                    |
 | **Interacciones por lead** | ✅ Real | `public.lead_interactions` | `public.lead_interactions` | Vía `/api/admin/leads/[id]` (PATCH dispara interaction automática). |
 | **Audit log**          | ✅ Real   | `public.admin_audit_log`    | `public.admin_audit_log` | Best-effort, vía `src/lib/crm/audit-server.ts`.                    |
+| **Masterclasses (catálogo público)** | ✅ Real (v0.6.0) | `public.masterclasses` | `public.masterclasses` | Lectura pública solo `status='published'`. Admin vía service role. |
+| **Masterclass registrations** | ✅ Real (v0.6.0) | `public.masterclass_registrations` | `public.masterclass_registrations` | RLS deny para anon. Server action público con service role crea el reg + lead. |
 | **Conversaciones**     | 🟡 Demo   | `src/lib/data/crm-data.ts`  | (no persiste)          | Feature planeada para Fase 4 (WhatsApp Business API real).            |
 | **Calendario / Citas** | 🟡 Demo   | `src/lib/data/crm-data.ts`  | (no persiste)          | Feature planeada para Fase 4 (Google Calendar integration).          |
 | **Agente IA**          | 🟡 Demo   | `src/lib/data/crm-data.ts`  | (no persiste)          | Feature planeada para Fase 4 (OpenRouter + guardrails producción).    |
