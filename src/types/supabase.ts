@@ -221,6 +221,122 @@ export type Database = {
         }
         Relationships: []
       }
+      // === PLACEHOLDER pre-migración v0.6.0 ===
+      // Estas tablas se SOBREESCRIBIRÁN cuando se aplique la migración
+      // 20260625130000_masterclass_funnel.sql y se regenere el typegen con:
+      //   npx supabase gen types typescript --linked > src/types/supabase.ts
+      masterclasses: {
+        Row: {
+          id: string
+          slug: string
+          title: string
+          subtitle: string | null
+          description: string | null
+          instructor_name: string | null
+          starts_at: string | null
+          duration_minutes: number | null
+          modality: Database["public"]["Enums"]["masterclass_modality"]
+          location: string | null
+          cover_image_url: string | null
+          status: Database["public"]["Enums"]["masterclass_status"]
+          cta_label: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          slug: string
+          title: string
+          subtitle?: string | null
+          description?: string | null
+          instructor_name?: string | null
+          starts_at?: string | null
+          duration_minutes?: number | null
+          modality?: Database["public"]["Enums"]["masterclass_modality"]
+          location?: string | null
+          cover_image_url?: string | null
+          status?: Database["public"]["Enums"]["masterclass_status"]
+          cta_label?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          slug?: string
+          title?: string
+          subtitle?: string | null
+          description?: string | null
+          instructor_name?: string | null
+          starts_at?: string | null
+          duration_minutes?: number | null
+          modality?: Database["public"]["Enums"]["masterclass_modality"]
+          location?: string | null
+          cover_image_url?: string | null
+          status?: Database["public"]["Enums"]["masterclass_status"]
+          cta_label?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      masterclass_registrations: {
+        Row: {
+          id: string
+          masterclass_id: string
+          lead_id: string | null
+          name: string
+          email: string
+          phone: string | null
+          registration_status: Database["public"]["Enums"]["masterclass_registration_status"]
+          attendance_status: Database["public"]["Enums"]["masterclass_attendance_status"]
+          commercial_status: Database["public"]["Enums"]["masterclass_commercial_status"]
+          source: string
+          utm_source: string | null
+          utm_campaign: string | null
+          consent_to_contact: boolean
+          registered_at: string
+          attended_at: string | null
+          notes: string | null
+        }
+        Insert: {
+          id?: string
+          masterclass_id: string
+          lead_id?: string | null
+          name: string
+          email: string
+          phone?: string | null
+          registration_status?: Database["public"]["Enums"]["masterclass_registration_status"]
+          attendance_status?: Database["public"]["Enums"]["masterclass_attendance_status"]
+          commercial_status?: Database["public"]["Enums"]["masterclass_commercial_status"]
+          source?: string
+          utm_source?: string | null
+          utm_campaign?: string | null
+          consent_to_contact?: boolean
+          registered_at?: string
+          attended_at?: string | null
+          notes?: string | null
+        }
+        Update: {
+          id?: string
+          masterclass_id?: string
+          lead_id?: string | null
+          name?: string
+          email?: string
+          phone?: string | null
+          registration_status?: Database["public"]["Enums"]["masterclass_registration_status"]
+          attendance_status?: Database["public"]["Enums"]["masterclass_attendance_status"]
+          commercial_status?: Database["public"]["Enums"]["masterclass_commercial_status"]
+          source?: string
+          utm_source?: string | null
+          utm_campaign?: string | null
+          consent_to_contact?: boolean
+          registered_at?: string
+          attended_at?: string | null
+          notes?: string | null
+        }
+        Relationships: []
+      }
+      // === fin PLACEHOLDER ===
     }
     Views: {
       [_ in never]: never
@@ -267,6 +383,22 @@ export type Database = {
         | "active_student"
         | "lost"
         | "archived"
+      // === PLACEHOLDER pre-migración v0.6.0 ===
+      masterclass_modality: "online" | "in_person" | "hybrid"
+      masterclass_status: "draft" | "published" | "archived"
+      masterclass_attendance_status: "pending" | "attended" | "no_show"
+      masterclass_commercial_status:
+        | "new"
+        | "interested"
+        | "not_interested"
+        | "converted"
+        | "lost"
+      masterclass_registration_status:
+        | "registered"
+        | "cancelled"
+        | "no_show"
+        | "attended"
+      // === fin PLACEHOLDER ===
     }
     CompositeTypes: {
       [_ in never]: never
@@ -430,6 +562,28 @@ export const Constants = {
         "lost",
         "archived",
       ],
+      // === PLACEHOLDER pre-migración v0.6.0 ===
+      // Estas definiciones se SOBREESCRIBIRÁN cuando se aplique la migración
+      // 20260625130000_masterclass_funnel.sql y se regenere el typegen con:
+      //   npx supabase gen types typescript --linked > src/types/supabase.ts
+      // Mismas definiciones están en src/lib/masterclasses/masterclass-mapper.ts.
+      masterclass_modality: ["online", "in_person", "hybrid"],
+      masterclass_status: ["draft", "published", "archived"],
+      masterclass_attendance_status: ["pending", "attended", "no_show"],
+      masterclass_commercial_status: [
+        "new",
+        "interested",
+        "not_interested",
+        "converted",
+        "lost",
+      ],
+      masterclass_registration_status: [
+        "registered",
+        "cancelled",
+        "no_show",
+        "attended",
+      ],
+      // === fin PLACEHOLDER ===
     },
   },
 } as const

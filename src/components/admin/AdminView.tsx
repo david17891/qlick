@@ -20,6 +20,7 @@ import { getAllPayments, sumRevenue } from "@/lib/data/payments";
 import { listPaymentProviders } from "@/lib/payments";
 import { formatMXN, formatDate, initials, formatDuration } from "@/lib/utils";
 import { CRMView } from "@/components/crm";
+import Link from "next/link";
 
 type Tab = "resumen" | "cursos" | "alumnos" | "inscripciones" | "pagos" | "crm" | "futuro";
 
@@ -114,7 +115,7 @@ export function AdminView() {
       </div>
 
       {/* Tabs */}
-      <div className="flex flex-wrap gap-2 mb-8 border-b border-brand-100 pb-3 overflow-x-auto">
+      <div className="flex flex-wrap items-center gap-2 mb-8 border-b border-brand-100 pb-3 overflow-x-auto">
         {tabs.map((t) => (
           <button
             key={t.id}
@@ -130,6 +131,12 @@ export function AdminView() {
             {t.label}
           </button>
         ))}
+        <Link
+          href="/admin/masterclass"
+          className="ml-auto px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap text-ink-soft hover:bg-brand-50 border border-brand-200"
+        >
+          🎓 Masterclasses →
+        </Link>
       </div>
 
       {/* ----------------------- RESUMEN ----------------------- */}
