@@ -396,3 +396,48 @@ decidió, por qué, qué alternativas se consideraron, el riesgo y cómo reverti
   CRM en demo (D-014) sigue funcionando con datos mock.
 
 ---
+
+## D-019 · Masterclass Funnel Foundation (v0.6.0)
+
+- **Fecha:** 2026-06-25
+- **Decisión:** Modelar el embudo de adquisición como dos tablas nuevas
+  (`masterclasses`, `masterclass_registrations`) con RLS estrictas:
+  - `masterclasses`: lectura pública SOLO para publicadas. Escritura solo
+    vía service role.
+  - `masterclass_registrations`: SIN políticas públicas. El registro
+    SIEMPRE pasa por un server action con service role que también
+    crea/reusa el lead.
+- **Motivo:** Separar el catálogo público de los registros privados
+  refleja la realidad del negocio (la landing debe ser pública, los leads
+  son datos personales bajo LFPDPPP). El server action público evita
+  exponer la `service_role` key y mantiene RLS como defensa en
+  profundidad: aunque alguien conozca el endpoint REST de
+  `masterclass_registrations`, no puede leer ni escribir directo.
+- **Alternativas consideradas:**
+  1. Reusar la tabla `leads` para todo (sin `masterclass_registrations`)
+     → pierde el modelo de "asistió / convertido / no show" específico
+     del funnel de masterclass.
+  2. Permitir INSERT público a `masterclass_registrations` con RLS →
+     expone datos personales de leads al cliente; cualquier persona con
+     el anon key puede inyectar registros. ❌
+  3. Tabla separada + server action público + RLS deny en registrations
+     + service role server-side. ✅
+- **Riesgos:**
+  - **El server action público es el único punto de inserción**: si
+    tiene un bug, el funnel se rompe silenciosamente. Mitigado: tests
+    manuales + checks de `consent_to_contact` + fallback demo cuando
+    Supabase no está configurado.
+  - **Vinculación lead ↔ registration por email**: si alguien manipula
+    el email en el form, puede "apropiarse" del lead de otra persona.
+    Mitigable: agregar verificación de email o auth obligatorio en
+    una fase posterior.
+  - **Doble rol del enum `source` en lead**: hoy usamos `'other'` porque
+    `lead_source` no incluye 'masterclass'. Migración futura puede
+    extender el enum.
+- **Cómo revertir:** Eliminar las tablas (`DROP TABLE
+  public.masterclass_registrations; DROP TABLE public.masterclasses;`),
+  los archivos en `src/lib/masterclasses/`, las rutas en
+  `src/app/masterclass/` y `src/app/admin/masterclass/`, los server
+  actions en `src/app/actions/{masterclass,admin-masterclass}.ts` y el
+  enlace en `AdminView.tsx`. El CRM admin y el resto de la app siguen
+  funcionando como en v0.5.1.

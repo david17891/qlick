@@ -139,6 +139,35 @@ mock. Lista para demostrar el producto y validar flujos.
 **Entregable**
 - Plataforma completa lista para escalar y fidelizar.
 
+## Fase 1.5 — Masterclass Funnel Foundation (✅ Implementado v0.6.0)
+
+**Objetivo:** captar leads vía masterclasses gratuitas con landing pública,
+registro real y seguimiento desde el panel admin.
+
+**Entregables**
+- ✅ Migración `supabase/migrations/20260625130000_masterclass_funnel.sql`
+  con `masterclasses` (catálogo público) y `masterclass_registrations`
+  (registros privados, RLS deny para anon).
+- ✅ Server libs (`src/lib/masterclasses/`) con fallback demo.
+- ✅ Landing pública `/masterclass/[slug]` con formulario + consentimiento.
+- ✅ Panel admin `/admin/masterclass` (lista) y `/admin/masterclass/[id]`
+  (detalle + registrados + acciones de asistencia / comercial).
+- ✅ Server actions protegidos: `submitMasterclassRegistration` (público)
+  y `adminUpdateRegistrationAction` (admin).
+- ✅ Seed inicial: masterclass "Clase gratuita de Marketing Digital"
+  (`clase-gratuita-marketing-digital`) en estado `published`.
+- ⏳ Sin migrar (explícito): notificaciones por email, replays, embudo
+  automatizado, conversión a LMS, WhatsApp Business API.
+
+**Criterios de salida**
+- `npm run build` pasa con la ruta `/masterclass/[slug]`.
+- El panel admin lista la masterclass publicada.
+- Un submit en la landing crea `lead` + `masterclass_registration`
+  vinculados por email.
+- Las acciones admin cambian `attendance_status` / `commercial_status`.
+
+Ver `docs/MASTERCLASS_FUNNEL_FOUNDATION.md` para el detalle completo.
+
 ---
 
 ## Backlog (sin fase asignada)
