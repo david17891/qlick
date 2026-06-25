@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Navbar, Footer } from "@/components/layout";
@@ -21,6 +21,14 @@ import { requestMagicLinkClient } from "@/lib/auth/admin-auth-client";
  * admin.
  */
 export default function AdminLoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <AdminLoginPageInner />
+    </Suspense>
+  );
+}
+
+function AdminLoginPageInner() {
   const params = useSearchParams();
   const forbidden = params.get("error") === "forbidden";
   const expired = params.get("error") === "expired";
