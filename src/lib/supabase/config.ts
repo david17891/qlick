@@ -106,5 +106,16 @@ export function looksLikeKey(value: string): boolean {
  * ContactForm) sin necesidad de state ni peticiones.
  */
 export function isSupabaseConfigured(): boolean {
-  return isValidSupabaseUrl(supabaseConfig.url) && looksLikeKey(supabaseConfig.publishableKey);
+  // Acceso literal a NEXT_PUBLIC_*: requerido por Next.js para inlinear en el
+  // bundle del cliente. `supabaseConfig.*` usa acceso dinámico (`readEnv(key)`)
+  // y queda undefined en el navegador aunque el server lo lea bien.
+  // Esto causaba que la UI cayera a "modo demo" aunque Supabase estuviera vivo.
+  // Ver docs/ADMIN_AUTH_LEADS_OPERATIONS.md (sección "modo demo falso").
+  const url =
+    process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  const key =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
+    "";
+  return isValidSupabaseUrl(url) && looksLikeKey(key);
 }

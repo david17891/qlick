@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { Lead, SalesOwner, LeadStatus, LeadSource, LeadIntent } from "@/types";
+import type {
+  Lead,
+  SalesOwner,
+  LeadStatus,
+  LeadSource,
+  LeadIntent,
+  CRMOverview
+} from "@/types";
 import { Container, Card, Badge, Button, Input, EmptyState } from "@/components/ui";
 import { StatCard } from "@/components/dashboard";
 import {
@@ -77,6 +84,8 @@ export function CRMView() {
   const realMode = isSupabaseConfigured();
   const [realLeads, setRealLeads] = useState<Lead[] | null>(null);
   const [realLeadsError, setRealLeadsError] = useState<string | null>(null);
+  const [realOverview, setRealOverview] = useState<CRMOverview | null>(null);
+  const [realOverviewError, setRealOverviewError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!realMode) return;
@@ -109,10 +118,48 @@ export function CRMView() {
     };
   }, [realMode]);
 
+  // Overview real: calcula métricas sobre los leads reales (vía API admin).
+  useEffect(() => {
+    if (!realMode) return;
+    let cancelled = false;
+    setRealOverviewError(null);
+    fetch("/api/admin/crm/overview", { cache: "no-store" })
+      .then(async (res) => {
+        if (res.status === 401 || res.status === 403) {
+          if (!cancelled) setRealOverview(null);
+          return null;
+        }
+        const data = await res.json();
+        if (!cancelled) {
+          if (res.ok && data?.ok && data.overview) {
+            setRealOverview(data.overview as CRMOverview);
+          } else if (data?.demo) {
+            // Servidor en modo demo: el cliente debe usar el overview mock.
+            setRealOverview(null);
+          } else {
+            setRealOverview(null);
+            setRealOverviewError(
+              data?.error ?? "No se pudo cargar el overview.",
+            );
+          }
+        }
+        return null;
+      })
+      .catch(() => {
+        if (!cancelled) setRealOverviewError("Error de red al cargar overview.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [realMode]);
+
   // Leads efectivos: reales si están cargados, null mientras cargan en modo real.
   const mockLeads = getLeads();
   const owners = getSalesOwners();
-  const overview = getCRMOverview();
+  // Overview: real si está cargado (incluso durante carga para no parpadear);
+  // demo si no. La carga inicial en realMode muestra el overview demo brevemente.
+  const mockOverview = getCRMOverview();
+  const overview = realMode ? (realOverview ?? mockOverview) : mockOverview;
   const conversations = getConversations();
   const upcomingTasks = getUpcomingCRMTasks();
   const overdueTasks = getOverdueCRMTasks();
