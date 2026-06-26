@@ -46,6 +46,7 @@ export type Database = {
       }
       courses: {
         Row: {
+          access_type: string
           category: string | null
           cover_image_url: string | null
           created_at: string
@@ -64,6 +65,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          access_type?: string
           category?: string | null
           cover_image_url?: string | null
           created_at?: string
@@ -82,6 +84,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          access_type?: string
           category?: string | null
           cover_image_url?: string | null
           created_at?: string
@@ -100,6 +103,63 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      course_access: {
+        Row: {
+          access_source: string
+          access_status: string
+          course_id: string
+          created_at: string
+          expires_at: string | null
+          granted_reason: string | null
+          id: string
+          payment_id: string | null
+          starts_at: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_source: string
+          access_status?: string
+          course_id: string
+          created_at?: string
+          expires_at?: string | null
+          granted_reason?: string | null
+          id?: string
+          payment_id?: string | null
+          starts_at?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_source?: string
+          access_status?: string
+          course_id?: string
+          created_at?: string
+          expires_at?: string | null
+          granted_reason?: string | null
+          id?: string
+          payment_id?: string | null
+          starts_at?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "course_access_course_id_fkey"
+            columns: ["course_id"]
+            isOneToOne: false
+            referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "course_access_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       crm_notes: {
         Row: {
@@ -561,6 +621,56 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "modules_course_id_fkey"
+            columns: ["course_id"]
+            isOneToOne: false
+            referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payments: {
+        Row: {
+          amount_mxn: number
+          course_id: string
+          created_at: string
+          currency: string
+          id: string
+          idempotency_key: string
+          provider_payment_id: string | null
+          provider: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          amount_mxn: number
+          course_id: string
+          created_at?: string
+          currency?: string
+          id?: string
+          idempotency_key: string
+          provider_payment_id?: string | null
+          provider?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          amount_mxn?: number
+          course_id?: string
+          created_at?: string
+          currency?: string
+          id?: string
+          idempotency_key?: string
+          provider_payment_id?: string | null
+          provider?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_course_id_fkey"
             columns: ["course_id"]
             isOneToOne: false
             referencedRelation: "courses"

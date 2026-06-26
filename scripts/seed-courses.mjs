@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * seed-courses.mjs — Carga el catálogo demo a Supabase (v0.10.0)
+ * seed-courses.mjs — Carga el catálogo demo a Supabase (v1.0.0)
  *
  * Inserta los 4 cursos demo (Fundamentos, Meta Ads, Automatización, Contenido)
  * en las tablas `courses`, `modules`, `lessons`. Idempotente: si el slug ya
@@ -15,6 +15,13 @@
  *   - .env.local con NEXT_PUBLIC_SUPABASE_URL y SUPABASE_SECRET_KEY
  *   - Migración v0.7.0 (LMS Real Foundation) aplicada
  *   - Migración v0.9.0 (enrollments.source) aplicada
+ *   - Migración v1.0.0 (entitlements: courses.access_type + course_access + payments) aplicada
+ *
+ * Entitlements (v1.0.0):
+ *   - 1 curso paid (publicidad-facebook-instagram-ads, $499 MXN)
+ *   - 3 cursos free (resto)
+ *   - El paso `ensureAccessConfig` al final actualiza access_type/price_mxn de los
+ *     cursos que ya existían antes de esta migración (idempotente, no-op si ya está OK).
  *
  * USO:
  *   npm run seed:courses
@@ -112,6 +119,7 @@ const COURSES = [
     priceMXN: 0,
     isFeatured: true,
     displayOrder: 1,
+    accessType: "free",
     modules: [
       {
         title: "Módulo 1 · Mentalidad estratégica",
@@ -248,9 +256,10 @@ const COURSES = [
     category: "Meta Ads",
     durationMinutes: 540,
     instructorName: "Sofía",
-    priceMXN: 1499,
+    priceMXN: 499,
     isFeatured: true,
     displayOrder: 2,
+    accessType: "paid",
     modules: [
       {
         title: "Módulo 1 · Configuración profesional",
@@ -389,6 +398,7 @@ const COURSES = [
     priceMXN: 1799,
     isFeatured: false,
     displayOrder: 3,
+    accessType: "free",
     modules: [
       {
         title: "Módulo 1 · Fundamentos de WhatsApp Business",
@@ -521,6 +531,7 @@ const COURSES = [
     priceMXN: 1299,
     isFeatured: false,
     displayOrder: 4,
+    accessType: "free",
     modules: [
       {
         title: "Módulo 1 · Estrategia de contenido",
@@ -672,6 +683,7 @@ async function seedCourse(course) {
         price_mxn: course.priceMXN,
         is_featured: course.isFeatured,
         display_order: course.displayOrder,
+        access_type: course.accessType,
       })
       .select("id")
       .single();
@@ -761,12 +773,64 @@ async function seedCourse(course) {
 }
 
 // =============================================================
+// 3.5. ensureAccessConfig (v1.0.0)
+//     Actualiza access_type + price_mxn en cursos que ya existían.
+//     Idempotente: si access_type ya coincide, el UPDATE es no-op.
+// =============================================================
+
+async function ensureAccessConfig() {
+  const updates = COURSES.map((c) => ({
+    slug: c.slug,
+    access_type: c.accessType,
+    price_mxn: c.accessType === "free" ? 0 : c.priceMXN,
+  }));
+
+  let updated = 0;
+  let skipped = 0;
+  for (const u of updates) {
+    const { data: existing } = await supabase
+      .from("courses")
+      .select("access_type, price_mxn")
+      .eq("slug", u.slug)
+      .maybeSingle();
+
+    if (!existing) {
+      // No existe todavía — el INSERT del seedCourse lo creará con los valores correctos.
+      skipped++;
+      continue;
+    }
+
+    if (existing.access_type === u.access_type && existing.price_mxn === u.price_mxn) {
+      skipped++;
+      continue;
+    }
+
+    const { error } = await supabase
+      .from("courses")
+      .update({ access_type: u.access_type, price_mxn: u.price_mxn })
+      .eq("slug", u.slug);
+
+    if (error) {
+      console.log(`  ✗ Error actualizando ${u.slug}: ${error.message}`);
+    } else {
+      updated++;
+    }
+  }
+
+  console.log(`🔧 ensureAccessConfig: ${updated} actualizados, ${skipped} sin cambios\n`);
+}
+
+// =============================================================
 // 4. Main
 // =============================================================
 
 async function main() {
   console.log("📚 Seed de catálogo demo → Supabase\n");
   console.log(`Cursos a procesar: ${COURSES.length}\n`);
+
+  // Pre-paso (v1.0.0): asegurar access_type + price_mxn correctos para cursos
+  // que ya existían antes de esta migración. Idempotente (no-op si ya están OK).
+  await ensureAccessConfig();
 
   const results = {};
   let successCount = 0;
