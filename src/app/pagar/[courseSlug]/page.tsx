@@ -77,15 +77,13 @@ export default async function PayPage({
   }
 
   // Auth: requiere sesión de estudiante.
+  // WORKAROUND (2026-06-26): Por la misma razón que en /cursos/[slug], NO
+  // llamamos a `checkCourseAccess()` acá (hace que la página renderice
+  // vacía en el browser). La verificación de "ya pagó" la hace el
+  // simulador del lado del cliente.
   const session = await getCurrentStudent();
   if (!session) {
     redirect(`/login?next=${encodeURIComponent(`/pagar/${courseSlug}`)}`);
-  }
-
-  // Si ya tiene acceso activo, no tiene que pagar de nuevo.
-  const access = await checkCourseAccess(session!.userId, course.id);
-  if (access.hasAccess) {
-    redirect(`/dashboard?already_paid=1`);
   }
 
   return (

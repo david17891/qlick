@@ -20,7 +20,7 @@ import {
 } from "@/lib/lms/courses-server";
 import { getCurrentStudent } from "@/lib/auth/session";
 import { checkCourseAccess } from "@/lib/lms/entitlements";
-import { formatMXN, formatDuration } from "@/lib/utils";
+import { formatMXN, formatDuration, slugify } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -57,7 +57,7 @@ export default async function CourseDetailPage({
   for (const m of lmsModules) {
     lmsLessonsByModule[m.id] = (await getModuleLessonsLMS(m.id)).map((l) => ({
       id: l.id,
-      slug: l.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
+      slug: slugify(l.title),
       title: l.title,
       description: l.description,
       durationMinutes: l.durationMinutes ?? 0,
@@ -74,11 +74,25 @@ export default async function CourseDetailPage({
   );
 
   // Determinar el CTA según el estado del user.
+  // WORKAROUND (2026-06-26 v2): Re-introducimos `checkCourseAccess()` pero
+  // dentro de un try/catch. Si la llamada falla (por el bug de
+  // hidratación), caemos al CTA "Comprar" / "Empezar gratis" y la página
+  // sigue renderizando. Si funciona, mostramos "Continuar curso".
+  // Esto da lo mejor de los dos mundos: UX correcta cuando se puede,
+  // página no vacía cuando el check rompe.
   const session = await getCurrentStudent();
   let alreadyHasAccess = false;
-  if (session && course.accessType === "paid") {
-    const access = await checkCourseAccess(session.userId, course.id);
-    alreadyHasAccess = access.hasAccess;
+  if (session) {
+    try {
+      const access = await checkCourseAccess(session.userId, course.id);
+      alreadyHasAccess = access.hasAccess;
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(
+        "[cursos/[slug]] checkCourseAccess falló, fallback a CTA sin check:",
+        err,
+      );
+    }
   }
   // Primer módulo / lección para el botón "Empezar".
   const firstModule = lmsModules[0];
@@ -123,21 +137,17 @@ export default async function CourseDetailPage({
                   }
                 />
                 {course.accessType === "paid" && (
-                  <Badge tone="warning" className="bg-amber-500/20 text-amber-300 border-amber-500/30">
+                  <Badge tone="warning">
                     {course.priceMXN && course.priceMXN > 0
-                      ? `${formatMXN(course.priceMXN)}`
+                      ? formatMXN(course.priceMXN)
                       : "Premium"}
                   </Badge>
                 )}
                 {course.accessType === "free" && (
-                  <Badge tone="success" className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30">
-                    Gratis
-                  </Badge>
+                  <Badge tone="success">Gratis</Badge>
                 )}
                 {course.accessType === "freemium" && (
-                  <Badge tone="info" className="bg-sky-500/20 text-sky-300 border-sky-500/30">
-                    Freemium
-                  </Badge>
+                  <Badge tone="info">Freemium</Badge>
                 )}
               </div>
               <h1 className="display-2 text-white">{course.title}</h1>
@@ -215,7 +225,7 @@ export default async function CourseDetailPage({
                         Ver primera lección gratis
                       </Button>
                     )}
-                    {course.accessType === "free" && firstLessonHref && (
+                    {course.accessType === "free" && firstLessonHref && !alreadyHasAccess && (
                       <Button
                         variant="outline"
                         size="lg"
