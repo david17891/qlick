@@ -28,7 +28,7 @@ import {
   mapLeadRowToLead,
   type InsertLeadPayload,
 } from "./leads-mapper";
-import { normalizePhone } from "./phone-utils";
+import { normalizePhone, phonesMatch } from "./phone-utils";
 import type { Database } from "@/types/supabase";
 
 // Fallback a mocks (mismo módulo que usa hoy el CRM demo).
@@ -134,7 +134,7 @@ export async function findLeadByEmail(
     // eslint-disable-next-line no-console
     console.error("[leads-server] findLeadByEmail falló", {
       code: error.code,
-      email: normalized,
+      emailLength: normalized.length,
     });
     return null;
   }
@@ -164,7 +164,6 @@ export async function findLeadByPhone(
     // Fallback a mock: el mock puede tener formatos variados, normalizamos
     // cada uno y comparamos con el input ya normalizado.
     const mockList = getLeadsMock();
-    const { phonesMatch } = await import("./phone-utils");
     const found = mockList.find((l) => phonesMatch(l.phone ?? null, normalized));
     return found ?? null;
   }
@@ -191,7 +190,6 @@ export async function findLeadByPhone(
   }
   if (!data || data.length === 0) return null;
 
-  const { phonesMatch } = await import("./phone-utils");
   for (const row of data) {
     const rowPhone = (row as { phone: string | null }).phone;
     if (phonesMatch(rowPhone, normalized)) {
@@ -291,27 +289,22 @@ export async function createLead(
     .single();
 
   if (error) {
+    // Defensa en profundidad (consistente con el resto de Fase 2):
+    // si Supabase falla, NO enmascaramos el error cayendo al mock.
+    // Hacerlo pierde leads silenciosamente (admin ve un leadId que no
+    // existe en DB). El caller (server action del formulario) debe
+    // mostrar el error al usuario y el operador debe enterarse.
     // eslint-disable-next-line no-console
-    console.error("[leads-server] createLead falló", { code: error.code });
-    // Caemos a mock para no mostrar error crudo al usuario final.
-    const { createLeadFromContactForm } = await import("./crm-service");
-    const mock = createLeadFromContactForm({
-      name: input.name,
-      email: input.email,
-      phone: input.phone,
-      courseOfInterest: input.courseOfInterest,
-      intent: payload.intent,
-      source: payload.source,
-      message: input.message,
-      consentToContact: true,
+    console.error("[leads-server] createLead falló", {
+      code: error.code,
+      hasEmail: !!input.email,
     });
     return {
-      ok: true,
-      leadId: mock.leadId,
+      ok: false,
+      leadId: "",
       persisted: false,
-      demo: true,
-      note:
-        "No se pudo persistir en Supabase; se registró en modo demo. Revisa la configuración.",
+      demo: false,
+      note: `No se pudo persistir el lead en Supabase (${error.code ?? "unknown"}). Revisa la configuración del backend.`,
     };
   }
 
@@ -445,6 +438,24 @@ export async function createLeadFromEvent(
   const normalizedEmail = input.email?.trim().toLowerCase() || null;
   const normalizedPhone = normalizePhone(input.phone);
 
+  // Defensa en profundidad: sin email NI phone normalizable, no se puede
+  // identificar al lead. Antes esto creaba un row fantasma con email
+  // placeholder (`<slug>.<ts>@placeholder.local`) + tag `needs_email`. En
+  // la práctica, ningún caller legítimo (formulario, encuesta, importador
+  // Excel) llega sin al menos uno — esto solo se disparaba con bugs en el
+  // caller o filas mal procesadas. Mejor enterarse.
+  if (!normalizedEmail && !normalizedPhone) {
+    return {
+      ok: false,
+      leadId: "",
+      created: false,
+      reactivated: false,
+      persisted: false,
+      demo: true,
+      note: "Falta email o phone para crear el lead del evento.",
+    };
+  }
+
   // 2. Buscar por email o phone.
   let existing: Lead | null = null;
   if (normalizedEmail) {
@@ -496,9 +507,18 @@ async function createNewLeadForEvent(
 ): Promise<CreateLeadFromEventResult> {
   const tags = buildEventTags(input);
 
+  // El caller (createLeadFromEvent) ya garantizó que al menos uno de
+  // email/phone está presente. Si llegamos acá sin email, igual podemos
+  // crear el lead porque la columna `email` es NOT NULL con CHECK de
+  // regex, pero necesitamos un email sintético para satisfacer la DB.
+  // Usamos uno claramente etiquetado para que el admin lo limpie.
+  // (Esta rama solo se ejecuta si hay phone válido pero no email.)
+  const email = normalizedEmail
+    ?? `no-email.${input.eventSlug}.${Date.now()}@placeholder.local`;
+
   const payload: InsertLeadPayload = {
     name: input.name.trim(),
-    email: normalizedEmail || `${input.eventSlug}.${Date.now()}@placeholder.local`,
+    email,
     phone: normalizedPhone,
     course_of_interest: input.commercialInterest?.trim() || null,
     status: "new",
@@ -507,13 +527,6 @@ async function createNewLeadForEvent(
     consent_to_contact: true,
     tags,
   };
-
-  // Si no hay email, tenemos que inventar uno placeholder para satisfacer
-  // el NOT NULL + regex de la DB. Marcamos con un tag `needs_email` para
-  // que el admin lo limpie después.
-  if (!normalizedEmail) {
-    payload.tags = [...tags, "needs_email"];
-  }
 
   if (!isRealMode()) {
     // Fallback a mock: el mock no tiene `tags`, así que solo loggeamos.

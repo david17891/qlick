@@ -106,6 +106,15 @@ export function ContactForm() {
         consentToContact: true
       });
 
+      // Defensa en profundidad: si el server action reporta fallo del
+      // backend (Supabase caído, RLS, etc.), NO mostramos éxito. El usuario
+      // ve el error y el operador puede investigar.
+      if (!leadResult.ok) {
+        setStatus("error");
+        setResultNote(leadResult.note);
+        return;
+      }
+
       setStatus("success");
       setResultNote(
         leadResult.persisted

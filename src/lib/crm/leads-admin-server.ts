@@ -70,31 +70,70 @@ export async function updateLeadStatus(
   }
 
   const supabase = createSupabaseAdminClient();
+
+  // 1. Leemos el status actual para el audit log. Sin esto, el audit log
+  //    registra "to: X" pero no "from: Y", y no se puede responder
+  //    "¿quién cambió este lead de Y a X?". Necesario para trazabilidad
+  //    real.
+  const { data: prevRow, error: prevErr } = await supabase
+    .from("leads")
+    .select("status")
+    .eq("id", leadId)
+    .maybeSingle();
+
+  if (prevErr || !prevRow) {
+    // eslint-disable-next-line no-console
+    console.error("[leads-admin] updateLeadStatus: no se pudo leer status previo", {
+      code: prevErr?.code,
+      leadId,
+    });
+    return {
+      ok: false,
+      note: prevErr
+        ? "No se pudo leer el lead antes de actualizar."
+        : "El lead no existe.",
+    };
+  }
+  const prevStatus = prevRow.status as LeadStatus;
+
+  // 2. UPDATE atómico: solo aplicamos si el status sigue siendo el que
+  //    leímos. Si otro admin cambió el status en el medio, `data` viene
+  //    vacío y devolvemos conflicto (no silencioso). Esto cierra la race
+  //    window entre el SELECT previo y el UPDATE.
   const { data, error } = await supabase
     .from("leads")
     .update({ status })
     .eq("id", leadId)
+    .eq("status", prevStatus)
     .select("*")
-    .single();
+    .maybeSingle();
 
-  if (error || !data) {
+  if (error) {
     // eslint-disable-next-line no-console
     console.error("[leads-admin] updateLeadStatus falló", {
-      code: error?.code,
+      code: error.code,
       leadId,
     });
     return { ok: false, note: "No se pudo actualizar el lead." };
   }
 
+  if (!data) {
+    // El WHERE no matcheó: el status cambió entre nuestro SELECT y el UPDATE.
+    return {
+      ok: false,
+      note: `Conflicto: el lead ya no estaba en "${prevStatus}". Otro proceso pudo haberlo cambiado. Recarga y reintenta.`,
+    };
+  }
+
   const lead = mapLeadRowToLead(data as LeadRow);
 
-  // Audit log best-effort + interacción del sistema.
+  // 3. Audit log con from/to reales (trazabilidad útil).
   await logAdminAction({
     actor_email: actorEmail,
     action: "lead_status_change",
     entity_type: "lead",
     entity_id: leadId,
-    metadata: { from: undefined, to: status },
+    metadata: { from: prevStatus, to: status },
   });
 
   return { ok: true, lead };

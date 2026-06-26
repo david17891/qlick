@@ -239,6 +239,8 @@ Cada commit es testeable independientemente.
 | 7 | **El alias `updateLeadCommercialStatus` confunde** (¿es diferente a `updateLeadStatus`?). | El JSDoc explica que es el mismo. Si después queremos separarlos, es una migration con un campo nuevo. |
 | 8 | **El `tags` array crece sin control** si un lead viene de muchos eventos. | Para MVP: máx 1-2 tags por lead (un evento reciente). En Fase 3, podemos truncar o migrar a jsonb. |
 | 9 | **Los tests `node --test` no se ejecutan en CI todavía**. | El CI no está configurado (Fase 5 según el roadmap). Pero los tests corren con `node --test tests/`. Documentado. |
+| 10 | **Race condition en `createLeadFromEvent`** (H1 del QA round 1). Check-then-insert sin UNIQUE constraint. Dos requests concurrentes con el mismo email pueden crear dos leads. | Aceptado para MVP — la app es admin-only y la concurrencia es baja. **Fase 3**: cuando se cree la migration de eventos, agregar UNIQUE constraint parcial en `leads.email` (o `leads.phone` normalizado) y manejar el conflicto con upsert. |
+| 11 | **Race condition en `linkLeadToEventRecord`** (H2 del QA round 1). SELECT-then-UPDATE de `tags` sin atomicidad. Dos links concurrentes pueden perderse entre sí (lost-update). | Aceptado para MVP. **Fase 3**: trigger `BEFORE UPDATE` que merge el array `tags` en lugar de sobrescribirlo, o columna/tabla dedicada con INSERT-only. |
 
 ---
 
@@ -332,12 +334,36 @@ de las secciones anteriores. **Diferencias entre plan y realidad:**
 |---------------|----------|
 | 14 tests de phone-utils | ✅ 14 tests, todos verde |
 | Tests con `node:test` nativo | ✅ Funciona con `--experimental-strip-types` en Node 22+ |
-| `findLeadByEmail` con dedup de race conditions | ⚠️ No hay UNIQUE constraint (no la agregamos para no romper datos viejos). Dedup atómico es responsabilidad de Fase 3 con la migration de eventos |
+| `findLeadByEmail` con dedup de race conditions | ⚠️ No hay UNIQUE constraint (no la agregamos para no romper datos viejos). Dedup atómico es responsabilidad de Fase 3 con la migration de eventos. Ver riesgo #10 abajo. |
 | `phone-utils` con `isValidMxPhone` | ✅ Sí, además de `normalizePhone` y `phonesMatch` |
-| `linkLeadToEventRecord` con STUB documentado | ✅ Documentado en JSDoc; el body usa tags hasta que existan las tablas de eventos |
+| `linkLeadToEventRecord` con STUB documentado | ✅ Documentado en JSDoc; el body usa tags hasta que existan las tablas de eventos. Ver riesgo #11 abajo (race condition en tags). |
 | `updateLeadCommercialStatus` alias | ✅ Una línea que delega a `updateLeadStatus` |
 | Cero PII en fixtures | ✅ Sin fixtures aún (los tests actuales son de phone-utils, no necesitan PII). Cuando agreguemos fixtures de leads, usaremos teléfonos `+52XXXXXXXXXX` sintéticos |
 | `.gitignore` para archivos de datos | ✅ Ya estaba en commits anteriores de Fase 0 |
+
+### QA round 1 (post-implementación)
+
+Auditoría externa como ingeniero de calidad sobre los 6 commits de Fase 2.
+13 hallazgos, 5 críticos/altos resueltos en el commit `fix(crm): apply Fase 2 QA round 1 findings`:
+
+| Hallazgo | Severidad | Resolución |
+|----------|-----------|------------|
+| **H3** — `findLeadByEmail` loggeaba el email normalizado (PII) | 🟠 Alto | Reemplazado por `emailLength` en el log |
+| **H4** — `createLead` enmascaraba fallos de DB cayendo al demo silencioso | 🟠 Alto | Ahora falla ruidoso (`ok: false`); `ContactForm` chequea `leadResult.ok` y muestra error |
+| **H5** — `updateLeadStatus` audit log registraba `from: undefined` (inútil para trazabilidad) | 🟠 Alto | SELECT previo al UPDATE; UPDATE atómico con `eq("status", prevStatus)` para evitar race; audit log ahora captura `from` real |
+| **H6** — `createLeadFromEvent` creaba lead fantasma con email placeholder si no había email ni phone | 🟠 Alto | Rechaza explícitamente `if (!normalizedEmail && !normalizedPhone)` |
+| **H12** — `findLeadByPhone` usaba `await import("./phone-utils")` redundante | 🟢 Bajo | `phonesMatch` ahora en import estático |
+| **H1+H2** — Race conditions conocidas (ver riesgos #10 y #11 abajo) | 🔴 Crítico | NO resueltas en Fase 2 — requieren migration (UNIQUE constraint + columna/tabla `event_links` o trigger). En scope de Fase 3. |
+
+Hallazgos diferidos a Fase 3 (documentados en código pero no resueltos):
+
+- **H7** — Lead activo reutilizado no recibe tag del evento actual (decomible de diseño, discutible).
+- **H8** — `findLeadByPhone` O(N) en memoria con LIMIT 200 (necesita columna `phone_normalized` + índice funcional).
+- **H9** — Tags sin validación de shape (`event:<slug>[:<type>:<id>]`); aceptar cualquier string permite inyección y duplicación silenciosa.
+- **H10** — `linkLeadToEventRecord` no valida `recordType` en runtime (solo truthiness check; `updateLeadStatus` SÍ lo hace con `isLeadStatus`).
+- **H11** — Sin GIN index en `leads.tags`; queries por tag van a ser lentas cuando la tabla crezca.
+- **H13** — Drift menor entre plan (sección 3.5) y código en la firma de `linkLeadToEventRecord` (código incluye `eventSlug` y unifica la convención de tags; ambos son mejoras sobre el plan).
+- **H14** — `updateLeadCommercialStatus` firma usa `string` en vez de `LeadStatus` (cosmético).
 
 ### Lo que SÍ quedó listo para Fase 3
 
