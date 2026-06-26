@@ -99,3 +99,24 @@ export async function updateLeadStatus(
 
   return { ok: true, lead };
 }
+
+/**
+ * Alias semántico de `updateLeadStatus` para el contexto del flujo de
+ * eventos (Fase 2). En la terminología del cliente, el campo `status`
+ * del lead representa su "estado comercial" en el pipeline de ventas
+ * (new → contacted → interested → enrolled, etc.).
+ *
+ * Por ahora es el mismo campo en la misma tabla; este alias es solo
+ * claridad de lectura en el código de eventos. Si en el futuro el
+ * pipeline comercial se separa del "status del funnel" (ej. cuando
+ * tengamos marketing-qualified vs sales-qualified), se puede partir
+ * en una columna `commercial_status` propia sin romper el contrato
+ * público de esta función.
+ */
+export async function updateLeadCommercialStatus(
+  leadId: string,
+  status: string,
+  actorEmail: string,
+): Promise<AdminLeadOpResult> {
+  return updateLeadStatus(leadId, status, actorEmail);
+}

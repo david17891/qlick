@@ -33,6 +33,12 @@ export {
 } from "./leads-server";
 
 export {
+  updateLeadStatus,
+  updateLeadCommercialStatus,
+  type AdminLeadOpResult,
+} from "./leads-admin-server";
+
+export {
   normalizePhone,
   phonesMatch,
   isValidMxPhone,
