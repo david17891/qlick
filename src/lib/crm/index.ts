@@ -21,11 +21,15 @@ export {
   findLeadByEmail,
   findLeadByPhone,
   createLeadFromEvent,
+  linkLeadToEventRecord,
   type CreateLeadServerInput,
   type CreateLeadServerResult,
   type CreateLeadFromEventInput,
   type CreateLeadFromEventResult,
+  type LinkLeadToEventRecordInput,
+  type LinkLeadToEventRecordResult,
   type EventLeadSource,
+  type EventRecordType,
 } from "./leads-server";
 
 export {
