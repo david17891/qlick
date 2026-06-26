@@ -19,6 +19,10 @@
 *.pem
 Thumbs.db
 
+# Mavis (mavis) runtime state — planes, scratchpads, hooks. Local al agente,
+# nunca debe entrar al repo.
+.mavis/
+
 # debug
 npm-debug.log*
 yarn-debug.log*
