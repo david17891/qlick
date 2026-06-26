@@ -83,6 +83,7 @@ function legacyCourseToLms(legacy: {
     durationMinutes: legacy.estimatedHours ? legacy.estimatedHours * 60 : null,
     instructorName: null,
     priceMXN: legacy.priceMXN,
+    accessType: "free",  // Los mocks legacy son todos free
     isFeatured: Boolean(legacy.featured),
     displayOrder: 0,
     createdAt: legacy.createdAt,

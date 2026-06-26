@@ -118,6 +118,9 @@ export interface Course {
   instructorName: string | null;
   /** Precio en MXN. `null` = gratuito o "consultar". */
   priceMXN: number | null;
+  /** Modelo de acceso (v1.0.0+). "free" = público con login. "paid" = requiere
+   *  course_access.active. "freemium" = gratis con contenido premium (futuro). */
+  accessType: CourseAccessType;
   /** Marca para destacar en home (`.order("is_featured", ...)`). */
   isFeatured: boolean;
   /** Orden estable para grid (menor = primero). */

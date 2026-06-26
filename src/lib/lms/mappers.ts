@@ -28,6 +28,7 @@ import type {
   LessonProgress,
   CourseStatus,
   CourseLevel,
+  CourseAccessType,
   EnrollmentStatus,
   LessonVideoProvider,
 } from "@/types/lms";
@@ -49,6 +50,7 @@ export interface CourseRow {
   duration_minutes: number | null;
   instructor_name: string | null;
   price_mxn: number | string | null; // numeric(10,2) puede llegar como string
+  access_type: CourseAccessType; // v1.0.0+
   is_featured: boolean;
   display_order: number;
   created_at: string;
@@ -74,6 +76,7 @@ export function mapCourseRow(row: CourseRow): Course {
         : typeof row.price_mxn === "string"
           ? Number(row.price_mxn)
           : row.price_mxn,
+    accessType: (row.access_type ?? "free") as CourseAccessType,
     isFeatured: row.is_featured,
     displayOrder: row.display_order,
     createdAt: row.created_at,

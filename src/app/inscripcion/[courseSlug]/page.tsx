@@ -79,6 +79,11 @@ export default async function EnrollmentPage({
     );
   }
 
+  // Si el curso es de pago, redirigir a /pagar/[slug] (v1.0.0+).
+  if (course.accessType === "paid") {
+    redirect(`/pagar/${courseSlug}`);
+  }
+
   const source: "qr" | "organic" = searchParams.ref === "qr" ? "qr" : "organic";
   const session = await requireStudent();
 
