@@ -151,6 +151,7 @@ export interface EnrollmentRow {
   progress_percent: number;
   enrolled_at: string;
   completed_at: string | null;
+  source: string | null;
 }
 
 export function mapEnrollmentRow(row: EnrollmentRow): Enrollment {
@@ -162,6 +163,7 @@ export function mapEnrollmentRow(row: EnrollmentRow): Enrollment {
     progressPercent: row.progress_percent,
     enrolledAt: row.enrolled_at,
     completedAt: row.completed_at,
+    source: row.source,
   };
 }
 
@@ -200,6 +202,8 @@ export interface InsertEnrollmentPayload {
   course_id: string;
   status: EnrollmentStatus;
   progress_percent: number;
+  /** Origen: "qr", "organic", "referral", etc. Opcional. */
+  source?: string | null;
 }
 
 export interface InsertLessonProgressPayload {

@@ -133,6 +133,14 @@ export async function getPublishedCourses(): Promise<Course[]> {
 /**
  * Devuelve un curso por slug (público).
  * Solo devuelve si el curso está en status='published'.
+ *
+ * FASE DE MIGRACIÓN DE CATÁLOGO (v0.9.0): mientras los cursos demo siguen
+ * en `lib/data/courses.ts` y la tabla `courses` de Supabase está VACÍA
+ * (pendiente con socios — ver ROADMAP.md pieza #2), si Supabase está vivo
+ * pero no encuentra el slug, **caemos al mock** en vez de devolver undefined.
+ * Esto permite que las páginas (catálogo, QR, inscripción) funcionen sin
+ * cargar el seed. Cuando el catálogo real esté cargado, el fallback deja de
+ * activarse por sí solo (Supabase devuelve la fila antes del fallback).
  */
 export async function getCourseBySlug(
   slug: string,
@@ -154,6 +162,8 @@ export async function getCourseBySlug(
     .maybeSingle();
 
   if (error) {
+    // Error técnico (red, RLS, etc.) → logueamos y devolvemos undefined.
+    // No caemos al mock en este caso: un error técnico debería propagarse.
     // eslint-disable-next-line no-console
     console.error("[courses-server] getCourseBySlug falló", {
       code: error.code,
@@ -161,8 +171,20 @@ export async function getCourseBySlug(
     });
     return undefined;
   }
-  if (!data) return undefined;
-  return mapCourseRow(data as CourseRow);
+  if (data) return mapCourseRow(data as CourseRow);
+
+  // data === null → no hay fila. Estamos en fase de migración de catálogo,
+  // así que intentamos el mock. Logueamos para que se vea en consola.
+  // eslint-disable-next-line no-console
+  console.info(
+    "[courses-server] getCourseBySlug: slug no encontrado en DB, fallback a mock",
+    { slug },
+  );
+  const { courses } = await import("@/lib/data/courses");
+  const match = (
+    courses as Array<Parameters<typeof legacyCourseToLms>[0] & { slug: string }>
+  ).find((c) => c.slug === slug);
+  return match ? legacyCourseToLms(match) : undefined;
 }
 
 /**
