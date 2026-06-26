@@ -40,7 +40,7 @@ import {
   legacyLessonProgressToLms,
 } from "@/lib/lms/enrollments-server";
 import { getCourseById as getCourseByIdLMS } from "@/lib/lms/courses-server";
-import { getCourseById, flatLessons } from "@/lib/data/courses";
+import { getCourseById, getCourseBySlug, flatLessons } from "@/lib/data/courses";
 import {
   getEnrollmentsForUser,
   getLessonProgressForUser,
@@ -194,8 +194,16 @@ async function loadDashboardData(
       // por slug — es la única fuente de verdad para lesson content hoy.
       // Si el LMS tiene módulos/lecciones en el futuro, este lookup debería
       // ir a getCourseModules + getModuleLessons.
+      //
+      // IMPORTANTE: en real mode `e.courseId` es un UUID del LMS, no el
+      // id de mock tipo "course_fundamentos". Por eso NO usamos
+      // `getCourseById(e.courseId)` (mock by id) — usamos
+      // `getCourseBySlug(course.slug)` (mock by slug), donde `course` es
+      // el Course que ya cargamos arriba (LMS o mock según modo).
       let nextLesson: { slug: string; title: string } | undefined;
-      const mockCourse = getCourseById(e.courseId);
+      const mockCourse = course?.slug
+        ? getCourseBySlug(course.slug)
+        : undefined;
       if (mockCourse) {
         const flat = flatLessons(
           mockCourse as unknown as Parameters<typeof flatLessons>[0],
