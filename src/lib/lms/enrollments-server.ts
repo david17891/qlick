@@ -251,6 +251,30 @@ export async function enrollUserInCourse(
     .single();
 
   if (error || !data) {
+    // FASE DE MIGRACIÓN DE CATÁLOGO (v0.9.0): si el courseId no existe en la
+    // tabla `courses` real (FK violation), caemos a demo en vez de fallar.
+    // Esto pasa porque los cursos demo siguen en `lib/data/courses.ts` con IDs
+    // tipo "course_fundamentos" (no UUIDs reales). Cuando se cargue el
+    // catálogo real, los IDs serán UUIDs y este fallback deja de activarse.
+    if (
+      error?.code === "23503" ||
+      error?.message?.includes("foreign key") ||
+      error?.message?.includes("violates foreign key")
+    ) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[enrollments-server] course no existe en DB, fallback a demo",
+        { courseId, userId, source },
+      );
+      return {
+        ok: true,
+        enrollmentId: `demo_enr_${Date.now().toString(36)}`,
+        persisted: false,
+        demo: true,
+        note:
+          "Inscripción simulada (catálogo aún no migrado a DB). Se guardará en Supabase cuando el catálogo real esté cargado.",
+      };
+    }
     // eslint-disable-next-line no-console
     console.error("[enrollments-server] enrollUserInCourse falló", {
       code: error?.code,
