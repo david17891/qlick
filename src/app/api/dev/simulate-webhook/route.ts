@@ -187,7 +187,7 @@ export async function POST(req: NextRequest) {
       await grantAccess({
         userId: session.userId,
         courseId: course.id,
-        source: "mock_provider",
+        source: "simulated_payment",
         paymentId,
         grantedReason: `paid_via_sim_${new Date().toISOString().slice(0, 16)}`,
       });
