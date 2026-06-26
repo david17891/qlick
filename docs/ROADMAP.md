@@ -1,7 +1,7 @@
 # Qlick LMS — Roadmap
 
 > Fuente de verdad del plan del LMS. Cualquier desvío se conversa y se actualiza acá.
-> Última revisión: 2026-06-25 (sesión con David) — **merge a main ejecutado al cierre de la sesión**.
+> Última revisión: 2026-06-26 (sesión nocturna con David) — **Fase A+B+C de Entitlements cerradas**.
 
 ---
 
@@ -14,6 +14,13 @@
 - [x] **feat/qr-enrollment** — Inscripción con QR + tracking `source` + página `/inscripcion/[slug]`
   - Fallbacks automáticos: `getCourseBySlug` cae al mock cuando DB no tiene el slug; `enrollUserInCourse` valida UUID antes del upsert y cae a demo si el ID es mock legacy
 - [x] **seed:courses** — Script ejecutado el 2026-06-25: 4 cursos + 12 módulos + 36 lecciones cargados en Supabase (idempotente, ya no-op en re-runs).
+- [x] **Entitlements v1.0.0+** — capa de acceso comercial (Fase A+B+C) mergeada a `main` (commits `5f76584` / `2d156a6` / `7b26fcc` / `8b9ea5d` / `42076da`).
+  - **Fase A (v1.0.0)**: schema con `courses.access_type`, tablas `course_access` + `payments` con RLS. 1 curso paid ($499 MXN) + 3 free.
+  - **Fase B**: server lib `src/lib/lms/entitlements.ts` con `getCourseAccess`, `checkCourseAccess`, `grantAccess`, `revokeAccess` (idempotente).
+  - **v1.0.1/1.0.2**: alineación con la capa legacy `src/lib/payments/` (mockProvider, stubs de Stripe/MercadoPago/Conekta, types en `@/types`). Rename `provider_payment_id` → `external_reference`, CHECK status con valores legacy, columnas `method`/`coupon_id`/`discount_mxn`/`enrollment_id`.
+  - **Fase C**: endpoint `POST /api/dev/simulate-webhook` + página `/pagar/[courseSlug]` con SimulatorForm. Flujo: free → /inscripcion, paid → /pagar → simulate (paid/failed/pending) → grantAccess si paid.
+  - **Reusado de legacy**: `mockProvider` para el patrón de provider, `Payment`/`Coupon`/`applyCoupon` de `@/types`.
+  - Pendiente test E2E con cuenta NO-admin (admin no puede entrar como student por diseño).
 
 ## Deuda activa (no bloqueante)
 
@@ -39,6 +46,14 @@
   - Fix incluido: `client.ts` ahora usa acceso literal a `NEXT_PUBLIC_*` (bug conocido documentado en `config.ts:108-113`)
   - Bug OAuth: cuentas en `ADMIN_EMAIL_ALLOWLIST` no pueden entrar como alumno (por diseño)
 - [x] **Tests E2E — Fase 1 (tour Playwright MCP)** — mergeado el 2026-06-25. 7 screenshots en `docs/screenshots/2026-06-25-e2e-tour/` con cross-check de DB. Plan completo en `docs/E2E_TESTS_PLAN.md`. **Fase 2 (`@playwright/test` + CI) queda pendiente** hasta que haya CI real configurado.
+- [x] **Entitlements v1.0.0+ (Fase A+B+C)** — schema + core lib + simulador. 5 commits en main (`5f76584` / `2d156a6` / `7b26fcc` / `8b9ea5d` / `42076da`). Plan completo en `docs/ENTITLEMENTS_PLAN.md`. Pendiente test E2E con cuenta NO-admin.
+
+## Lecciones aprendidas (para futuras sesiones)
+
+- **Auditar el repo antes de aceptar un plan de agente**: el plan inicial de un agente genérico (producido por LLM) no chequea el repo. Antes de aceptar una propuesta, hacer `ls src/lib/`, `grep -r "Payment"` y similares. En la sesión del 2026-06-26 descubrimos que `src/lib/payments/` ya existía y duplicamos trabajo hasta que hicimos una auditoría.
+- **Supabase SQL Editor NO maneja DO blocks con ALTER adentro**: los DO blocks simples corren, pero los que contienen `ALTER TABLE` no aplican los cambios. Usar siempre `ALTER TABLE` directo con `IF EXISTS` / `IF NOT EXISTS`. Esta es una limitación del SQL Editor de Supabase, no de Postgres puro.
+- **Multi-agente: abstener por ahora**. Acordado con David: features de tamaño medio se hacen secuenciales en una sesión, documentadas en este roadmap. Para planes multi-agente, dividir en sub-tareas <8 archivos cada una o aceptar partial-state + post-mortem manual.
+- **Admin no puede testear el flujo de pagos**: por diseño, una cuenta admin no es student. Para E2E de pagos, crear una cuenta NO-admin o sacarla temporalmente del allowlist.
 
 ## Pendientes — decisión de producto (con socios)
 
