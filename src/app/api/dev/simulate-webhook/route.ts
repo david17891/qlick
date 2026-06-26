@@ -64,6 +64,17 @@ function mapEventToStatus(event: SimulateEvent): "approved" | "rejected" | "pend
 }
 
 export async function POST(req: NextRequest) {
+  // 0. En producción, este endpoint NO debe estar disponible. Si quedó
+  //    desplegado por error, devolvemos 404 para no exponer la simulación
+  //    de pagos. (En Fase G, cuando integremos Stripe real, este endpoint
+  //    se reemplaza por el webhook real y esta guard se vuelve redundante.)
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json(
+      { ok: false, message: "Not found" },
+      { status: 404 },
+    );
+  }
+
   // 1. Auth: solo estudiantes.
   const session = await getCurrentStudent();
   if (!session) {

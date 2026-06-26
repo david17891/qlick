@@ -26,6 +26,7 @@
     - `/aprender/[lesson]` ya no da `hasAccess=true` si la DB está caída (Fix X-5: agujero de seguridad).
     - `SimulatorForm` permite elegir método (Tarjeta / OXXO / SPEI) en vez de hardcoded `card` (Fix C-1).
     - `/inscripcion` ya no muestra `$$precio MXN` (Fix X-6: doble `$`).
+  - **X-2 (ALTO, próximo commit)**: `/cursos` y `/cursos/[slug]` ahora son DINÁMICAS y leen del LMS real. Catálogo muestra precios correctos ($499 MXN para curso paid, $0 para free). Badges de precio/agregados. Botón CTA diferenciado (Comprar/Empezar/Continuar según access). Endpoint `/api/dev/simulate-webhook` ahora rechaza requests en producción (NODE_ENV check).
   - **Reusado de legacy**: `mockProvider` para el patrón de provider, `Payment`/`Coupon`/`applyCoupon` de `@/types`.
   - Pendiente test E2E con cuenta NO-admin (admin no puede entrar como student por diseño).
 
