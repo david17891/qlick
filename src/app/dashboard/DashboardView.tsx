@@ -31,6 +31,7 @@ import {
   Badge,
 } from "@/components/ui";
 import { initials } from "@/lib/utils";
+import { markLessonCompleteAction } from "@/app/actions/lesson-progress";
 
 /** Forma enriquecida del enrollment que pasa el Server Component. */
 export interface DashboardEnrollmentView {
@@ -43,6 +44,10 @@ export interface DashboardEnrollmentView {
   nextLessonSlug?: string;
   /** Título de la próxima lección (para el hero "Continuar"). */
   nextLessonTitle?: string;
+  /** Índice 0-based de la próxima lección (para la action de "marcar vista"). */
+  nextLessonIndex?: number;
+  /** Total de lecciones del curso (para calcular el % nuevo). */
+  totalLessons: number;
 }
 
 interface DashboardViewProps {
@@ -93,21 +98,39 @@ export function DashboardView({
   }, [enrollments, completedByCourse]);
 
   /**
-   * Marca una lección como vista. En modo real esto llamará a la Server
-   * Action `markLessonComplete` (track 2). En demo, actualiza el contador
-   * local para animar el progreso.
+   * Marca la siguiente lección del curso como vista. Llama a la Server
+   * Action `markLessonCompleteAction` que escribe a
+   * `enrollments.progress_percent` (highest water mark).
+   *
+   * El state local se actualiza optimistamente con el percent que devuelve
+   * la action (o con un fallback en caso de error). La action también
+   * hace `revalidatePath("/dashboard")` así que la próxima visita al
+   * dashboard verá el percent real desde el server.
    */
-  const markLessonComplete = (courseId: string) => {
-    startTransition(() => {
-      setCompletedByCourse((prev) => {
-        const current = prev[courseId] ?? 0;
-        // Asumimos cursos con ~9 lecciones (3 modulos x 3 lecciones). El
-        // step es 100/9 ≈ 11. Redondeamos hacia arriba para no quedarnos
-        // en 99% eterno.
-        const step = 100 / 9;
-        const next = Math.min(100, Math.round(current + step));
-        return { ...prev, [courseId]: next };
+  const [errorByCourse, setErrorByCourse] = useState<Record<string, string>>({});
+  const [pendingByCourse, setPendingByCourse] = useState<Record<string, boolean>>({});
+  const markLessonComplete = (e: DashboardEnrollmentView) => {
+    if (pendingByCourse[e.courseId]) return; // doble click guard
+    setErrorByCourse((prev) => ({ ...prev, [e.courseId]: "" }));
+    setPendingByCourse((prev) => ({ ...prev, [e.courseId]: true }));
+    startTransition(async () => {
+      const result = await markLessonCompleteAction({
+        courseId: e.courseId,
+        lessonIndex: e.nextLessonIndex ?? 0,
+        totalLessons: e.totalLessons,
       });
+      setPendingByCourse((prev) => ({ ...prev, [e.courseId]: false }));
+      if (result.ok) {
+        setCompletedByCourse((prev) => ({
+          ...prev,
+          [e.courseId]: result.percent,
+        }));
+      } else {
+        setErrorByCourse((prev) => ({
+          ...prev,
+          [e.courseId]: result.note || "No se pudo guardar el progreso.",
+        }));
+      }
     });
   };
 
@@ -235,10 +258,18 @@ export function DashboardView({
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => markLessonComplete(e.courseId)}
+                        onClick={() => markLessonComplete(e)}
+                        disabled={pendingByCourse[e.courseId]}
                       >
-                        Marcar lección como vista
+                        {pendingByCourse[e.courseId]
+                          ? "Guardando…"
+                          : "Marcar lección como vista"}
                       </Button>
+                    )}
+                    {errorByCourse[e.courseId] && (
+                      <p className="w-full text-xs text-red-600 mt-1">
+                        ⚠ {errorByCourse[e.courseId]}
+                      </p>
                     )}
                   </div>
                 </Card>

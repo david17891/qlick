@@ -76,6 +76,16 @@ async function loadDashboardData(
       courseTitle: string;
       nextLessonSlug?: string;
       nextLessonTitle?: string;
+      /**
+       * Índice 0-based de la próxima lección a marcar (en el flat list del
+       * mock). Se computa desde `progressPercent` y `totalLessons` porque
+       * la tabla `lesson_progress` (per-lesson) aún no se persiste en real
+       * mode — la persistencia es a nivel de enrollment, no de lección.
+       * Cuando se migre a `lesson_progress`, este cálculo se reemplaza por
+       * un lookup real de "primera lección no completada".
+       */
+      nextLessonIndex?: number;
+      totalLessons: number;
     }
   >;
   certificates: number;
@@ -190,6 +200,7 @@ async function loadDashboardData(
           ...e,
           courseSlug: "",
           courseTitle: "(curso no encontrado)",
+          totalLessons: 0,
         };
       }
       // Para la próxima lección: en demoMode usamos el mock que tiene los
@@ -205,6 +216,7 @@ async function loadDashboardData(
       // `getCourseBySlug(course.slug)` (mock by slug), donde `course` es
       // el Course que ya cargamos arriba (LMS o mock según modo).
       let nextLesson: { slug: string; title: string } | undefined;
+      let totalLessons = 0;
       const mockCourse = course?.slug
         ? getCourseBySlug(course.slug)
         : undefined;
@@ -212,6 +224,7 @@ async function loadDashboardData(
         const flat = flatLessons(
           mockCourse as unknown as Parameters<typeof flatLessons>[0],
         );
+        totalLessons = flat.length;
         const completed = new Set(
           lessonProgress
             .filter((p) => p.courseId === e.courseId && p.completed)
@@ -222,12 +235,29 @@ async function loadDashboardData(
           nextLesson = { slug: found.lesson.slug, title: found.lesson.title };
         }
       }
+      // `nextLessonIndex` para la Server Action "marcar como vista" del
+      // dashboard. Se computa desde progressPercent (en real mode, donde
+      // lesson_progress está vacío) o desde la lección encontrada por slug
+      // (más preciso en demo mode donde mock tiene completados per-lesson).
+      // Highest-water-mark implícito: la action `markLessonCompleteAction`
+      // no rebajará el percent si la lección ya está implícitamente cubierta.
+      const nextLessonIndex =
+        totalLessons === 0
+          ? 0
+          : e.progressPercent >= 100
+            ? totalLessons - 1
+            : Math.min(
+                totalLessons - 1,
+                Math.round((e.progressPercent / 100) * totalLessons),
+              );
       return {
         ...e,
         courseSlug: course.slug,
         courseTitle: course.title,
         nextLessonSlug: nextLesson?.slug,
         nextLessonTitle: nextLesson?.title,
+        nextLessonIndex,
+        totalLessons,
       };
     }),
   );
