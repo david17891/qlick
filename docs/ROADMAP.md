@@ -14,12 +14,18 @@
 - [x] **feat/qr-enrollment** — Inscripción con QR + tracking `source` + página `/inscripcion/[slug]`
   - Fallbacks automáticos: `getCourseBySlug` cae al mock cuando DB no tiene el slug; `enrollUserInCourse` valida UUID antes del upsert y cae a demo si el ID es mock legacy
 - [x] **seed:courses** — Script ejecutado el 2026-06-25: 4 cursos + 12 módulos + 36 lecciones cargados en Supabase (idempotente, ya no-op en re-runs).
-- [x] **Entitlements v1.0.0+** — capa de acceso comercial (Fase A+B+C) mergeada a `main` (commits `5f76584` / `2d156a6` / `7b26fcc` / `8b9ea5d` / `42076da` / `f2f158d`).
+- [x] **Entitlements v1.0.0+** — capa de acceso comercial (Fase A+B+C) mergeada a `main` (commits `5f76584` / `2d156a6` / `7b26fcc` / `8b9ea5d` / `42076da` / `f2f158d` / `[próximo]`).
   - **Fase A (v1.0.0)**: schema con `courses.access_type`, tablas `course_access` + `payments` con RLS. 1 curso paid ($499 MXN) + 3 free.
   - **Fase B**: server lib `src/lib/lms/entitlements.ts` con `getCourseAccess`, `checkCourseAccess`, `grantAccess`, `revokeAccess` (idempotente).
   - **v1.0.1/1.0.2**: alineación con la capa legacy `src/lib/payments/` (mockProvider, stubs de Stripe/MercadoPago/Conekta, types en `@/types`). Rename `provider_payment_id` → `external_reference`, CHECK status con valores legacy, columnas `method`/`coupon_id`/`discount_mxn`/`enrollment_id`.
   - **Fase C**: endpoint `POST /api/dev/simulate-webhook` + página `/pagar/[courseSlug]` con SimulatorForm. Flujo: free → /inscripcion, paid → /pagar → simulate (paid/failed/pending) → grantAccess si paid.
   - **Auditoría de uso (commit `f2f158d`)**: 5 críticos detectados y arreglados. Endpoint crea enrollment post-grantAccess, dashboard une enrollments+course_access con retroactivo, `/aprender/[lesson]` chequea access (era falla de seguridad), `/cursos/[slug]` botón apunta a `/inscripcion` (no /login).
+  - **Auditoría profunda (próximo commit)**: 3 críticos más arreglados.
+    - `getCourseById` agregado al LMS server (UUIDs reales); dashboard enriquecido con datos del LMS en lugar del mock (Fix X-1: courseTitle="" en cards).
+    - `/inscripcion/[slug]?ref=qr` ahora preserva `ref` al redirigir a `/pagar` (Fix X-4).
+    - `/aprender/[lesson]` ya no da `hasAccess=true` si la DB está caída (Fix X-5: agujero de seguridad).
+    - `SimulatorForm` permite elegir método (Tarjeta / OXXO / SPEI) en vez de hardcoded `card` (Fix C-1).
+    - `/inscripcion` ya no muestra `$$precio MXN` (Fix X-6: doble `$`).
   - **Reusado de legacy**: `mockProvider` para el patrón de provider, `Payment`/`Coupon`/`applyCoupon` de `@/types`.
   - Pendiente test E2E con cuenta NO-admin (admin no puede entrar como student por diseño).
 

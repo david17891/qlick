@@ -79,9 +79,13 @@ export default async function EnrollmentPage({
     );
   }
 
-  // Si el curso es de pago, redirigir a /pagar/[slug] (v1.0.0+).
+  // Si el curso es de pago, redirigir a /pagar/[slug] preservando el
+  // `?ref=qr` u otros search params (v1.0.0+).
   if (course.accessType === "paid") {
-    redirect(`/pagar/${courseSlug}`);
+    const qs = new URLSearchParams();
+    if (searchParams.ref) qs.set("ref", searchParams.ref);
+    const queryString = qs.toString();
+    redirect(`/pagar/${courseSlug}${queryString ? `?${queryString}` : ""}`);
   }
 
   const source: "qr" | "organic" = searchParams.ref === "qr" ? "qr" : "organic";
@@ -164,7 +168,7 @@ export default async function EnrollmentPage({
                 {course.priceMXN != null && (
                   <span className="text-ink-soft">
                     Precio:{" "}
-                    <strong className="text-ink">${course.priceMXN} MXN</strong>
+                    <strong className="text-ink">{course.priceMXN} MXN</strong>
                   </span>
                 )}
                 {course.level && (

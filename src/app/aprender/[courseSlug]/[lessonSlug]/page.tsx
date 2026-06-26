@@ -60,14 +60,18 @@ export default async function LessonPage({
   }
 
   // Check access: usamos el LMS course (si existe) o el slug directo.
-  // Si el LMS no tiene el curso (modo demo o DB vacía), dejamos pasar
-  // para que el flujo demo siga funcionando.
+  // Si el LMS no tiene el curso O falla la query, DENEGAMOS acceso.
+  // (Antes: fallback a hasAccess=true; eso era un agujero de seguridad
+  // si la DB se caía en producción.)
   let access;
   if (lmsCourse) {
     access = await checkCourseAccess(session!.userId, lmsCourse.id);
   } else {
-    // Modo demo o LMS vacío: tratamos como free (cualquier user logueado entra).
-    access = { hasAccess: true as const, source: "free_course" as const, expiresAt: null };
+    // LMS vacío / error: deny explícito.
+    access = {
+      hasAccess: false as const,
+      reason: "no_access" as const,
+    };
   }
 
   if (!access.hasAccess) {

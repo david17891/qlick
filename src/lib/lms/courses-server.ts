@@ -189,6 +189,36 @@ export async function getCourseBySlug(
 }
 
 /**
+ * Devuelve un curso por ID (UUID). Usado por el dashboard para enriquecer
+ * enrollments con datos del curso (title, slug). Solo consulta el LMS real;
+ * no hace fallback a mock porque el `id` del mock es `course_fundamentos`
+ * (string), no UUID. Si el curso no existe en el LMS, retorna undefined.
+ *
+ * Bypass RLS vía service role. Server-only.
+ */
+export async function getCourseById(id: string): Promise<Course | undefined> {
+  if (!isRealMode()) return undefined;
+
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("courses")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) {
+    // eslint-disable-next-line no-console
+    console.error("[courses-server] getCourseById falló", {
+      code: error.code,
+      id,
+    });
+    return undefined;
+  }
+  if (!data) return undefined;
+  return mapCourseRow(data as CourseRow);
+}
+
+/**
  * Lista TODOS los cursos para el admin (incluye drafts y archivados).
  * Bypass RLS vía service role.
  */

@@ -12,12 +12,16 @@
  * - "Simular pago pendiente" → POST { event: 'pending' }
  *
  * El endpoint devuelve el resultado; acá mostramos feedback al usuario.
+ *
+ * Selector de método (v1.0.0+): el user puede elegir entre card, oxxo o spei
+ * para simular el flujo de cada provider.
  */
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 type EventKind = "paid" | "failed" | "pending";
+type MethodKind = "card" | "oxxo" | "spei";
 
 interface SimulatorFormProps {
   courseSlug: string;
@@ -39,6 +43,7 @@ export function SimulatorForm({
   amountMxn,
 }: SimulatorFormProps) {
   const router = useRouter();
+  const [method, setMethod] = useState<MethodKind>("card");
   const [loading, setLoading] = useState<EventKind | null>(null);
   const [result, setResult] = useState<SimulateResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +59,7 @@ export function SimulatorForm({
         body: JSON.stringify({
           courseSlug,
           event,
-          method: "card",
+          method,
           amountMxn,
         }),
       });
@@ -82,9 +87,41 @@ export function SimulatorForm({
     <div>
       <p className="text-sm text-ink-muted mb-4">
         Pagás <strong>${amountMxn} MXN</strong> por <strong>{courseTitle}</strong>.
-        Como aún no integramos el provider real, elegí cómo querés simular el pago:
+        Como aún no integramos el provider real, elegí método y simulación:
       </p>
 
+      {/* Selector de método */}
+      <div className="mb-4">
+        <p className="text-xs font-semibold uppercase text-ink-muted mb-2">
+          Método de pago
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {(["card", "oxxo", "spei"] as MethodKind[]).map((m) => (
+            <label
+              key={m}
+              className={`flex items-center gap-2 cursor-pointer rounded-md border-2 px-3 py-2 text-sm transition ${
+                method === m
+                  ? "border-brand-500 bg-brand-50"
+                  : "border-brand-100 bg-white hover:bg-brand-50/50"
+              }`}
+            >
+              <input
+                type="radio"
+                name="method"
+                value={m}
+                checked={method === m}
+                onChange={() => setMethod(m)}
+                className="accent-brand-500"
+              />
+              <span className="font-medium text-ink capitalize">
+                {m === "card" ? "Tarjeta" : m === "oxxo" ? "OXXO" : "SPEI"}
+              </span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {/* Botones de evento */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <button
           type="button"

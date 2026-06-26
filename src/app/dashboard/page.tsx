@@ -39,6 +39,7 @@ import {
   legacyEnrollmentToLms,
   legacyLessonProgressToLms,
 } from "@/lib/lms/enrollments-server";
+import { getCourseById as getCourseByIdLMS } from "@/lib/lms/courses-server";
 import { getCourseById, flatLessons } from "@/lib/data/courses";
 import {
   getEnrollmentsForUser,
@@ -168,28 +169,54 @@ async function loadDashboardData(
   }
 
   // 2) Enriquece cada enrollment con datos del curso (título, slug, próxima
-  //    lección no completada) usando los mocks (track 2 todavía no completa
-  //    este join; el dashboard lo arma en cliente para no acoplar).
-  const enriched = enrollments.map((e) => {
-    const course = getCourseById(e.courseId);
-    if (!course) {
-      return { ...e, courseSlug: "", courseTitle: "" };
-    }
-    const completed = new Set(
-      lessonProgress
-        .filter((p) => p.courseId === e.courseId && p.completed)
-        .map((p) => p.lessonId),
-    );
-    const flat = flatLessons(course);
-    const nextLesson = flat.find((f) => !completed.has(f.lesson.id));
-    return {
-      ...e,
-      courseSlug: course.slug,
-      courseTitle: course.title,
-      nextLessonSlug: nextLesson?.lesson.slug,
-      nextLessonTitle: nextLesson?.lesson.title,
-    };
-  });
+  //    lección no completada).
+  //    - En realMode: usamos getCourseById del LMS (que consulta UUIDs reales).
+  //    - En demoMode: usamos getCourseById del mock (que tiene strings tipo
+  //      "course_fundamentos").
+  //    Si no se encuentra el curso, la card del dashboard muestra "Curso sin nombre"
+  //    con un warning, en vez de quedar vacía.
+  const inRealMode = (await import("@/lib/supabase/health")).checkSupabaseConfig().configured;
+  const enriched = await Promise.all(
+    enrollments.map(async (e) => {
+      const course = inRealMode
+        ? await getCourseByIdLMS(e.courseId).catch(() => undefined)
+        : getCourseById(e.courseId);
+      if (!course) {
+        return {
+          ...e,
+          courseSlug: "",
+          courseTitle: "(curso no encontrado)",
+        };
+      }
+      // Para la próxima lección, los módulos/lecciones del LMS aún no se
+      // cargan en este endpoint; en demoMode usamos el mock. Si el LMS tiene
+      // módulos, este lookup debería ir a getCourseModules + getModuleLessons,
+      // pero el dashboard no los usa hoy. Dejamos nextLesson como undefined
+      // si no hay forma de obtenerlo.
+      let nextLesson: { slug: string; title: string } | undefined;
+      if (!inRealMode) {
+        // Cast: getCourseById del mock devuelve Course legacy (con más campos).
+        // En runtime funciona; aquí solo necesitamos .modules.
+        const flat = flatLessons(course as unknown as Parameters<typeof flatLessons>[0]);
+        const completed = new Set(
+          lessonProgress
+            .filter((p) => p.courseId === e.courseId && p.completed)
+            .map((p) => p.lessonId),
+        );
+        const found = flat.find((f) => !completed.has(f.lesson.id));
+        if (found) {
+          nextLesson = { slug: found.lesson.slug, title: found.lesson.title };
+        }
+      }
+      return {
+        ...e,
+        courseSlug: course.slug,
+        courseTitle: course.title,
+        nextLessonSlug: nextLesson?.slug,
+        nextLessonTitle: nextLesson?.title,
+      };
+    }),
+  );
 
   // Certificados y pagos demo (track 2 todavía no los migra; en real-mode
   // se obtendrán del server lib).
