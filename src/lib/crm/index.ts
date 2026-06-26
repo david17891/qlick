@@ -20,8 +20,12 @@ export {
   createLead,
   findLeadByEmail,
   findLeadByPhone,
+  createLeadFromEvent,
   type CreateLeadServerInput,
   type CreateLeadServerResult,
+  type CreateLeadFromEventInput,
+  type CreateLeadFromEventResult,
+  type EventLeadSource,
 } from "./leads-server";
 
 export {

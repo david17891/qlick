@@ -29,6 +29,7 @@ import {
   type InsertLeadPayload,
 } from "./leads-mapper";
 import { normalizePhone } from "./phone-utils";
+import type { Database } from "@/types/supabase";
 
 // Fallback a mocks (mismo módulo que usa hoy el CRM demo).
 import {
@@ -321,4 +322,342 @@ export async function createLead(
     demo: false,
     note: "Lead guardado en Supabase y disponible en el CRM.",
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Leads desde eventos (Fase 2)                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Origen de un lead promovido desde un evento. Se usa como discriminador
+ * en el campo `source` del lead y como tag para trazabilidad.
+ *
+ * - "event_confirmed": la persona confirmó asistencia (sin encuesta aún)
+ * - "event_attended": la persona asistió (con o sin encuesta)
+ * - "event_survey_consent": la persona respondió la encuesta Y dio consentimiento
+ * - "manual": el admin lo creó a mano desde el panel
+ */
+export type EventLeadSource =
+  | "event_confirmed"
+  | "event_attended"
+  | "event_survey_consent"
+  | "manual";
+
+export interface CreateLeadFromEventInput {
+  /** Nombre del lead. Requerido. */
+  name: string;
+  /** Email (opcional, pero al menos uno de email/phone es recomendado). */
+  email?: string;
+  /** Phone en cualquier formato; se normaliza a E.164 MX antes de buscar/guardar. */
+  phone?: string;
+  /** Slug del evento (ej. "uabc-km43-marketing-ia"). Se usa como tag. */
+  eventSlug: string;
+  /** Origen del lead (cómo se detectó / promovió). */
+  source: EventLeadSource;
+  /**
+   * REQUERIDO: consentimiento explícito para ser contactado comercialmente.
+   * Sin esto, no se crea el lead. Defensa en profundidad (el server action
+   * del survey también valida, pero acá verificamos otra vez).
+   */
+  consentToContact: boolean;
+  /** Texto libre de la encuesta (tema de interés, comentarios). Se guarda en summary. */
+  commercialInterest?: string;
+  /** IDs opcionales a los records de evento (Fase 3 los tendrá). */
+  surveyId?: string;
+  attendeeId?: string;
+  confirmationId?: string;
+}
+
+export interface CreateLeadFromEventResult {
+  ok: boolean;
+  leadId: string;
+  /** true si se creó un lead NUEVO. false si se reusó uno existente. */
+  created: boolean;
+  /** true si el lead existía pero estaba en `lost`/`archived` y se reactivó. */
+  reactivated: boolean;
+  persisted: boolean;
+  demo: boolean;
+  note: string;
+}
+
+/**
+ * Crea un lead desde un evento (encuesta con consentimiento, confirmación,
+ * etc.) o reactiva uno existente.
+ *
+ * Flujo:
+ *  1. Defensa en profundidad: sin `consentToContact`, rechaza.
+ *  2. Busca por email (case-insensitive) o phone (normalizado E.164).
+ *  3. Si encuentra:
+ *     - Si está en `lost`/`archived` → reactiva a `new` y agrega tag de evento.
+ *     - Si está activo → lo devuelve tal cual (no duplica). El caller puede
+ *       actualizar `summary` o `next_follow_up_at` por su cuenta.
+ *  4. Si no encuentra:
+ *     - Crea un lead nuevo con `source='event'`, `status='new'`.
+ *     - Tags: `['event:<slug>']` y (si hay surveyId) `['event:<slug>:survey:<id>']`.
+ *
+ * Server-only. Fallback a mock si Supabase no está configurado.
+ *
+ * IMPORTANTE (Fase 2 - sin eventos todavía):
+ *   - Los IDs `surveyId`/`attendeeId`/`confirmationId` se guardan como TAGS
+ *     (no como FK) hasta que existan las tablas `event_*` en Fase 3.
+ *   - Cuando existan las tablas, agregar `metadata jsonb` o un join table.
+ *   - Por ahora: un lead puede tener muchos tags, y los tags se acumulan
+ *     por cada promoción.
+ */
+export async function createLeadFromEvent(
+  input: CreateLeadFromEventInput,
+): Promise<CreateLeadFromEventResult> {
+  // 1. Consentimiento: no negociable.
+  if (!input.consentToContact) {
+    return {
+      ok: false,
+      leadId: "",
+      created: false,
+      reactivated: false,
+      persisted: false,
+      demo: true,
+      note: "Falta consentimiento explícito. El lead no se crea.",
+    };
+  }
+  if (!input.name?.trim()) {
+    return {
+      ok: false,
+      leadId: "",
+      created: false,
+      reactivated: false,
+      persisted: false,
+      demo: true,
+      note: "Falta el nombre del lead.",
+    };
+  }
+  if (!input.eventSlug?.trim()) {
+    return {
+      ok: false,
+      leadId: "",
+      created: false,
+      reactivated: false,
+      persisted: false,
+      demo: true,
+      note: "Falta el eventSlug.",
+    };
+  }
+
+  const normalizedEmail = input.email?.trim().toLowerCase() || null;
+  const normalizedPhone = normalizePhone(input.phone);
+
+  // 2. Buscar por email o phone.
+  let existing: Lead | null = null;
+  if (normalizedEmail) {
+    existing = await findLeadByEmail(normalizedEmail);
+  }
+  if (!existing && normalizedPhone) {
+    existing = await findLeadByPhone(normalizedPhone);
+  }
+
+  // 3. Si existe, decidir entre reactivar o reusar.
+  if (existing) {
+    if (existing.status === "lost" || existing.status === "archived") {
+      // Reactivar.
+      return await reactivateLeadForEvent(
+        existing,
+        input,
+        normalizedEmail,
+        normalizedPhone,
+      );
+    }
+    // Ya activo. Devolver tal cual.
+    return {
+      ok: true,
+      leadId: existing.id,
+      created: false,
+      reactivated: false,
+      persisted: true,
+      demo: false,
+      note: "El lead ya existía activo. No se duplica.",
+    };
+  }
+
+  // 4. No existe → crear uno nuevo.
+  return await createNewLeadForEvent(
+    input,
+    normalizedEmail,
+    normalizedPhone,
+  );
+}
+
+/**
+ * Helper interno: crea un lead nuevo con source='event' y tags del evento.
+ * Reutilizado por `createLeadFromEvent` (rama "no existe").
+ */
+async function createNewLeadForEvent(
+  input: CreateLeadFromEventInput,
+  normalizedEmail: string | null,
+  normalizedPhone: string | null,
+): Promise<CreateLeadFromEventResult> {
+  const tags = buildEventTags(input);
+
+  const payload: InsertLeadPayload = {
+    name: input.name.trim(),
+    email: normalizedEmail || `${input.eventSlug}.${Date.now()}@placeholder.local`,
+    phone: normalizedPhone,
+    course_of_interest: input.commercialInterest?.trim() || null,
+    status: "new",
+    source: "event",
+    intent: "course_information",
+    consent_to_contact: true,
+    tags,
+  };
+
+  // Si no hay email, tenemos que inventar uno placeholder para satisfacer
+  // el NOT NULL + regex de la DB. Marcamos con un tag `needs_email` para
+  // que el admin lo limpie después.
+  if (!normalizedEmail) {
+    payload.tags = [...tags, "needs_email"];
+  }
+
+  if (!isRealMode()) {
+    // Fallback a mock: el mock no tiene `tags`, así que solo loggeamos.
+    // eslint-disable-next-line no-console
+    console.info("[crm:demo] lead desde evento (no persistido)", {
+      eventSlug: input.eventSlug,
+      name: input.name,
+      hasEmail: !!normalizedEmail,
+      hasPhone: !!normalizedPhone,
+      tags,
+    });
+    return {
+      ok: true,
+      leadId: `lead_demo_${Date.now().toString(36)}`,
+      created: true,
+      reactivated: false,
+      persisted: false,
+      demo: true,
+      note: "Lead de evento registrado en modo demo (tags en consola).",
+    };
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("leads")
+    .insert(payload)
+    .select("id")
+    .single();
+
+  if (error || !data) {
+    // eslint-disable-next-line no-console
+    console.error("[leads-server] createLeadFromEvent: insert falló", {
+      code: error?.code,
+    });
+    return {
+      ok: false,
+      leadId: "",
+      created: false,
+      reactivated: false,
+      persisted: false,
+      demo: true,
+      note: "No se pudo crear el lead del evento. Revisa logs.",
+    };
+  }
+
+  return {
+    ok: true,
+    leadId: data.id,
+    created: true,
+    reactivated: false,
+    persisted: true,
+    demo: false,
+    note: "Lead del evento creado en Supabase.",
+  };
+}
+
+/**
+ * Helper interno: reactiva un lead en `lost`/`archived` para un nuevo
+ * evento. Cambia status a `new`, agrega tag de evento, opcionalmente
+ * actualiza el email/phone si el lead viejo no tenía.
+ */
+async function reactivateLeadForEvent(
+  existing: Lead,
+  input: CreateLeadFromEventInput,
+  normalizedEmail: string | null,
+  normalizedPhone: string | null,
+): Promise<CreateLeadFromEventResult> {
+  const newTags = buildEventTags(input);
+  // Merge con tags existentes (sin duplicar).
+  const existingTags = existing.tags ?? [];
+  const mergedTags = Array.from(new Set([...existingTags, ...newTags]));
+
+  if (!isRealMode()) {
+    // eslint-disable-next-line no-console
+    console.info("[crm:demo] lead reactivado (no persistido)", {
+      leadId: existing.id,
+      newStatus: "new",
+      newTags: mergedTags,
+    });
+    return {
+      ok: true,
+      leadId: existing.id,
+      created: false,
+      reactivated: true,
+      persisted: false,
+      demo: true,
+      note: "Lead reactivado en modo demo.",
+    };
+  }
+
+  const supabase = createSupabaseAdminClient();
+  // Tipo: solo las columnas que vamos a patchar. Supabase gen types
+  // infiere el tipo exacto del update.
+  const patch: Database["public"]["Tables"]["leads"]["Update"] = {
+    status: "new",
+    tags: mergedTags,
+  };
+  // Si el lead viejo no tenía email/phone y ahora los tenemos, los
+  // actualizamos. Esto es un upsert "ligero" de campos opcionales.
+  if (!existing.email && normalizedEmail) patch.email = normalizedEmail;
+  if (!existing.phone && normalizedPhone) patch.phone = normalizedPhone;
+
+  const { error } = await supabase
+    .from("leads")
+    .update(patch)
+    .eq("id", existing.id);
+
+  if (error) {
+    // eslint-disable-next-line no-console
+    console.error("[leads-server] createLeadFromEvent: reactivate falló", {
+      code: error.code,
+      leadId: existing.id,
+    });
+    return {
+      ok: false,
+      leadId: existing.id,
+      created: false,
+      reactivated: false,
+      persisted: false,
+      demo: true,
+      note: "No se pudo reactivar el lead.",
+    };
+  }
+
+  return {
+    ok: true,
+    leadId: existing.id,
+    created: false,
+    reactivated: true,
+    persisted: true,
+    demo: false,
+    note: "Lead reactivado y vinculado al evento.",
+  };
+}
+
+/**
+ * Construye los tags estructurados para un lead de evento.
+ * Convención: `event:<slug>` (siempre) + sub-tags según IDs de records.
+ * Los tags se acumulan si el lead se vincula a múltiples records.
+ */
+function buildEventTags(input: CreateLeadFromEventInput): string[] {
+  const tags = [`event:${input.eventSlug}`];
+  if (input.surveyId) tags.push(`event:${input.eventSlug}:survey:${input.surveyId}`);
+  if (input.attendeeId) tags.push(`event:${input.eventSlug}:attendee:${input.attendeeId}`);
+  if (input.confirmationId) tags.push(`event:${input.eventSlug}:confirmation:${input.confirmationId}`);
+  return tags;
 }
