@@ -1,14 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
-import type { Course } from "@/types";
-import { getCurrentUser } from "@/lib/auth/mock-auth";
-import {
-  isEnrolled,
-  getLessonProgressForUser
-} from "@/lib/data/enrollments";
+import type { Course, LessonProgress } from "@/types";
 import { flatLessons, findLesson } from "@/lib/data/courses";
 import {
   Container,
@@ -21,46 +15,69 @@ import { VideoPlayer } from "@/components/video";
 import { ModuleList } from "@/components/course";
 import { WhatsAppButton } from "@/components/contact/WhatsAppButton";
 import { formatDuration } from "@/lib/utils";
+import { markLessonCompleteAction } from "@/app/actions/lesson-progress";
 
 /**
- * LessonView — vista de una lección.
+ * LessonView — vista de una lección (v1.0.0).
  *
- * Auth model (v0.9.0+):
+ * Auth model:
  * - El server (la página `/aprender/[course]/[lesson]/page.tsx`) ya validó
  *   access contra el LMS real (Supabase). Si llegamos acá, el server
  *   considera que el user PUEDE ver esta lección.
- * - El cliente recibe `enrolled` y `isPreviewLesson` como props y los usa
- *   como source-of-truth para la UI. NO consulta mock auth ni mock
- *   enrollments (esos sistemas no conocen al user de Supabase).
+ * - El cliente recibe `enrolled`, `isPreviewLesson`, `lmsCourseId`,
+ *   `currentPercent`, `lessonIndex` y `totalLessons` como props y los usa
+ *   como source-of-truth. NO consulta mock auth ni mock enrollments.
  *
- * Por qué seguimos importando `getCurrentUser` / `isEnrolled` / etc.:
- * - El `progress` (lesson_progress) del usuario AÚN vive en el mock
- *   (`lib/data/enrollments`). El bridge completo de progreso a Supabase
- *   es scope de Fase E+. Mientras tanto, los botones y la sidebar usan
- *   los datos del mock si están disponibles; si no, caen a defaults.
- *
- * Trade-off conocido: si el user_id del mock no coincide con el user_id
- * de Supabase (lo cual es el caso en producción), el progreso no se
- * muestra correctamente. Aceptable para MVP.
+ * Persistencia de progreso (v1.0.0):
+ * - El botón "Marcar como completada" llama a la Server Action
+ *   `markLessonCompleteAction`, que escribe a
+ *   `enrollments.progress_percent` en Supabase.
+ * - El percent se calcula como `ceil((lessonIndex + 1) / totalLessons * 100)`
+ *   y solo sube (highest water mark).
+ * - El sidebar de módulos muestra checkmarks en las primeras N lecciones
+ *   según el percent, como aproximación hasta que la migración del
+ *   catálogo a la DB habilite per-lesson tracking real
+ *   (`lesson_progress` table).
  */
 export function LessonView({
   course,
   lessonSlug,
   enrolled = false,
   isPreviewLesson = false,
+  lmsCourseId = null,
+  currentPercent = 0,
+  lessonIndex = 0,
+  totalLessons = 0,
 }: {
   course: Course;
   lessonSlug: string;
   enrolled?: boolean;
   isPreviewLesson?: boolean;
+  lmsCourseId?: string | null;
+  currentPercent?: number;
+  lessonIndex?: number;
+  totalLessons?: number;
 }) {
-  const router = useRouter();
   const [marked, setMarked] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
     setReady(true);
   }, [lessonSlug]);
+
+  // Si el server re-renderiza (post-revalidatePath) y el currentPercent
+  // ya cubre esta lección, sincronizamos `marked` para que el botón
+  // muestre "✓ Completada" sin parpadeo.
+  useEffect(() => {
+    if (totalLessons > 0) {
+      const lessonTarget = Math.ceil(((lessonIndex + 1) / totalLessons) * 100);
+      if (currentPercent >= lessonTarget) {
+        setMarked(true);
+      }
+    }
+  }, [currentPercent, lessonIndex, totalLessons]);
 
   const found = findLesson(course, lessonSlug);
 
@@ -121,18 +138,42 @@ export function LessonView({
   const prev = currentIndex > 0 ? flat[currentIndex - 1] : null;
   const nextLesson = currentIndex < flat.length - 1 ? flat[currentIndex + 1] : null;
 
-  // Progreso: por ahora, el mock. Si el user está logueado en el mock
-  // (caso demo) lo usamos; si no, vacíos.
-  const mockUser = getCurrentUser();
-  const progress = mockUser
-    ? getLessonProgressForUser(mockUser.id, course.id)
-    : [];
-  const alreadyCompleted =
-    progress.find((p) => p.lessonId === lesson.id)?.completed ?? marked;
+  // Progreso: derivamos los "completed" para el sidebar a partir del
+  // percent global. Esto es una aproximación — la versión "real" (per-
+  // lesson) requiere mapear mock lesson → LMS lesson UUID, lo cual es
+  // scope de Fase E+ (catálogo migrado a la DB).
+  const sidebarProgress = buildApproxProgress(flat, currentPercent);
+
+  // ¿Esta lección ya está marcada? Dos formas de saberlo:
+  //  1. El user acaba de hacer click (state local `marked`).
+  //  2. El currentPercent del server ya cubre esta lección.
+  const lessonTarget = totalLessons > 0
+    ? Math.ceil(((lessonIndex + 1) / totalLessons) * 100)
+    : 100;
+  const alreadyCompleted = marked || currentPercent >= lessonTarget;
 
   // El botón "marcar como completada" solo si el user está inscripto
-  // (no en preview-only).
-  const canMarkComplete = enrolled && !isPreviewLesson;
+  // (no en preview-only) y tenemos el LMS courseId (sin él no podemos
+  // persistir).
+  const canMarkComplete =
+    enrolled && !isPreviewLesson && Boolean(lmsCourseId);
+
+  const handleMarkComplete = () => {
+    if (!lmsCourseId) return;
+    setError(null);
+    startTransition(async () => {
+      const result = await markLessonCompleteAction({
+        courseId: lmsCourseId,
+        lessonIndex,
+        totalLessons,
+      });
+      if (result.ok) {
+        setMarked(true);
+      } else {
+        setError(result.note || "No se pudo guardar el progreso.");
+      }
+    });
+  };
 
   return (
     <Container size="wide" className="py-8">
@@ -194,13 +235,25 @@ export function LessonView({
             {canMarkComplete && (
               <Button
                 variant={alreadyCompleted ? "outline" : "primary"}
-                onClick={() => setMarked(true)}
-                disabled={alreadyCompleted}
+                onClick={handleMarkComplete}
+                disabled={alreadyCompleted || isPending}
               >
-                {alreadyCompleted ? "✓ Completada" : "Marcar como completada"}
+                {isPending
+                  ? "Guardando…"
+                  : alreadyCompleted
+                    ? "✓ Completada"
+                    : "Marcar como completada"}
               </Button>
             )}
           </div>
+
+          {error && (
+            <Card className="mt-4 p-4 border-red-200 bg-red-50">
+              <p className="text-sm text-red-700">
+                ⚠ {error}
+              </p>
+            </Card>
+          )}
 
           <div className="mt-6">
             <p className="text-ink-soft leading-relaxed">{lesson.description}</p>
@@ -295,16 +348,55 @@ export function LessonView({
         <aside className="lg:sticky lg:top-20 lg:self-start">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-bold text-ink">Contenido del curso</h3>
-            <Badge tone="neutral">{flat.length} lecciones</Badge>
+            <Badge tone="neutral">
+              {flat.length} lecciones
+            </Badge>
+          </div>
+          <div className="mb-3 text-xs text-ink-muted">
+            {currentPercent > 0
+              ? `Llevás ${currentPercent}% del curso`
+              : "Aún no marcaste ninguna lección"}
           </div>
           <ModuleList
             course={course}
             activeLessonSlug={lesson.slug}
-            progress={progress}
+            progress={sidebarProgress}
             defaultOpen={true}
           />
         </aside>
       </div>
     </Container>
   );
+}
+
+/**
+ * Construye un array de `LessonProgress` (formato legacy de
+ * `@/types/index.ts` que consume `ModuleList`) marcando como completadas
+ * las primeras N lecciones del flat list, donde N = `percent * total / 100`.
+ *
+ * Es una aproximación: no sabemos cuáles lecciones marcó el user
+ * exactamente — solo tenemos un percent global. La alternativa "real"
+ * (per-lesson) requiere mapear mock lesson → LMS lesson UUID, lo cual
+ * es scope de Fase E+ (cuando el catálogo demo se cargue en la DB).
+ */
+function buildApproxProgress(
+  flat: ReturnType<typeof flatLessons>,
+  percent: number,
+): LessonProgress[] {
+  if (percent <= 0 || flat.length === 0) return [];
+  const completedCount = Math.min(
+    flat.length,
+    Math.max(0, Math.round((percent / 100) * flat.length)),
+  );
+  const now = new Date().toISOString();
+  return flat.slice(0, completedCount).map((f) => ({
+    id: `approx_${f.lesson.id}`,
+    userId: "",
+    lessonId: f.lesson.id,
+    courseId: "",
+    completed: true,
+    percent: 100,
+    completedAt: now,
+    lastSeenAt: now,
+  }));
 }

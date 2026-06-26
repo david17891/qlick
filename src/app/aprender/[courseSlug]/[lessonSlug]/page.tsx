@@ -6,7 +6,11 @@ import { LessonView } from "@/components/course/LessonView";
 import { getCurrentStudent } from "@/lib/auth/session";
 import { getCourseBySlug as getCourseBySlugLMS } from "@/lib/lms/courses-server";
 import { checkCourseAccess } from "@/lib/lms/entitlements";
-import { getCourseBySlug as getCourseBySlugMock } from "@/lib/data/courses";
+import { getUserEnrollments } from "@/lib/lms/enrollments-server";
+import {
+  getCourseBySlug as getCourseBySlugMock,
+  flatLessons,
+} from "@/lib/data/courses";
 import { findLesson as findLessonInMock } from "@/lib/data/courses";
 
 // NOTA DE DISEÑO:
@@ -137,6 +141,33 @@ export default async function LessonPage({
   const found = findLessonInMock(mockCourse, lessonSlug);
   const isPreviewLesson = found?.lesson.isPreview ?? false;
 
+  // Para el botón "Marcar como completada" necesitamos:
+  //  - lessonIndex (0-based en la lista plana de lecciones del curso)
+  //  - totalLessons (para calcular el percent nuevo en la Server Action)
+  //  - currentPercent (del enrollment activo, si existe)
+  //  - lmsCourseId (UUID real del curso en la tabla `courses` del LMS)
+  //
+  // Estos datos permiten que la Server Action `markLessonCompleteAction`
+  // persista el progreso en `enrollments.progress_percent` cuando el user
+  // hace click. Sin esto, la UX del demo sería: "marco la lección, el
+  // botón cambia, pero al volver al dashboard sigue en 0%".
+  const flat = flatLessons(mockCourse);
+  const totalLessons = flat.length;
+  const lessonIndex = found
+    ? flat.findIndex((f) => f.lesson.id === found.lesson.id)
+    : 0;
+
+  // Buscar el enrollment del user para conocer su percent actual. El
+  // dashboard hace lo mismo; en el peor caso (sin enrollment) caemos
+  // a 0 — la action lo creará retroactivamente al marcar.
+  const userEnrollments = await getUserEnrollments(session!.userId);
+  const currentEnrollment = lmsCourse
+    ? userEnrollments.find(
+        (e) => e.courseId === lmsCourse.id && e.status === "active",
+      )
+    : undefined;
+  const currentPercent = currentEnrollment?.progressPercent ?? 0;
+
   return (
     <>
       <Navbar />
@@ -145,6 +176,10 @@ export default async function LessonPage({
         lessonSlug={lessonSlug}
         enrolled={access.hasAccess}
         isPreviewLesson={isPreviewLesson}
+        lmsCourseId={lmsCourse?.id ?? null}
+        currentPercent={currentPercent}
+        lessonIndex={lessonIndex >= 0 ? lessonIndex : 0}
+        totalLessons={totalLessons}
       />
       <Footer />
     </>
