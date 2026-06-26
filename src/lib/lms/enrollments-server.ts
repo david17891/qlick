@@ -52,6 +52,7 @@ export function legacyEnrollmentToLms(legacy: {
   courseId: string;
   enrolledAt: string;
   progressPercent: number;
+  source?: string | null;
 }): Enrollment {
   return {
     id: legacy.id,
@@ -61,6 +62,7 @@ export function legacyEnrollmentToLms(legacy: {
     progressPercent: legacy.progressPercent,
     enrolledAt: legacy.enrolledAt,
     completedAt: legacy.progressPercent >= 100 ? legacy.enrolledAt : null,
+    source: legacy.source ?? null,
   };
 }
 
@@ -206,16 +208,21 @@ export async function getLessonProgress(
 /**
  * Inscribe a un usuario en un curso. Si ya existe el enrollment, lo devuelve
  * (idempotente — depende del UNIQUE constraint de la tabla).
+ *
+ * @param source Origen del enrollment para atribución. Ej: "qr", "organic".
+ *               Si el usuario ya estaba inscripto, el upsert NO sobreescribe
+ *               el source original (la fila existente gana).
  */
 export async function enrollUserInCourse(
   userId: string,
   courseId: string,
+  source?: string | null,
 ): Promise<CreateEnrollmentResult> {
   if (!isRealMode()) {
     // eslint-disable-next-line no-console
     console.info(
       "[enrollments-server] enrollUserInCourse demoMode: no se persiste",
-      { userId, courseId },
+      { userId, courseId, source },
     );
     return {
       ok: true,
@@ -227,17 +234,19 @@ export async function enrollUserInCourse(
   }
 
   const supabase = createSupabaseAdminClient();
+  // Si source es null/undefined, lo omitimos del payload para no pisar
+  // un source existente en un re-enrollment.
+  const payload: Database["public"]["Tables"]["enrollments"]["Insert"] = {
+    user_id: userId,
+    course_id: courseId,
+    status: "active",
+    progress_percent: 0,
+  };
+  if (source) payload.source = source;
+
   const { data, error } = await supabase
     .from("enrollments")
-    .upsert(
-      {
-        user_id: userId,
-        course_id: courseId,
-        status: "active",
-        progress_percent: 0,
-      },
-      { onConflict: "user_id,course_id" },
-    )
+    .upsert(payload, { onConflict: "user_id,course_id" })
     .select("id")
     .single();
 
@@ -247,6 +256,7 @@ export async function enrollUserInCourse(
       code: error?.code,
       userId,
       courseId,
+      source,
     });
     return {
       ok: false,

@@ -21,20 +21,29 @@
 
 ## En curso
 
-- [ ] **`feat/google-oauth`** — reemplazar magic link por Google OAuth
-  - Owner: Google Cloud Console + Supabase provider (en paralelo)
-  - Mavis: código (`OAuthLoginForm.tsx`, deprecación de `MagicLinkForm.tsx`)
-  - Estado: en desarrollo esta sesión
+- [ ] **`feat/qr-enrollment`** — inscripción real con QR por curso (modelo A) + atribución
+  - Migración: `ALTER TABLE enrollments ADD COLUMN source text` (idempotente)
+  - Endpoint: `/api/qr/[courseSlug]` devuelve PNG del QR
+  - Página: `/inscripcion/[courseSlug]` (preview + OAuth + server action)
+  - Tracking: `?ref=qr` → `enrollments.source = 'qr'`
+  - Callback actualizado para soportar `?next=` (one-click desde inscripción)
+  - QR codifica `${NEXT_PUBLIC_APP_URL}/inscripcion/[slug]?ref=qr` (cambia cuando David tenga dominio real)
 
 ## Pendientes — features
 
 | # | Feature | Branch | Decisión abierta |
 |---|---|---|---|
 | 4 | Flujo real de inscripción | `feat/qr-enrollment` | modelo A (QR por curso) confirmado |
-| 4b | Inscripción por QR (modelo A) | (parte de `feat/qr-enrollment`) | tipo de QR (URL vs endpoint `/api/qr/[slug].png`) |
+| 4b | Inscripción por QR (modelo A) | `feat/qr-enrollment` | en este branch |
 | 6 | Onboarding del alumno | `feat/onboarding-alumno` | scope exacto (tooltips vs tour modal vs emails) |
 | 5 | Pagos — adapters sin credenciales | `feat/pagos-adapters` | proveedor (MercadoPago / Stripe / Conekta) |
 | 7 | Tests automáticos (Vitest + SQL) | (puede ser branch por fase) | scope fase 1 |
+
+## Completados
+
+- [x] **`feat/google-oauth`** — Google OAuth reemplaza magic link (mergeado a `feature/lms-real-foundation` el 2026-06-25)
+  - Fix incluido: `client.ts` ahora usa acceso literal a `NEXT_PUBLIC_*` (bug conocido documentado en `config.ts:108-113`)
+  - Bug OAuth: cuentas en `ADMIN_EMAIL_ALLOWLIST` no pueden entrar como alumno (por diseño)
 
 ## Pendientes — decisión de producto (con socios)
 

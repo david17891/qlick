@@ -122,6 +122,14 @@ export interface Enrollment {
   enrolledAt: string;
   /** Cuándo se marcó como completado (status='completed'). */
   completedAt: string | null;
+  /**
+   * Origen del enrollment. Útil para atribución.
+   * - "qr": vino por QR/link con ?ref=qr
+   * - "organic": vino por el catálogo
+   * - "referral", "campaign", etc. para futuro
+   * - null: no tracked (legacy / flujos viejos)
+   */
+  source: string | null;
 }
 
 /* ------------------------------------------------------------------ */

@@ -53,14 +53,29 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(loginUrl("callback"));
   }
 
-  // Construimos la respuesta de éxito (redirect a /dashboard) y le adjuntamos
-  // las cookies de sesión al final, igual que en el callback admin. Si las
-  // cookies se setean sobre un response intermedio y devolvemos otro, se
-  // pierden y /dashboard no vería sesión.
-  const dashboardUrl = req.nextUrl.clone();
-  dashboardUrl.pathname = "/dashboard";
-  dashboardUrl.search = "";
-  const successRes = NextResponse.redirect(dashboardUrl);
+  // Construimos la respuesta de éxito. Si hay `?next=` válido (path relativo,
+  // empieza con "/" pero NO con "//"), redirigimos ahí. Esto permite que
+  // flujos como `/inscripcion/[slug]` traigan al alumno de vuelta después
+  // de autenticar. Si no hay next (o es inválido), vamos a /dashboard.
+  //
+  // Validación anti-open-redirect: solo aceptamos paths relativos para que
+  // un atacante no pueda armar `?next=//evil.com` y robarnos la sesión.
+  const nextParam = url.searchParams.get("next");
+  const targetUrl = req.nextUrl.clone();
+  if (nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")) {
+    // Separamos path y query string de next.
+    const [nextPath, nextQuery] = nextParam.split("?", 2);
+    targetUrl.pathname = nextPath;
+    targetUrl.search = nextQuery ? `?${nextQuery}` : "";
+  } else {
+    targetUrl.pathname = "/dashboard";
+    targetUrl.search = "";
+  }
+
+  // Le adjuntamos las cookies de sesión al final, igual que en el callback
+  // admin. Si las cookies se setean sobre un response intermedio y devolvemos
+  // otro, se pierden.
+  const successRes = NextResponse.redirect(targetUrl);
 
   const supabase = createServerClient(
     supabaseConfig.url,
