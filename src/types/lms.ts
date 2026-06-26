@@ -28,6 +28,56 @@ export type CourseLevel = "beginner" | "intermediate" | "advanced";
 export type EnrollmentStatus = "active" | "completed" | "cancelled";
 
 /**
+ * Modelo de acceso del curso (v1.0.0).
+ * - "free": contenido público con login (default). Sin course_access.required.
+ * - "paid": requiere course_access.active. Botón "Inscribirme" redirige a /pagar.
+ * - "freemium": gratis con contenido premium interno (fase futura, schema ya lo soporta).
+ */
+export type CourseAccessType = "free" | "paid" | "freemium";
+
+/**
+ * Estado de un derecho de acceso (course_access.access_status).
+ * - "active": puede ver.
+ * - "pending": creado pero no activado (ej. pago pendiente).
+ * - "expired": venció (campo expires_at).
+ * - "revoked": revocado manualmente (ej. refund).
+ */
+export type CourseAccessStatus = "active" | "pending" | "expired" | "revoked";
+
+/**
+ * Origen de un derecho de acceso.
+ * - "free_course": grant por enrollment a curso gratis.
+ * - "simulated_payment": pago via simulador (dev).
+ * - "manual_admin": admin lo dio vía panel.
+ * - "stripe" | "mercadopago" | "conekta": proveedores reales (futuro).
+ * - "coupon": código promocional.
+ */
+export type CourseAccessSource =
+  | "free_course"
+  | "simulated_payment"
+  | "manual_admin"
+  | "stripe"
+  | "mercadopago"
+  | "conekta"
+  | "coupon";
+
+/**
+ * Provider de pago (payments.provider).
+ * "simulated" es para desarrollo; el resto son proveedores reales a integrar.
+ */
+export type PaymentProvider = "simulated" | "stripe" | "mercadopago" | "conekta";
+
+/**
+ * Estado de un pago (payments.status).
+ * - "pending": creado, esperando confirmación.
+ * - "paid": confirmado, activa el acceso.
+ * - "failed": rechazado.
+ * - "refunded": devuelto, debe revocar el acceso.
+ * - "cancelled": cancelado antes de pagar.
+ */
+export type PaymentStatus = "pending" | "paid" | "failed" | "refunded" | "cancelled";
+
+/**
  * Provider del asset de video. Coincide con los valores permitidos por el
  * CHECK constraint en `lessons.video_provider`.
  *
@@ -176,3 +226,72 @@ export interface UpdateEnrollmentProgressResult {
   demo: boolean;
   note: string;
 }
+
+/* ------------------------------------------------------------------ */
+/* Entitlements (v1.0.0) — derechos de acceso por curso                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Derecho de acceso de un usuario a un curso. Independiente de `Enrollment`:
+ * modela "¿tiene derecho a ver el contenido?" (no "¿está apuntado?").
+ *
+ * Separar `Enrollment` de `CourseAccess` evita migraciones futuras cuando
+ * se agreguen pagos reales (Stripe/MercadoPago/Conekta).
+ */
+export interface CourseAccess {
+  id: string;
+  userId: string;
+  courseId: string;
+  accessStatus: CourseAccessStatus;
+  accessSource: CourseAccessSource;
+  /** FK a `payments.id`. Null si el acceso no vino de un pago. */
+  paymentId: string | null;
+  /** Cuándo se le dio el acceso. */
+  startsAt: string;
+  /** Cuándo vence. `null` = permanente. */
+  expiresAt: string | null;
+  /** Audit trail libre. Ej: 'paid_via_sim_2026-06-25', 'refunded_2026-06-26'. */
+  grantedReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Registro de pago. Arranca con `provider='simulated'`. Cuando se integre
+ * Stripe/MercadoPago/Conekta, el simulador se reemplaza por el webhook del
+ * proveedor real manteniendo la misma estructura.
+ *
+ * Idempotencia: UNIQUE (user_id, course_id, idempotency_key). El simulador
+ * (y luego el webhook real) usa el mismo key para evitar duplicados.
+ */
+export interface Payment {
+  id: string;
+  userId: string;
+  courseId: string;
+  provider: PaymentProvider;
+  /** ID del pago en el provider (null en simulated o pending). */
+  providerPaymentId: string | null;
+  /** Monto en centavos MXN. */
+  amountMxn: number;
+  currency: string;
+  status: PaymentStatus;
+  idempotencyKey: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Resultado de `checkCourseAccess` / `checkLessonAccess`. Tagged union para
+ * que el caller sepa con certeza por qué tiene o no acceso (sin booleanos
+ * ambiguos ni acoplar al HTTP status).
+ */
+export type AccessResult =
+  | {
+      hasAccess: true;
+      source: CourseAccessSource;
+      expiresAt: string | null;
+    }
+  | {
+      hasAccess: false;
+      reason: "not_authenticated" | "no_access" | "expired";
+    };

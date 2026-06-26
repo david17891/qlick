@@ -25,6 +25,14 @@ export {
   updateEnrollmentProgress,
 } from "./enrollments-server";
 
+export {
+  getCourseAccess,
+  checkCourseAccess,
+  checkLessonAccess,
+  grantAccess,
+  revokeAccess,
+} from "./entitlements";
+
 export type {
   CourseRow,
   ModuleRow,
