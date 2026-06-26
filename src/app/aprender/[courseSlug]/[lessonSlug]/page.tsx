@@ -7,6 +7,7 @@ import { getCurrentStudent } from "@/lib/auth/session";
 import { getCourseBySlug as getCourseBySlugLMS } from "@/lib/lms/courses-server";
 import { checkCourseAccess } from "@/lib/lms/entitlements";
 import { getCourseBySlug as getCourseBySlugMock } from "@/lib/data/courses";
+import { findLesson as findLessonInMock } from "@/lib/data/courses";
 
 // NOTA DE DISEÑO:
 // Esta página tiene un problema de chicken-and-egg: el componente
@@ -129,10 +130,22 @@ export default async function LessonPage({
 
   // OK, tiene access. Renderizar lección con el mock course (que tiene los
   // módulos y videos correctos).
+  // Calculamos isPreviewLesson para que el cliente sepa si esta lección es
+  // accesible sin enrollment (caso edge: el usuario hace click en "Vista
+  // previa" sin estar inscripto). Por seguridad, una lección "preview" solo
+  // se permite si la página llegó hasta acá — el server YA validó access.
+  const found = findLessonInMock(mockCourse, lessonSlug);
+  const isPreviewLesson = found?.lesson.isPreview ?? false;
+
   return (
     <>
       <Navbar />
-      <LessonView course={mockCourse} lessonSlug={lessonSlug} />
+      <LessonView
+        course={mockCourse}
+        lessonSlug={lessonSlug}
+        enrolled={access.hasAccess}
+        isPreviewLesson={isPreviewLesson}
+      />
       <Footer />
     </>
   );

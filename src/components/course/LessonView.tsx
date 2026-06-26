@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import type { Course, User } from "@/types";
+import type { Course } from "@/types";
 import { getCurrentUser } from "@/lib/auth/mock-auth";
 import {
   isEnrolled,
@@ -22,21 +22,43 @@ import { ModuleList } from "@/components/course";
 import { WhatsAppButton } from "@/components/contact/WhatsAppButton";
 import { formatDuration } from "@/lib/utils";
 
+/**
+ * LessonView — vista de una lección.
+ *
+ * Auth model (v0.9.0+):
+ * - El server (la página `/aprender/[course]/[lesson]/page.tsx`) ya validó
+ *   access contra el LMS real (Supabase). Si llegamos acá, el server
+ *   considera que el user PUEDE ver esta lección.
+ * - El cliente recibe `enrolled` y `isPreviewLesson` como props y los usa
+ *   como source-of-truth para la UI. NO consulta mock auth ni mock
+ *   enrollments (esos sistemas no conocen al user de Supabase).
+ *
+ * Por qué seguimos importando `getCurrentUser` / `isEnrolled` / etc.:
+ * - El `progress` (lesson_progress) del usuario AÚN vive en el mock
+ *   (`lib/data/enrollments`). El bridge completo de progreso a Supabase
+ *   es scope de Fase E+. Mientras tanto, los botones y la sidebar usan
+ *   los datos del mock si están disponibles; si no, caen a defaults.
+ *
+ * Trade-off conocido: si el user_id del mock no coincide con el user_id
+ * de Supabase (lo cual es el caso en producción), el progreso no se
+ * muestra correctamente. Aceptable para MVP.
+ */
 export function LessonView({
   course,
-  lessonSlug
+  lessonSlug,
+  enrolled = false,
+  isPreviewLesson = false,
 }: {
   course: Course;
   lessonSlug: string;
+  enrolled?: boolean;
+  isPreviewLesson?: boolean;
 }) {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-  const [ready, setReady] = useState(false);
   const [marked, setMarked] = useState(false);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const u = getCurrentUser();
-    setUser(u);
     setReady(true);
   }, [lessonSlug]);
 
@@ -50,48 +72,25 @@ export function LessonView({
     );
   }
 
-  // Si no hay sesión: invitamos a login pero permitimos ver previews.
-  if (!user) {
-    const isPreview = found?.lesson.isPreview;
-    if (!isPreview) {
-      return (
-        <Container className="py-16 max-w-2xl">
-          <EmptyState
-            icon="🔒"
-            title="Esta lección requiere acceso"
-            description="Inicia sesión con tu cuenta de alumno o inscríbrite en el curso para ver el contenido completo."
-            action={
-              <div className="flex flex-wrap gap-2 justify-center">
-                <Button href="/login">Iniciar sesión</Button>
-                <Button href={`/cursos/${course.slug}`} variant="outline">
-                  Ver detalles del curso
-                </Button>
-                <WhatsAppButton
-                  intent="enroll"
-                  courseName={course.title}
-                  variant="outline"
-                />
-              </div>
-            }
-          />
-        </Container>
-      );
-    }
-  }
-
-  // Si hay sesión pero no está inscrito (y no es preview): acceso restringido.
-  const enrolled = user ? isEnrolled(user.id, course.id) : false;
-  if (user && !enrolled && !found?.lesson.isPreview) {
+  // Gate de acceso (client-side, defensivo). El server YA pasó, pero si
+  // llegamos acá con !enrolled && !isPreviewLesson es porque algo se
+  // rompió. Mostramos paywall en lugar de la lección vacía.
+  if (!enrolled && !isPreviewLesson) {
     return (
       <Container className="py-16 max-w-2xl">
         <EmptyState
           icon="🔒"
-          title="Aún no estás inscrito en este curso"
-          description="Inscríbete para desbloquear todas las lecciones, recursos y el certificado."
+          title="Esta lección requiere acceso"
+          description={
+            "Para acceder a esta lección necesitás estar inscripto en el curso."
+          }
           action={
             <div className="flex flex-wrap gap-2 justify-center">
-              <Button href={`/cursos/${course.slug}`}>
-                Inscribirme / Comprar
+              <Button href={`/cursos/${course.slug}`} size="lg">
+                Ver detalles del curso
+              </Button>
+              <Button href="/cursos" variant="outline" size="lg">
+                Ver catálogo
               </Button>
               <WhatsAppButton
                 intent="enroll"
@@ -122,12 +121,39 @@ export function LessonView({
   const prev = currentIndex > 0 ? flat[currentIndex - 1] : null;
   const nextLesson = currentIndex < flat.length - 1 ? flat[currentIndex + 1] : null;
 
-  const progress = user ? getLessonProgressForUser(user.id, course.id) : [];
+  // Progreso: por ahora, el mock. Si el user está logueado en el mock
+  // (caso demo) lo usamos; si no, vacíos.
+  const mockUser = getCurrentUser();
+  const progress = mockUser
+    ? getLessonProgressForUser(mockUser.id, course.id)
+    : [];
   const alreadyCompleted =
     progress.find((p) => p.lessonId === lesson.id)?.completed ?? marked;
 
+  // El botón "marcar como completada" solo si el user está inscripto
+  // (no en preview-only).
+  const canMarkComplete = enrolled && !isPreviewLesson;
+
   return (
     <Container size="wide" className="py-8">
+      {/* Banner de preview (si aplica) */}
+      {isPreviewLesson && !enrolled && (
+        <Card className="mb-6 p-4 bg-brand-50 border-brand-200">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <Badge tone="info">Vista previa</Badge>
+              <p className="text-sm text-ink-soft mt-2">
+                Estás viendo una lección gratis. Inscríbete al curso para
+                acceder a todo el contenido y tracking de progreso.
+              </p>
+            </div>
+            <Button href={`/inscripcion/${course.slug}`} size="md">
+              Inscribirme gratis
+            </Button>
+          </div>
+        </Card>
+      )}
+
       {/* Breadcrumb */}
       <nav className="text-sm text-ink-muted mb-4">
         <Link href="/dashboard" className="hover:text-brand-600">Mi panel</Link>
@@ -165,7 +191,7 @@ export function LessonView({
                 {formatDuration(lesson.durationMinutes)} · {lesson.type}
               </p>
             </div>
-            {enrolled && (
+            {canMarkComplete && (
               <Button
                 variant={alreadyCompleted ? "outline" : "primary"}
                 onClick={() => setMarked(true)}
@@ -233,7 +259,7 @@ export function LessonView({
           )}
 
           {/* Notas del alumno */}
-          {enrolled && (
+          {canMarkComplete && (
             <Card className="mt-6 p-6">
               <h3 className="font-bold text-ink mb-2">Mis notas</h3>
               <textarea
@@ -275,7 +301,7 @@ export function LessonView({
             course={course}
             activeLessonSlug={lesson.slug}
             progress={progress}
-            defaultOpen={false}
+            defaultOpen={true}
           />
         </aside>
       </div>
