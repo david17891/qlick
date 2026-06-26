@@ -18,6 +18,14 @@ export {
   getLeads as getLeadsAsync,
   getLeadById as getLeadByIdAsync,
   createLead,
+  findLeadByEmail,
+  findLeadByPhone,
   type CreateLeadServerInput,
   type CreateLeadServerResult,
 } from "./leads-server";
+
+export {
+  normalizePhone,
+  phonesMatch,
+  isValidMxPhone,
+} from "./phone-utils";

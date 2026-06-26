@@ -28,6 +28,7 @@ import {
   mapLeadRowToLead,
   type InsertLeadPayload,
 } from "./leads-mapper";
+import { normalizePhone } from "./phone-utils";
 
 // Fallback a mocks (mismo módulo que usa hoy el CRM demo).
 import {
@@ -91,6 +92,112 @@ export async function getLeadById(id: string): Promise<Lead | undefined> {
   }
   if (!data) return undefined;
   return mapLeadRowToLead(data);
+}
+
+/**
+ * Busca un lead por email (case-insensitive, trimmed). Server-only.
+ *
+ * El email se normaliza a lowercase antes de la query (la columna `email`
+ * se persiste lowercased en `createLead`, pero el caller puede no saberlo).
+ *
+ * Si hay varios leads con el mismo email (no debería pasar, pero si la
+ * dedup falló en el pasado), devuelve el más reciente.
+ *
+ * Devuelve `null` si no hay match.
+ */
+export async function findLeadByEmail(
+  email: string,
+): Promise<Lead | null> {
+  const normalized = email?.trim().toLowerCase();
+  if (!normalized) return null;
+
+  if (!isRealMode()) {
+    // Fallback a mock: búsqueda lineal en los datos demo.
+    const mockList = getLeadsMock();
+    const found = mockList.find(
+      (l) => l.email?.trim().toLowerCase() === normalized,
+    );
+    return found ?? null;
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("leads")
+    .select("*")
+    .ilike("email", normalized)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    // eslint-disable-next-line no-console
+    console.error("[leads-server] findLeadByEmail falló", {
+      code: error.code,
+      email: normalized,
+    });
+    return null;
+  }
+  if (!data) return null;
+  return mapLeadRowToLead(data);
+}
+
+/**
+ * Busca un lead por teléfono. El input se normaliza con `normalizePhone()`
+ * (formato E.164 MX) antes de la query. Server-only.
+ *
+ * IMPORTANTE: la búsqueda es por EXACT match del teléfono normalizado.
+ * Como `leads.phone` se guarda tal cual (sin normalizar a nivel de DB
+ * todavía), esta función normaliza CADA fila del resultado y compara.
+ * Si la base tiene teléfonos en formatos variados, los unificamos acá.
+ *
+ * Devuelve el lead más reciente si hay varios con el mismo phone.
+ * `null` si no hay match o el input no se puede normalizar.
+ */
+export async function findLeadByPhone(
+  phone: string,
+): Promise<Lead | null> {
+  const normalized = normalizePhone(phone);
+  if (!normalized) return null;
+
+  if (!isRealMode()) {
+    // Fallback a mock: el mock puede tener formatos variados, normalizamos
+    // cada uno y comparamos con el input ya normalizado.
+    const mockList = getLeadsMock();
+    const { phonesMatch } = await import("./phone-utils");
+    const found = mockList.find((l) => phonesMatch(l.phone ?? null, normalized));
+    return found ?? null;
+  }
+
+  const supabase = createSupabaseAdminClient();
+  // Primero, una query amplia que traiga candidatos con `phone` no nulo.
+  // Como la columna no está normalizada en DB, comparamos post-query.
+  // Límite alto pero acotado: si llega a más de 200 leads con phone,
+  // la query es lenta, pero para MVP está bien. Optimizar después con
+  // un índice en phone_normalized cuando se agregue la columna.
+  const { data, error } = await supabase
+    .from("leads")
+    .select("*")
+    .not("phone", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  if (error) {
+    // eslint-disable-next-line no-console
+    console.error("[leads-server] findLeadByPhone falló", {
+      code: error.code,
+    });
+    return null;
+  }
+  if (!data || data.length === 0) return null;
+
+  const { phonesMatch } = await import("./phone-utils");
+  for (const row of data) {
+    const rowPhone = (row as { phone: string | null }).phone;
+    if (phonesMatch(rowPhone, normalized)) {
+      return mapLeadRowToLead(row as Parameters<typeof mapLeadRowToLead>[0]);
+    }
+  }
+  return null;
 }
 
 /* --------------------------- Escritura --------------------------- */
