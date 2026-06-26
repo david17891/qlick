@@ -1,182 +1,71 @@
-# Roadmap — Qlick Marketing Integral
+# Qlick LMS — Roadmap
 
-El roadmap está organizado en fases incrementales. Cada fase entrega valor
-autónomo y deja la base preparada para la siguiente.
-
----
-
-## Fase 0 — MVP (✅ Completado)
-
-**Objetivo:** plataforma navegable, con catálogo, lecciones, dashboards y datos
-mock. Lista para demostrar el producto y validar flujos.
-
-**Entregables**
-- ✅ Home con hero, beneficios, cursos destacados, testimonios y CTA.
-- ✅ Catálogo de cursos (4 cursos completos: módulos, lecciones, videos).
-- ✅ Página de detalle de curso.
-- ✅ Página de lección con reproductor de video (YouTube).
-- ✅ Vista previa de lecciones sin login.
-- ✅ Acceso restringido a lecciones de pago si no hay inscripción.
-- ✅ Dashboard de alumno (progreso, actividad, certificados simulados, pagos).
-- ✅ Panel administrativo (resumen, cursos, alumnos, inscripciones, pagos).
-- ✅ Login mock con 3 roles (admin, alumno, instructor).
-- ✅ Abstracción de video (5 proveedores, YouTube activo).
-- ✅ Abstracción de pagos (4 proveedores, mock activo).
-- ✅ Abstracción de contacto (`ContactProvider` mock + stubs resend/crm).
-- ✅ Botones de WhatsApp centralizados con fallback "próximamente".
-- ✅ CRM en modo demo: tipos, datos mock, servicios, UI completa (kanban, leads,
-  conversaciones, calendario, agente IA, configuración WhatsApp).
-- ✅ Abstracción de proveedor de WhatsApp (`WhatsAppProvider`: manual activo +
-  stubs Cloud API/BSP) y agente IA en modo sugerencia con guardrails.
-- ✅ Formulario de contacto con curso de interés y consentimiento obligatorio.
-- ✅ Diseño alineado a la identidad visual de Qlick.
-- ✅ Auditoría técnica, funcional y de marca (ver `docs/AUDIT_REPORT.md` y
-  relacionados).
-- ✅ Documentación (architecture, video, payments, contact, audit, decisions, github workflow).
-- ✅ SEO básico (metadata, sitemap, robots, Open Graph).
-- ✅ Build pasa, sin errores de tipos ni lint.
-- ✅ `npm run audit:links` limpio (sin anchors vacíos ni forms sin backend).
-
-**Criterios de salida**
-- `npm run build` genera 55 páginas estáticas.
-- Se puede recorrer el flujo completo: home → curso → login → lección → dashboard.
+> Fuente de verdad del plan del LMS. Cualquier desvío se conversa y se actualiza acá.
+> Última revisión: 2026-06-25 (sesión con David).
 
 ---
 
-## Fase 1 — Auth y DB real
+## Estado actual
 
-**Objetivo:** persistencia real de usuarios, inscripciones y progreso.
+- [x] **LMS Real Foundation v0.7.0** — rama `feature/lms-real-foundation`
+  - 5 tablas nuevas en Supabase (`courses`, `modules`, `lessons`, `enrollments`, `lesson_progress`)
+  - RLS activa con policies correctas (catalog: público solo `published`; datos alumno: solo `auth.uid()`)
+  - Server libs (`src/lib/lms/*`) con fallback demo
+  - Auth alumnos separada de admin (`student-auth.ts` + `session.ts:getCurrentStudent`)
+  - UI: `/login`, `/dashboard`, Navbar con identidad tri-state
+  - `docs/LMS_REAL_FOUNDATION.md` (handoff completo)
+  - **NO mergeado a main todavía** — esperando luz verde del owner.
+- [x] Auditoría técnica del branch (PASS con 1 hallazgo medio y 3 bajos)
+  - H1 — Inconsistencia `LessonVideoProvider "external"` (CHECK vs TS): **pendiente fix**
+  - H2/H3/H4 — warnings bajos, decisión del owner
 
-**Bootstrap de conexión (✅ preparado)**
-- ✅ Dependencias: `@supabase/supabase-js`, `@supabase/ssr`.
-- ✅ Clientes browser/server/admin con separación de secretos
-  (`src/lib/supabase/`).
-- ✅ Health-check + ruta interna `/admin/system/supabase`.
-- ✅ Estructura `supabase/` (migraciones placeholder, seed, config).
-- ✅ Script `npm run check:supabase`.
-- ✅ Docs: `SUPABASE_CONNECTION_BOOTSTRAP.md`, `SUPABASE_MCP_RUNBOOK.md`,
-  `AGENT_SUPABASE_PROTOCOL.md`, `VERCEL_ENV_SETUP.md`.
-- ⏳ Sin proyecto Supabase creado todavía. App sigue en modo demo.
+## En curso
 
-**Tareas**
-- [ ] Configurar proyecto Supabase (auth + Postgres) — requiere aprobación.
-- [ ] Crear esquema de tablas mapeado a `src/types/index.ts`.
-- [ ] Reemplazar `lib/data/*` por queries a Supabase (misma firma pública).
-- [ ] Reemplazar `mock-auth` por Supabase Auth (`signIn`, `signOut`, `getCurrentUser`).
-- [ ] Proteger rutas privadas con middleware de Next.js.
-- [ ] Sincronizar progreso de lecciones en tiempo real.
-- [ ] Activar registro de nuevos alumnos.
-- [ ] Panel admin funcional (CRUD real de cursos, módulos, lecciones).
-- [ ] Migrar assets de imágenes a Supabase Storage (opcional).
-- [ ] Activar RLS en todas las tablas + publicar aviso de privacidad.
+- [ ] **`feat/google-oauth`** — reemplazar magic link por Google OAuth
+  - Owner: Google Cloud Console + Supabase provider (en paralelo)
+  - Mavis: código (`OAuthLoginForm.tsx`, deprecación de `MagicLinkForm.tsx`)
+  - Estado: en desarrollo esta sesión
 
-**Entregable**
-- Plataforma con cuentas reales, progreso persistente y admin que guarda.
+## Pendientes — features
 
----
+| # | Feature | Branch | Decisión abierta |
+|---|---|---|---|
+| 4 | Flujo real de inscripción | `feat/qr-enrollment` | modelo A (QR por curso) confirmado |
+| 4b | Inscripción por QR (modelo A) | (parte de `feat/qr-enrollment`) | tipo de QR (URL vs endpoint `/api/qr/[slug].png`) |
+| 6 | Onboarding del alumno | `feat/onboarding-alumno` | scope exacto (tooltips vs tour modal vs emails) |
+| 5 | Pagos — adapters sin credenciales | `feat/pagos-adapters` | proveedor (MercadoPago / Stripe / Conekta) |
+| 7 | Tests automáticos (Vitest + SQL) | (puede ser branch por fase) | scope fase 1 |
 
-## Fase 2 — Pagos reales en México
+## Pendientes — decisión de producto (con socios)
 
-**Objetivo:** vender cursos con dinero real.
+- [ ] **Catálogo real en DB** — cargar los 4 cursos demo a Supabase con un script de seed. Bloqueado: definir si el catálogo se amplía o se queda en 4.
+- [ ] **Contenido real de cursos** — videos reales (no placeholders de YouTube). Bloqueado: definir qué cursos se producen y cuándo.
 
-**Tareas**
-- [ ] Elegir proveedor inicial (recomendado: Mercado Pago).
-- [ ] Implementar `createCheckout` real en el provider elegido.
-- [ ] Implementar `parseWebhook` validando firma.
-- [ ] Crear endpoint `/api/webhooks/payments` para recibir notificaciones.
-- [ ] Conceder acceso automáticamente tras webhook aprobado.
-- [ ] Página de checkout propia (`/checkout/[courseId]`).
-- [ ] Página de estado post-pago (`/pago/[paymentId]`).
-- [ ] Gestión real de cupones (validación, límites, conteo).
-- [ ] Historial de pagos persistente.
-- [ ] Facturación CFDI (Conekta o solución complementaria).
-- [ ] MSI (meses sin intereses) si el proveedor lo soporta.
+## Pendientes — decisiones técnicas
 
-**Entregable**
-- Alumno puede comprar, pagar y obtener acceso automáticamente.
+- [ ] **Proveedor de pagos** (MercadoPago / Stripe / Conekta / mix). Costo, comisiones, experiencia para alumno mexicano.
+- [ ] **Plantilla de email transaccional** (reset password, bienvenida). Default de Supabase vs custom.
+- [ ] **Monitoring de errores en runtime** (Sentry vs nada por ahora).
+
+## NO se hace todavía
+
+- Multi-agente paralelo. Acordado con David: features de tamaño medio se hacen secuenciales en una sesión, documentadas en este roadmap.
+- Tests E2E (Playwright) hasta tener onboarding cerrado.
+- Load tests hasta tener tráfico real.
 
 ---
 
-## Fase 3 — Video hosting profesional
+## Convenciones del repo
 
-**Objetivo:** proteger el contenido de pago con restricción real.
+- Cada feature nueva va en su propio branch `feat/<nombre>` desde `feature/lms-real-foundation`.
+- Merge entre features va a `feature/lms-real-foundation` (NO a `main` hasta que David diga).
+- Commit messages: `feat(...)`, `fix(...)`, `docs(...)`, `chore(...)`, siguiendo conventional commits.
+- Antes de pedir review: `npm run type-check && npm run lint && npm run build`.
 
-**Tareas**
-- [ ] Migrar videos a Cloudflare Stream (o Mux).
-- [ ] Backend para firmar URLs de video.
-- [ ] Restricción por dominio + expiración.
-- [ ] Migrar lecciones existentes al nuevo proveedor.
-- [ ] Analíticas de reproducción (heatmap de abandono).
-- [ ] Subtítulos y transcripciones.
-- [ ] Calidad adaptativa (ABR).
+## Glosario de branches
 
-**Entregable**
-- Videos de pago no reproducibles fuera de la plataforma.
-
----
-
-## Fase 4 — Certificados, comunidad y automatización
-
-**Objetivo:** convertir la plataforma en un producto completo.
-
-**Tareas**
-- [ ] Generación real de certificados PDF con código verificable.
-- [ ] Página pública de verificación de certificados (`/certificado/[code]`).
-- [ ] Comunidad (foro o canal integrado).
-- [x] Foundation del CRM lista (modo demo): tipos, servicios, UI y formulario con
-  consentimiento. Falta persistencia (Fase 1) y CRM externo.
-- [x] Abstracción `WhatsAppProvider` (manual activo + Cloud API/BSP como stubs).
-- [x] Agente IA en modo sugerencia con guardrails (proveedor mock activo).
-- [ ] WhatsApp Business Cloud API real: plantillas, opt-in, ventana 24h, webhook
-  (ver `docs/WHATSAPP_OFFICIAL_INTEGRATION_PLAN.md`).
-- [ ] Agente IA con LLM real (OpenRouter), manteniendo `needsReview`.
-- [ ] Activar proveedor `resend`/`crm` de contacto (completar stubs de `src/lib/contact/`).
-- [ ] Automatizaciones de email marketing (bienvenida, abandono, follow-up).
-- [ ] Programa de afiliados.
-- [ ] Notificaciones push / in-app.
-- [ ] App móvil (React Native o PWA avanzada).
-
-**Entregable**
-- Plataforma completa lista para escalar y fidelizar.
-
-## Fase 1.5 — Masterclass Funnel Foundation (✅ Implementado v0.6.0)
-
-**Objetivo:** captar leads vía masterclasses gratuitas con landing pública,
-registro real y seguimiento desde el panel admin.
-
-**Entregables**
-- ✅ Migración `supabase/migrations/20260625130000_masterclass_funnel.sql`
-  con `masterclasses` (catálogo público) y `masterclass_registrations`
-  (registros privados, RLS deny para anon).
-- ✅ Server libs (`src/lib/masterclasses/`) con fallback demo.
-- ✅ Landing pública `/masterclass/[slug]` con formulario + consentimiento.
-- ✅ Panel admin `/admin/masterclass` (lista) y `/admin/masterclass/[id]`
-  (detalle + registrados + acciones de asistencia / comercial).
-- ✅ Server actions protegidos: `submitMasterclassRegistration` (público)
-  y `adminUpdateRegistrationAction` (admin).
-- ✅ Seed inicial: masterclass "Clase gratuita de Marketing Digital"
-  (`clase-gratuita-marketing-digital`) en estado `published`.
-- ⏳ Sin migrar (explícito): notificaciones por email, replays, embudo
-  automatizado, conversión a LMS, WhatsApp Business API.
-
-**Criterios de salida**
-- `npm run build` pasa con la ruta `/masterclass/[slug]`.
-- El panel admin lista la masterclass publicada.
-- Un submit en la landing crea `lead` + `masterclass_registration`
-  vinculados por email.
-- Las acciones admin cambian `attendance_status` / `commercial_status`.
-
-Ver `docs/MASTERCLASS_FUNNEL_FOUNDATION.md` para el detalle completo.
-
----
-
-## Backlog (sin fase asignada)
-
-- [ ] Búsqueda y filtros avanzados en el catálogo.
-- [ ] Recomendaciones con ML según progreso.
-- [ ] Modo offline para lecciones descargables.
-- [ ] Exámenes y evaluaciones con calificación automática.
-- [ ] Gamificación (puntos, rachas, insignias).
-- [ ] Multi-idioma (inglés para LATAM).
-- [ ] Tema oscuro nativo.
-- [ ] Integración con calendario para sesiones en vivo.
+- `main` — producción. NO se toca sin luz verde.
+- `feature/lms-real-foundation` — base estable del LMS, recibe merges de features chicos.
+- `feat/*` — features individuales en desarrollo.
+- `fix/*` — bugfixes.
+- `docs/*` — cambios solo de documentación.
