@@ -116,7 +116,11 @@ async function loadDashboardData(
         );
         if (!hasEnrollment) {
           try {
-            await lms.enrollUserInCourse(userId, courseId, "mock_provider");
+            // source=null: el origen real está en `course_access.access_source`
+            // (puede ser `simulated_payment`, `manual_admin`, etc.). No
+            // lo duplicamos en el enrollment — si hace falta atribución,
+            // se cruza por `course_access`.
+            await lms.enrollUserInCourse(userId, courseId, null);
           } catch (err) {
             // eslint-disable-next-line no-console
             console.error("[dashboard] enroll retroactivo falló", err);

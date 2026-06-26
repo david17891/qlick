@@ -63,6 +63,77 @@
 - **Multi-agente: abstener por ahora**. Acordado con David: features de tamaño medio se hacen secuenciales en una sesión, documentadas en este roadmap. Para planes multi-agente, dividir en sub-tareas <8 archivos cada una o aceptar partial-state + post-mortem manual.
 - **Admin no puede testear el flujo de pagos**: por diseño, una cuenta admin no es student. Para E2E de pagos, crear una cuenta NO-admin o sacarla temporalmente del allowlist.
 
+---
+
+## Política de datos (PII) — 2026-06-26
+
+Regla inquebrantable: **datos personales reales (nombres, teléfonos, emails de personas físicas) NUNCA entran al repo, tests, fixtures, screenshots públicas, ni commits.**
+
+### Lo que SÍ se puede
+- Datos reales en operación local: Supabase del proyecto, admin privado, demo privada del socio.
+- Importador (cuando exista) leyendo Excels de `private-data/` o ruta configurable por env var.
+- Backups locales encriptados fuera del repo.
+
+### Lo que NO se puede
+- Subir el Excel ni ningún archivo con datos personales al repo.
+- Commits con teléfonos, emails, nombres reales de personas.
+- Tests/fixtures con datos reales (usar siempre sintéticos: `+52XXXXXXXXXX`, `@example.com`).
+- Screenshots públicas con datos identificables (anonimizar o usar métricas agregadas).
+- Logs con PII (`console.log` de leads, attendees, etc. — usar IDs, no datos crudos).
+
+### Patrones `.gitignore` (ya agregados)
+- `/private-data/` y `/datos-privados/` → carpetas locales del equipo
+- `lista_*.xlsx`, `asistencia_*.xlsx`, `clientes_*.xlsx`, `encuesta_*.xlsx`, `leads_*.xlsx`, `evento_*.xlsx` → Excels típicos
+- Cualquier archivo nuevo con PII debe agregarse al `.gitignore` antes de existir
+
+### Cuando se agregue el importador
+- Lee de `QLICK_IMPORT_PATH` (env var) o una ruta local conocida
+- NUNCA hardcodear rutas que incluyan el repo
+- Tests con fixtures sintéticos en `tests/fixtures/` (sí commiteables)
+- Validar que los headers del Excel no incluyan campos inesperados de PII
+
+---
+
+## Visión estratégica (reencuadre del cliente, 2026-06-26)
+
+El cliente reposicionó Qlick: no es solo un LMS, es una **plataforma propia** que combina:
+
+- **LMS**: cursos, lecciones, alumnos, inscripciones, progreso, pagos.
+- **CRM**: leads, prospectos, seguimiento, estados comerciales, oportunidades.
+- **Eventos/conferencias**: registros, confirmados, asistentes, encuestas, seguimiento.
+- **WhatsApp**: primero manual con `wa.me` + estados, después API Business (futuro).
+- **Automatizaciones**: no como piezas sueltas, sino como funciones conectadas al flujo comercial.
+
+**Flujo objetivo:** Evento/campaña → prospecto → CRM → seguimiento WhatsApp → inscripción → pago → acceso al curso → progreso → futuras ventas.
+
+### Lo que ya existe (parcialmente)
+- LMS funcional (catálogo, detalle, login, dashboard, lecciones, progreso).
+- Auth con Supabase + roles admin/student.
+- CRM con **dominio + UI en demo mode** (`src/lib/crm/`, 16 archivos, 17 tipos, sin persistencia real).
+- WhatsApp: 10 intents, `wa.me` manual provider activo, stubs de Meta Cloud API / BSP.
+- Agente IA: heurísticas deterministas, stubs de OpenRouter, guardrails.
+- Supabase: 9 migrations, RLS, typegen, server actions.
+- Pago simulado funcional.
+
+### Roadmap priorizado (acordado con David, 2026-06-26)
+
+| # | Fase | Estado | Notas |
+|---|---|---|---|
+| 0 | **LMS al 100%** (esta semana) | 🟡 en curso | polish, hidratación bug, dashboard persist |
+| 1 | **Preparar flujo conceptual del evento** (en paralelo) | ⚪ no iniciado | QR general → respuestas → asistentes → interés comercial, solo DOC, no implementar |
+| 2 | **CRM pasa de demo a real** | ⚪ no iniciado | conectar `crm-service.ts` a Supabase, persistir leads/tareas/notas |
+| 3 | **Módulo de eventos + importador seguro** | ⚪ no iniciado | schema `events`, `event_confirmations`, `event_attendees`, `event_surveys`; importador desde ruta local con datos sintéticos para tests |
+| 4 | **WhatsApp manual workflow** | ⚪ no iniciado | admin genera mensaje, wa.me link, marca estado, audit log |
+| 5 | **Pagos reales** (Stripe / MercadoPago / Conekta) | ⚪ futuro | reemplazar simulador |
+| 6 | **WhatsApp Business API** | ⚪ futuro | webhooks, plantillas, Meta Cloud API |
+
+**Lo que NO se hace todavía** (decisión explícita del cliente):
+- Enviar mensajes automáticos por WhatsApp.
+- Conectar WhatsApp API.
+- Importar confirmados como alumnos (deben pasar por el flow de lead).
+- Asumir consentimiento comercial si no está explícito en la encuesta.
+- Subir Excels con datos personales al repo.
+
 ## Pendientes — decisión de producto (con socios)
 
 - [ ] **Contenido real de cursos** — videos reales (no placeholders de YouTube). Bloqueado: definir qué cursos se producen y cuándo.

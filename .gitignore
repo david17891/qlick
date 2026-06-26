@@ -74,3 +74,31 @@ next-env.d.ts
 /PR_BODY.md
 
 dev-server.log
+dev-server.err.log
+
+# ============================================================================
+# Política de datos — NUNCA commitear datos personales / PII
+# ============================================================================
+# Los Excels de eventos/conferencias/clientes y cualquier archivo con datos
+# personales (nombres, teléfonos, emails reales) NUNCA deben entrar al repo.
+#
+# Patrones cubiertos:
+#  - /private-data/  → carpeta de uso local del socio/equipo, fuera del repo
+#  - /datos-privados/ → equivalente en español
+#  - lista_*.xlsx, asistencia_*.xlsx, clientes_*.xlsx, encuesta_*.xlsx → Excels típicos
+#  - *.csv con datos de leads/eventos → si los hay, deben ir a private-data/
+#
+# Los datos reales SÍ se usan para operación local (Supabase, admin privado,
+# demo privada del socio). NO se usan en: tests, fixtures, screenshots
+# públicas, logs, ni commits. Para tests usar siempre datos sintéticos
+# (nombres falsos, teléfonos +52XXXXXXXXXX, emails @example.com).
+#
+# Ver docs/ROADMAP.md → "Política de datos" para el detalle completo.
+/private-data/
+/datos-privados/
+/lista_*.xlsx
+/asistencia_*.xlsx
+/clientes_*.xlsx
+/encuesta_*.xlsx
+/leads_*.xlsx
+/evento_*.xlsx

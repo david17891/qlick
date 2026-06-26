@@ -194,10 +194,15 @@ export async function POST(req: NextRequest) {
       // También creamos/actualizamos el enrollment para que el dashboard
       // muestre el curso. enrollments-server maneja idempotencia
       // (no duplica si ya hay uno).
+      //
+      // source=null: la atribución del pago está en `course_access.access_source`
+      // (vía grantAccess arriba con `"simulated_payment"`). `enrollments.source`
+      // es para el ORIGEN del enrollment (qr/organic/referral/campaign), no el
+      // método de pago, así que null es correcto.
       const enrollResult = await enrollUserInCourse(
         session.userId,
         course.id,
-        "mock_provider",
+        null,
       );
       if (!enrollResult.ok) {
         // eslint-disable-next-line no-console
