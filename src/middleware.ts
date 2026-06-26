@@ -19,6 +19,10 @@
  * Nota técnica: el cliente Supabase en middleware se crea con los helpers de
  * @supabase/ssr sobre `request.cookies` y `NextResponse.next({ request })` para
  * refrescar la sesión (patrón oficial de Supabase para Next.js).
+ *
+ * Ubicación: en proyectos con `src/`, el middleware DEBE ir en
+ * `src/middleware.ts`. Si está en la raíz del proyecto, Next.js NO lo carga.
+ * (Encontrado en bug de seguridad 2026-06-26.)
  */
 
 import { NextResponse, type NextRequest } from "next/server";
