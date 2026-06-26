@@ -188,16 +188,18 @@ async function loadDashboardData(
           courseTitle: "(curso no encontrado)",
         };
       }
-      // Para la próxima lección, los módulos/lecciones del LMS aún no se
-      // cargan en este endpoint; en demoMode usamos el mock. Si el LMS tiene
-      // módulos, este lookup debería ir a getCourseModules + getModuleLessons,
-      // pero el dashboard no los usa hoy. Dejamos nextLesson como undefined
-      // si no hay forma de obtenerlo.
+      // Para la próxima lección: en demoMode usamos el mock que tiene los
+      // módulos/lecciones embebidos. En realMode el LMS aún no tiene
+      // lecciones cargadas (Fase E+), así que también recurrimos al mock
+      // por slug — es la única fuente de verdad para lesson content hoy.
+      // Si el LMS tiene módulos/lecciones en el futuro, este lookup debería
+      // ir a getCourseModules + getModuleLessons.
       let nextLesson: { slug: string; title: string } | undefined;
-      if (!inRealMode) {
-        // Cast: getCourseById del mock devuelve Course legacy (con más campos).
-        // En runtime funciona; aquí solo necesitamos .modules.
-        const flat = flatLessons(course as unknown as Parameters<typeof flatLessons>[0]);
+      const mockCourse = getCourseById(e.courseId);
+      if (mockCourse) {
+        const flat = flatLessons(
+          mockCourse as unknown as Parameters<typeof flatLessons>[0],
+        );
         const completed = new Set(
           lessonProgress
             .filter((p) => p.courseId === e.courseId && p.completed)

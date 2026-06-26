@@ -219,6 +219,18 @@ export function DashboardView({
                             : "Continuar"}
                       </Button>
                     ) : null}
+                    {/* Botón siempre visible para ir al detalle del curso.
+                        Útil en real mode donde `nextLessonSlug` puede ser
+                        undefined y no hay otro punto de entrada al curso. */}
+                    {e.courseSlug && (
+                      <Button
+                        href={`/cursos/${e.courseSlug}`}
+                        variant={e.nextLessonSlug ? "outline" : "primary"}
+                        size="sm"
+                      >
+                        Ver curso
+                      </Button>
+                    )}
                     {!isComplete && (
                       <Button
                         variant="outline"
