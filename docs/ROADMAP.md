@@ -1,17 +1,19 @@
 # Qlick LMS — Roadmap
 
 > Fuente de verdad del plan del LMS. Cualquier desvío se conversa y se actualiza acá.
-> Última revisión: 2026-06-25 (sesión con David).
+> Última revisión: 2026-06-25 (sesión con David) — **merge a main ejecutado al cierre de la sesión**.
 
 ---
 
 ## Estado actual
 
-- [x] **LMS Real Foundation v0.7.0** — rama `feature/lms-real-foundation`
+- [x] **LMS Real Foundation v0.9.0** — fase cerrada y mergeada a `main` (commit `78db4a3`) el 2026-06-25
+  - 14 commits: DB (5 tablas + RLS) → server libs → docs handoff → Google OAuth → fix `client.ts` → QR enrollment → fallbacks UUID/FK → seed script → docs E2E plan → tour Playwright
+  - Validado: `npm run type-check && npm run build` green, query directa a DB confirma 4 cursos + 12 módulos + 36 lecciones
 - [x] **feat/google-oauth** — Google OAuth reemplaza magic link + fix `client.ts` acceso literal a `NEXT_PUBLIC_*`
 - [x] **feat/qr-enrollment** — Inscripción con QR + tracking `source` + página `/inscripcion/[slug]`
   - Fallbacks automáticos: `getCourseBySlug` cae al mock cuando DB no tiene el slug; `enrollUserInCourse` valida UUID antes del upsert y cae a demo si el ID es mock legacy
-- [ ] **seed:courses** — Script listo para cargar los 4 cursos demo a Supabase (`npm run seed:courses`). Owner corre cuando quiera.
+- [x] **seed:courses** — Script ejecutado el 2026-06-25: 4 cursos + 12 módulos + 36 lecciones cargados en Supabase (idempotente, ya no-op en re-runs).
 
 ## Deuda activa (no bloqueante)
 
@@ -27,8 +29,6 @@
 
 | # | Feature | Branch | Decisión abierta |
 |---|---|---|---|
-| 4 | Flujo real de inscripción | ✅ mergeado | modelo A (QR por curso) confirmado |
-| 4b | Inscripción por QR (modelo A) | ✅ mergeado | en este branch |
 | 6 | Onboarding del alumno | `feat/onboarding-alumno` | scope exacto (tooltips vs tour modal vs emails) |
 | 5 | Pagos — adapters sin credenciales | `feat/pagos-adapters` | proveedor (MercadoPago / Stripe / Conekta) |
 | 7 | Tests automáticos (Vitest + SQL) | (puede ser branch por fase) | scope fase 1 |
@@ -38,10 +38,10 @@
 - [x] **`feat/google-oauth`** — Google OAuth reemplaza magic link (mergeado a `feature/lms-real-foundation` el 2026-06-25)
   - Fix incluido: `client.ts` ahora usa acceso literal a `NEXT_PUBLIC_*` (bug conocido documentado en `config.ts:108-113`)
   - Bug OAuth: cuentas en `ADMIN_EMAIL_ALLOWLIST` no pueden entrar como alumno (por diseño)
+- [x] **Tests E2E — Fase 1 (tour Playwright MCP)** — mergeado el 2026-06-25. 7 screenshots en `docs/screenshots/2026-06-25-e2e-tour/` con cross-check de DB. Plan completo en `docs/E2E_TESTS_PLAN.md`. **Fase 2 (`@playwright/test` + CI) queda pendiente** hasta que haya CI real configurado.
 
 ## Pendientes — decisión de producto (con socios)
 
-- [ ] **Catálogo real en DB** — cargar los 4 cursos demo a Supabase con un script de seed. Bloqueado: definir si el catálogo se amplía o se queda en 4.
 - [ ] **Contenido real de cursos** — videos reales (no placeholders de YouTube). Bloqueado: definir qué cursos se producen y cuándo.
 
 ## Pendientes — decisiones técnicas
@@ -53,22 +53,21 @@
 ## NO se hace todavía
 
 - Multi-agente paralelo. Acordado con David: features de tamaño medio se hacen secuenciales en una sesión, documentadas en este roadmap.
-- Tests E2E (Playwright) hasta tener onboarding cerrado.
+- `@playwright/test` framework (Fase 2 de tests E2E) hasta tener CI real en GitHub Actions.
 - Load tests hasta tener tráfico real.
 
 ---
 
 ## Convenciones del repo
 
-- Cada feature nueva va en su propio branch `feat/<nombre>` desde `feature/lms-real-foundation`.
-- Merge entre features va a `feature/lms-real-foundation` (NO a `main` hasta que David diga).
+- Cada feature nueva va en su propio branch `feat/<nombre>` desde `main` (post-merge del 2026-06-25, ya no se usa `feature/lms-real-foundation` como base estable).
+- Merge entre features va a `main` directamente (David da luz verde al cierre de cada fase).
 - Commit messages: `feat(...)`, `fix(...)`, `docs(...)`, `chore(...)`, siguiendo conventional commits.
 - Antes de pedir review: `npm run type-check && npm run lint && npm run build`.
 
 ## Glosario de branches
 
-- `main` — producción. NO se toca sin luz verde.
-- `feature/lms-real-foundation` — base estable del LMS, recibe merges de features chicos.
+- `main` — producción. NO se toca sin luz verde. Recibe merges directo de features cerradas.
 - `feat/*` — features individuales en desarrollo.
 - `fix/*` — bugfixes.
 - `docs/*` — cambios solo de documentación.
