@@ -25,6 +25,26 @@ export function formatDuration(minutes: number): string {
   return m === 0 ? `${h} h` : `${h} h ${m} min`;
 }
 
+/** Convierte un título a slug URL-safe.
+ *
+ * - toLowerCase
+ * - NFD + strip de diacríticos ("é" → "e", "ñ" → "n")
+ * - Solo [a-z0-9] y guiones
+ * - Trim de guiones al inicio/fin
+ *
+ * Usado para que los slugs de las lecciones del LMS coincidan con los
+ * hardcodeados en `src/lib/data/courses.ts` (mock legacy), así
+ * `findLesson()` puede matchear por slug.
+ */
+export function slugify(input: string): string {
+  return input
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // strip combining marks
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 /** Formatea una fecha ISO a formato legible en español. */
 export function formatDate(iso: string): string {
   try {

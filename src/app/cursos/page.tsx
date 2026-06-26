@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import { Navbar, Footer } from "@/components/layout";
 import { Container, Badge } from "@/components/ui";
-import { CourseCard } from "@/components/course";
 import { getPublishedCourses } from "@/lib/lms/courses-server";
 import { getCourseStats } from "@/lib/data/courses";
+import { CursosClient, type FilterableCourse } from "./CursosClient";
 import type { Course as LmsCourse } from "@/types/lms";
-import type { Course as LegacyCourse } from "@/types";
 
 export const dynamic = "force-dynamic";
 
@@ -13,16 +12,16 @@ export const metadata: Metadata = {
   title: "Cursos de marketing",
   description:
     "Explora el catálogo completo de cursos de marketing de Qlick: fundamentos, publicidad, ventas, automatización y contenido.",
-  alternates: { canonical: "/cursos" }
+  alternates: { canonical: "/cursos" },
 };
 
 /**
- * Adapta un `Course` del LMS al shape legacy que espera `CourseCard`.
+ * Adapta un `Course` del LMS al shape legacy que necesita `CourseCard`.
  *
  * Trade-off: el componente CourseCard está atado al mock legacy. Refactorizarlo
  * al shape LMS es scope de Fase E+. Por ahora, mapeamos campo a campo.
  */
-function lmsToLegacyAdapter(c: LmsCourse): LegacyCourse {
+function lmsToLegacyAdapter(c: LmsCourse): FilterableCourse {
   // Mapeo explícito de enums LMS (inglés) → legacy (español).
   const levelMap: Record<string, "basico" | "intermedio" | "avanzado"> = {
     beginner: "basico",
@@ -52,18 +51,23 @@ function lmsToLegacyAdapter(c: LmsCourse): LegacyCourse {
     originalPriceMXN: null,
     isFeatured: c.isFeatured,
     status: statusMap[c.accessType] ?? "gratis",
-  } as unknown as LegacyCourse;
+    accessType: c.accessType,
+  } as unknown as FilterableCourse;
 }
 
 export default async function CursosPage() {
   const lmsCourses = await getPublishedCourses();
-  // Adaptamos al shape legacy para reutilizar CourseCard sin refactor.
-  const courses = lmsCourses.map(lmsToLegacyAdapter);
+  const courses: FilterableCourse[] = lmsCourses.map((lmsCourse) => {
+    const adapted = lmsToLegacyAdapter(lmsCourse);
+    // Hidratamos los stats por curso desde el mock legacy.
+    // (Mismas stats que ya mostraba CourseCard antes del refactor.)
+    const stats = getCourseStats(adapted.id);
+    return { ...adapted, totalModules: stats.totalModules, totalLessons: stats.totalLessons } as FilterableCourse;
+  });
   const totalLessons = courses.reduce(
     (acc, c) => acc + getCourseStats(c.id).totalLessons,
     0
   );
-  // Calculamos cuántos cursos hay de cada tipo para los filtros.
   const freeCount = lmsCourses.filter((c) => c.accessType === "free").length;
   const paidCount = lmsCourses.filter((c) => c.accessType === "paid").length;
 
@@ -80,52 +84,12 @@ export default async function CursosPage() {
             {lmsCourses.length} cursos · {totalLessons} lecciones · {freeCount} gratis · {paidCount} de pago.
             Aprende a tu ritmo y aplica desde el primer día.
           </p>
-          <div className="mt-6 flex flex-wrap gap-2">
-            {["Todos", "Básico", "Intermedio", "Avanzado", "Gratis", "Pago"].map(
-              (f, i) => (
-                <button
-                  key={f}
-                  className={
-                    "px-4 py-2 rounded-full text-sm font-semibold transition " +
-                    (i === 0
-                      ? "bg-brand-500 text-white"
-                      : "bg-white text-ink-soft border border-brand-100 hover:border-brand-300")
-                  }
-                >
-                  {f}
-                </button>
-              )
-            )}
-          </div>
         </Container>
       </section>
 
       <section className="py-14">
         <Container size="wide">
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {lmsCourses.map((lmsCourse) => {
-              const legacy = lmsToLegacyAdapter(lmsCourse);
-              return (
-                <div key={lmsCourse.id} className="relative">
-                  <CourseCard course={legacy} />
-                  {/* Badge de precio/acceso: override sobre el card. */}
-                  {lmsCourse.accessType === "paid" ? (
-                    <div className="absolute top-3 right-3 z-10">
-                      <Badge tone="warning">
-                        {lmsCourse.priceMXN && lmsCourse.priceMXN > 0
-                          ? `$${lmsCourse.priceMXN} MXN`
-                          : "Premium"}
-                      </Badge>
-                    </div>
-                  ) : lmsCourse.accessType === "freemium" ? (
-                    <div className="absolute top-3 right-3 z-10">
-                      <Badge tone="info">Gratis + Premium</Badge>
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
+          <CursosClient courses={courses} />
         </Container>
       </section>
 

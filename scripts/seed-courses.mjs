@@ -2,8 +2,9 @@
 /**
  * seed-courses.mjs — Carga el catálogo demo a Supabase (v1.0.0)
  *
- * Inserta los 4 cursos demo (Fundamentos, Meta Ads, Automatización, Contenido)
- * en las tablas `courses`, `modules`, `lessons`. Idempotente: si el slug ya
+ * Inserta los 5 cursos demo (Fundamentos, Meta Ads, Automatización,
+ * Contenido, Email Marketing) en las tablas `courses`, `modules`, `lessons`.
+ * Idempotente: si el slug ya
  * existe, lo skipea (no duplica).
  *
  * FUENTE DE DATOS: los datos vienen de `src/lib/data/courses.ts` (mock legacy).
@@ -19,7 +20,8 @@
  *
  * Entitlements (v1.0.0):
  *   - 1 curso paid (publicidad-facebook-instagram-ads, $499 MXN)
- *   - 3 cursos free (resto)
+ *   - 3 cursos free (fundamentos, automatizacion, contenido)
+ *   - 1 curso freemium (email-marketing-automatizacion, $999 MXN premium)
  *   - El paso `ensureAccessConfig` al final actualiza access_type/price_mxn de los
  *     cursos que ya existían antes de esta migración (idempotente, no-op si ya está OK).
  *
@@ -639,6 +641,153 @@ const COURSES = [
             videoId: null,
             videoUrl: null,
             durationMinutes: 12,
+            displayOrder: 3,
+            isFreePreview: false,
+          },
+        ],
+      },
+    ],
+  },
+
+  // 5. Email Marketing y Automatización (FREEMIUM)
+  //    - Módulo 1 gratis (3 lecciones isFreePreview=true)
+  //    - Módulos 2 y 3 premium (requieren pago del precio premium)
+  //    - access_type="freemium" en DB; el badge muestra "Gratis + Premium"
+  {
+    slug: "email-marketing-automatizacion",
+    title: "Email Marketing y Automatización",
+    subtitle: "Empieza gratis, desbloquea el resto cuando estés listo",
+    description:
+      "Convierte suscriptores en clientes con secuencias de email y flujos automatizados. El Módulo 1 es gratis para que veas la calidad antes de pagar el resto.",
+    coverImageUrl:
+      "https://images.unsplash.com/photo-1596526131083-e8c633c948d2?auto=format&fit=crop&w=900&q=80",
+    level: "intermediate",
+    category: "Email Marketing",
+    durationMinutes: 480,
+    instructorName: "Mariana",
+    priceMXN: 999,
+    isFeatured: false,
+    displayOrder: 5,
+    accessType: "freemium",
+    modules: [
+      {
+        title: "Módulo 1 · Fundamentos (Gratis)",
+        description:
+          "Lo esencial de email marketing, sin pagar. Para arrancar con buen pie.",
+        displayOrder: 1,
+        lessons: [
+          {
+            title: "El papel del email en tu estrategia",
+            description:
+              "Por qué email sigue siendo el canal con mejor ROI aunque todos hablan de redes.",
+            videoProvider: "youtube",
+            videoId: "dQw4w9WgXcQ",
+            videoUrl: null,
+            durationMinutes: 12,
+            displayOrder: 1,
+            isFreePreview: true,
+          },
+          {
+            title: "Cómo armar tu lista desde cero",
+            description:
+              "Lead magnets y opt-in forms que sí convierten (qué ofrecer y dónde).",
+            videoProvider: "youtube",
+            videoId: "dQw4w9WgXcQ",
+            videoUrl: null,
+            durationMinutes: 14,
+            displayOrder: 2,
+            isFreePreview: true,
+          },
+          {
+            title: "Métricas clave de email marketing",
+            description:
+              "Open rate, CTR, conversion rate y entregability. Cuáles mirar y cuáles ignorar.",
+            videoProvider: null,
+            videoId: null,
+            videoUrl: null,
+            durationMinutes: 13,
+            displayOrder: 3,
+            isFreePreview: true,
+          },
+        ],
+      },
+      {
+        title: "Módulo 2 · Secuencias automatizadas (Premium)",
+        description:
+          "Workflows que convierten mientras dormís. Bienvenida, nurturing y venta.",
+        displayOrder: 2,
+        lessons: [
+          {
+            title: "Anatomía de una secuencia ganadora",
+            description:
+              "Estructura probada de 5 emails para el ciclo bienvenida → venta.",
+            videoProvider: "youtube",
+            videoId: "dQw4w9WgXcQ",
+            videoUrl: null,
+            durationMinutes: 15,
+            displayOrder: 1,
+            isFreePreview: false,
+          },
+          {
+            title: "Segmentación avanzada",
+            description:
+              "Crea segmentos dinámicos que activan journeys personalizados.",
+            videoProvider: "youtube",
+            videoId: "dQw4w9WgXcQ",
+            videoUrl: null,
+            durationMinutes: 16,
+            displayOrder: 2,
+            isFreePreview: false,
+          },
+          {
+            title: "A/B testing de asunto y copy",
+            description:
+              "Qué testear primero, cómo medir bien y cuándo decidir.",
+            videoProvider: null,
+            videoId: null,
+            videoUrl: null,
+            durationMinutes: 12,
+            displayOrder: 3,
+            isFreePreview: false,
+          },
+        ],
+      },
+      {
+        title: "Módulo 3 · Monetización (Premium)",
+        description:
+          "Convierte tu lista en tu canal de ingresos más predecible.",
+        displayOrder: 3,
+        lessons: [
+          {
+            title: "Lanzamientos por email",
+            description:
+              "Cómo estructurar un launch de 5 días paso a paso.",
+            videoProvider: "youtube",
+            videoId: "dQw4w9WgXcQ",
+            videoUrl: null,
+            durationMinutes: 18,
+            displayOrder: 1,
+            isFreePreview: false,
+          },
+          {
+            title: "Recurrencia y retención",
+            description:
+              "Newsletter paga y suscripción mensual: cómo fijar precio y cadencia.",
+            videoProvider: "youtube",
+            videoId: "dQw4w9WgXcQ",
+            videoUrl: null,
+            durationMinutes: 14,
+            displayOrder: 2,
+            isFreePreview: false,
+          },
+          {
+            title: "Tu primer funnel automatizado",
+            description:
+              "Armamos juntos un funnel completo de lead a venta.",
+            videoProvider: null,
+            videoId: null,
+            videoUrl: null,
+            durationMinutes: 17,
             displayOrder: 3,
             isFreePreview: false,
           },

@@ -31,7 +31,9 @@ const thumb = {
   automatizacion:
     "https://images.unsplash.com/photo-1556761175-5973dc0f32e7?auto=format&fit=crop&w=900&q=80",
   contenido:
-    "https://images.unsplash.com/photo-1542744095-fcf48d80b0fd?auto=format&fit=crop&w=900&q=80"
+    "https://images.unsplash.com/photo-1542744095-fcf48d80b0fd?auto=format&fit=crop&w=900&q=80",
+  email:
+    "https://images.unsplash.com/photo-1596526131083-e8c633c948d2?auto=format&fit=crop&w=900&q=80"
 };
 
 // VideoId de YouTube de ejemplo (contenido libre de muestra).
@@ -91,10 +93,7 @@ export const courses: Course[] = [
         description: "Cómo piensa un estratega de marketing antes de tocar una sola herramienta.",
         order: 1,
         lessons: [
-          {
-            id: "les_fund_1_1",
-            slug: "que-es-marketing-digital-hoy",
-            title: "¿Qué es el marketing digital hoy?",
+          { id: "les_fund_1_1", slug: "que-es-el-marketing-digital-hoy", title: "¿Qué es el marketing digital hoy?",
             description: "Desmitificamos el marketing digital y lo conectamos con resultados de negocio.",
             type: "video",
             video: { id: "vid_fund_1_1", ...YT("dQw4w9WgXcQ"), durationSeconds: 480, unlisted: false },
@@ -105,10 +104,7 @@ export const courses: Course[] = [
             isPreview: true,
             order: 1
           },
-          {
-            id: "les_fund_1_2",
-            slug: "el-embudo-de-conversion",
-            title: "El embudo de conversión explicado simple",
+          { id: "les_fund_1_2", slug: "el-embudo-de-conversion-explicado-simple", title: "El embudo de conversión explicado simple",
             description: "ATRAER, CONVERTIR, FIDELIZAR. Cómo encaja cada canal en cada etapa.",
             type: "video",
             video: { id: "vid_fund_1_2", ...YT("dQw4w9WgXcQ"), durationSeconds: 540 },
@@ -138,10 +134,7 @@ export const courses: Course[] = [
         description: "Qué canal usar, cuándo y con qué tipo de contenido.",
         order: 2,
         lessons: [
-          {
-            id: "les_fund_2_1",
-            slug: "mapa-de-canales",
-            title: "Mapa de canales: orgánico vs. pagado",
+          { id: "les_fund_2_1", slug: "mapa-de-canales-organico-vs-pagado", title: "Mapa de canales: orgánico vs. pagado",
             description: "Comparativa honesta de redes, email, SEO y anuncios.",
             type: "video",
             video: { id: "vid_fund_2_1", ...YT("dQw4w9WgXcQ"), durationSeconds: 520 },
@@ -149,10 +142,7 @@ export const courses: Course[] = [
             resources: [],
             order: 1
           },
-          {
-            id: "les_fund_2_2",
-            slug: "mensaje-que-conecta",
-            title: "Cómo escribir un mensaje que conecte",
+          { id: "les_fund_2_2", slug: "como-escribir-un-mensaje-que-conecte", title: "Cómo escribir un mensaje que conecte",
             description: "Fórmulas prácticas de copywriting aplicado a redes y anuncios.",
             type: "video",
             video: { id: "vid_fund_2_2", ...YT("dQw4w9WgXcQ"), durationSeconds: 500 },
@@ -160,10 +150,7 @@ export const courses: Course[] = [
             resources: [],
             order: 2
           },
-          {
-            id: "les_fund_2_3",
-            slug: "calendario-de-contenido",
-            title: "Tu primer calendario de contenido",
+          { id: "les_fund_2_3", slug: "tu-primer-calendario-de-contenido", title: "Tu primer calendario de contenido",
             description: "Armamos un calendario real para 4 semanas.",
             type: "exercise",
             durationMinutes: 15,
@@ -181,10 +168,7 @@ export const courses: Course[] = [
         description: "Métricas que importan y cómo aterrizar tu plan.",
         order: 3,
         lessons: [
-          {
-            id: "les_fund_3_1",
-            slug: "metricas-que-importan",
-            title: "Las 5 métricas que de verdad importan",
+          { id: "les_fund_3_1", slug: "las-5-metricas-que-de-verdad-importan", title: "Las 5 métricas que de verdad importan",
             description: "CTR, CPL, ROAS, CAC y LTV explicados sin tecnicismos.",
             type: "video",
             video: { id: "vid_fund_3_1", ...YT("dQw4w9WgXcQ"), durationSeconds: 560 },
@@ -192,10 +176,7 @@ export const courses: Course[] = [
             resources: [],
             order: 1
           },
-          {
-            id: "les_fund_3_2",
-            slug: "herramientas-gratuitas",
-            title: "Herramientas gratuitas para empezar",
+          { id: "les_fund_3_2", slug: "herramientas-gratuitas-para-empezar", title: "Herramientas gratuitas para empezar",
             description: "GA4, Meta Business, Looker Studio y otras utilidades.",
             type: "reading",
             durationMinutes: 10,
@@ -203,10 +184,7 @@ export const courses: Course[] = [
             resources: [],
             order: 2
           },
-          {
-            id: "les_fund_3_3",
-            slug: "plan-90-dias",
-            title: "Construye tu plan de 90 días",
+          { id: "les_fund_3_3", slug: "construye-tu-plan-de-90-dias", title: "Construye tu plan de 90 días",
             description: "Lección final con entregable: tu plan accionable.",
             type: "exercise",
             durationMinutes: 18,
@@ -271,10 +249,7 @@ export const courses: Course[] = [
         description: "Todo lo que debe estar bien antes de gastar un peso.",
         order: 1,
         lessons: [
-          {
-            id: "les_ads_1_1",
-            slug: "business-manager-y-pixel",
-            title: "Business Manager y Píxel de Meta",
+          { id: "les_ads_1_1", slug: "business-manager-y-pixel-de-meta", title: "Business Manager y Píxel de Meta",
             description: "Instalación del píxel y verificación de eventos.",
             type: "video",
             video: { id: "vid_ads_1_1", ...YT("dQw4w9WgXcQ"), durationSeconds: 720 },
@@ -283,10 +258,7 @@ export const courses: Course[] = [
             isPreview: true,
             order: 1
           },
-          {
-            id: "les_ads_1_2",
-            slug: "eventos-y-conversion-api",
-            title: "Eventos clave y Conversions API",
+          { id: "les_ads_1_2", slug: "eventos-clave-y-conversions-api", title: "Eventos clave y Conversions API",
             description: "Qué eventos rastrear y por qué importa la CAPI post-iOS 14.",
             type: "video",
             video: { id: "vid_ads_1_2", ...YT("dQw4w9WgXcQ"), durationSeconds: 660 },
@@ -294,10 +266,7 @@ export const courses: Course[] = [
             resources: [],
             order: 2
           },
-          {
-            id: "les_ads_1_3",
-            slug: "audiences-y-lookalikes",
-            title: "Audiencias, custom y lookalike",
+          { id: "les_ads_1_3", slug: "audiencias-custom-y-lookalike", title: "Audiencias, custom y lookalike",
             description: "Cómo construir audiencias que de verdad convierten.",
             type: "video",
             video: { id: "vid_ads_1_3", ...YT("dQw4w9WgXcQ"), durationSeconds: 600 },
@@ -314,10 +283,7 @@ export const courses: Course[] = [
         description: "Anuncios que detienen el scroll y generan clics de calidad.",
         order: 2,
         lessons: [
-          {
-            id: "les_ads_2_1",
-            slug: "anatomia-de-un-anuncio",
-            title: "Anatomía de un anuncio ganador",
+          { id: "les_ads_2_1", slug: "anatomia-de-un-anuncio-ganador", title: "Anatomía de un anuncio ganador",
             description: "Visual, copy, gancho y llamada a la acción.",
             type: "video",
             video: { id: "vid_ads_2_1", ...YT("dQw4w9WgXcQ"), durationSeconds: 580 },
@@ -325,10 +291,7 @@ export const courses: Course[] = [
             resources: [],
             order: 1
           },
-          {
-            id: "les_ads_2_2",
-            slug: "formatos-y-pruebas",
-            title: "Formatos y pruebas A/B",
+          { id: "les_ads_2_2", slug: "formatos-y-pruebas-a-b", title: "Formatos y pruebas A/B",
             description: "Reels, carruseles e imágenes. Qué probar primero.",
             type: "video",
             video: { id: "vid_ads_2_2", ...YT("dQw4w9WgXcQ"), durationSeconds: 620 },
@@ -336,10 +299,7 @@ export const courses: Course[] = [
             resources: [],
             order: 2
           },
-          {
-            id: "les_ads_2_3",
-            slug: "library-y-benchmark",
-            title: "Espionaje ético con Ad Library",
+          { id: "les_ads_2_3", slug: "espionaje-etico-con-ad-library", title: "Espionaje ético con Ad Library",
             description: "Cómo investigar a tu competencia sin copiar.",
             type: "exercise",
             durationMinutes: 12,
@@ -355,10 +315,7 @@ export const courses: Course[] = [
         description: "De campaña aprendiendo a campaña rentable.",
         order: 3,
         lessons: [
-          {
-            id: "les_ads_3_1",
-            slug: "lectura-de-metricas",
-            title: "Leer métricas como un pro",
+          { id: "les_ads_3_1", slug: "leer-metricas-como-un-pro", title: "Leer métricas como un pro",
             description: "Interpretar Result, Coste, ROAS y frecuencia.",
             type: "video",
             video: { id: "vid_ads_3_1", ...YT("dQw4w9WgXcQ"), durationSeconds: 640 },
@@ -366,10 +323,7 @@ export const courses: Course[] = [
             resources: [],
             order: 1
           },
-          {
-            id: "les_ads_3_2",
-            slug: "escalamiento-vertical-horizontal",
-            title: "Escalamiento vertical y horizontal",
+          { id: "les_ads_3_2", slug: "escalamiento-vertical-y-horizontal", title: "Escalamiento vertical y horizontal",
             description: "Cómo subir presupuesto sin matar la campaña.",
             type: "video",
             video: { id: "vid_ads_3_2", ...YT("dQw4w9WgXcQ"), durationSeconds: 580 },
@@ -442,10 +396,7 @@ export const courses: Course[] = [
         description: "Lo que necesitas bien configurado antes de automatizar.",
         order: 1,
         lessons: [
-          {
-            id: "les_auto_1_1",
-            slug: "whatsapp-business-vs-api",
-            title: "WhatsApp Business vs. WhatsApp API",
+          { id: "les_auto_1_1", slug: "whatsapp-business-vs-whatsapp-api", title: "WhatsApp Business vs. WhatsApp API",
             description: "Cuál te conviene según tu volumen.",
             type: "video",
             video: { id: "vid_auto_1_1", ...YT("dQw4w9WgXcQ"), durationSeconds: 540 },
@@ -454,10 +405,7 @@ export const courses: Course[] = [
             isPreview: true,
             order: 1
           },
-          {
-            id: "les_auto_1_2",
-            slug: "catalogo-y-perfil",
-            title: "Catálogo y perfil optimizado",
+          { id: "les_auto_1_2", slug: "catalogo-y-perfil-optimizado", title: "Catálogo y perfil optimizado",
             description: "Convierte tu perfil en una vitrina de ventas.",
             type: "video",
             video: { id: "vid_auto_1_2", ...YT("dQw4w9WgXcQ"), durationSeconds: 480 },
@@ -465,10 +413,7 @@ export const courses: Course[] = [
             resources: [],
             order: 2
           },
-          {
-            id: "les_auto_1_3",
-            slug: "plantillas-oficiales",
-            title: "Plantillas oficiales (HSM)",
+          { id: "les_auto_1_3", slug: "plantillas-oficiales-hsm", title: "Plantillas oficiales (HSM)",
             description: "Cómo redactar plantillas que Meta aprueba.",
             type: "exercise",
             durationMinutes: 14,
@@ -484,10 +429,7 @@ export const courses: Course[] = [
         description: "Construye árboles de conversación que califican leads.",
         order: 2,
         lessons: [
-          {
-            id: "les_auto_2_1",
-            slug: "mapa-de-conversacion",
-            title: "Diseña el mapa de conversación",
+          { id: "les_auto_2_1", slug: "disena-el-mapa-de-conversacion", title: "Diseña el mapa de conversación",
             description: "Estructura para no abrumar al cliente.",
             type: "video",
             video: { id: "vid_auto_2_1", ...YT("dQw4w9WgXcQ"), durationSeconds: 560 },
@@ -495,10 +437,7 @@ export const courses: Course[] = [
             resources: [],
             order: 1
           },
-          {
-            id: "les_auto_2_2",
-            slug: "herramientas-no-code",
-            title: "Herramientas no-code para chatbots",
+          { id: "les_auto_2_2", slug: "herramientas-no-code-para-chatbots", title: "Herramientas no-code para chatbots",
             description: "Comparativa y setup de la opción recomendada.",
             type: "video",
             video: { id: "vid_auto_2_2", ...YT("dQw4w9WgXcQ"), durationSeconds: 600 },
@@ -506,10 +445,7 @@ export const courses: Course[] = [
             resources: [],
             order: 2
           },
-          {
-            id: "les_auto_2_3",
-            slug: "bot-qualifier",
-            title: "Construye tu bot calificador",
+          { id: "les_auto_2_3", slug: "construye-tu-bot-calificador", title: "Construye tu bot calificador",
             description: "Lección práctica: armamos un bot de 3 preguntas.",
             type: "exercise",
             durationMinutes: 16,
@@ -525,10 +461,7 @@ export const courses: Course[] = [
         description: "Conecta todo y deja que el sistema trabaje por ti.",
         order: 3,
         lessons: [
-          {
-            id: "les_auto_3_1",
-            slug: "conexion-con-crm",
-            title: "Conexión con tu CRM",
+          { id: "les_auto_3_1", slug: "conexion-con-tu-crm", title: "Conexión con tu CRM",
             description: "Integración paso a paso.",
             type: "video",
             video: { id: "vid_auto_3_1", ...YT("dQw4w9WgXcQ"), durationSeconds: 660 },
@@ -547,10 +480,7 @@ export const courses: Course[] = [
             resources: [],
             order: 2
           },
-          {
-            id: "les_auto_3_3",
-            slug: "metricas-de-conversacion",
-            title: "Mide las conversiones de WhatsApp",
+          { id: "les_auto_3_3", slug: "mide-las-conversiones-de-whatsapp", title: "Mide las conversiones de WhatsApp",
             description: "Dashboard básico y optimización.",
             type: "exercise",
             durationMinutes: 13,
@@ -611,10 +541,7 @@ export const courses: Course[] = [
         description: "Antes de grabar, piensa. Aquí diseñamos el sistema.",
         order: 1,
         lessons: [
-          {
-            id: "les_con_1_1",
-            slug: "pilares-de-contenido",
-            title: "Define tus pilares de contenido",
+          { id: "les_con_1_1", slug: "define-tus-pilares-de-contenido", title: "Define tus pilares de contenido",
             description: "3 a 5 temas que sostienen toda tu marca.",
             type: "video",
             video: { id: "vid_con_1_1", ...YT("dQw4w9WgXcQ"), durationSeconds: 500 },
@@ -623,10 +550,7 @@ export const courses: Course[] = [
             isPreview: true,
             order: 1
           },
-          {
-            id: "les_con_1_2",
-            slug: "banco-de-ideas",
-            title: "Construye un banco de ideas infinitas",
+          { id: "les_con_1_2", slug: "construye-un-banco-de-ideas-infinitas", title: "Construye un banco de ideas infinitas",
             description: "Método para nunca más quedarte sin ideas.",
             type: "video",
             video: { id: "vid_con_1_2", ...YT("dQw4w9WgXcQ"), durationSeconds: 540 },
@@ -634,10 +558,7 @@ export const courses: Course[] = [
             resources: [],
             order: 2
           },
-          {
-            id: "les_con_1_3",
-            slug: "calendario-30-dias",
-            title: "Calendario editorial de 30 días",
+          { id: "les_con_1_3", slug: "calendario-editorial-de-30-dias", title: "Calendario editorial de 30 días",
             description: "Práctica: arma tu mes de contenido.",
             type: "exercise",
             durationMinutes: 14,
@@ -653,10 +574,7 @@ export const courses: Course[] = [
         description: "Cómo grabar y armar piezas que detienen el scroll.",
         order: 2,
         lessons: [
-          {
-            id: "les_con_2_1",
-            slug: "guion-de-reel",
-            title: "Guion de Reel que engancha",
+          { id: "les_con_2_1", slug: "guion-de-reel-que-engancha", title: "Guion de Reel que engancha",
             description: "Estructura de 3 segundos para ganar atención.",
             type: "video",
             video: { id: "vid_con_2_1", ...YT("dQw4w9WgXcQ"), durationSeconds: 520 },
@@ -664,10 +582,7 @@ export const courses: Course[] = [
             resources: [],
             order: 1
           },
-          {
-            id: "les_con_2_2",
-            slug: "grabacion-con-celular",
-            title: "Grabación pro con celular",
+          { id: "les_con_2_2", slug: "grabacion-pro-con-celular", title: "Grabación pro con celular",
             description: "Luz, audio y encuadre sin equipo caro.",
             type: "video",
             video: { id: "vid_con_2_2", ...YT("dQw4w9WgXcQ"), durationSeconds: 560 },
@@ -675,10 +590,7 @@ export const courses: Course[] = [
             resources: [],
             order: 2
           },
-          {
-            id: "les_con_2_3",
-            slug: "edicion-rapida-capcut",
-            title: "Edición rápida con CapCut",
+          { id: "les_con_2_3", slug: "edicion-rapida-con-capcut", title: "Edición rápida con CapCut",
             description: "Workflow para editar un Reel en 15 minutos.",
             type: "exercise",
             durationMinutes: 15,
@@ -694,10 +606,7 @@ export const courses: Course[] = [
         description: "Publica con criterio y mide qué funcionó.",
         order: 3,
         lessons: [
-          {
-            id: "les_con_3_1",
-            slug: "horarios-y-formatos",
-            title: "Horarios, formatos y hashtags",
+          { id: "les_con_3_1", slug: "horarios-formatos-y-hashtags", title: "Horarios, formatos y hashtags",
             description: "Qué sirve y qué es mito.",
             type: "video",
             video: { id: "vid_con_3_1", ...YT("dQw4w9WgXcQ"), durationSeconds: 480 },
@@ -705,10 +614,7 @@ export const courses: Course[] = [
             resources: [],
             order: 1
           },
-          {
-            id: "les_con_3_2",
-            slug: "metricas-de-contenido",
-            title: "Métricas de contenido que importan",
+          { id: "les_con_3_2", slug: "metricas-de-contenido-que-importan", title: "Métricas de contenido que importan",
             description: "Alcance, retención y conversión.",
             type: "video",
             video: { id: "vid_con_3_2", ...YT("dQw4w9WgXcQ"), durationSeconds: 500 },
@@ -716,13 +622,158 @@ export const courses: Course[] = [
             resources: [],
             order: 2
           },
-          {
-            id: "les_con_3_3",
-            slug: "iteracion-y-mejora",
-            title: "Iteración continua",
+          { id: "les_con_3_3", slug: "iteracion-continua", title: "Iteración continua",
             description: "Cómo mejorar tu contenido semana a semana.",
             type: "exercise",
             durationMinutes: 12,
+            resources: [],
+            order: 3
+          }
+        ]
+      }
+    ]
+  },
+
+  /* ---------------------------- 5. Email Marketing (FREEMIUM) ---------------------------- */
+  // Módulo 1 gratis (isPreview: true en las 3 lecciones), Módulos 2 y 3
+  // requieren pago del premium tier ($999 MXN).
+  // IMPORTANTE: los slugs deben coincidir con lo que `slugify()` produce
+  // desde el título (ver scripts/_fix-mock-slugs.mjs).
+  {
+    id: "course_email",
+    slug: "email-marketing-automatizacion",
+    title: "Email Marketing y Automatización",
+    shortDescription:
+      "Convierte suscriptores en clientes con secuencias de email. Empieza gratis con el Módulo 1 y desbloquea el resto cuando estés listo.",
+    longDescription:
+      "El email sigue siendo el canal con mejor ROI. Aquí aprenderás a construir una lista, escribir secuencias que convierten y medir lo que importa. El Módulo 1 es gratis para que veas la calidad; los Módulos 2 y 3 los desbloqueas con el premium de $999 MXN. Diseñado para marketers, freelancers y dueños de negocio que ya tienen audiencia o están por construir una.",
+    thumbnailUrl: thumb.email,
+    heroImageUrl: thumb.email,
+    level: "intermedio",
+    estimatedHours: 8,
+    instructorId: "inst_mariana",
+    priceMXN: 999,
+    status: "gratis",
+    tags: [
+      { id: "t_email", label: "Email" },
+      { id: "t_automation", label: "Automatización" },
+      { id: "t_freemium", label: "Freemium" }
+    ],
+    whatYouWillLearn: [
+      "Construir una lista desde cero con lead magnets que sí convierten.",
+      "Escribir una secuencia de bienvenida de 5 emails con estructura probada.",
+      "Segmentar tu lista para activar journeys personalizados.",
+      "Hacer A/B testing de asuntos y copy con criterio.",
+      "Estructurar un lanzamiento por email de 5 días."
+    ],
+    requirements: [
+      "Tener (o estar por tener) una lista de suscriptores propia.",
+      "Acceso a una plataforma de email (Mailchimp, ActiveCampaign, ConvertKit, etc.)."
+    ],
+    targetAudience: [
+      "Marketers y growth hackers.",
+      "Freelancers y consultores con lista propia.",
+      "Dueños de negocio que quieren un canal de ingresos predecible."
+    ],
+    featured: false,
+    rating: 4.7,
+    studentsCount: 0,
+    createdAt: "2026-01-15T00:00:00Z",
+    modules: [
+      {
+        id: "mod_email_1",
+        slug: "modulo-1-fundamentos-gratis",
+        title: "Módulo 1 · Fundamentos (Gratis)",
+        description: "Lo esencial de email marketing, sin pagar. Para arrancar con buen pie.",
+        order: 1,
+        lessons: [
+          { id: "les_email_1_1", slug: "el-papel-del-email-en-tu-estrategia", title: "El papel del email en tu estrategia",
+            description: "Por qué email sigue siendo el canal con mejor ROI aunque todos hablan de redes.",
+            type: "video",
+            video: { id: "vid_email_1_1", ...YT("dQw4w9WgXcQ"), durationSeconds: 480 },
+            durationMinutes: 12,
+            resources: [],
+            isPreview: true,
+            order: 1
+          },
+          { id: "les_email_1_2", slug: "como-armar-tu-lista-desde-cero", title: "Cómo armar tu lista desde cero",
+            description: "Lead magnets y opt-in forms que sí convierten (qué ofrecer y dónde).",
+            type: "video",
+            video: { id: "vid_email_1_2", ...YT("dQw4w9WgXcQ"), durationSeconds: 560 },
+            durationMinutes: 14,
+            resources: [],
+            isPreview: true,
+            order: 2
+          },
+          { id: "les_email_1_3", slug: "metricas-clave-de-email-marketing", title: "Métricas clave de email marketing",
+            description: "Open rate, CTR, conversion rate y entregability. Cuáles mirar y cuáles ignorar.",
+            type: "reading",
+            durationMinutes: 13,
+            resources: [],
+            isPreview: true,
+            order: 3
+          }
+        ]
+      },
+      {
+        id: "mod_email_2",
+        slug: "modulo-2-secuencias-premium",
+        title: "Módulo 2 · Secuencias automatizadas (Premium)",
+        description: "Workflows que convierten mientras dormís. Bienvenida, nurturing y venta.",
+        order: 2,
+        lessons: [
+          { id: "les_email_2_1", slug: "anatomia-de-una-secuencia-ganadora", title: "Anatomía de una secuencia ganadora",
+            description: "Estructura probada de 5 emails para el ciclo bienvenida → venta.",
+            type: "video",
+            video: { id: "vid_email_2_1", ...YT("dQw4w9WgXcQ"), durationSeconds: 600 },
+            durationMinutes: 15,
+            resources: [],
+            order: 1
+          },
+          { id: "les_email_2_2", slug: "segmentacion-avanzada", title: "Segmentación avanzada",
+            description: "Crea segmentos dinámicos que activan journeys personalizados.",
+            type: "video",
+            video: { id: "vid_email_2_2", ...YT("dQw4w9WgXcQ"), durationSeconds: 640 },
+            durationMinutes: 16,
+            resources: [],
+            order: 2
+          },
+          { id: "les_email_2_3", slug: "a-b-testing-de-asunto-y-copy", title: "A/B testing de asunto y copy",
+            description: "Qué testear primero, cómo medir bien y cuándo decidir.",
+            type: "exercise",
+            durationMinutes: 12,
+            resources: [],
+            order: 3
+          }
+        ]
+      },
+      {
+        id: "mod_email_3",
+        slug: "modulo-3-monetizacion-premium",
+        title: "Módulo 3 · Monetización (Premium)",
+        description: "Convierte tu lista en tu canal de ingresos más predecible.",
+        order: 3,
+        lessons: [
+          { id: "les_email_3_1", slug: "lanzamientos-por-email", title: "Lanzamientos por email",
+            description: "Cómo estructurar un launch de 5 días paso a paso.",
+            type: "video",
+            video: { id: "vid_email_3_1", ...YT("dQw4w9WgXcQ"), durationSeconds: 720 },
+            durationMinutes: 18,
+            resources: [],
+            order: 1
+          },
+          { id: "les_email_3_2", slug: "recurrencia-y-retencion", title: "Recurrencia y retención",
+            description: "Newsletter paga y suscripción mensual: cómo fijar precio y cadencia.",
+            type: "video",
+            video: { id: "vid_email_3_2", ...YT("dQw4w9WgXcQ"), durationSeconds: 560 },
+            durationMinutes: 14,
+            resources: [],
+            order: 2
+          },
+          { id: "les_email_3_3", slug: "tu-primer-funnel-automatizado", title: "Tu primer funnel automatizado",
+            description: "Armamos juntos un funnel completo de lead a venta.",
+            type: "exercise",
+            durationMinutes: 17,
             resources: [],
             order: 3
           }
