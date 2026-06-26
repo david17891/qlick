@@ -35,6 +35,20 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 /** Tipo de Update generado por supabase gen types — usado para tipar el patch. */
 type EnrollmentUpdate = Database["public"]["Tables"]["enrollments"]["Update"];
 
+/**
+ * Detecta si un ID parece un UUID real (formato Postgres).
+ * Los IDs de mocks legacy son strings tipo "course_fundamentos", "enr_1", etc.
+ * Los IDs reales son UUIDs v4 generados por Postgres.
+ *
+ * Lo usamos para hacer fallback a demo sin tocar la DB cuando llega un ID de
+ * mock (porque el catálogo real aún no está migrado — ver ROADMAP.md pieza #2).
+ */
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function looksLikeUuid(value: string): boolean {
+  return UUID_REGEX.test(value);
+}
+
 /** ¿Está activa la persistencia real? Server-only (defensa contra browser). */
 function isRealMode(): boolean {
   if (typeof window !== "undefined") return false;
@@ -230,6 +244,27 @@ export async function enrollUserInCourse(
       persisted: false,
       demo: true,
       note: "Inscripción simulada en modo demo. En producción se guarda en Supabase.",
+    };
+  }
+
+  // FASE DE MIGRACIÓN DE CATÁLOGO (v0.9.0): si courseId no parece UUID
+  // (es un ID de mock legacy tipo "course_fundamentos"), la columna
+  // `enrollments.course_id` (uuid) rechaza el insert con 22P02. Caemos a
+  // demo sin tocar la DB. Cuando el catálogo real esté cargado con UUIDs,
+  // este fallback deja de activarse.
+  if (!looksLikeUuid(courseId)) {
+    // eslint-disable-next-line no-console
+    console.info(
+      "[enrollments-server] courseId no es UUID (mock legacy), fallback a demo",
+      { courseId, userId, source },
+    );
+    return {
+      ok: true,
+      enrollmentId: `demo_enr_${Date.now().toString(36)}`,
+      persisted: false,
+      demo: true,
+      note:
+        "Inscripción simulada (catálogo aún no migrado a DB). Se guardará en Supabase cuando el catálogo real esté cargado.",
     };
   }
 
