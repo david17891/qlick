@@ -32,6 +32,7 @@ import type { Metadata } from "next";
 import { Navbar, Footer } from "@/components/layout";
 import { requireStudent } from "@/lib/auth/session";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { DashboardView } from "./DashboardView";
 import type { Enrollment, LessonProgress } from "@/types/lms";
 import {
@@ -87,6 +88,41 @@ async function loadDashboardData(
   try {
     const lms = await import("@/lib/lms/enrollments-server").catch(() => null);
     if (lms && typeof lms.getUserEnrollments === "function") {
+      enrollments = await lms.getUserEnrollments(userId);
+      // v1.0.0+: leemos también course_access activos. Esto cubre el caso
+      // de un user que pagó un curso (course_access creado) pero cuyo
+      // enrollment no se creó por alguna razón anterior. Unimos los
+      // courseIds únicos de ambos sources.
+      const supabase = createSupabaseAdminClient();
+      const { data: accessRows } = await supabase
+        .from("course_access")
+        .select("course_id, expires_at")
+        .eq("user_id", userId)
+        .eq("access_status", "active");
+      const now = new Date();
+      const accessibleCourseIds = new Set(
+        (accessRows ?? [])
+          .filter(
+            (r) => r.expires_at === null || new Date(r.expires_at) > now,
+          )
+          .map((r) => r.course_id),
+      );
+      // Para cada course_id con access pero sin enrollment, creamos un
+      // enrollment retroactivo (idempotente, no duplica).
+      for (const courseId of accessibleCourseIds) {
+        const hasEnrollment = enrollments.some(
+          (e) => e.courseId === courseId && e.status === "active",
+        );
+        if (!hasEnrollment) {
+          try {
+            await lms.enrollUserInCourse(userId, courseId, "mock_provider");
+          } catch (err) {
+            // eslint-disable-next-line no-console
+            console.error("[dashboard] enroll retroactivo falló", err);
+          }
+        }
+      }
+      // Recargar enrollments después del merge.
       enrollments = await lms.getUserEnrollments(userId);
       // Intentamos cargar progreso de cada curso inscrito.
       const allProgress: DashboardLessonProgress[] = [];

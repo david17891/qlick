@@ -22,6 +22,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentStudent } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { grantAccess } from "@/lib/lms/entitlements";
+import { enrollUserInCourse } from "@/lib/lms/enrollments-server";
 import { getCourseBySlug } from "@/lib/lms/courses-server";
 
 type SimulateEvent = "paid" | "failed" | "pending";
@@ -179,6 +180,20 @@ export async function POST(req: NextRequest) {
         paymentId,
         grantedReason: `paid_via_sim_${new Date().toISOString().slice(0, 16)}`,
       });
+      // También creamos/actualizamos el enrollment para que el dashboard
+      // muestre el curso. enrollments-server maneja idempotencia
+      // (no duplica si ya hay uno).
+      const enrollResult = await enrollUserInCourse(
+        session.userId,
+        course.id,
+        "mock_provider",
+      );
+      if (!enrollResult.ok) {
+        // eslint-disable-next-line no-console
+        console.error("[simulate-webhook] enrollUserInCourse falló", {
+          note: enrollResult.note,
+        });
+      }
       accessGranted = true;
     } catch (err) {
       return NextResponse.json(

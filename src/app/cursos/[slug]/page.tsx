@@ -145,7 +145,7 @@ export default function CourseDetailPage({
                         Avísame al lanzar
                       </Button>
                     ) : (
-                      <Button size="lg" className="w-full" href="/login">
+                      <Button size="lg" className="w-full" href={`/inscripcion/${course.slug}`}>
                         {course.priceMXN === 0 ? "Inscribirme gratis" : "Comprar curso"}
                       </Button>
                     )}
