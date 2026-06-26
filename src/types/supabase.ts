@@ -631,12 +631,16 @@ export type Database = {
       payments: {
         Row: {
           amount_mxn: number
+          coupon_id: string | null
           course_id: string
           created_at: string
           currency: string
+          discount_mxn: number
+          enrollment_id: string | null
+          external_reference: string | null
           id: string
           idempotency_key: string
-          provider_payment_id: string | null
+          method: string | null
           provider: string
           status: string
           updated_at: string
@@ -644,12 +648,16 @@ export type Database = {
         }
         Insert: {
           amount_mxn: number
+          coupon_id?: string | null
           course_id: string
           created_at?: string
           currency?: string
+          discount_mxn?: number
+          enrollment_id?: string | null
+          external_reference?: string | null
           id?: string
           idempotency_key: string
-          provider_payment_id?: string | null
+          method?: string | null
           provider?: string
           status?: string
           updated_at?: string
@@ -657,12 +665,16 @@ export type Database = {
         }
         Update: {
           amount_mxn?: number
+          coupon_id?: string | null
           course_id?: string
           created_at?: string
           currency?: string
+          discount_mxn?: number
+          enrollment_id?: string | null
+          external_reference?: string | null
           id?: string
           idempotency_key?: string
-          provider_payment_id?: string | null
+          method?: string | null
           provider?: string
           status?: string
           updated_at?: string
@@ -674,6 +686,13 @@ export type Database = {
             columns: ["course_id"]
             isOneToOne: false
             referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_enrollment_id_fkey"
+            columns: ["enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "enrollments"
             referencedColumns: ["id"]
           },
         ]

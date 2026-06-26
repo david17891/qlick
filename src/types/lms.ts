@@ -47,13 +47,15 @@ export type CourseAccessStatus = "active" | "pending" | "expired" | "revoked";
 /**
  * Origen de un derecho de acceso.
  * - "free_course": grant por enrollment a curso gratis.
- * - "simulated_payment": pago via simulador (dev).
+ * - "mock_provider": pago via mockProvider (legacy, v1.0.1+).
+ * - "simulated_payment": legacy v1.0.0, sigue funcionando.
  * - "manual_admin": admin lo dio vía panel.
  * - "stripe" | "mercadopago" | "conekta": proveedores reales (futuro).
  * - "coupon": código promocional.
  */
 export type CourseAccessSource =
   | "free_course"
+  | "mock_provider"
   | "simulated_payment"
   | "manual_admin"
   | "stripe"
@@ -62,20 +64,20 @@ export type CourseAccessSource =
   | "coupon";
 
 /**
- * Provider de pago (payments.provider).
- * "simulated" es para desarrollo; el resto son proveedores reales a integrar.
+ * Re-export de types legacy de pagos para que el código LMS importe de un
+ * solo lugar. La fuente de verdad está en `@/types` (legacy, validada por
+ * `src/lib/payments/`). En v1.0.1+ alineamos el schema y los types.
+ *
+ * NOTA: `PaymentProvider` no existe en `@/types` (es un `name` literal en
+ * el interface `PaymentProvider` de `src/lib/payments/payment-provider.ts`).
+ * Lo definimos localmente más abajo.
  */
-export type PaymentProvider = "simulated" | "stripe" | "mercadopago" | "conekta";
-
-/**
- * Estado de un pago (payments.status).
- * - "pending": creado, esperando confirmación.
- * - "paid": confirmado, activa el acceso.
- * - "failed": rechazado.
- * - "refunded": devuelto, debe revocar el acceso.
- * - "cancelled": cancelado antes de pagar.
- */
-export type PaymentStatus = "pending" | "paid" | "failed" | "refunded" | "cancelled";
+export type {
+  Payment,
+  PaymentStatus,
+  PaymentMethod,
+  Coupon,
+} from "@/types";
 
 /**
  * Provider del asset de video. Coincide con los valores permitidos por el
@@ -257,34 +259,15 @@ export interface CourseAccess {
 }
 
 /**
- * Registro de pago. Arranca con `provider='simulated'`. Cuando se integre
- * Stripe/MercadoPago/Conekta, el simulador se reemplaza por el webhook del
- * proveedor real manteniendo la misma estructura.
- *
- * Idempotencia: UNIQUE (user_id, course_id, idempotency_key). El simulador
- * (y luego el webhook real) usa el mismo key para evitar duplicados.
- */
-export interface Payment {
-  id: string;
-  userId: string;
-  courseId: string;
-  provider: PaymentProvider;
-  /** ID del pago en el provider (null en simulated o pending). */
-  providerPaymentId: string | null;
-  /** Monto en centavos MXN. */
-  amountMxn: number;
-  currency: string;
-  status: PaymentStatus;
-  idempotencyKey: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-/**
  * Resultado de `checkCourseAccess` / `checkLessonAccess`. Tagged union para
  * que el caller sepa con certeza por qué tiene o no acceso (sin booleanos
  * ambiguos ni acoplar al HTTP status).
+ *
+ * `Payment` y `PaymentStatus` están re-exportados arriba desde `@/types`
+ * (legacy). `PaymentProvider` se define aquí (no existe en `@/types`).
  */
+export type PaymentProvider = "mock" | "mercadopago" | "stripe" | "conekta";
+
 export type AccessResult =
   | {
       hasAccess: true;
