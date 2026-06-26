@@ -8,33 +8,27 @@
 ## Estado actual
 
 - [x] **LMS Real Foundation v0.7.0** — rama `feature/lms-real-foundation`
-  - 5 tablas nuevas en Supabase (`courses`, `modules`, `lessons`, `enrollments`, `lesson_progress`)
-  - RLS activa con policies correctas (catalog: público solo `published`; datos alumno: solo `auth.uid()`)
-  - Server libs (`src/lib/lms/*`) con fallback demo
-  - Auth alumnos separada de admin (`student-auth.ts` + `session.ts:getCurrentStudent`)
-  - UI: `/login`, `/dashboard`, Navbar con identidad tri-state
-  - `docs/LMS_REAL_FOUNDATION.md` (handoff completo)
-  - **NO mergeado a main todavía** — esperando luz verde del owner.
-- [x] Auditoría técnica del branch (PASS con 1 hallazgo medio y 3 bajos)
-  - H1 — Inconsistencia `LessonVideoProvider "external"` (CHECK vs TS): **pendiente fix**
-  - H2/H3/H4 — warnings bajos, decisión del owner
+- [x] **feat/google-oauth** — Google OAuth reemplaza magic link + fix `client.ts` acceso literal a `NEXT_PUBLIC_*`
+- [x] **feat/qr-enrollment** — Inscripción con QR + tracking `source` + página `/inscripcion/[slug]`
+  - Fallbacks automáticos: `getCourseBySlug` cae al mock cuando DB no tiene el slug; `enrollUserInCourse` valida UUID antes del upsert y cae a demo si el ID es mock legacy
+- [ ] **seed:courses** — Script listo para cargar los 4 cursos demo a Supabase (`npm run seed:courses`). Owner corre cuando quiera.
+
+## Deuda activa (no bloqueante)
+
+- **Catálogo real**: los 4 cursos siguen duplicados entre `src/lib/data/courses.ts` (mock) y la DB (via seed). Cuando David decida el catálogo final con socios, se elimina el mock y se regenera el seed con los datos reales.
+- **Inconsistencia `LessonVideoProvider "external"`** (CHECK vs TS) — H1 del audit original. Fix de 1 línea cuando se decida.
+- **`ADMIN_EMAIL_ALLOWLIST` durante testing**: probamos con la cuenta `layerzero3dprint@gmail.com` que NO estaba en el allowlist. Si vuelve a estar en el allowlist, OAuth alumno va a loopear (es admin, no entra como student — por diseño).
 
 ## En curso
 
-- [ ] **`feat/qr-enrollment`** — inscripción real con QR por curso (modelo A) + atribución
-  - Migración: `ALTER TABLE enrollments ADD COLUMN source text` (idempotente)
-  - Endpoint: `/api/qr/[courseSlug]` devuelve PNG del QR
-  - Página: `/inscripcion/[courseSlug]` (preview + OAuth + server action)
-  - Tracking: `?ref=qr` → `enrollments.source = 'qr'`
-  - Callback actualizado para soportar `?next=` (one-click desde inscripción)
-  - QR codifica `${NEXT_PUBLIC_APP_URL}/inscripcion/[slug]?ref=qr` (cambia cuando David tenga dominio real)
+- (vacío — listo para arrancar la siguiente feature)
 
 ## Pendientes — features
 
 | # | Feature | Branch | Decisión abierta |
 |---|---|---|---|
-| 4 | Flujo real de inscripción | `feat/qr-enrollment` | modelo A (QR por curso) confirmado |
-| 4b | Inscripción por QR (modelo A) | `feat/qr-enrollment` | en este branch |
+| 4 | Flujo real de inscripción | ✅ mergeado | modelo A (QR por curso) confirmado |
+| 4b | Inscripción por QR (modelo A) | ✅ mergeado | en este branch |
 | 6 | Onboarding del alumno | `feat/onboarding-alumno` | scope exacto (tooltips vs tour modal vs emails) |
 | 5 | Pagos — adapters sin credenciales | `feat/pagos-adapters` | proveedor (MercadoPago / Stripe / Conekta) |
 | 7 | Tests automáticos (Vitest + SQL) | (puede ser branch por fase) | scope fase 1 |

@@ -10,7 +10,8 @@
     "lint": "next lint",
     "type-check": "tsc --noEmit",
     "audit:links": "node scripts/audit-links.mjs",
-    "check:supabase": "node scripts/check-supabase-env.mjs"
+    "check:supabase": "node scripts/check-supabase-env.mjs",
+    "seed:courses": "node scripts/seed-courses.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",
