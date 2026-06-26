@@ -1,6 +1,27 @@
 "use client";
 
 /**
+ * @deprecated Este componente se conserva solo como fallback. NO se importa
+ * desde `login/page.tsx` a partir de v0.8.0 (Google OAuth es el método
+ * principal). Ver `OAuthLoginForm.tsx` para el flujo activo.
+ *
+ * Por qué se conserva:
+ * - Rollback rápido si Google OAuth presenta problemas en producción.
+ * - Algunos usuarios podrían preferir magic link (sin cuenta Google).
+ *
+ * Por qué se prefiere OAuth hoy:
+ * - Mercado mexicano (objetivo del LMS): familiaridad con "Continuar con
+ *   Google", evita fricción de esperar correo.
+ * - Magic link depende del mailer de Supabase, que tiene rate-limit y a
+ *   veces se retrasa.
+ *
+ * Si querés volver a magic link como primario:
+ * 1. Restaurar el import en `login/page.tsx`.
+ * 2. Documentar la decisión en `docs/ROADMAP.md`.
+ * 3. Commit con mensaje claro del motivo.
+ */
+
+/**
  * Form de magic link para ALUMNOS.
  *
  * IMPORTANTE: este form NO consulta ADMIN_EMAIL_ALLOWLIST — cualquier email

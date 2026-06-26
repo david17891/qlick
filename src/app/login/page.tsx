@@ -1,28 +1,30 @@
 /**
- * Login de ALUMNOS vía Supabase Auth magic link.
+ * Login de ALUMNOS vía Google OAuth (Supabase Auth).
  *
- * Server Component: renderiza un form (Client Component MagicLinkForm) que
- * dispara `signInWithOtp` en el navegador. La verificación de membership es
- * server-side en `/auth/callback-student` (intercambia el `code` por sesión y
- * redirige a /dashboard si todo OK).
+ * Server Component: renderiza el botón de Google (Client Component
+ * OAuthLoginForm) que dispara `signInWithOAuth` en el navegador. La
+ * verificación de membresía es server-side en `/auth/callback-student`
+ * (intercambia el `code` por sesión y redirige a /dashboard si todo OK).
  *
  * Diferencias con /admin/login:
- * - NO usamos ADMIN_EMAIL_ALLOWLIST. Cualquier email puede pedir un enlace.
- *   El rol "student" no requiere allowlist: la autorización fina (qué
- *   cursos/lecciones) está en RLS por auth.uid().
+ * - NO usamos ADMIN_EMAIL_ALLOWLIST para alumnos. Cualquier cuenta Google
+ *   puede entrar; la autorización fina (qué cursos/lecciones) está en RLS
+ *   por auth.uid().
  * - El callback es otra ruta (`/auth/callback-student`) para no colisionar
  *   con el callback de admin (`/auth/callback`).
+ *
+ * Magic link quedó deprecated en v0.8.0. Ver `MagicLinkForm.tsx` (sin
+ * importar) si se necesita volver atrás.
  *
  * UX: minimalista, copy enfocado en el alumno ("Continúa aprendiendo").
  */
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Suspense } from "react";
 import { Navbar, Footer } from "@/components/layout";
 import { Container, Card, Badge } from "@/components/ui";
 import { Logo } from "@/components/brand";
-import { MagicLinkForm } from "./MagicLinkForm";
+import { OAuthLoginForm } from "./OAuthLoginForm";
 
 export const metadata: Metadata = {
   title: "Acceso alumnos",
@@ -50,13 +52,11 @@ export default function StudentLoginPage() {
 
               <div className="mb-5">
                 <Badge tone="info">
-                  Acceso sin contraseña · enlace mágico a tu correo
+                  Acceso con tu cuenta Google · un toque y adentro
                 </Badge>
               </div>
 
-              <Suspense fallback={null}>
-                <MagicLinkForm />
-              </Suspense>
+              <OAuthLoginForm />
 
               <p className="mt-6 text-sm text-ink-muted text-center">
                 ¿Eres administrador?{" "}
