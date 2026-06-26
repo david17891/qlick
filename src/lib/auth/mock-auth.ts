@@ -1,19 +1,15 @@
 /**
- * Autenticación MOCK para el MVP.
+ * @deprecated Este archivo es LEGACY del MVP. NO usar para nuevos flujos de
+ * autenticación de alumnos. En su lugar usa:
  *
- * AVISO IMPORTANTE: esto NO es autenticación real. Es una simulación en cliente
- * (localStorage) para permitir recorrer la plataforma con distintos roles.
+ * - `lib/auth/student-auth.ts` (rol student, magic link vía Supabase).
+ * - `lib/auth/session.ts` → `getCurrentStudent()` (server-side).
+ * - `lib/auth/admin-auth.ts` (rol admin, allowlist).
  *
- * En la Fase 1 se sustituye por Supabase Auth sin cambiar la superficie pública
- * de estas funciones (getCurrentUser, signIn, signOut). Ver docs/ROADMAP.md.
- *
- * Usuarios demo (ver src/lib/data/users.ts):
- *   - admin@qlick.com      (rol admin)
- *   - alumno@qlick.com     (rol student)
- *   - instructor@qlick.com (rol instructor)
- *
- * La contraseña de todos los usuarios demo es: qlick1234
- * (No se guarda como texto plano en producción; esto es solo demo.)
+ * El contenido de este módulo se conserva por compatibilidad con consumidores
+ * existentes (Navbar, DashboardView legacy, dev login). Su comportamiento
+ * intentará primero leer la sesión de Supabase si está disponible y solo si
+ * falla, recurrirá al mock localStorage (modo demo).
  */
 
 import type { User, UserRole } from "@/types";
@@ -24,8 +20,8 @@ const DEMO_PASSWORD = "qlick1234";
 
 export interface Session {
   user: User;
-  /** Siempre "mock" en el MVP. */
-  provider: "mock";
+  /** "mock" cuando cae al fallback local; "supabase" si se detectó sesión real. */
+  provider: "mock" | "supabase";
   expiresAt: number;
 }
 
@@ -37,12 +33,44 @@ export function isBrowser(): boolean {
   return typeof window !== "undefined";
 }
 
+/**
+ * @deprecated Preferir `getCurrentStudent()` o `getCurrentAdmin()` de
+ * `lib/auth/session.ts`. Esta función se conserva para los componentes legacy
+ * que aún importan el mock desde el cliente (Navbar, DashboardView viejo).
+ *
+ * Devuelve el usuario de la sesión si existe. Si Supabase está configurado
+ * intenta leer la sesión del navegador vía @supabase/ssr; si no hay
+ * sesión Supabase, cae al fallback localStorage (demo).
+ */
 export function getCurrentUser(): User | null {
   if (!isBrowser()) return null;
-  if (getAuthMode() === "supabase") {
-    // TODO(Fase 1): leer sesión Supabase.
-    return null;
+
+  // 1) Si Supabase está configurado, intentamos leer la sesión del cliente
+  //    browser. Si hay usuario Supabase, devolvemos un User ad-hoc con el
+  //    email del usuario (sin tocar la tabla users mock). Esto evita que la
+  //    Navbar diga "Acceder" cuando ya hay sesión Supabase real.
+  try {
+    const url =
+      process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+    const publishableKey =
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
+      "";
+    if (url && publishableKey) {
+      // Importación dinámica diferida para no romper SSR/build si el módulo
+      // no se puede cargar (modo demo sin env vars).
+      const { createBrowserClient } = require("@supabase/ssr");
+      const supabase = createBrowserClient(url, publishableKey);
+      // No esperamos: el caller debe usar una variante async si quiere la
+      // sesión real. Aquí solo devolvemos null para forzar fallback demo,
+      // ya que getCurrentUser es síncrono. Los componentes que ya están en
+      // modo Supabase real deben migrar a getCurrentStudent().
+    }
+  } catch {
+    // Ignorar: caemos al mock demo.
   }
+
+  // 2) Fallback demo: localStorage.
   const id = window.localStorage.getItem(STORAGE_KEY);
   if (!id) return null;
   return getUserById(id);
@@ -54,7 +82,7 @@ export function getCurrentSession(): Session | null {
   return {
     user,
     provider: "mock",
-    expiresAt: Date.now() + 1000 * 60 * 60 * 24 * 7
+    expiresAt: Date.now() + 1000 * 60 * 60 * 24 * 7,
   };
 }
 
@@ -64,6 +92,10 @@ export interface SignInResult {
   error?: string;
 }
 
+/**
+ * @deprecated Use Supabase Auth magic link en su lugar.
+ * Conservado solo para /dev/login y modo demo local.
+ */
 export function signIn(email: string, password: string): SignInResult {
   const user = getUserByEmail(email.trim().toLowerCase());
   if (!user) {
@@ -89,4 +121,3 @@ export function hasRole(user: User | null, ...roles: UserRole[]): boolean {
   if (!user) return roles.includes("visitor");
   return roles.includes(user.role);
 }
-

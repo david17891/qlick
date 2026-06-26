@@ -1,4 +1,6 @@
 import type { Course } from "@/types";
+import { getPublishedCourses as getPublishedCoursesServer } from "@/lib/lms/courses-server";
+import { checkSupabaseConfig } from "@/lib/supabase/health";
 
 /**
  * Catálogo de cursos demo.
@@ -9,6 +11,17 @@ import type { Course } from "@/types";
  *
  * Las miniaturas usan Unsplash (vía next/image con remotePattern configurado).
  * Reemplazar por imágenes reales en /public/courses cuando estén disponibles.
+ *
+ * LMS Real Foundation (v0.7.0): el server lib `@/lib/lms/courses-server`
+ * expone la fuente de verdad de Supabase (`courses`, `modules`, `lessons`)
+ * con fallback demo. Los accesores públicos de este archivo (`getAllCourses`,
+ * `getCourseBySlug`, etc.) **siguen devolviendo la forma legacy** (Course con
+ * módulos+lecciones embebidos) porque las páginas actuales (`/cursos`,
+ * `/aprender`, etc.) dependen de esa forma rica.
+ *
+ * Para código nuevo que use la BD real directamente, importa desde
+ * `@/lib/lms` — los tipos son distintos (`@/types/lms.Course` es flat y se
+ * complementa con `getCourseModules` + `getModuleLessons`).
  */
 
 const thumb = {

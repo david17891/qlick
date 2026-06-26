@@ -1,19 +1,27 @@
 /**
- * Sesión admin vía Supabase Auth (server-only).
+ * Sesión admin y alumno vía Supabase Auth (server-only).
  *
  * Lee la sesión del usuario autenticado desde las cookies de la request usando
- * el cliente server de Supabase (respects RLS) y valida que el email esté en
- * el allowlist de admins.
+ * el cliente server de Supabase (respects RLS).
  *
  * Flujo:
- *   request cookies → supabase.auth.getUser() → user.email → isAdminEmail()
+ *   request cookies → supabase.auth.getUser() → user.email → role check
  *
  * Defensa en profundidad: el middleware ya filtra, pero los route handlers y
- * server actions deben volver a llamar a requireAdmin() antes de servir datos.
+ * server actions deben volver a llamar a requireAdmin() / requireStudent()
+ * antes de servir datos.
+ *
+ * Roles:
+ * - **admin**:  email debe estar en ADMIN_EMAIL_ALLOWLIST.
+ * - **student**: cualquier email NO-admin (ver `student-auth.ts`). La
+ *   autorización fina (qué cursos / lecciones puede ver) la aplica RLS.
+ * - Las dos funciones son INDEPENDIENTES: una persona NO puede ser admin
+ *   y student a la vez en el modelo actual.
  */
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isAdminEmail, isAuthEnabled } from "./admin-auth";
+import { isStudentEmail } from "./student-auth";
 
 /** Identidad mínima del admin autenticado (sin datos sensibles). */
 export interface AdminSession {
@@ -58,4 +66,69 @@ export async function getCurrentAdmin(): Promise<AdminSession | null> {
  */
 export async function requireAdmin(): Promise<AdminSession | null> {
   return getCurrentAdmin();
+}
+
+/* ------------------------------------------------------------------ */
+/* Sesión alumno (student)                                              */
+/* ------------------------------------------------------------------ */
+
+/** Identidad mínima del alumno autenticado. */
+export interface StudentSession {
+  /** Email normalizado en minúsculas. */
+  email: string;
+  /** ID de Supabase Auth (auth.uid()). */
+  userId: string;
+}
+
+/**
+ * Devuelve la sesión de un alumno si:
+ *   - la auth real está habilitada (Supabase configurado + allowlist admin
+ *     con al menos 1 email, reutilizamos el mismo `isAuthEnabled` por
+ *     consistencia con admin),
+ *   - hay un usuario autenticado en Supabase,
+ *   - y el email NO es admin (un admin no es alumno).
+ *
+ * Devuelve null si cualquiera de esas condiciones falla. No lanza.
+ *
+ * Importante: NO usamos ADMIN_EMAIL_ALLOWLIST para aceptar alumnos — ese
+ * allowlist es SOLO para admin. Alumno = "está autenticado y no es admin".
+ * El control fino de qué cursos/lecciones puede ver cada alumno está en RLS
+ * (auth.uid() = user_id en enrollments / lesson_progress).
+ */
+export async function getCurrentStudent(): Promise<StudentSession | null> {
+  // Modo demo: no hay auth real que validar.
+  if (!isAuthEnabled()) return null;
+
+  let supabase;
+  try {
+    supabase = await createSupabaseServerClient();
+  } catch {
+    return null;
+  }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user || !user.email) return null;
+
+  const normalizedEmail = user.email.trim().toLowerCase();
+  if (!normalizedEmail) return null;
+
+  // Bloqueo: si es admin, no entra como alumno (flujos separados).
+  if (!isStudentEmail(normalizedEmail)) return null;
+
+  return {
+    email: normalizedEmail,
+    userId: user.id,
+  };
+}
+
+/**
+ * Variante "require" para uso en Server Components / Route Handlers que
+ * necesitan la sesión o redirigir. Devuelve la sesión o null (el caller
+ * decide el comportamiento: redirect(307, "/login") o NextResponse.redirect).
+ */
+export async function requireStudent(): Promise<StudentSession | null> {
+  return getCurrentStudent();
 }

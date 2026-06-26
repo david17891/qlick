@@ -1,8 +1,22 @@
 import type { Enrollment, LessonProgress } from "@/types";
+import {
+  getUserEnrollments as getUserEnrollmentsServer,
+  getLessonProgress as getLessonProgressServer,
+} from "@/lib/lms/enrollments-server";
+import { checkSupabaseConfig } from "@/lib/supabase/health";
 
 /**
  * Inscripciones demo. En fase 1 provienen de la base de datos.
  * El alumno principal (user_alumno) está inscrito a 2 cursos con progreso distinto.
+ *
+ * LMS Real Foundation (v0.7.0): el server lib `@/lib/lms/enrollments-server`
+ * expone la fuente de verdad de Supabase (`enrollments`, `lesson_progress`)
+ * con fallback demo. Los accesores públicos de este archivo siguen
+ * devolviendo la forma legacy (Enrollment con `source`, `lastLessonId`, etc.)
+ * porque las páginas del dashboard mockado dependen de esos campos.
+ *
+ * Para código nuevo que use la BD real directamente, importa desde
+ * `@/lib/lms` — los tipos son distintos (`@/types/lms.Enrollment` es flat).
  */
 
 export const enrollments: Enrollment[] = [
