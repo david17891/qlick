@@ -20,7 +20,7 @@
  *     y es el que renderiza `/dashboard` real.
  */
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Container,
@@ -31,7 +31,6 @@ import {
   Badge,
 } from "@/components/ui";
 import { initials } from "@/lib/utils";
-import { markLessonCompleteAction } from "@/app/actions/lesson-progress";
 
 /** Forma enriquecida del enrollment que pasa el Server Component. */
 export interface DashboardEnrollmentView {
@@ -44,9 +43,7 @@ export interface DashboardEnrollmentView {
   nextLessonSlug?: string;
   /** Título de la próxima lección (para el hero "Continuar"). */
   nextLessonTitle?: string;
-  /** Índice 0-based de la próxima lección (para la action de "marcar vista"). */
-  nextLessonIndex?: number;
-  /** Total de lecciones del curso (para calcular el % nuevo). */
+  /** Total de lecciones del curso (para mostrar "X / N lecciones" en la card). */
   totalLessons: number;
 }
 
@@ -75,7 +72,6 @@ export function DashboardView({
       return init;
     },
   );
-  const [, startTransition] = useTransition();
 
   const overall = useMemo(() => {
     const list = Object.values(completedByCourse);
@@ -97,42 +93,12 @@ export function DashboardView({
     return null;
   }, [enrollments, completedByCourse]);
 
-  /**
-   * Marca la siguiente lección del curso como vista. Llama a la Server
-   * Action `markLessonCompleteAction` que escribe a
-   * `enrollments.progress_percent` (highest water mark).
-   *
-   * El state local se actualiza optimistamente con el percent que devuelve
-   * la action (o con un fallback en caso de error). La action también
-   * hace `revalidatePath("/dashboard")` así que la próxima visita al
-   * dashboard verá el percent real desde el server.
-   */
-  const [errorByCourse, setErrorByCourse] = useState<Record<string, string>>({});
-  const [pendingByCourse, setPendingByCourse] = useState<Record<string, boolean>>({});
-  const markLessonComplete = (e: DashboardEnrollmentView) => {
-    if (pendingByCourse[e.courseId]) return; // doble click guard
-    setErrorByCourse((prev) => ({ ...prev, [e.courseId]: "" }));
-    setPendingByCourse((prev) => ({ ...prev, [e.courseId]: true }));
-    startTransition(async () => {
-      const result = await markLessonCompleteAction({
-        courseId: e.courseId,
-        lessonIndex: e.nextLessonIndex ?? 0,
-        totalLessons: e.totalLessons,
-      });
-      setPendingByCourse((prev) => ({ ...prev, [e.courseId]: false }));
-      if (result.ok) {
-        setCompletedByCourse((prev) => ({
-          ...prev,
-          [e.courseId]: result.percent,
-        }));
-      } else {
-        setErrorByCourse((prev) => ({
-          ...prev,
-          [e.courseId]: result.note || "No se pudo guardar el progreso.",
-        }));
-      }
-    });
-  };
+  // (antes había aquí un botón "Marcar lección como vista" que llamaba
+  // a la Server Action. Se sacó: la card del dashboard muestra el curso
+  // completo, no una lección específica, y la acción de marcar se hace
+  // desde la página de la lección con contexto claro. Si más adelante
+  // queremos un quick-action aquí, debería ser algo como "Marcar curso
+  // como completado" o tener un selector de lección explícito.)
 
   return (
     <Container size="wide" className="py-10">
@@ -226,7 +192,11 @@ export function DashboardView({
                   </div>
                   <div className="mb-3 flex items-center justify-between text-xs">
                     <span className="font-semibold text-ink-soft">{percent}% completado</span>
-                    <span className="text-ink-muted">9 lecciones</span>
+                    <span className="text-ink-muted">
+                      {e.totalLessons > 0
+                        ? `${e.totalLessons} lecciones`
+                        : "lecciones"}
+                    </span>
                   </div>
                   <ProgressBar value={percent} />
                   <div className="mt-4 flex flex-wrap gap-2">
@@ -253,23 +223,6 @@ export function DashboardView({
                       >
                         Ver curso
                       </Button>
-                    )}
-                    {!isComplete && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => markLessonComplete(e)}
-                        disabled={pendingByCourse[e.courseId]}
-                      >
-                        {pendingByCourse[e.courseId]
-                          ? "Guardando…"
-                          : "Marcar lección como vista"}
-                      </Button>
-                    )}
-                    {errorByCourse[e.courseId] && (
-                      <p className="w-full text-xs text-red-600 mt-1">
-                        ⚠ {errorByCourse[e.courseId]}
-                      </p>
                     )}
                   </div>
                 </Card>
