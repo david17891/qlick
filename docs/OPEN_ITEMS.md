@@ -153,6 +153,33 @@ eventos. Detectado durante smoke test (2026-06-27).
 `/dashboard`). Scope: ~15 min. **Severity 🟢 porque no bloquea nada,
 solo confunde.**
 
+### 🟡 B-5 — Cover image de evento sobresale del card en `/admin/eventos`
+
+**Síntoma:** las cards con `cover_image_url` renderizado muestran la imagen
+parcialmente FUERA del border del card por arriba (David reportó "el perro
+se ve fuera del card"). La card "sin portada" con el gradient de fallback
+se ve OK.
+
+**Estado del debug (2026-06-27 ~02:05):**
+- Verifiqué que `.bg-cover`, `.bg-center`, `.h-32`, `.overflow-hidden`
+  están todas en el CSS compilado (`6fea3aa7d8c4bd43.css`).
+- El Card component tiene `overflow-hidden` aplicado correctamente
+  (`cn('rounded-2xl bg-white …', 'p-0 flex flex-col overflow-hidden')`).
+- Probé 3 patrones distintos (`<img className="h-32">` → wrapper relative
+  absolute → `<div bg-cover bg-center>` con background-image). Todos
+  producen el mismo overflow visual.
+- Sospecha: el `<div>` interno con `h-32` no respeta la altura, o el
+  `bg-cover` está escalando la imagen más allá del contenedor padre.
+
+**Workaround actual:** el admin puede ver el evento OK en su detalle;
+la imagen de portada es solo decorativa en el listado. No bloquea nada.
+
+**Fix propuesto:** debuggear con DevTools (F12 → Elements) en la próxima
+sesión. Hipótesis a verificar: (a) el `bg-cover` no aplica a URLs
+externas sin `crossOrigin`, (b) el `<Card>` envuelve en algo más que
+rompe `overflow-hidden`, (c) el grid `gap-4` mete un margin que empuja.
+Scope: ~15 min con DevTools. **Severity 🟡 porque tiene workaround.**
+
 ---
 
 ### 🟡 B-2 — Calendario CRM no renderiza `crm_tasks` (sesión 2026-06-27)
