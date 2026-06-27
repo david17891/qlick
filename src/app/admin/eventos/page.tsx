@@ -114,9 +114,9 @@ export default async function AdminEventosListPage() {
                         {s.surveyCount}
                       </p>
                     </div>
-                    <div className="rounded-lg bg-violet-50 px-2 py-2 text-center">
+                    <div className="rounded-lg bg-blue-50 px-2 py-2 text-center">
                       <p className="text-xs text-ink-muted">Leads nuevos</p>
-                      <p className="text-lg font-bold text-violet-700">
+                      <p className="text-lg font-bold text-blue-700">
                         {s.leadsPromoted}
                       </p>
                     </div>
