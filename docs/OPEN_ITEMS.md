@@ -52,14 +52,14 @@ libre. Riesgo residual bajo.
 
 ### 🟡 H10 del QA Fase 2 — `linkLeadToEventRecord` no valida `recordType`
 
-**Síntoma:** la función valida `!input.recordType` (truthiness) pero no
-el valor. Un JSON payload con `recordType: "otro"` se acepta y crea row
-con `link_type='otro'`, que no está en el enum `lead_event_link_type`
-→ la DB lo rechaza con CHECK constraint.
+**Estado:** ✅ **RESUELTO** (2026-06-27 ~02:59).
 
-**Mitigación actual:** el type TS `LeadEventLinkType` lo previene en compile time para callers tipados. JSON payloads sin tipo se rompen en runtime.
-
-**Fix propuesto:** `const LEAD_RECORD_TYPES = ['confirmation','attendee','survey']` + `isLeadEventLinkType()` como hace `updateLeadStatus` con `isLeadStatus`. **Scope: 1 línea, hacerlo en Fase 4.**
+`linkLeadToEventRecord` ahora valida el valor de `recordType` contra
+`VALID_RECORD_TYPES = ['confirmation','attendee','survey']` antes de
+intentar el insert. Si llega un valor fuera del enum (via JSON sin tipo),
+devuelve `{ ok: false, note: 'recordType inválido: "X". Valores
+aceptados: confirmation, attendee, survey.' }` en vez de romperse en
+la CHECK constraint con un error críptico. Cierra H10.
 
 ### 🟡 H11 del QA Fase 2 — Sin GIN index en `leads.tags`
 
@@ -127,15 +127,12 @@ reales), evento "Ejemplo" (sin datos) muestra 0/0/0/0.
 
 ### 🟢 B-4 — Navbar "Mi panel" manda a `/dashboard` (alumnos) para admins
 
-**Síntoma:** estando en `/admin/*`, click en "Mi panel" del navbar lleva
-a `/login` (porque no hay sesión de alumno) o al dashboard de alumnos.
+**Estado:** ✅ **RESUELTO** (2026-06-27 ~02:59).
 
-**Origen:** bug pre-existente del layout (`Navbar.tsx`), no del CRUD de
-eventos. Detectado durante smoke test (2026-06-27).
-
-**Fix propuesto:** cambiar el link según rol (admin → `/admin`, alumno →
-`/dashboard`). Scope: ~15 min. **Severity 🟢 porque no bloquea nada,
-solo confunde.**
+`Navbar.tsx` ahora hace el href contextual:
+`href={isAdmin ? "/admin" : "/dashboard"}` (desktop y mobile). Aplicado
+tanto en el botón desktop (línea ~161) como en el mobile menu (~253).
+Cierra B-4.
 
 ### 🟡 B-5 — Cover image de evento sobresale del card en `/admin/eventos`
 

@@ -721,6 +721,22 @@ export async function linkLeadToEventRecord(
       note: "Faltan datos (leadId/eventSlug/recordType/recordId).",
     };
   }
+  // Cierra H10 del QA Fase 2: validación runtime de recordType.
+  // El union de TS previene en compile time, pero JSON payloads sin tipo
+  // pueden traer valores fuera del enum → la DB rechaza con CHECK constraint
+  // y el caller recibe un error críptico. Mejor falla ruidoso y temprano.
+  const VALID_RECORD_TYPES: readonly EventRecordType[] = [
+    "confirmation",
+    "attendee",
+    "survey",
+  ];
+  if (!VALID_RECORD_TYPES.includes(input.recordType)) {
+    return {
+      ok: false,
+      linked: false,
+      note: `recordType inválido: "${input.recordType}". Valores aceptados: confirmation, attendee, survey.`,
+    };
+  }
 
   if (!isRealMode()) {
     // eslint-disable-next-line no-console

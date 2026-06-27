@@ -158,7 +158,11 @@ export function Navbar() {
                   Admin
                 </Button>
               )}
-              <Button href="/dashboard" variant="outline" size="sm">
+              <Button
+                href={isAdmin ? "/admin" : "/dashboard"}
+                variant="outline"
+                size="sm"
+              >
                 Mi panel
               </Button>
               <button
@@ -250,7 +254,11 @@ function MobileMenu({
                   Admin
                 </Button>
               )}
-              <Button href="/dashboard" className="w-full" size="sm">
+              <Button
+                href={isAdmin ? "/admin" : "/dashboard"}
+                className="w-full"
+                size="sm"
+              >
                 Mi panel
               </Button>
               <button
