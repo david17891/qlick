@@ -98,6 +98,21 @@ que mergear.
 
 **Estado actual:** no es bloqueante para nada (las masterclasses existentes funcionan independientemente). Documentado en ROADMAP.
 
+### 🟠 C-3 — `surveyUnmatchedCount` approximation en `getAdminEvents`
+
+**Síntoma:** `src/lib/events/events-server.ts:getAdminEvents` calcula
+`surveyUnmatchedCount` con `Math.round(unmatchedTotal / events.length)`.
+Esto da una suma visual inconsistente: si hay 11 unmatched y 5 eventos,
+cada card muestra "2" → la suma es 10, no 11.
+
+**Origen:** bug pre-existente del server lib de Fase 3, detectado en
+auditoría del paso 1 de Fase 4 (2026-06-26). No es del UI del paso 1.
+
+**Fix propuesto:** cambiar `getAdminEvents` para hacer un SELECT adicional
+con `event_surveys.event_id` joined a `event_survey_unmatched.survey_id`,
+agrupado por `event_id`. Query simple, mismo patrón que el conteo de
+`leadsPromoted`. **Scope: cuando se toque `getAdminEvents` por otra razón.**
+
 ---
 
 ## 2. Features pendientes por fase
