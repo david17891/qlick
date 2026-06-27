@@ -696,19 +696,19 @@ export interface LinkLeadToEventRecordResult {
 }
 
 /**
- * Vincula un lead existente con un record de evento (Fase 3).
+ * Vincula un lead existente con un record de evento.
  *
- * STUB — la implementación real depende de las tablas `event_*` que crea
- * la Fase 3. Por ahora: agrega un tag estructurado al lead para que la
- * relación sea trazable desde la DB sin schema change.
+ * Implementación (Fase 3): crea una fila en `lead_event_links`
+ * (tabla de join). Esto reemplaza el STUB tag-based de Fase 2.
  *
- * Convención del tag: `event:<slug>:<recordType>:<recordId>`.
+ * Cierra el **H2 del QA round 1 de Fase 2** (race condition en tags)
+ * por construcción: la tabla `lead_event_links` es INSERT-only, no
+ * SELECT-then-UPDATE. Dos requests concurrentes que intenten agregar
+ * el mismo link: uno gana (INSERT), el otro recibe 23505 unique
+ * violation que se reporta como `linked: false` (ya estaba).
  *
- * Cuando existan las tablas de eventos (Fase 3), esta función se
- * reemplaza por una que cree la fila en una tabla de join
- * (ej. `lead_event_links(lead_id, event_record_type, event_record_id)`)
- * o agregue un campo `metadata jsonb` al lead. El contrato público
- * (input/output) se mantiene estable para que el caller no cambie.
+ * El contrato público (input/output) se mantiene estable para que
+ * el caller (Fase 2 callers + el importador de Fase 3) no cambie.
  */
 export async function linkLeadToEventRecord(
   input: LinkLeadToEventRecordInput,
@@ -721,73 +721,88 @@ export async function linkLeadToEventRecord(
     };
   }
 
-  const tagToAdd = `event:${input.eventSlug}:${input.recordType}:${input.recordId}`;
-
   if (!isRealMode()) {
     // eslint-disable-next-line no-console
     console.info("[crm:demo] link lead-event (no persistido)", {
       leadId: input.leadId,
-      tag: tagToAdd,
+      eventSlug: input.eventSlug,
+      recordType: input.recordType,
+      recordId: input.recordId,
     });
     return {
       ok: true,
       linked: true,
-      note: "Link registrado en modo demo (tag en consola).",
+      note: "Link registrado en modo demo (no persistido).",
     };
   }
 
   const supabase = createSupabaseAdminClient();
-  // Traemos los tags actuales para merge.
-  const { data: lead, error: fetchErr } = await supabase
-    .from("leads")
-    .select("tags")
-    .eq("id", input.leadId)
+
+  // 1. Resolver eventSlug → eventId (la FK en lead_event_links es a id, no slug).
+  const { data: event, error: evErr } = await supabase
+    .from("events")
+    .select("id")
+    .eq("slug", input.eventSlug)
     .maybeSingle();
 
-  if (fetchErr || !lead) {
+  if (evErr) {
     // eslint-disable-next-line no-console
-    console.error("[leads-server] linkLeadToEventRecord: fetch falló", {
-      code: fetchErr?.code,
-      leadId: input.leadId,
+    console.error("[leads-server] linkLeadToEventRecord: read event falló", {
+      code: evErr.code,
+      eventSlug: input.eventSlug,
     });
     return {
       ok: false,
       linked: false,
-      note: "No se pudo leer el lead.",
+      note: `No se pudo leer el evento (${evErr.code ?? "unknown"}).`,
+    };
+  }
+  if (!event) {
+    return {
+      ok: false,
+      linked: false,
+      note: `Evento "${input.eventSlug}" no existe.`,
+    };
+  }
+  const eventId = event.id as string;
+
+  // 2. INSERT con onConflict do nothing (idempotente por UNIQUE constraint).
+  const { error: insErr } = await supabase
+    .from("lead_event_links")
+    .insert({
+      lead_id: input.leadId,
+      event_id: eventId,
+      link_type: input.recordType,
+      link_id: input.recordId,
+    });
+
+  if (!insErr) {
+    return {
+      ok: true,
+      linked: true,
+      note: "Link creado en lead_event_links.",
     };
   }
 
-  const existingTags = (lead.tags as string[] | null) ?? [];
-  if (existingTags.includes(tagToAdd)) {
+  // 23505 = unique_violation → ya existía el link, no se duplica.
+  if (insErr.code === "23505") {
     return {
       ok: true,
       linked: false,
-      note: "El link ya existía (tag duplicado).",
+      note: "El link ya existía (idempotente).",
     };
   }
 
-  const merged = Array.from(new Set([...existingTags, tagToAdd]));
-  const { error: updErr } = await supabase
-    .from("leads")
-    .update({ tags: merged })
-    .eq("id", input.leadId);
-
-  if (updErr) {
-    // eslint-disable-next-line no-console
-    console.error("[leads-server] linkLeadToEventRecord: update falló", {
-      code: updErr.code,
-      leadId: input.leadId,
-    });
-    return {
-      ok: false,
-      linked: false,
-      note: "No se pudo actualizar el lead.",
-    };
-  }
-
+  // Cualquier otro error: falla ruidoso.
+  // eslint-disable-next-line no-console
+  console.error("[leads-server] linkLeadToEventRecord: insert falló", {
+    code: insErr.code,
+    leadId: input.leadId,
+    eventId,
+  });
   return {
-    ok: true,
-    linked: true,
-    note: "Link agregado al lead (tag).",
+    ok: false,
+    linked: false,
+    note: `No se pudo crear el link (${insErr.code ?? "unknown"}).`,
   };
 }
