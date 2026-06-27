@@ -441,3 +441,67 @@ decidió, por qué, qué alternativas se consideraron, el riesgo y cómo reverti
   actions en `src/app/actions/{masterclass,admin-masterclass}.ts` y el
   enlace en `AdminView.tsx`. El CRM admin y el resto de la app siguen
   funcionando como en v0.5.1.
+
+---
+
+## D-020 · Lead ↔ Event link con tabla de join `lead_event_links` (v0.7.0)
+
+- **Fecha:** 2026-06-26
+- **Decisión:** Para vincular leads con records de eventos, usamos una
+  tabla de join dedicada `lead_event_links` con FK a `leads` y `events`,
+  y un FK lógica (no enforced) al record según `link_type` enum
+  (`'confirmation' | 'attendee' | 'survey'`).
+- **Motivo:** En Fase 2 implementamos `linkLeadToEventRecord` como STUB
+  que agregaba un tag al array `tags` del lead. Esto se identificó
+  como **H2 del QA round 1** (race condition: SELECT-then-UPDATE sobre
+  `leads.tags`). Al llegar Fase 3 (Events Funnel Foundation) decidimos
+  cerrar el bug **por construcción** en lugar de mitigarlo con un
+  trigger:
+  - INSERT-only (no UPDATE sobre datos compartidos).
+  - UNIQUE constraint `(lead_id, link_type, link_id)` hace la
+    idempotencia en la DB.
+  - Dos requests concurrentes que intenten agregar el mismo link: uno
+    gana (INSERT), el otro recibe `23505 unique_violation` y se
+    reporta como "ya estaba".
+- **Alternativas consideradas:**
+  1. Trigger `BEFORE UPDATE` que merge el array `tags` — más complejo,
+     debugging difícil si rompe.
+  2. `metadata jsonb` en `leads` con array de links — schema más flexible
+     pero pierdes las constraints de FK.
+  3. Tabla de join con INSERT-only + UNIQUE constraint. ✅
+- **Riesgos:**
+  - **`link_id` no es FK enforced** (sería costoso hacer 3 FKs opcionales
+    a 3 tablas distintas). Mitigable con trigger si se vuelve un problema
+    de integridad. Por ahora: baja probabilidad de inconsistencia porque
+    los callers son server-side.
+  - **Tabla crece rápido** si un lead se vincula a muchos eventos. Sin
+    riesgo conocido (un lead difícilmente viene de >100 eventos).
+- **Cómo revertir:** DROP TABLE `public.lead_event_links` + restaurar el
+  STUB tag-based en `leads-server.ts:linkLeadToEventRecord`. Reversible
+  en 1 migration + 1 revert de commit.
+
+---
+
+## D-021 · Cierre del H2 del QA Fase 2 — race condition en `linkLeadToEventRecord` (v0.7.0)
+
+- **Fecha:** 2026-06-26
+- **Decisión:** Resolver el H2 (race condition) **por construcción** vía
+  la tabla `lead_event_links` (D-020) en lugar de mitigarlo con un
+  trigger de merge en `leads.tags`.
+- **Motivo:** el patrón "tag array con merge manual" es frágil y difícil
+  de razonar bajo concurrencia. Una tabla de join dedicada es la
+  solución canónica y se alinea con cómo se hacen los joins lead↔evento
+  en cualquier sistema real (Salesforce, HubSpot, etc.).
+- **Relación con otros ADRs:** D-020 describe la mecánica. Este ADR es
+  el "por qué cerramos H2 acá y no en Fase 2".
+- **Por qué NO en Fase 2:**
+  - En Fase 2 no existían las tablas `events` (se planearon para Fase 3).
+    La FK de `lead_event_links` requiere que `events` exista.
+  - El STUB tag-based de Fase 2 era aceptable como placeholder porque
+    Fase 3 iba a reemplazarlo de inmediato. Documentamos el riesgo en el
+    QA round 1 (riesgo #11 del doc).
+- **Cierre:** commit `d0acaaa` en `feat/events-funnel-foundation`.
+  Test #7 de `_test-fase3.mjs` valida la idempotencia con dos inserts
+  seguidos (la segunda devuelve `23505`).
+- **Cómo revertir:** ver D-020.
+

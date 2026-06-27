@@ -1,0 +1,137 @@
+/**
+ * Mapper entre las filas de Postgres (snake_case) y los tipos del dominio
+ * (camelCase) de `src/types/events.ts`.
+ *
+ * Mantiene la firma pública de los server libs desacoplada del schema
+ * físico. Si la migration cambia un nombre de columna, solo se toca acá.
+ *
+ * Los tipos Row vienen del typegen de Supabase (`src/types/supabase.ts`),
+ * así que cualquier cambio de schema se propaga en compilación.
+ */
+
+import type { Database } from "@/types/supabase";
+import type {
+  Event,
+  EventConfirmation,
+  EventAttendee,
+  EventSurvey,
+  EventSurveyUnmatched,
+  LeadEventLink,
+} from "@/types/events";
+
+// ─────────────────────────────────────────────────────────────
+// Row types — derivados del typegen. Single source of truth.
+// ─────────────────────────────────────────────────────────────
+
+export type EventRow = Database["public"]["Tables"]["events"]["Row"];
+export type EventConfirmationRow =
+  Database["public"]["Tables"]["event_confirmations"]["Row"];
+export type EventAttendeeRow =
+  Database["public"]["Tables"]["event_attendees"]["Row"];
+export type EventSurveyRow =
+  Database["public"]["Tables"]["event_surveys"]["Row"];
+export type EventSurveyUnmatchedRow =
+  Database["public"]["Tables"]["event_survey_unmatched"]["Row"];
+export type LeadEventLinkRow =
+  Database["public"]["Tables"]["lead_event_links"]["Row"];
+
+// ─────────────────────────────────────────────────────────────
+// Mappers row → dominio
+// ─────────────────────────────────────────────────────────────
+
+export function mapEventRowToEvent(row: EventRow): Event {
+  return {
+    id: row.id,
+    slug: row.slug,
+    title: row.title,
+    description: row.description ?? undefined,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at ?? undefined,
+    location: row.location ?? undefined,
+    coverImageUrl: row.cover_image_url ?? undefined,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function mapEventConfirmationRowToEventConfirmation(
+  row: EventConfirmationRow,
+): EventConfirmation {
+  return {
+    id: row.id,
+    eventId: row.event_id,
+    name: row.name,
+    email: row.email ?? undefined,
+    phoneRaw: row.phone_raw ?? undefined,
+    phoneNormalized: row.phone_normalized ?? undefined,
+    source: row.source,
+    confirmedAt: row.confirmed_at,
+    importBatchId: row.import_batch_id ?? undefined,
+  };
+}
+
+export function mapEventAttendeeRowToEventAttendee(
+  row: EventAttendeeRow,
+): EventAttendee {
+  return {
+    id: row.id,
+    eventId: row.event_id,
+    confirmationId: row.confirmation_id ?? undefined,
+    name: row.name ?? undefined,
+    email: row.email ?? undefined,
+    phoneNormalized: row.phone_normalized ?? undefined,
+    checkedInAt: row.checked_in_at,
+    checkedInBy: row.checked_in_by ?? undefined,
+    source: row.source,
+    importBatchId: row.import_batch_id ?? undefined,
+  };
+}
+
+export function mapEventSurveyRowToEventSurvey(
+  row: EventSurveyRow,
+): EventSurvey {
+  return {
+    id: row.id,
+    eventId: row.event_id,
+    confirmationId: row.confirmation_id ?? undefined,
+    attendeeId: row.attendee_id ?? undefined,
+    respondentEmail: row.respondent_email ?? undefined,
+    respondentPhone: row.respondent_phone ?? undefined,
+    phoneNormalized: row.phone_normalized ?? undefined,
+    responses: (row.responses ?? {}) as Record<string, unknown>,
+    consentToContact: row.consent_to_contact,
+    commercialInterest: row.commercial_interest ?? undefined,
+    submittedAt: row.submitted_at,
+    importBatchId: row.import_batch_id ?? undefined,
+    promotedToLeadId: row.promoted_to_lead_id ?? undefined,
+    promotedAt: row.promoted_at ?? undefined,
+  };
+}
+
+export function mapEventSurveyUnmatchedRowToEventSurveyUnmatched(
+  row: EventSurveyUnmatchedRow,
+): EventSurveyUnmatched {
+  return {
+    id: row.id,
+    surveyId: row.survey_id,
+    // El typegen tiene `reason: string` por simplicidad. En runtime el valor
+    // es uno de los del union `EventSurveyUnmatchedReason`. Si la DB tiene un
+    // valor fuera del union (no debería pasar), lo casteamos con seguridad.
+    reason: row.reason as EventSurveyUnmatched["reason"],
+    createdAt: row.created_at,
+  };
+}
+
+export function mapLeadEventLinkRowToLeadEventLink(
+  row: LeadEventLinkRow,
+): LeadEventLink {
+  return {
+    id: row.id,
+    leadId: row.lead_id,
+    eventId: row.event_id,
+    linkType: row.link_type,
+    linkId: row.link_id,
+    createdAt: row.created_at,
+  };
+}

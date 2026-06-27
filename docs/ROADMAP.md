@@ -7,6 +7,12 @@
 
 ## Estado actual
 
+- [x] **Events Funnel Foundation v0.7.0** — fase cerrada y mergeada a `main` (rama `feat/events-funnel-foundation`) el 2026-06-26
+  - 12 commits: migration (6 tablas + RLS) → tipos dominio → mapper → 5 server libs (events/confirmations/attendees/surveys/promotion) → refactor `linkLeadToEventRecord` (cierra H2 de Fase 2) → importer CLI con `xlsx` → 23 unit tests del importer → barrel + doc
+  - **Cierre del H2 del QA Fase 2** (race condition en tags) por construcción: `linkLeadToEventRecord` ahora usa `lead_event_links` (INSERT-only con UNIQUE)
+  - Validado: `npm test` (37/37 ✅), `npx tsc --noEmit` ✅, `npm run lint` ✅, `_test-fase3.mjs` 7/7 PASS contra Supabase real con cleanup automático
+  - Doc de cierre: `docs/EVENTS_FUNNEL_FOUNDATION.md`
+  - **Deuda activa de Fase 3 → ver `docs/OPEN_ITEMS.md` §1 y §2**
 - [x] **LMS Real Foundation v0.9.0** — fase cerrada y mergeada a `main` (commit `78db4a3`) el 2026-06-25
   - 14 commits: DB (5 tablas + RLS) → server libs → docs handoff → Google OAuth → fix `client.ts` → QR enrollment → fallbacks UUID/FK → seed script → docs E2E plan → tour Playwright
   - Validado: `npm run type-check && npm run build` green, query directa a DB confirma 4 cursos + 12 módulos + 36 lecciones
@@ -38,7 +44,7 @@
 
 ## En curso
 
-- (vacío — listo para arrancar la siguiente feature)
+- (vacío — listo para arrancar **Fase 4: UI admin `/admin/eventos` + WhatsApp manual** cuando David dé luz verde. Plan completo en `docs/EVENTS_FUNNEL_FOUNDATION.md` §10 + deuda activa en `docs/OPEN_ITEMS.md` §2.)
 
 ## Pendientes — features
 
@@ -119,11 +125,11 @@ El cliente reposicionó Qlick: no es solo un LMS, es una **plataforma propia** q
 
 | # | Fase | Estado | Notas |
 |---|---|---|---|
-| 0 | **LMS al 100%** (esta semana) | 🟡 en curso | polish, hidratación bug, dashboard persist |
-| 1 | **Preparar flujo conceptual del evento** (en paralelo) | ⚪ no iniciado | QR general → respuestas → asistentes → interés comercial, solo DOC, no implementar |
-| 2 | **CRM pasa de demo a real** | ⚪ no iniciado | conectar `crm-service.ts` a Supabase, persistir leads/tareas/notas |
-| 3 | **Módulo de eventos + importador seguro** | ⚪ no iniciado | schema `events`, `event_confirmations`, `event_attendees`, `event_surveys`; importador desde ruta local con datos sintéticos para tests |
-| 4 | **WhatsApp manual workflow** | ⚪ no iniciado | admin genera mensaje, wa.me link, marca estado, audit log |
+| 0 | **LMS al 100%** | 🟡 en curso | polish, hidratación bug, dashboard persist |
+| 1 | **Preparar flujo conceptual del evento** | ✅ hecho (doc `EVENTS_FUNNEL_CONCEPT.md`) | flujo de eventos/conferencias conceptual |
+| 2 | **CRM pasa de demo a real** | ✅ hecho (Fase 2) | `crm-service.ts` conectado a Supabase vía `leads-server.ts` |
+| 3 | **Módulo de eventos + importador seguro** | ✅ hecho (Fase 3) | 6 tablas + 5 server libs + importer CLI. Cierra H2 de Fase 2. |
+| 4 | **UI admin `/admin/eventos` + WhatsApp manual workflow** | ⚪ próximo | scope en `OPEN_ITEMS.md` §2 + plan en `EVENTS_FUNNEL_FOUNDATION.md` §10 |
 | 5 | **Pagos reales** (Stripe / MercadoPago / Conekta) | ⚪ futuro | reemplazar simulador |
 | 6 | **WhatsApp Business API** | ⚪ futuro | webhooks, plantillas, Meta Cloud API |
 
