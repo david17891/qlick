@@ -1,0 +1,256 @@
+# Open Items — Qlick Marketing Integral
+
+> **Propósito:** Registro vivo de TODO lo que queda pendiente en el
+> proyecto. Lo que está acá NO es scope de una fase específica — es la
+> "deuda visible" que David y yo debemos trackear entre sesiones para
+> no perder nada.
+>
+> **Cuándo actualizarlo:**
+> - Cuando cerramos algo: marcar ✅ o mover a sección "Resueltos reciente".
+> - Cuando descubrimos algo nuevo: agregar con severidad.
+> - Cuando arrancamos una fase: tachar lo que la fase va a cerrar.
+>
+> **Severidades:**
+> - 🔴 **Crítico** — bloquea producción o tiene riesgo legal/privacidad.
+> - 🟠 **Alto** — afecta funcionalidad core o experiencia de uso importante.
+> - 🟡 **Medio** — deuda técnica o feature incompleta que tiene workaround.
+> - 🟢 **Bajo** — polish, optimización, nice-to-have.
+> - ⚪ **Bloqueado** — esperando input de David/sócios o decisión de producto.
+
+---
+
+## 1. Deuda técnica activa
+
+### 🔴 H2 del QA Fase 2 — Race en `linkLeadToEventRecord` (tags)
+
+**Estado:** ✅ **RESUELTO en Fase 3** (commit `d0acaaa`).
+La función ahora usa `lead_event_links` (INSERT-only con UNIQUE) en lugar
+de SELECT-then-UPDATE sobre `leads.tags`. Ya no hay race window.
+
+Verificación: test #7 de `_test-fase3.mjs` confirma idempotencia.
+
+### 🟠 H8 del QA Fase 2 — `findLeadByPhone` O(N) en memoria
+
+**Síntoma:** `findLeadByPhone` hace `SELECT * FROM leads WHERE phone IS NOT NULL LIMIT 200` y compara en memoria con `phonesMatch`. Si la base tiene >200 leads con phone y la persona es la #201 al #500, **no la encuentra** → duplicado silencioso en producción.
+
+**Mitigación actual:** aceptable para MVP (todavía no llegamos a 200 leads con phone). Comentado en el código (líneas del leads-server).
+
+**Fix propuesto:** cuando se cree la próxima migration de eventos/agregación, agregar columna `phone_normalized text` + índice funcional `CREATE INDEX ... ON leads (phone_normalized) WHERE phone_normalized IS NOT NULL`. **Scope: Fase 4+.**
+
+### 🟡 H9 del QA Fase 2 — Tags sin validación de shape
+
+**Síntoma:** `leads.tags` es `text[]` libre. Un caller puede meter
+`event::test`, `EVENT:UPPER`, `event:slug::::` y se aceptan sin protesta.
+Riesgo: duplicación semántica, inyección (tags con `:` rompen parsers),
+crecimiento sin control.
+
+**Cambio de contexto:** la trazabilidad lead↔evento ya NO vive en tags
+(desde Fase 3 va por `lead_event_links`). Tags siguen siendo metadata
+libre. Riesgo residual bajo.
+
+**Fix propuesto:** validador runtime `isValidEventTag(slug)` en server lib. **Scope: Fase 4+ (baja prioridad).**
+
+### 🟡 H10 del QA Fase 2 — `linkLeadToEventRecord` no valida `recordType`
+
+**Síntoma:** la función valida `!input.recordType` (truthiness) pero no
+el valor. Un JSON payload con `recordType: "otro"` se acepta y crea row
+con `link_type='otro'`, que no está en el enum `lead_event_link_type`
+→ la DB lo rechaza con CHECK constraint.
+
+**Mitigación actual:** el type TS `LeadEventLinkType` lo previene en compile time para callers tipados. JSON payloads sin tipo se rompen en runtime.
+
+**Fix propuesto:** `const LEAD_RECORD_TYPES = ['confirmation','attendee','survey']` + `isLeadEventLinkType()` como hace `updateLeadStatus` con `isLeadStatus`. **Scope: 1 línea, hacerlo en Fase 4.**
+
+### 🟡 H11 del QA Fase 2 — Sin GIN index en `leads.tags`
+
+**Síntoma:** queries del estilo `WHERE tags @> ARRAY['event:uabc-km43']`
+son seq scan sobre la tabla. Con 100 leads, OK. Con 10k, molesto. Con
+100k, problema.
+
+**Cambio de contexto:** con Fase 3, las queries de trazabilidad lead↔evento
+van por `lead_event_links` (que sí tiene índice FK). Tags en `leads`
+siguen siendo metadata libre. Riesgo residual bajo.
+
+**Fix propuesto:** `CREATE INDEX leads_tags_gin ON leads USING gin (tags);`. **Scope: Fase 4+ (cuando se agreguen queries por tag).**
+
+### 🟠 B-1 — `xlsx` tiene 5 vulnerabilidades transitive (npm audit)
+
+**Síntoma:** `npm audit` reporta 1 moderate + 5 high en deps transitive
+de `xlsx`. No son críticas para un script CLI que lee archivos locales,
+pero el reporte queda sucio.
+
+**Mitigación actual:** ninguna. Aceptable para MVP.
+
+**Fix propuesto:** considerar migrar a `exceljs` (mantenida, menos transitive deps) si los reportes se vuelven un problema. **Scope: si pasa a Fase 5 con CI/CD.**
+
+### 🟢 C-1 — Inconsistencia `LessonVideoProvider "external"` (deuda previa LMS)
+
+**Síntoma:** `LessonVideoProvider` tiene `"external"` en la CHECK constraint
+de la DB pero NO en el TS type (solo `"youtube" | "vimeo" | "mp4"`).
+
+**Fix propuesto:** agregar `"external"` al TS type. 1 línea. **Scope: pendiente sin fase asignada.**
+
+### 🟢 C-2 — `masterclass-funnel-foundation` branch sin mergear
+
+**Síntoma:** existe la rama `feature/masterclass-funnel-foundation` en
+remotes pero nunca mergeada a main. Si David la necesita en main, hay
+que mergear.
+
+**Estado actual:** no es bloqueante para nada (las masterclasses existentes funcionan independientemente). Documentado en ROADMAP.
+
+---
+
+## 2. Features pendientes por fase
+
+### Fase 4 — UI Admin `/admin/eventos` + WhatsApp manual
+
+**Status:** ⚪ No iniciada. Esperando luz verde.
+
+**Scope (del doc `EVENTS_FUNNEL_FOUNDATION.md`):**
+- [ ] `/admin/eventos` lista de eventos con cards
+- [ ] `/admin/eventos/[id]` detalle con tabs:
+  - Confirmados (tabla + búsqueda)
+  - Asistentes (tabla + match manual con confirmation)
+  - Encuestas (tabla con `consent_to_contact` visible)
+  - Leads promovidos (lista linked al evento)
+- [ ] Wizard de import:
+  - Upload `.xlsx`
+  - Preview con mapping de headers
+  - Confirmar import con reporte (inserted/duplicates/invalid)
+- [ ] Drawer del lead con badge "📅 Vino de evento X, encuesta Y, interés Z"
+- [ ] WhatsApp manual workflow:
+  - `buildWhatsAppMessage(lead, event)` server-side
+  - Botón "Generar WhatsApp" → abre `wa.me/...?text=...`
+  - Estados: `no_contactado` → `mensaje_preparado` → `contactado` → `respondió` → `interested`/`lost`
+  - Audit log en cada mensaje enviado
+- [ ] Server action público: `/eventos/[slug]` con form de "registrarme"
+
+**Dependencias:**
+- Migration nueva opcional (`event_surveys_unmatched` ya está creada en Fase 3)
+- Posible migration para `phone_normalized` (cierra H8)
+- Dep `exceljs` o seguir con `xlsx`
+
+### Fase 5 — Notificaciones automáticas + admin CRUD
+
+- [ ] Email al admin cuando entra survey con consent (requiere SMTP — Resend / SendGrid)
+- [ ] CRUD admin completo de eventos desde panel sin tocar SQL
+
+### Fase 6+ — Backend
+
+- [ ] WhatsApp Business API (Meta Cloud / BSP) — reemplazar el workflow manual
+- [ ] Multi-evento en un solo Excel (D-8 del concept)
+- [ ] Análisis de sentimiento sobre respuestas libres de encuesta
+
+---
+
+## 3. Deuda del roadmap previo (LMS / Masterclass)
+
+### Roadmap item 0 — LMS al 100%
+
+- [ ] Catálogo real: los 4 cursos siguen duplicados entre `src/lib/data/courses.ts` y la DB (seed). Cuando David defina el catálogo final con sócios, eliminar el mock.
+- [ ] Pendiente: test E2E de pagos con cuenta NO-admin.
+
+### Roadmap item 5 — Pagos (adapters)
+
+- [ ] Decisión abierta: MercadoPago / Stripe / Conekta / mix.
+- [ ] Stubs ya existen (`src/lib/payments/`), falta reemplazar por adapter real con credenciales.
+
+### Roadmap item 6 — Onboarding del alumno
+
+- [ ] Scope exacto abierto (tooltips vs tour modal vs emails).
+- [ ] Bloqueado hasta definir UX con socios.
+
+### Roadmap item 7 — Tests automáticos (Vitest + SQL)
+
+- [ ] `_test-fase2.mjs` y `_test-fase3.mjs` funcionan pero son scripts ad-hoc, no tests automatizados.
+- [ ] Vitest con `unstable_vitest_node` en Postgres local podría cubrir Fase 2/3 server libs.
+
+---
+
+## 4. Decisiones pendientes con socios
+
+### 🟠 Proveedor de pagos
+
+**Bloqueado:** esperando decisión de David con socios sobre MercadoPago vs Stripe vs Conekta vs mix.
+
+**Impacto:** roadmap item 5 + cualquier flujo de inscripción paid.
+
+**Costo/comisiones/tiempo de implementación** varía por proveedor. Recomiendo MercadoPago para MX (audiencia principal) + Stripe como backup para USD.
+
+### 🟠 Contenido real de cursos
+
+**Bloqueado:** los videos de los 4 cursos siguen siendo placeholders de YouTube (no originales).
+
+**Impacto:** el LMS funciona, pero la propuesta de valor "cursos de marketing de Qlick" está vacía sin contenido real.
+
+**Decisión necesaria:** ¿qué cursos producir primero y cuándo?
+
+### 🟡 Plantilla de email transaccional
+
+**Bloqueado:** default de Supabase Auth vs custom branded.
+
+**Impacto:** bienvenida, reset password, confirmaciones.
+
+### 🟡 Monitoring de errores en runtime
+
+**Bloqueado:** Sentry vs nada.
+
+**Impacto:** debug en producción. Hoy los logs son la única fuente.
+
+---
+
+## 5. Watchlist (no bloqueante, para tener presente)
+
+### Memory note — David en periodo de prueba con agencia
+
+- Acuerdo verbal: sueldo base 40,000 MXN/mes + 25% de ganancias propias.
+- Línea divisoria: "lo que construyamos a partir de mí es mío".
+- Implicación: herramientas propias (Higgsfield, video UGC, productos
+  paralelos) son ingreso personal, no de la agencia.
+
+### Memory note — Higgsfield MCP setup existe pero no suscrito
+
+- MCP server configurado y autenticado en el runtime de David.
+- Imagen del influencer "Jean" ya creada (job_id `c08f1fbb-7c61-4fa0-bb43-79d271dd78a2`).
+- Balance: ~8 créditos restantes (solo imagen, no video).
+- Pendiente: decidir si se suscribe a Starter PLUS ($15/mes) para video UGC.
+- Plan tentativo: ofrecer video UGC como servicio de agencia (25%) Y revender por su cuenta (100%). Formalizar empresa separada (RESICO) cuando el volumen lo justifique.
+
+### Memory note — Multi-agente NO por ahora
+
+Acordado en sesión del 2026-06-26: features de tamaño medio se hacen
+secuenciales en una sesión, documentadas en `ROADMAP.md`. Para planes
+multi-agente, dividir en <8 archivos o aceptar partial-state.
+
+---
+
+## 6. Resueltos reciente
+
+### ✅ Fase 3 — Events Funnel Foundation (v0.7.0)
+
+12 commits, branch `feat/events-funnel-foundation`, mergeado a main
+post-limpieza de docs. Detalle completo en `EVENTS_FUNNEL_FOUNDATION.md`.
+
+- Migration `20260627000000_events_funnel.sql` aplicada.
+- 6 tablas nuevas + 4 enums + RLS.
+- 5 server libs (events, confirmations, attendees, surveys, promotion).
+- Importer CLI con `xlsx` (acotado al CLI).
+- 37/37 tests unitarios + 7/7 end-to-end contra Supabase real.
+
+### ✅ Cierre del QA round 1 de Fase 2 (commit `20883aa`)
+
+- H3: PII fuera de logs (`emailLength` en vez de `email`)
+- H4: `createLead` falla ruidoso en lugar de enmascarar con demo
+- H5: `updateLeadStatus` con SELECT previo + UPDATE atómico + audit log con from/to
+- H6: `createLeadFromEvent` rechaza sin email/phone
+- H12: `phonesMatch` en import estático
+- **H1+H2 diferidos** — H2 ahora ✅ cerrado por Fase 3.
+
+### ✅ Fase 2 — CRM Real Foundation para Eventos (v0.6.0)
+
+6 commits, branch cerrado y mergeado.
+- 5 funciones: `findLeadByEmail`, `findLeadByPhone`, `createLeadFromEvent`,
+  `linkLeadToEventRecord` (era STUB, ahora es real en Fase 3),
+  `updateLeadCommercialStatus`.
+- 14 unit tests + 9 tests manuales.
+- Doc `FASE_2_CRM_FOUNDATION.md`.
