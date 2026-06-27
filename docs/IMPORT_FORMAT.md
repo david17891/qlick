@@ -1,83 +1,62 @@
 # Formato esperado de Excel para el Import Wizard
 
-> **TL;DR:** Subí un `.xlsx` con headers claros y datos limpios. Si el Excel
-> viene sucio del cliente, pasalo primero por ChatGPT/Gemini con el prompt
-> de más abajo. El wizard rechaza filas que no encajan al formato (no inventa
-> datos — eso es un constraint legal).
+> **TL;DR:** El wizard NO usa AI para transformar datos (constraint legal
+> GDPR/LFPDPPP — no inventamos PII). Cada tipo de import tiene su **prompt
+> específico copy-paste ready** dentro del wizard (`/admin/eventos/[id]/import`),
+> abajo de cada card de tipo. Pegalo en ChatGPT/Gemini, dejá que la AI limpie
+> el Excel, descargalo limpio y subilo.
+
+Este doc es **referencia conceptual**. Para los prompts operativos, mirá
+el wizard.
 
 ---
 
-## Por qué determinista y no AI integrada
+## Por qué NO AI integrada en el wizard
 
-El wizard **NO usa AI** para transformar datos. Razones en
-`docs/ARCHITECTURE.md` y `docs/AI_AGENT_GUARDRAILS.md`:
+Tres razones duras (en orden de severidad):
 
 1. **Legal** — GDPR (UE) y LFPDPPP (México) prohíben inventar o inferir PII
-   sin base explícita. La AI "arreglando" consent de `"sí plis"` a `Sí`
-   sería **fabricar consentimiento**.
-2. **Calidad** — Inventar un dígito de phone → mensaje a número quemado →
-   Meta banea la cuenta. Inventar email → bounce → dominio quemado en
-   Mailgun/Resend. Una fila inventada puede dañar infra seria.
-3. **Audit** — Con reglas deterministas sabemos exactamente qué
-   transformación aplicó cada fila (audit trail completo). Con AI el
-   cambio es opaco.
+   sin base explícita. La AI "arreglando" consent de `"sí plis"` a `Sí` sería
+   **fabricar consentimiento**. Inventar un dígito faltante de phone es
+   **crear PII falsa** (multas GDPR hasta 4% revenue global).
+2. **Calidad** — Inventar un phone → mensaje a número quemado → Meta banea
+   la cuenta. Inventar email → bounce → dominio quemado en Mailgun/Resend.
+   Una fila inventada daña infra seria.
+3. **Audit** — Con reglas deterministas sabemos exactamente qué transformación
+   aplicó cada fila. Con AI el cambio es opaco ("AI dijo que probablemente
+   es X"). Imposible defender ante auditoría.
 
-**La AI SÍ puede usarse afuera del wizard** (en ChatGPT/Gemini del admin)
-para limpiar el Excel antes de subirlo. Eso está OK porque el admin revisa
-cada cambio antes de impactar producción.
-
----
-
-## Spec por tipo de import
-
-### `confirmation` — Confirmaciones de asistencia (RSVPs)
-
-| Columna | ¿Requerida? | Formato esperado | Ejemplo |
-|---|---|---|---|
-| Nombre | ✅ | 2+ palabras, sin números | "Ana Pérez" |
-| Email | ✅ (o Phone) | RFC 5322 simplificado | "ana.perez@example.com" |
-| Teléfono | ✅ (o Email) | 10 dígitos MX → se prefija `+52` | "6861234567" |
-| Fuente | opcional | texto libre, mapeado al enum | "messenger", "whatsapp", "form", "manual" |
-
-**Sin email ni phone = fila rechazada.** Necesitamos al menos un canal.
-
-### `attendee` — Asistentes (check-ins)
-
-| Columna | ¿Requerida? | Formato esperado | Ejemplo |
-|---|---|---|---|
-| Nombre | opcional* | string no vacío | "Ana Pérez" |
-| Email | opcional* | RFC 5322 simplificado | "ana@example.com" |
-| Teléfono | opcional* | 10 dígitos MX | "6861234567" |
-| Asistió | opcional | Sí/No/Yes/No/✓/✗ | "Sí" |
-| Fuente | opcional | texto libre | "check_in", "zoom" |
-
-*Al menos uno de (Nombre, Email, Phone). Asistentes "walk-in" sin nombre
-siguen siendo válidos si tenemos cómo contactarlos.
-
-### `survey` — Encuestas post-evento
-
-| Columna | ¿Requerida? | Formato esperado | Ejemplo |
-|---|---|---|---|
-| Nombre | opcional | string | "Ana Pérez" |
-| Email | ✅ (o Phone) | RFC 5322 simplificado | "ana@example.com" |
-| Teléfono | ✅ (o Email) | 10 dígitos MX | "6861234567" |
-| Consent | opcional** | Sí/No/Yes/No/✓/✗ | "Sí" |
-| Interés | opcional | texto libre | "info de curso", "precio" |
-
-**Sin email ni phone = fila rechazada.** Sin consent = fila rechazada
-(no se promueve a lead, pero se guarda para visibilidad).
-
-**Sin consent con valor parseable = fila rechazada.** Es el campo más
-estricto porque determina si se puede contactar comercialmente al prospecto.
+**Lo que la AI SÍ puede hacer** (y la hacemos afuera del wizard, en el
+chat del admin): limpiar Excels sucios siguiendo el prompt específico del
+tipo. El admin revisa cada cambio antes de impactar producción.
 
 ---
 
-## Headers reconocidos (sinónimos)
+## Spec por tipo (resumen)
 
-El importer auto-detecta headers. Si tu Excel tiene alguna variante, la
-reconocerá. Si NO la reconoce, te sugerirá la más cercana (fuzzy match).
+Para la spec detallada, mirá el wizard. Pero el resumen:
 
-| Canónico | Variantes aceptadas |
+### `confirmation`
+- **Nombre** (requerido), Email o Teléfono (al menos uno), Fuente (opcional)
+- Teléfono: 10 dígitos MX → se prefija `+52` automáticamente
+
+### `attendee`
+- Al menos uno de (Nombre, Email, Phone). Walk-ins válidos sin nombre.
+- Asistió: Sí/No/✓/✗
+
+### `survey`
+- Email o Teléfono (al menos uno)
+- **Consent** (Sí/No) — el más delicado, determina promoción a lead
+- Interés: texto libre
+
+---
+
+## Headers reconocidos (sinónimos + fuzzy match)
+
+El importer auto-detecta headers. Fuzzy match (Levenshtein ≤ 2) para tolerar
+typos menores.
+
+| Canónico | Variantes |
 |---|---|
 | `name` | nombre, nombres, name, full name, fullname, nombre completo |
 | `email` | correo, email, e-mail, mail, correo electronico, email address |
@@ -87,73 +66,39 @@ reconocerá. Si NO la reconoce, te sugerirá la más cercana (fuzzy match).
 | `source` | fuente, source, origen, canal, channel |
 | `attended` | asistió, asistio, attended, presente, attendance |
 
-**Headers NO reconocidos** (ej: "Observaciones", "Fecha", "#") se descartan
-silenciosamente. Si querés que se preserven, contactá a Mavis — agregamos
-el sinónimo al importer.
+Headers no reconocidos (ej: "Observaciones", "Fecha", "#") se descartan.
 
 ---
 
-## Transformaciones que el wizard aplica automáticamente
+## Transformaciones automáticas (deterministas, seguras)
 
-**Estas son deterministas y seguras** (no inventan datos):
-
-- **Phone:** strip de no-dígitos → si quedan 10 dígitos, se prefija `+52`. Si
-  quedan 12 y empieza con `52`, se mantiene. Si tiene 9 dígitos → warning
-  explícito "fila X · phone: 9 dígitos (esperaba 10)".
-- **Nombre:** trim + capitalize cada palabra (`"ana PÉREZ"` → `"Ana Pérez"`).
-- **Email:** trim + lowercase (`"Ana@Example.COM  "` → `"ana@example.com"`).
-- **Source:** lowercase + match con sinonimos (`"Messenger"` →
+- **Phone**: strip no-dígitos → 10 dígitos se prefijan `+52`; 12 dígitos
+  empezando con `52` se mantienen.
+- **Nombre**: trim + capitalize cada palabra (`"ana PÉREZ"` → `"Ana Pérez"`).
+- **Email**: trim + lowercase.
+- **Source**: lowercase + match con sinonimos (`"Messenger"` →
   `"imported_excel"`).
 
-**Estas NO se aplican** (por seguridad legal):
-
-- ❌ Inventar dígitos faltantes del phone
-- ❌ Inferir email cuando falta
-- ❌ Convertir "sí plis" / "ok" a consent=true (si el Excel tiene variantes,
-  las agregamos al HEADER_SYNONYMS, pero no inventamos)
-- ❌ Corregir typos en nombres (si el admin escribió "Josefina" se queda
-  como "Josefina" — que el admin corrija manualmente o lo limpie en el
-  Excel antes de subir)
+**No se hace (constraint legal):**
+- ❌ Inventar dígitos faltantes de phone
+- ❌ Inferir email faltante
+- ❌ Convertir consent ambiguo (`"sí plis"`, `"ok"`) a Sí — agregalo al
+  sinonimos manualmente si querés que pase, no por inferencia
+- ❌ Corregir typos en nombres
 
 ---
 
-## Limpieza con ChatGPT/Gemini antes de subir (opcional)
+## ¿Cómo usar el wizard?
 
-Si el Excel viene con headers raros o data sucia, podés pasarlo primero por
-tu chat de AI favorita. Prompt sugerido:
+1. Andá a `/admin/eventos/[id]/import`
+2. Mirá el panel "Formato esperado" arriba — resaltá la card del tipo
+   que vas a usar
+3. Click en **"📋 Prompt para ChatGPT/Gemini"** dentro de la card →
+   click **"Copiar"** → pegalo en tu chat de IA favorita
+4. La IA te devuelve un Excel limpio. Descargalo.
+5. En el wizard: elegí el archivo + tipo + (opcional) marcá Dry-run
+6. Click "Parsear (dry-run)" → revisá el reporte
+7. Si OK, desmarcá Dry-run → click "Importar de verdad"
 
-```
-Tengo este Excel de [confirmaciones/asistentes/encuestas] del evento X.
-Reformateámelo a la spec de Qlick Marketing:
-
-- Headers exactos (en español, una sola fila): Nombre, Email, Teléfono,
-  [Fuente/Consent/Interés según aplique]
-- Limpia espacios al inicio/fin
-- Teléfonos en formato 10 dígitos sin espacios ni guiones (ej: 6861234567)
-- Emails en lowercase
-- Nombres con capitalización correcta (cada palabra empieza con mayúscula)
-- Eliminá filas vacías
-- Si una fila no tiene email NI teléfono, marcala con un # al inicio
-  del nombre para que la descarte
-- Si una fila tiene consent dudoso (ej: "sí plis"), marcala con
-  #CONSENT-AMBIGUOUS al inicio para revisión manual
-
-Devolveme el Excel limpio en la misma estructura.
-```
-
-Después subís el Excel limpio al wizard. El importer lo va a aceptar sin
-warnings.
-
----
-
-## ¿Cómo limpio un Excel manualmente?
-
-1. Abrilo en Excel/Google Sheets
-2. Fila 1 = headers (en español). Ver la tabla de arriba.
-3. Datos empiezan en fila 2.
-4. Telefonos sin formato raro (solo dígitos, 10).
-5. Guardá como `.xlsx` (no `.csv`).
-6. Subilo al wizard.
-
-Si ves warnings raros en el reporte del wizard, el formato no encajó.
+Si ves warnings raros en el reporte, el Excel no encajó al formato.
 Reformateá y volvé a subir.

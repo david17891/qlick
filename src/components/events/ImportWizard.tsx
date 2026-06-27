@@ -180,6 +180,41 @@ export function ImportWizard({
 }
 
 /**
+ * Renderiza el prompt copy-paste ready con un botón "Copiar" para que
+ * el admin lo mande directo a ChatGPT/Gemini. Texto preserva saltos de
+ * línea para que se vea bien al pegarlo en el chat.
+ */
+function PromptBlock({ prompt }: { prompt: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copyToClipboard() {
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Fallback: select + copy manual no es necesario si la API falla —
+      // el admin puede seleccionar el texto manualmente.
+    }
+  }
+
+  return (
+    <div className="mt-2 relative">
+      <pre className="text-[10px] leading-snug font-mono whitespace-pre-wrap break-words bg-white border border-brand-100 rounded-lg p-2 pr-14 max-h-48 overflow-y-auto text-ink-soft">
+        {prompt}
+      </pre>
+      <button
+        type="button"
+        onClick={copyToClipboard}
+        className="absolute top-1.5 right-1.5 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-brand-500 text-white hover:bg-brand-600 transition"
+      >
+        {copied ? "✓ Copiado" : "Copiar"}
+      </button>
+    </div>
+  );
+}
+
+/**
  * Panel con la spec del formato esperado por tipo. Resalta el activo
  * para que el admin sepa qué columnas necesita antes de subir.
  */
@@ -199,6 +234,27 @@ function FormatSpecPanel({
         { name: "Fuente", required: false, hint: "messenger/whatsapp/form/manual" },
       ],
       note: "Sin email ni phone → fila rechazada.",
+      prompt: `Tengo este Excel de confirmaciones/RSVPs del evento "X" de Qlick Marketing. Necesito que lo limpies a la spec de Qlick antes de subirlo al wizard.
+
+**Columnas exactas** (en español, header en una sola fila, datos desde fila 2):
+- Nombre
+- Email
+- Teléfono
+- Fuente
+
+**Reglas de limpieza:**
+- Emails en lowercase, sin espacios al inicio/fin
+- Teléfonos en 10 dígitos sin espacios ni guiones (ej: 6861234567). Si el Excel tiene "+52 686 123 4567" → "6861234567"
+- Nombres con capitalización correcta: cada palabra empieza con mayúscula
+- Eliminá filas completamente vacías
+- Si una fila no tiene Email NI Teléfono → marcala con "#" al inicio del nombre para descartarla
+- "Fuente" es texto libre (messenger, whatsapp, form, manual, etc.)
+
+**Lo que NO debés hacer:**
+- NO inventes teléfonos ni emails faltantes (es PII inventada — ilegal)
+- NO corrijas lo que no estés seguro (mejor dejar y que yo revise)
+
+Devolveme el Excel limpio en la misma estructura de columnas.`,
     },
     attendee: {
       title: "Asistentes (check-ins)",
@@ -211,6 +267,27 @@ function FormatSpecPanel({
         { name: "Fuente", required: false, hint: "check_in/zoom/manual" },
       ],
       note: "Al menos uno de (Nombre, Email, Phone). Walk-ins válidos sin nombre.",
+      prompt: `Tengo este Excel de lista de asistencia/check-in del evento "X" de Qlick Marketing. Necesito que lo limpies a la spec de Qlick.
+
+**Columnas exactas** (en español, header en una sola fila, datos desde fila 2):
+- Nombre
+- Email
+- Teléfono
+- Asistió (Sí/No/✓/✗)
+- Fuente
+
+**Reglas:**
+- Emails en lowercase
+- Teléfonos en 10 dígitos sin espacios (ej: 6861234567)
+- Asistió: solo Sí/No. Si tenés duda (ej: "tal vez", "no sé"), dejá la celda vacía. NO asumas.
+- Fuente: check_in, zoom, manual, etc. (texto libre)
+- Walk-ins (gente que vino sin confirmar antes): son válidos sin Nombre si tienen Email o Teléfono
+
+**Lo que NO debés hacer:**
+- NO inventes teléfonos ni emails
+- NO asumas Asistió si el Excel no lo dice explícito
+
+Devolveme el Excel limpio.`,
     },
     survey: {
       title: "Encuestas post-evento",
@@ -223,6 +300,26 @@ function FormatSpecPanel({
         { name: "Interés", required: false, hint: "Texto libre" },
       ],
       note: "Sin email/phone o sin consent parseable → fila rechazada.",
+      prompt: `Tengo este Excel de encuestas post-evento de Qlick Marketing. Necesito que lo limpies para importar al CRM.
+
+**Columnas exactas** (en español, header en una sola fila, datos desde fila 2):
+- Nombre
+- Email
+- Teléfono
+- Consent
+- Interés
+
+**Reglas CRÍTICAS (consent es lo más delicado):**
+- **Consent** solo acepta: Sí, No, ✓, ✗. Si el Excel tiene "sí plis", "ok", "tal vez", "supongo" → marcalo con "#CONSENT-AMBIGUOUS" al inicio del nombre para que yo lo revise manualmente. NUNCA asumas consentimiento.
+- **Interés** es texto libre (ej: "info de curso", "precio"). Si el Excel tiene respuestas largas, dejalas tal cual.
+- Email lowercase, teléfono 10 dígitos sin espacios
+- Si una fila no tiene Email NI Teléfono → "#" al inicio del nombre
+
+**Lo que NO debés hacer:**
+- NUNCA conviertas variantes a "Sí" — es consentimiento falsificado (ilegal)
+- NO inventes teléfonos ni emails
+
+Devolveme el Excel limpio.`,
     },
   } as const;
 
@@ -286,6 +383,12 @@ function FormatSpecPanel({
               <p className="text-[11px] text-ink-muted italic mt-2 pt-2 border-t border-brand-100">
                 {spec.note}
               </p>
+              <details className="mt-2 pt-2 border-t border-brand-100">
+                <summary className="text-[11px] font-semibold text-brand-700 cursor-pointer select-none">
+                  📋 Prompt para ChatGPT/Gemini
+                </summary>
+                <PromptBlock prompt={spec.prompt} />
+              </details>
             </div>
           );
         })}
