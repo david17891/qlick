@@ -157,6 +157,12 @@ export function AdminView() {
         >
           🎓 Masterclasses →
         </Link>
+        <Link
+          href="/admin/eventos"
+          className="px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap text-ink-soft hover:bg-brand-50 border border-brand-200"
+        >
+          🎟️ Eventos →
+        </Link>
       </div>
 
       {/* ----------------------- RESUMEN ----------------------- */}
