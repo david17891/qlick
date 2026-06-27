@@ -366,6 +366,23 @@ multi-agente, dividir en <8 archivos o aceptar partial-state.
 
 ## 6. Resueltos reciente
 
+### ✅ Validación visual del fix single-column en `/eventos/[slug]` (2026-06-27 ~16:45)
+
+Commit `e0df5ab fix(events): single-column en /eventos/[slug] — form prominente`
+quedó **validado visualmente** tomando screenshot fullPage de
+`/eventos/qa-fase4-demo` con Playwright MCP en viewport ~907×1328:
+
+- Header limpio, badge "Evento Qlick", título grande, meta (cuándo/lugar).
+- CTA primario "Confirmar asistencia ↓" en el hero; el ↓ empuja al form.
+- Separación amplia (intencional, scroll-margin) entre hero y form.
+- Form single-column en card blanco con sombra: Nombre (full) →
+  Email + Teléfono (50/50) → checkbox consentimiento → CTA "Confirmar
+  asistencia" prominente → microcopy de baja.
+- Footer con 4 columnas.
+
+Jerarquía visual correcta, mobile-friendly, el form domina la página como
+debe. Fix cumple su objetivo: **registro sin fricción**.
+
 ### ✅ Fase 3 — Events Funnel Foundation (v0.7.0)
 
 12 commits, branch `feat/events-funnel-foundation`, mergeado a main

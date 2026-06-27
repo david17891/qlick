@@ -62,6 +62,11 @@ next-env.d.ts
 # interpretadas (ej. `2>nul`). Lo ignoramos para que nunca entre al repo.
 /nul
 
+# artefactos efímeros del MCP de Playwright (`mavis mcp call playwright ...`).
+# Cada sesión del MCP regenera configs y screenshots intermedios aquí. No son
+# parte del producto — son ruido local del agente.
+.playwright-mcp/
+
 # scripts de debug/auth de admin (no son parte del producto, son herramientas
 # locales de desarrollo: kill-dev.ps1 mata listeners 3000/3001;
 # generate-magic-link.mjs genera magic links via Admin API para debug PKCE).
