@@ -96,6 +96,8 @@ export function EventDrawer({
   const [form, setForm] = useState<FormState>(initial);
   const [saving, setSaving] = useState(false);
   const [statusChanging, setStatusChanging] = useState<EventStatus | null>(null);
+  /** Status pendiente de confirmar en modal. null = no hay modal abierto. */
+  const [pendingStatusChange, setPendingStatusChange] = useState<EventStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -195,6 +197,24 @@ export function EventDrawer({
       setError(err instanceof Error ? err.message : "Error cambiando status.");
       setStatusChanging(null);
     }
+  }
+
+  /**
+   * Abre el modal de confirmación para un cambio de status.
+   * Acciones destructivas (archivar) o significativas (publicar) pasan por acá.
+   */
+  function requestStatusChange(s: EventStatus) {
+    setError(null);
+    setSuccess(null);
+    setPendingStatusChange(s);
+  }
+
+  /** Ejecuta el PATCH confirmado en el modal. */
+  async function confirmStatusChange() {
+    if (!pendingStatusChange || !event) return;
+    const s = pendingStatusChange;
+    setPendingStatusChange(null);
+    await handleStatusChange(s);
   }
 
   const currentStatus: EventStatus = event?.status ?? form.status;
@@ -373,8 +393,8 @@ export function EventDrawer({
                   size="sm"
                   variant="accent"
                   type="button"
-                  disabled={saving || !!statusChanging}
-                  onClick={() => handleStatusChange("published")}
+                  disabled={saving || !!statusChanging || !!pendingStatusChange}
+                  onClick={() => requestStatusChange("published")}
                 >
                   {statusChanging === "published" ? "…" : "Publicar"}
                 </Button>
@@ -384,8 +404,8 @@ export function EventDrawer({
                   size="sm"
                   variant="outline"
                   type="button"
-                  disabled={saving || !!statusChanging}
-                  onClick={() => handleStatusChange("draft")}
+                  disabled={saving || !!statusChanging || !!pendingStatusChange}
+                  onClick={() => requestStatusChange("draft")}
                 >
                   {statusChanging === "draft" ? "…" : "Volver a borrador"}
                 </Button>
@@ -395,8 +415,8 @@ export function EventDrawer({
                   size="sm"
                   variant="outline"
                   type="button"
-                  disabled={saving || !!statusChanging}
-                  onClick={() => handleStatusChange("archived")}
+                  disabled={saving || !!statusChanging || !!pendingStatusChange}
+                  onClick={() => requestStatusChange("archived")}
                 >
                   {statusChanging === "archived" ? "…" : "Archivar"}
                 </Button>
@@ -406,8 +426,8 @@ export function EventDrawer({
                   size="sm"
                   variant="accent"
                   type="button"
-                  disabled={saving || !!statusChanging}
-                  onClick={() => handleStatusChange("draft")}
+                  disabled={saving || !!statusChanging || !!pendingStatusChange}
+                  onClick={() => requestStatusChange("draft")}
                 >
                   {statusChanging === "draft" ? "…" : "Reactivar"}
                 </Button>
@@ -434,6 +454,112 @@ export function EventDrawer({
           </div>
         </footer>
       </aside>
+
+      {/* Modal de confirmación para cambio de status */}
+      {pendingStatusChange && (
+        <StatusChangeConfirm
+          currentStatus={currentStatus}
+          newStatus={pendingStatusChange}
+          eventTitle={form.title}
+          onCancel={() => setPendingStatusChange(null)}
+          onConfirm={confirmStatusChange}
+          pending={!!statusChanging}
+        />
+      )}
+    </>
+  );
+}
+
+/* ----------------------- Sub-componentes ----------------------- */
+
+/**
+ * Modal de confirmación pequeño para cambios de status.
+ * Overlay semitransparente encima del drawer; panel centrado con el copy
+ * específico según el target (archivar/publicar/reactivar/borrador).
+ */
+function StatusChangeConfirm({
+  currentStatus,
+  newStatus,
+  eventTitle,
+  onCancel,
+  onConfirm,
+  pending,
+}: {
+  currentStatus: EventStatus;
+  newStatus: EventStatus;
+  eventTitle: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+  pending: boolean;
+}) {
+  const { title, message, confirmLabel, tone } = (() => {
+    switch (newStatus) {
+      case "archived":
+        return {
+          title: "¿Archivar este evento?",
+          message:
+            "El evento dejará de ser visible públicamente. Los confirmados, asistentes y encuestas se conservan en la DB y puedes reactivarlo cuando quieras.",
+          confirmLabel: "Sí, archivar",
+          tone: "danger" as const,
+        };
+      case "published":
+        return {
+          title: "¿Publicar este evento?",
+          message:
+            "El evento será visible públicamente en /eventos/[slug]. Asegúrate de que los datos (título, fechas, ubicación, descripción) estén completos.",
+          confirmLabel: "Sí, publicar",
+          tone: "accent" as const,
+        };
+      case "draft":
+        if (currentStatus === "archived") {
+          return {
+            title: "¿Reactivar este evento?",
+            message:
+              "El evento volverá a estado de borrador. No será visible públicamente hasta que lo publiques de nuevo.",
+            confirmLabel: "Sí, reactivar",
+            tone: "accent" as const,
+          };
+        }
+        return {
+          title: "¿Volver a borrador?",
+          message:
+            "El evento dejará de ser visible públicamente, pero los datos se conservan. Puedes publicarlo de nuevo cuando quieras.",
+          confirmLabel: "Sí, volver a borrador",
+          tone: "outline" as const,
+        };
+    }
+  })();
+
+  return (
+    <>
+      {/* Overlay encima del drawer (más opaco para destacar) */}
+      <button
+        type="button"
+        aria-label="Cerrar modal"
+        onClick={() => !pending && onCancel()}
+        className="fixed inset-0 bg-ink/60 z-[60] cursor-default"
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="fixed inset-0 z-[70] flex items-center justify-center p-4 pointer-events-none"
+      >
+        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 pointer-events-auto">
+          <h3 className="text-lg font-bold text-ink mb-2">{title}</h3>
+          <p className="text-sm text-ink-soft mb-1">
+            Evento: <span className="font-semibold text-ink">{eventTitle || "(sin título)"}</span>
+          </p>
+          <p className="text-sm text-ink-soft mb-5">{message}</p>
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="outline" onClick={onCancel} disabled={pending}>
+              Cancelar
+            </Button>
+            <Button variant={tone} onClick={onConfirm} disabled={pending}>
+              {pending ? "Aplicando…" : confirmLabel}
+            </Button>
+          </div>
+        </div>
+      </div>
     </>
   );
 }

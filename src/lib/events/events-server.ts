@@ -169,10 +169,17 @@ export async function getEventById(id: string): Promise<Event | undefined> {
 /**
  * Lista todos los eventos para el admin (incluye drafts/archived).
  * Devuelve además un resumen con conteos de confirmations, attendees,
- * surveys y leads promovidos.
+ * surveys y leads promovidos — **por evento** (cada card muestra los
+ * reales, no los globales repartidos).
  *
- * Nota: hacemos 4 queries en paralelo (eventos + 3 conteos). Para MVP
- * está bien; si crece la tabla, agregar índices parciales o denormalizar.
+ * Implementación: 5 queries en paralelo (4 SELECT event_id + 1 para
+ * unmatched con join). Conteo en memoria con Map<eventId, count>.
+ * Para MVP está bien; si crece la tabla (>10k rows por tabla) conviene
+ * denormalizar o usar RPC con `GROUP BY` SQL directo.
+ *
+ * Fix B-3 (2026-06-27): antes los queries usaban `count: "exact", head: true`
+ * sin GROUP BY → todos los cards mostraban el mismo total global. Ahora
+ * se selecciona `event_id` y se cuenta en memoria por evento.
  */
 export async function getAdminEvents(): Promise<AdminEventSummary[]> {
   if (!isRealMode()) return [];
@@ -197,40 +204,42 @@ export async function getAdminEvents(): Promise<AdminEventSummary[]> {
   const eventIds = events.map((e) => e.id);
   if (eventIds.length === 0) return [];
 
-  // Conteos en paralelo (4 queries).
+  // 5 queries en paralelo: cada una devuelve `event_id` (o `survey_id`
+  // para unmatched, que joineamos después). Conteos en memoria.
   const [
-    { count: confirmationCount, error: cErr },
-    { count: attendeeCount, error: aErr },
-    { count: surveyCount, error: sErr },
+    { data: confirmationsData, error: cErr },
+    { data: attendeesData, error: aErr },
+    { data: surveysData, error: sErr },
     { data: promotedData, error: pErr },
     { data: unmatchedData, error: uErr },
   ] = await Promise.all([
     supabase
       .from("event_confirmations")
-      .select("id", { count: "exact", head: true })
+      .select("event_id")
       .in("event_id", eventIds),
     supabase
       .from("event_attendees")
-      .select("id", { count: "exact", head: true })
+      .select("event_id")
       .in("event_id", eventIds),
     supabase
       .from("event_surveys")
-      .select("id", { count: "exact", head: true })
+      .select("event_id")
       .in("event_id", eventIds),
     supabase
       .from("event_surveys")
       .select("event_id, promoted_to_lead_id")
       .in("event_id", eventIds)
       .not("promoted_to_lead_id", "is", null),
+    // Para unmatched necesitamos el event_id via join con event_surveys.
     supabase
       .from("event_survey_unmatched")
-      .select("survey_id"),
+      .select("survey_id, event_surveys!inner(event_id)"),
   ]);
 
-  // Si alguna count falla, seguimos con 0s (no bloqueamos la lista).
+  // Si alguna query falla, seguimos con 0s (no bloqueamos la lista).
   if (cErr || aErr || sErr || pErr || uErr) {
     // eslint-disable-next-line no-console
-    console.warn("[events-server] getAdminEvents: alguna count falló", {
+    console.warn("[events-server] getAdminEvents: alguna query falló", {
       cErr: cErr?.code,
       aErr: aErr?.code,
       sErr: sErr?.code,
@@ -239,35 +248,38 @@ export async function getAdminEvents(): Promise<AdminEventSummary[]> {
     });
   }
 
-  // promotedData viene agregado por event_id → count leads.
-  const promotedByEvent = new Map<string, number>();
-  for (const row of promotedData ?? []) {
-    promotedByEvent.set(
-      row.event_id,
-      (promotedByEvent.get(row.event_id) ?? 0) + 1,
-    );
+  // Helper: cuenta rows por event_id en un dataset con forma { event_id }.
+  const countByEvent = (
+    rows: ReadonlyArray<{ event_id: string }> | null | undefined,
+  ): Map<string, number> => {
+    const m = new Map<string, number>();
+    for (const r of rows ?? []) {
+      m.set(r.event_id, (m.get(r.event_id) ?? 0) + 1);
+    }
+    return m;
+  };
+
+  const confirmationsByEvent = countByEvent(confirmationsData);
+  const attendeesByEvent = countByEvent(attendeesData);
+  const surveysByEvent = countByEvent(surveysData);
+  const promotedByEvent = countByEvent(promotedData);
+
+  // Unmatched: cada row tiene { survey_id, event_surveys: { event_id } }.
+  const unmatchedByEvent = new Map<string, number>();
+  for (const row of unmatchedData ?? []) {
+    const inner = row.event_surveys as { event_id: string } | null;
+    const eid = inner?.event_id;
+    if (!eid) continue;
+    unmatchedByEvent.set(eid, (unmatchedByEvent.get(eid) ?? 0) + 1);
   }
-
-  // unmatchedData: contamos los survey_ids únicos (un unmatched por survey).
-  const unmatchedSurveyIds = new Set(
-    (unmatchedData ?? []).map((r) => r.survey_id),
-  );
-
-  // Para mapear unmatched por evento, necesitamos un SELECT adicional si los
-  // unmatched cuentan por evento. Por simplicidad del MVP, contamos el total
-  // global y lo asignamos proporcional — Fase 4 hace el JOIN real.
-  const unmatchedTotal = unmatchedSurveyIds.size;
 
   return events.map((e) => ({
     event: e,
-    confirmationCount: confirmationCount ?? 0,
-    attendeeCount: attendeeCount ?? 0,
-    surveyCount: surveyCount ?? 0,
+    confirmationCount: confirmationsByEvent.get(e.id) ?? 0,
+    attendeeCount: attendeesByEvent.get(e.id) ?? 0,
+    surveyCount: surveysByEvent.get(e.id) ?? 0,
     leadsPromoted: promotedByEvent.get(e.id) ?? 0,
-    // Distribución proporcional (es un approximation; mejora en Fase 4).
-    surveyUnmatchedCount: events.length > 0
-      ? Math.round(unmatchedTotal / events.length)
-      : 0,
+    surveyUnmatchedCount: unmatchedByEvent.get(e.id) ?? 0,
   }));
 }
 
