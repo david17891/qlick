@@ -136,30 +136,28 @@ Cierra B-4.
 
 ### 🟡 B-5 — Cover image de evento sobresale del card en `/admin/eventos`
 
-**Síntoma:** las cards con `cover_image_url` renderizado muestran la imagen
-parcialmente FUERA del border del card por arriba (David reportó "el perro
-se ve fuera del card"). La card "sin portada" con el gradient de fallback
-se ve OK.
+**Estado:** ⚠️ **PARCIALMENTE MITIGADO** (2026-06-27 ~03:30). Requiere
+investigación fresca con DevTools en próxima sesión.
 
-**Estado del debug (2026-06-27 ~02:05):**
-- Verifiqué que `.bg-cover`, `.bg-center`, `.h-32`, `.overflow-hidden`
-  están todas en el CSS compilado (`6fea3aa7d8c4bd43.css`).
-- El Card component tiene `overflow-hidden` aplicado correctamente
-  (`cn('rounded-2xl bg-white …', 'p-0 flex flex-col overflow-hidden')`).
-- Probé 3 patrones distintos (`<img className="h-32">` → wrapper relative
-  absolute → `<div bg-cover bg-center>` con background-image). Todos
-  producen el mismo overflow visual.
-- Sospecha: el `<div>` interno con `h-32` no respeta la altura, o el
-  `bg-cover` está escalando la imagen más allá del contenedor padre.
+4 intentos + DevTools diagnosticaron que el `<img>` SÍ recibe `height:
+128px` + `object-fit: cover` correctamente, pero el Card padre con
+`flex flex-col` hace que los flex items crezcan (align-items: stretch
+default), sobrescribiendo los 128px. Wrapper dedicado con altura
+fija + overflow hidden aplicado en commit `cfe993b` — David reportó
+que sigue fallando, lo cual sugiere que el problema es más profundo
+(quizá el normalize de Tailwind `img { height: auto }` está ganando
+contra el style del wrapper, o el browser está cacheando HTML viejo).
 
-**Workaround actual:** el admin puede ver el evento OK en su detalle;
-la imagen de portada es solo decorativa en el listado. No bloquea nada.
+**Workaround:** la cover image es decorativa en el listado. El detalle
+del evento sigue funcionando OK.
 
-**Fix propuesto:** debuggear con DevTools (F12 → Elements) en la próxima
-sesión. Hipótesis a verificar: (a) el `bg-cover` no aplica a URLs
-externas sin `crossOrigin`, (b) el `<Card>` envuelve en algo más que
-rompe `overflow-hidden`, (c) el grid `gap-4` mete un margin que empuja.
-Scope: ~15 min con DevTools. **Severity 🟡 porque tiene workaround.**
+**Investigación fresca:** abrir el proyecto con DevTools, inspeccionar
+`<div class="w-full h-32 overflow-hidden bg-brand-50">` (wrapper nuevo)
+y su `<img>` adentro. Confirmar Computed heights. Si el `<img>` mide
+128px y el wrapper mide 128px y `overflow: hidden`, el bug está en
+otro lado (¿grid stretching? ¿cross-browser?).
+
+**Severity 🟡** — tiene workaround.
 
 ---
 
