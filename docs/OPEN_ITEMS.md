@@ -106,29 +106,51 @@ que mergear.
 
 **Status:** ⚪ No iniciada. Esperando luz verde.
 
-**Scope (del doc `EVENTS_FUNNEL_FOUNDATION.md`):**
-- [ ] `/admin/eventos` lista de eventos con cards
-- [ ] `/admin/eventos/[id]` detalle con tabs:
-  - Confirmados (tabla + búsqueda)
-  - Asistentes (tabla + match manual con confirmation)
-  - Encuestas (tabla con `consent_to_contact` visible)
-  - Leads promovidos (lista linked al evento)
+**Scope: COMPLETO, no MVP.** David (2026-06-26): "mientras más completo
+mejor, recuerda que al final será la plataforma oficial". Si algo se
+corta, conversamos antes — no propongo acotar de entrada.
+
+**Scope completo (del doc `EVENTS_FUNNEL_FOUNDATION.md` §9 + decisión
+2026-06-26):**
+- [ ] `/admin/eventos` lista de eventos con cards (cards con conteos: confirmations, attendees, surveys, leads promovidos)
+- [ ] `/admin/eventos/[id]` detalle con 4 tabs:
+  - Confirmados (tabla + búsqueda + filtro por source)
+  - Asistentes (tabla + match manual con confirmation si no matchea)
+  - Encuestas (tabla con `consent_to_contact` visible, marcar como revisadas)
+  - Leads promovidos (lista linked al evento, drawer del lead)
 - [ ] Wizard de import:
-  - Upload `.xlsx`
-  - Preview con mapping de headers
-  - Confirmar import con reporte (inserted/duplicates/invalid)
+  - Upload `.xlsx` (drag & drop)
+  - Preview con mapping de headers (auto-detect + override)
+  - Confirmar import con reporte (inserted/duplicates/invalid/warnings)
+  - Opción de `--dry-run` desde el browser (sin tocar DB)
 - [ ] Drawer del lead con badge "📅 Vino de evento X, encuesta Y, interés Z"
-- [ ] WhatsApp manual workflow:
-  - `buildWhatsAppMessage(lead, event)` server-side
-  - Botón "Generar WhatsApp" → abre `wa.me/...?text=...`
+- [ ] WhatsApp manual workflow completo:
+  - `buildWhatsAppMessage(lead, event)` server-side (template con placeholders)
+  - Botón "Generar WhatsApp" → abre `wa.me/...?text=...` en nueva pestaña
   - Estados: `no_contactado` → `mensaje_preparado` → `contactado` → `respondió` → `interested`/`lost`
-  - Audit log en cada mensaje enviado
-- [ ] Server action público: `/eventos/[slug]` con form de "registrarme"
+  - Audit log de cada mensaje enviado (en `lead_interactions` o `admin_audit_log`)
+- [ ] Server action público: `/eventos/[slug]` con form de "registrarme" (igual que masterclass funnel)
+- [ ] **CRUD admin de eventos** (era "Fase 5" en el roadmap, lo subimos acá por scope completo): crear/editar/archivar eventos desde el panel sin tocar SQL
+- [ ] **Drawer del evento** con métricas: total inscritos vs asistentes vs leads promovidos vs conversion rate
+
+**Out of scope (queda para Fase 5+):**
+- Notificaciones automáticas por email (requiere SMTP)
+- WhatsApp Business API (requiere Meta Cloud / BSP)
+- Multi-evento en un Excel
+- NLP sobre respuestas libres de encuesta
 
 **Dependencias:**
-- Migration nueva opcional (`event_surveys_unmatched` ya está creada en Fase 3)
-- Posible migration para `phone_normalized` (cierra H8)
+- Migration nueva opcional para `phone_normalized` (cierra H8, recomendable incluirla)
+- Posible nueva columna en `events` para `cover_image_url` upload desde el admin (ya existe en la tabla, falta UI)
 - Dep `exceljs` o seguir con `xlsx`
+
+**Criterio de "done" para Fase 4 (más estricto que MVP):**
+- Todas las funciones de admin accesibles vía browser autenticado
+- Sin fallback demo en producción (solo dev)
+- Empty states diseñados (no "Error" genérico)
+- Loading states explícitos (no "Loading..." eterno)
+- Mobile-friendly básico (la mayoría de admin se usa en desktop, pero no debe romperse en mobile)
+- Documentación de uso en `docs/EVENTS_ADMIN_GUIDE.md`
 
 ### Fase 5 — Notificaciones automáticas + admin CRUD
 
