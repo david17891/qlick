@@ -17,6 +17,10 @@ interface Props {
  * (el lookup con `getPublishedEventBySlug` ya filtra draft/archived).
  * El form de confirmación vive en `EventView` (client component)
  * y delega a `submitEventRegistration` (server action).
+ *
+ * Visibilidad: la página es pública. Cualquier persona puede ver los
+ * detalles del evento sin registrarse. El registro es opt-in y vive
+ * en su propia sección prominent (ver `EventView`).
  */
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const event = await getPublishedEventBySlug(params.slug);
@@ -60,26 +64,16 @@ export default async function EventPublicPage({ params }: Props) {
   return (
     <>
       <Navbar />
-      <main className="min-h-screen bg-brand-50/40 py-12 sm:py-16">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-          <nav
-            aria-label="Breadcrumb"
-            className="mb-8 flex items-center gap-3 text-xs text-ink-muted"
-          >
-            <a href="/" className="hover:text-ink">
-              Inicio
-            </a>
-            <span>/</span>
-            <span className="text-ink-soft truncate">{event.title}</span>
-            {!isSupabaseConfigured() && (
-              <Badge tone="warning" className="ml-auto">
-                Modo demo
-              </Badge>
-            )}
-          </nav>
-          <EventView event={event} pastEvent={pastEvent} />
-        </div>
-      </main>
+      <div className="bg-brand-50/40">
+        {!isSupabaseConfigured() && (
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-4">
+            <Badge tone="warning">
+              Modo demo: Supabase no configurado. Los registros no se persisten.
+            </Badge>
+          </div>
+        )}
+        <EventView event={event} pastEvent={pastEvent} />
+      </div>
       <Footer />
     </>
   );

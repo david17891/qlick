@@ -3,24 +3,33 @@
 /**
  * Vista cliente de la landing pública de un evento (`/eventos/[slug]`).
  *
- * Renderiza:
- * - Detalles del evento (título, fecha, lugar, descripción).
- * - Formulario de confirmación de asistencia (name, email, phone, consent).
- *   Si el evento ya pasó, el form se reemplaza por un mensaje informativo.
- * - Estado de envío + resultado (éxito, error, "ya registrado").
- *
- * La lógica de envío delega a `submitEventRegistration` (server action). NO
- * hace fetch directo al cliente de Supabase: el server action corre con
- * service role server-side (RLS deny para anon, defense-in-depth).
+ * Layout single-column (no sidecar):
+ * - Hero: detalles del evento (título, fecha, lugar, descripción, cover
+ *   image). Visible para TODOS, sin registro. CTA "Confirmar asistencia"
+ *   hace anchor scroll a la sección del form.
+ * - Sección de confirmación: separada por fondo distinto + heading
+ *   prominent. Si el evento ya pasó, muestra mensaje. Si la inscripción
+ *   fue exitosa, muestra confirmación. Si no, muestra el form.
  *
  * Privacidad: el consent de este form cubre solo los recordatorios del
  * evento (email/WhatsApp con info logística). El consent para ser LEAD
  * se captura en la encuesta post-evento (per EVENTS_FUNNEL_CONCEPT §7).
+ *
+ * La lógica de envío delega a `submitEventRegistration` (server action).
+ * NO hace fetch directo al cliente de Supabase: el server action corre
+ * con service role server-side (RLS deny para anon, defense-in-depth).
  */
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { Card, Field, Input, Button, Badge } from "@/components/ui";
+import {
+  Card,
+  Field,
+  Input,
+  Button,
+  Badge,
+  Container,
+} from "@/components/ui";
 import type { Event } from "@/types/events";
 import { submitEventRegistration } from "./actions";
 
@@ -37,10 +46,6 @@ const CONSENT_TEXT =
 
 const CONSENT_TAIL = "conforme al Aviso de Privacidad.";
 
-/**
- * Selector de date+time en es-MX para el hero del evento.
- * Usa Intl.DateTimeFormat (mismo patrón que MasterclassView).
- */
 function formatEventDate(iso: string): string {
   return new Date(iso).toLocaleString("es-MX", {
     dateStyle: "full",
@@ -99,8 +104,7 @@ export function EventView({ event, pastEvent }: Props) {
         // status distinto para que la UI lo pueda diferenciar.
         setStatus(result.created ? "success" : "already-registered");
         setResultNote(result.note);
-        // Limpiamos el form solo si fue una creación real (si ya estaba,
-        // dejamos los datos para que vea que sí se reconocieron).
+        // Limpiamos el form solo si fue una creación real.
         if (result.created) {
           setName("");
           setEmail("");
@@ -120,216 +124,255 @@ export function EventView({ event, pastEvent }: Props) {
 
   const startsAtFormatted = formatEventDate(event.startsAt);
   const endsAtFormatted = event.endsAt ? formatEventDate(event.endsAt) : null;
+  const showHeroCta =
+    !pastEvent && (status === "idle" || status === "error");
+  const showForm =
+    !pastEvent && status !== "success" && status !== "already-registered";
 
   return (
-    <div className="grid lg:grid-cols-5 gap-8 items-start">
-      {/* Columna izquierda: info del evento */}
-      <div className="lg:col-span-2 space-y-4">
-        <Badge tone="accent">Evento Qlick</Badge>
-        <h1 className="text-3xl sm:text-4xl font-bold text-ink leading-tight">
-          {event.title}
-        </h1>
-        {event.description && (
-          <p className="text-ink-soft whitespace-pre-line">
-            {event.description}
-          </p>
-        )}
-        <ul className="space-y-2 text-sm text-ink-soft pt-2">
-          <li>
-            📅 <strong>Cuándo:</strong> {startsAtFormatted}
-            {endsAtFormatted && (
-              <>
-                {" "}
-                <span className="text-ink-muted">— {endsAtFormatted}</span>
-              </>
-            )}
-          </li>
-          {event.location && (
+    <>
+      {/* Hero: detalles del evento — visible para todos, sin registro. */}
+      <section className="py-12 sm:py-16">
+        <Container>
+          <Badge tone="accent">Evento Qlick</Badge>
+          <h1 className="mt-4 text-4xl sm:text-5xl font-bold text-ink leading-tight">
+            {event.title}
+          </h1>
+          <ul className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm text-ink-soft">
             <li>
-              📍 <strong>Lugar:</strong> {event.location}
-            </li>
-          )}
-        </ul>
-      </div>
-
-      {/* Columna derecha: form o mensaje de evento pasado */}
-      <Card className="p-6 lg:col-span-3">
-        {pastEvent ? (
-          <div className="text-center py-4">
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 text-amber-600 text-2xl">
-              ⏳
-            </div>
-            <h2 className="text-xl font-bold text-ink">
-              Este evento ya pasó
-            </h2>
-            <p className="mt-2 text-ink-muted text-sm max-w-md mx-auto">
-              Las confirmaciones para {event.title} ya cerraron. Si te
-              interesa algo similar, mira los próximos eventos o escríbenos
-              por WhatsApp.
-            </p>
-            <div className="mt-5 flex flex-wrap justify-center gap-3">
-              <Button href="/" variant="outline">
-                Volver al inicio
-              </Button>
-              <Button href="/contacto" variant="accent">
-                Contáctanos
-              </Button>
-            </div>
-          </div>
-        ) : status === "success" || status === "already-registered" ? (
-          <div className="text-center py-4">
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 text-2xl">
-              ✓
-            </div>
-            <h2 className="text-xl font-bold text-ink">
-              {status === "success"
-                ? "¡Confirmamos tu asistencia!"
-                : "Ya estás registrada"}
-            </h2>
-            <p className="mt-2 text-ink-muted text-sm max-w-md mx-auto">
-              {resultNote ??
-                (status === "success"
-                  ? "Te enviaremos los detalles antes del evento."
-                  : "Te esperamos en el evento.")}
-            </p>
-            <p className="mt-4 text-xs text-ink-muted">
-              📅 {startsAtFormatted}
-              {event.location && (
+              📅 <strong>Cuándo:</strong> {startsAtFormatted}
+              {endsAtFormatted && (
                 <>
-                  <br />📍 {event.location}
+                  {" — "}
+                  <span className="text-ink-muted">{endsAtFormatted}</span>
                 </>
               )}
+            </li>
+            {event.location && (
+              <li>
+                📍 <strong>Lugar:</strong> {event.location}
+              </li>
+            )}
+          </ul>
+          {event.coverImageUrl && (
+            <img
+              src={event.coverImageUrl}
+              alt={event.title}
+              className="mt-8 w-full max-h-96 object-cover rounded-2xl shadow-sm"
+            />
+          )}
+          {event.description && (
+            <p className="mt-8 text-lg text-ink-soft whitespace-pre-line leading-relaxed">
+              {event.description}
             </p>
-          </div>
-        ) : (
-          <>
-            <h2 className="text-lg font-bold text-ink mb-1">
-              Confirma tu asistencia
-            </h2>
-            <p className="text-sm text-ink-muted mb-5">
-              Déjanos tus datos y te enviamos los detalles del evento.
-            </p>
-
-            <form onSubmit={handleSubmit} noValidate className="space-y-4">
-              <Field label="Nombre" htmlFor="ev-name">
-                <Input
-                  id="ev-name"
-                  name="name"
-                  autoComplete="name"
-                  placeholder="Tu nombre"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                />
-              </Field>
-              <div className="grid sm:grid-cols-2 gap-4">
-                <Field label="Email" htmlFor="ev-email">
-                  <Input
-                    id="ev-email"
-                    name="email"
-                    type="email"
-                    autoComplete="email"
-                    placeholder="tu@email.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
-                </Field>
-                <Field
-                  label="Teléfono / WhatsApp"
-                  htmlFor="ev-phone"
-                  hint="Necesitamos al menos uno de los dos."
-                >
-                  <Input
-                    id="ev-phone"
-                    name="phone"
-                    type="tel"
-                    autoComplete="tel"
-                    placeholder="+52 ..."
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                  />
-                </Field>
-              </div>
-
-              {/* Honeypot: oculto a humanos pero visible a bots que llenan
-                  todos los inputs. Si el server action lo recibe con
-                  contenido, finge éxito silencioso. */}
-              <div
-                aria-hidden="true"
-                style={{
-                  position: "absolute",
-                  left: "-10000px",
-                  top: "auto",
-                  width: "1px",
-                  height: "1px",
-                  overflow: "hidden",
-                }}
+          )}
+          {showHeroCta && (
+            <div className="mt-10">
+              <a
+                href="#confirmar-asistencia"
+                className="inline-block focus:outline-none"
               >
-                <label htmlFor="ev-hp">
-                  No llenar este campo
-                  <input
-                    id="ev-hp"
-                    name="hp"
-                    type="text"
-                    tabIndex={-1}
-                    autoComplete="off"
-                    value={hp}
-                    onChange={(e) => setHp(e.target.value)}
-                  />
-                </label>
-              </div>
-
-              {/* Consentimiento obligatorio */}
-              <label
-                htmlFor="ev-consent"
-                className="flex items-start gap-3 cursor-pointer rounded-xl border border-brand-100 bg-brand-50/30 px-4 py-3"
-              >
-                <input
-                  id="ev-consent"
-                  name="consent"
-                  type="checkbox"
-                  className="mt-0.5 h-5 w-5 rounded border-brand-200 text-brand-600 focus:ring-brand-400 shrink-0"
-                  checked={consent}
-                  onChange={(e) => setConsent(e.target.checked)}
-                />
-                <span className="text-xs text-ink-soft leading-relaxed">
-                  {CONSENT_TEXT}{" "}
-                  <Link
-                    href="/privacidad"
-                    className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {CONSENT_TAIL}
-                  </Link>
-                </span>
-              </label>
-
-              {status === "error" && resultNote && (
-                <div
-                  role="alert"
-                  className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700"
-                >
-                  {resultNote}
-                </div>
-              )}
-
-              <Button
-                type="submit"
-                size="lg"
-                disabled={isPending}
-                className="w-full"
-              >
-                {isPending ? "Enviando..." : "Confirmar asistencia"}
-              </Button>
-              <p className="text-xs text-ink-muted text-center">
-                Te enviaremos recordatorios por el canal que indicaste. Puedes
-                darte de baja en cualquier momento.
+                <Button size="lg" variant="primary">
+                  Confirmar asistencia ↓
+                </Button>
+              </a>
+              <p className="mt-3 text-xs text-ink-muted">
+                El registro es gratis y te toma menos de un minuto.
               </p>
-            </form>
-          </>
-        )}
-      </Card>
-    </div>
+            </div>
+          )}
+        </Container>
+      </section>
+
+      {/* Sección de confirmación — fondo distinto, heading prominent. */}
+      <section
+        id="confirmar-asistencia"
+        className="py-12 sm:py-16 bg-brand-50/60 border-t border-brand-100 scroll-mt-20"
+      >
+        <Container size="narrow">
+          {pastEvent ? (
+            <Card className="p-8">
+              <div className="text-center py-4">
+                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 text-amber-600 text-2xl">
+                  ⏳
+                </div>
+                <h2 className="text-2xl font-bold text-ink">
+                  Este evento ya pasó
+                </h2>
+                <p className="mt-2 text-ink-muted text-sm max-w-md mx-auto">
+                  Las confirmaciones para {event.title} ya cerraron. Si te
+                  interesa algo similar, mira los próximos eventos o escríbenos
+                  por WhatsApp.
+                </p>
+                <div className="mt-5 flex flex-wrap justify-center gap-3">
+                  <Button href="/" variant="outline">
+                    Volver al inicio
+                  </Button>
+                  <Button href="/contacto" variant="accent">
+                    Contáctanos
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          ) : status === "success" || status === "already-registered" ? (
+            <Card className="p-8">
+              <div className="text-center py-4">
+                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 text-2xl">
+                  ✓
+                </div>
+                <h2 className="text-2xl font-bold text-ink">
+                  {status === "success"
+                    ? "¡Confirmamos tu asistencia!"
+                    : "Ya estás registrada"}
+                </h2>
+                <p className="mt-2 text-ink-muted text-sm max-w-md mx-auto">
+                  {resultNote ??
+                    (status === "success"
+                      ? "Te enviaremos los detalles antes del evento."
+                      : "Te esperamos en el evento.")}
+                </p>
+                <p className="mt-4 text-xs text-ink-muted">
+                  📅 {startsAtFormatted}
+                  {event.location && (
+                    <>
+                      <br />📍 {event.location}
+                    </>
+                  )}
+                </p>
+              </div>
+            </Card>
+          ) : (
+            <>
+              <h2 className="text-2xl sm:text-3xl font-bold text-ink">
+                Confirma tu asistencia
+              </h2>
+              <p className="mt-2 text-ink-muted">
+                Déjanos tus datos y te enviaremos los detalles del evento por
+                email o WhatsApp.
+              </p>
+              <Card className="mt-6 p-6 sm:p-8">
+                <form onSubmit={handleSubmit} noValidate className="space-y-4">
+                  <Field label="Nombre" htmlFor="ev-name">
+                    <Input
+                      id="ev-name"
+                      name="name"
+                      autoComplete="name"
+                      placeholder="Tu nombre"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      required
+                    />
+                  </Field>
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <Field label="Email" htmlFor="ev-email">
+                      <Input
+                        id="ev-email"
+                        name="email"
+                        type="email"
+                        autoComplete="email"
+                        placeholder="tu@email.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                      />
+                    </Field>
+                    <Field
+                      label="Teléfono / WhatsApp"
+                      htmlFor="ev-phone"
+                      hint="Necesitamos al menos uno de los dos."
+                    >
+                      <Input
+                        id="ev-phone"
+                        name="phone"
+                        type="tel"
+                        autoComplete="tel"
+                        placeholder="+52 ..."
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                      />
+                    </Field>
+                  </div>
+
+                  {/* Honeypot: oculto a humanos pero visible a bots que
+                      llenan todos los inputs. Si el server action lo recibe
+                      con contenido, finge éxito silencioso. */}
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      position: "absolute",
+                      left: "-10000px",
+                      top: "auto",
+                      width: "1px",
+                      height: "1px",
+                      overflow: "hidden",
+                    }}
+                  >
+                    <label htmlFor="ev-hp">
+                      No llenar este campo
+                      <input
+                        id="ev-hp"
+                        name="hp"
+                        type="text"
+                        tabIndex={-1}
+                        autoComplete="off"
+                        value={hp}
+                        onChange={(e) => setHp(e.target.value)}
+                      />
+                    </label>
+                  </div>
+
+                  {/* Consentimiento obligatorio */}
+                  <label
+                    htmlFor="ev-consent"
+                    className="flex items-start gap-3 cursor-pointer rounded-xl border border-brand-100 bg-white px-4 py-3"
+                  >
+                    <input
+                      id="ev-consent"
+                      name="consent"
+                      type="checkbox"
+                      className="mt-0.5 h-5 w-5 rounded border-brand-200 text-brand-600 focus:ring-brand-400 shrink-0"
+                      checked={consent}
+                      onChange={(e) => setConsent(e.target.checked)}
+                    />
+                    <span className="text-xs text-ink-soft leading-relaxed">
+                      {CONSENT_TEXT}{" "}
+                      <Link
+                        href="/privacidad"
+                        className="font-medium text-brand-700 underline underline-offset-2 hover:text-brand-800"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {CONSENT_TAIL}
+                      </Link>
+                    </span>
+                  </label>
+
+                  {status === "error" && resultNote && (
+                    <div
+                      role="alert"
+                      className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700"
+                    >
+                      {resultNote}
+                    </div>
+                  )}
+
+                  <Button
+                    type="submit"
+                    size="lg"
+                    disabled={isPending}
+                    className="w-full"
+                  >
+                    {isPending ? "Enviando..." : "Confirmar asistencia"}
+                  </Button>
+                  <p className="text-xs text-ink-muted text-center">
+                    Te enviaremos recordatorios por el canal que indicaste.
+                    Puedes darte de baja en cualquier momento.
+                  </p>
+                </form>
+              </Card>
+            </>
+          )}
+        </Container>
+      </section>
+    </>
   );
 }
