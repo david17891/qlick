@@ -186,20 +186,13 @@ export function EventDrawer({
     setStatusChanging(newStatus);
     try {
       const updated = await updateEventStatus(event.id, newStatus);
-      setSuccess(
-        newStatus === "published"
-          ? "Evento publicado."
-          : newStatus === "archived"
-            ? "Evento archivado."
-            : "Vuelto a borrador.",
-      );
+      // Notificamos al padre (router.refresh) Y cerramos el drawer en el mismo
+      // tick. Hacer ambos juntos evita depender de timers que pueden perderse
+      // cuando Next.js re-monta el componente durante el refresh.
       onSaved(updated);
-      // Cerramos el drawer tras un cambio de status: el cambio se ve en la
-      // card de fondo (router.refresh en el padre) y quedarse abierto confunde.
-      setTimeout(() => onClose(), 700);
+      onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error cambiando status.");
-    } finally {
       setStatusChanging(null);
     }
   }
