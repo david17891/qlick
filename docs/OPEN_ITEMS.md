@@ -98,11 +98,12 @@ surveys paralelos del mismo chunk. Si un `insertOne` tira inesperadamente
 pool HTTP del admin client ni el de PostgREST. `type-check` + `lint`
 limpios.
 
-**Verificación end-to-end:** pendiente. El unit test natural es
-importar un Excel real desde el wizard y medir `durationMs` en el
-summary; anotar el delta vs el run anterior (34s) en una corrida
-dedicada con un Excel de ≥100 filas antes de cerrar el ticket del
-todo.
+**Verificación end-to-end:** ✅ David corrió el wizard con un Excel real
+post-merge y confirmó que el import termina rápido (sin capturar
+métricas exactas). `type-check` + `lint` limpios. Si en el futuro se
+quiere medir formalmente el delta, importar un Excel de ≥100 filas
+dos veces (antes/después) desde este mismo commit y comparar
+`durationMs` del summary.
 
 ### 🟢 C-1 — Inconsistencia `LessonVideoProvider "external"` (deuda previa LMS)
 
