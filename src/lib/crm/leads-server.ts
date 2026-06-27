@@ -22,6 +22,7 @@
  */
 
 import type { Lead } from "@/types";
+import type { LeadEventLinkType } from "@/types/events";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
@@ -805,4 +806,100 @@ export async function linkLeadToEventRecord(
     linked: false,
     note: `No se pudo crear el link (${insErr.code ?? "unknown"}).`,
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Leads vinculados a un evento (para el admin de eventos)             */
+/* ------------------------------------------------------------------ */
+
+/** Un lead con todos sus links a un evento específico. */
+export interface LeadWithEventLinks {
+  lead: Lead;
+  links: Array<{
+    linkType: LeadEventLinkType;
+    linkId: string;
+    createdAt: string;
+  }>;
+}
+
+/**
+ * Devuelve los leads que tienen al menos un link a este evento
+ * (confirmation / attendee / survey).
+ *
+ * Un lead puede tener múltiples links al mismo evento (ej: una
+ * persona que confirmó Y asistió Y respondió la encuesta — son
+ * 3 rows en `lead_event_links`). Devolvemos UN row por lead con
+ * TODOS sus links agrupados, para que el admin vea el panorama
+ * completo de cada lead sin duplicados visuales.
+ *
+ * Server-only. RLS deny para anon/authenticated — el admin usa
+ * service role.
+ */
+export async function getLeadsForEvent(
+  eventId: string,
+): Promise<LeadWithEventLinks[]> {
+  if (!isRealMode()) return [];
+
+  const supabase = createSupabaseAdminClient();
+  // JOIN leads con lead_event_links. Seleccionamos lo necesario de
+  // ambas tablas para que el cliente admin no haga 2 queries.
+  const { data, error } = await supabase
+    .from("lead_event_links")
+    .select(
+      `
+      link_type,
+      link_id,
+      created_at,
+      lead:leads (*)
+    `,
+    )
+    .eq("event_id", eventId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    // eslint-disable-next-line no-console
+    console.error("[leads-server] getLeadsForEvent falló", {
+      code: error.code,
+      eventId,
+    });
+    return [];
+  }
+  if (!data || data.length === 0) return [];
+
+  // Agrupar por lead.id. El JOIN de Supabase devuelve cada row con
+  // un objeto `lead` anidado (puede ser null si el lead fue borrado
+  // — caso edge, lo filtramos).
+  type Row = {
+    link_type: LeadEventLinkType;
+    link_id: string;
+    created_at: string;
+    lead: Parameters<typeof mapLeadRowToLead>[0] | null;
+  };
+
+  const byLeadId = new Map<string, LeadWithEventLinks>();
+  for (const row of data as unknown as Row[]) {
+    if (!row.lead) continue;
+    const lead = mapLeadRowToLead(row.lead);
+    const existing = byLeadId.get(lead.id);
+    if (existing) {
+      existing.links.push({
+        linkType: row.link_type,
+        linkId: row.link_id,
+        createdAt: row.created_at,
+      });
+    } else {
+      byLeadId.set(lead.id, {
+        lead,
+        links: [
+          {
+            linkType: row.link_type,
+            linkId: row.link_id,
+            createdAt: row.created_at,
+          },
+        ],
+      });
+    }
+  }
+
+  return Array.from(byLeadId.values());
 }

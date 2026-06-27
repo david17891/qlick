@@ -38,6 +38,8 @@ export {
   type AdminLeadOpResult,
 } from "./leads-admin-server";
 
+export { getLeadsForEvent, type LeadWithEventLinks } from "./leads-server";
+
 export {
   normalizePhone,
   phonesMatch,
