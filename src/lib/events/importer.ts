@@ -27,7 +27,7 @@ import type {
   EventAttendeeSource,
   ImportWarning,
 } from "@/types/events";
-import { normalizePhone } from "../crm/phone-utils";
+import { normalizePhone } from "../crm/phone-utils.ts";
 
 // ─────────────────────────────────────────────────────────────
 // Sinonimos de headers (ES + EN)
@@ -111,10 +111,10 @@ export interface NormalizedRow {
   email?: string | null;
   phoneRaw?: string | null;
   phoneNormalized?: string | null;
-  /** Para attendee: si asistió (boolean). */
-  attended?: boolean;
-  /** Para survey: si dio consentimiento. */
-  consent?: boolean;
+  /** Para attendee: si asistió. `null` si la celda tenía algo pero no se pudo parsear. */
+  attended?: boolean | null;
+  /** Para survey: si dio consentimiento. `null` si no se pudo parsear. */
+  consent?: boolean | null;
   /** Para survey: texto libre de interés comercial. */
   interest?: string | null;
   /** Fuente cruda (string del Excel), se mapea al enum abajo. */
@@ -132,10 +132,154 @@ export interface ParsedSheet {
 // Parsing
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * Lee una fila cruda del Excel y la mapea a un `NormalizedRow` usando
+ * el orden de canonical headers detectado. Aplica validación por
+ * tipo de import y emite warnings de data quality.
+ *
+ * `orderedCanonicalHeaders` puede tener `null` en posiciones donde el
+ * header del Excel no matcheó ningún canónico (ej: "#", "Fuente",
+ * "Observaciones"). Esos nulls preservan el ORDEN del Excel original.
+ */
+function buildNormalizedRow(
+  rawRow: unknown[],
+  orderedCanonicalHeaders: (string | null)[],
+  headerMap: Record<string, string>,
+  type: EventImportType,
+  rowNumber: number,
+): { normalized: NormalizedRow; rowWarnings: ImportWarning[] } {
+  const warnings: ImportWarning[] = [];
+  const out: NormalizedRow = {
+    rowNumber,
+    name: "",
+    email: null,
+    phoneRaw: null,
+    phoneNormalized: null,
+  };
+
+  for (let i = 0; i < orderedCanonicalHeaders.length && i < rawRow.length; i++) {
+    const canonical = orderedCanonicalHeaders[i];
+    if (canonical == null) continue; // columna no canónica → skip
+    const cell = rawRow[i];
+    if (isEmptyCell(cell)) continue;
+
+    const value = normalizeCell(cell);
+
+    switch (canonical) {
+      case "name":
+        if (typeof value === "string") out.name = value.trim();
+        break;
+      case "email":
+        out.email = typeof value === "string" ? value.trim().toLowerCase() : null;
+        if (out.email && !isValidEmailShape(out.email)) {
+          warnings.push({
+            row: rowNumber,
+            field: "email",
+            note: `email con forma inválida (${out.email.length} chars)`,
+          });
+          out.email = null;
+        }
+        break;
+      case "phone": {
+        const raw = typeof value === "number" ? String(value) : String(value);
+        out.phoneRaw = raw;
+        const normalized = normalizePhone(raw);
+        out.phoneNormalized = normalized;
+        if (!normalized) {
+          const digits = raw.replace(/\D/g, "");
+          if (digits.length === 10) {
+            out.phoneNormalized = `+52${digits}`;
+          } else if (digits.length === 9) {
+            warnings.push({
+              row: rowNumber,
+              field: "phone",
+              note: `phone con 9 dígitos (esperaba 10): ${digits.length} chars`,
+            });
+          } else {
+            warnings.push({
+              row: rowNumber,
+              field: "phone",
+              note: `phone no normalizable (${digits.length} dígitos)`,
+            });
+          }
+        }
+        break;
+      }
+      case "consent":
+        // parseYesNo devuelve boolean | null. Preservamos null para que
+        // el caller (CLI / survey promotion) pueda distinguir "no se
+        // pudo parsear" de "dije no".
+        out.consent = parseYesNo(value);
+        break;
+      case "interest":
+        out.interest = typeof value === "string" ? value.trim() : null;
+        break;
+      case "source":
+        out.sourceRaw = typeof value === "string" ? value.trim() : null;
+        break;
+      case "attended":
+        out.attended = parseYesNo(value);
+        break;
+      case "status":
+        // Metadata del Excel; no la usamos.
+        break;
+      default:
+        break;
+    }
+  }
+
+  // Validación específica por tipo.
+  if (type === "confirmation") {
+    if (!out.name) {
+      warnings.push({ row: rowNumber, field: "name", note: "falta nombre" });
+    }
+    if (!out.email && !out.phoneNormalized) {
+      warnings.push({
+        row: rowNumber,
+        field: "_ident",
+        note: "sin email ni phone — fila no se puede identificar",
+      });
+    }
+  } else if (type === "attendee") {
+    if (!out.name && !out.email && !out.phoneNormalized) {
+      warnings.push({
+        row: rowNumber,
+        field: "_ident",
+        note: "sin nombre/email/phone — fila no se puede identificar",
+      });
+    }
+  } else if (type === "survey") {
+    if (typeof out.consent !== "boolean") {
+      warnings.push({
+        row: rowNumber,
+        field: "consent",
+        note: "consent sin valor parseable",
+      });
+    }
+  }
+
+  return { normalized: out, rowWarnings: warnings };
+}
+
 function isEmptyCell(cell: unknown): boolean {
+  // Solo null/undefined cuentan como vacío. Strings vacíos los dejamos
+  // pasar al handler — `parseYesNo("")` devuelve `false` (correcto para
+  // consent/attended), y `name` lo va a tomar como "" (no es problema,
+  // generamos warning de "falta nombre" abajo).
   if (cell == null) return true;
-  if (typeof cell === "string" && cell.trim() === "") return true;
   return false;
+}
+
+/**
+ * Una fila se considera "vacía" (sin data) si todos sus cells son
+ * null/undefined o strings vacíos. Se usa para skip filas sin info.
+ */
+function isEmptyRow(rawRow: unknown[]): boolean {
+  return rawRow.every((c) => {
+    if (c == null) return true;
+    if (typeof c === "string" && c.trim() === "") return true;
+    return false;
+  });
 }
 
 function normalizeCell(cell: unknown): unknown {
@@ -240,7 +384,7 @@ export function parseXlsxForImport(
   for (let i = headerRowIdx + 1; i < aoa.length; i++) {
     const rawRow = aoa[i];
     if (!Array.isArray(rawRow)) continue;
-    if (rawRow.every((c) => isEmptyCell(c))) continue;
+    if (isEmptyRow(rawRow)) continue;
 
     const rowNumber = i - headerRowIdx;
     const { normalized, rowWarnings } = buildNormalizedRow(
@@ -259,14 +403,16 @@ export function parseXlsxForImport(
 
 /**
  * Versión "ordered" del detector de headers: devuelve el array de
- * canonical headers en el orden en que aparecen en el Excel.
+ * canonical headers (con `null` donde no matchea) en el ORDEN EXACTO
+ * del Excel. Esto preserva la alineación de columnas aunque haya
+ * headers no canónicos (ej: "#", "Fuente", "Observaciones").
  */
 function detectHeadersOrdered(
   aoa: unknown[][],
   mapOverride?: Record<string, string>,
 ): {
   headerRowIdx: number;
-  orderedCanonical: string[];
+  orderedCanonical: (string | null)[];
   headerMap: Record<string, string>;
 } {
   const MAX_SCAN = 20;
@@ -275,30 +421,55 @@ function detectHeadersOrdered(
     const row = aoa[i];
     if (!Array.isArray(row)) continue;
 
-    const orderedCanonical: string[] = [];
+    // Construimos orderedCanonical con nulls para preservar orden.
+    const orderedCanonical: (string | null)[] = [];
     const headerMap: Record<string, string> = {};
 
-    // Override primero: si el usuario pasó --map, esos headers mandan.
+    // Override primero: el usuario pasa {canonical: headerExcel}
+    // → tenemos que matchear el headerExcel al row para saber la posición.
+    // Si el override no matchea, igual registramos null en la posición
+    // donde el headerExcel aparecería en este row (si lo encontramos).
     if (mapOverride) {
       for (const [canonical, excelHeader] of Object.entries(mapOverride)) {
-        orderedCanonical.push(canonical);
-        headerMap[canonical] = excelHeader;
+        const pos = row.findIndex(
+          (cell) =>
+            typeof cell === "string" &&
+            cell.trim().toLowerCase() === excelHeader.trim().toLowerCase(),
+        );
+        if (pos !== -1) {
+          // Insertamos en la posición correcta (puede tener nulls antes).
+          while (orderedCanonical.length < pos) orderedCanonical.push(null);
+          orderedCanonical[pos] = canonical;
+          headerMap[canonical] = excelHeader;
+        }
+        // Si no se encuentra el header del override, lo ignoramos
+        // (el usuario va a ver el warning de "headers no reconocidos").
       }
     }
 
-    // Auto-detección para los que no estén en el override.
-    for (const cell of row) {
+    // Auto-detección en paralelo: cells que no están ya en el override
+    // y matchean un canonical conocido.
+    for (let colIdx = 0; colIdx < row.length; colIdx++) {
+      const cell = row[colIdx];
       if (typeof cell !== "string") continue;
       const trimmed = cell.trim();
       if (!trimmed) continue;
       const canonical = resolveHeader(trimmed);
-      if (canonical && !headerMap[canonical]) {
-        orderedCanonical.push(canonical);
-        headerMap[canonical] = trimmed;
-      }
+      if (!canonical) continue;
+      // Si el override ya llenó esta posición, no la sobrescribimos.
+      if (orderedCanonical[colIdx] != null) continue;
+      // Si el canonical ya está en headerMap (por override), skip.
+      if (headerMap[canonical]) continue;
+      while (orderedCanonical.length < colIdx) orderedCanonical.push(null);
+      orderedCanonical[colIdx] = canonical;
+      headerMap[canonical] = trimmed;
     }
 
-    if (orderedCanonical.length >= 2) {
+    // Necesitamos al menos 1 match para considerar que es la fila de
+    // headers. Con threshold=1, Excels con un solo header reconocido
+    // (ej: solo "Nombre") también funcionan.
+    const matchCount = orderedCanonical.filter((c) => c != null).length;
+    if (matchCount >= 1) {
       return { headerRowIdx: i, orderedCanonical, headerMap };
     }
   }

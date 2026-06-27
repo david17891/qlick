@@ -968,6 +968,17 @@ export type Database = {
         | "no_show"
         | "attended"
       masterclass_status: "draft" | "published" | "archived"
+      event_status: "draft" | "published" | "archived"
+      event_confirmation_source:
+        | "imported_excel"
+        | "public_form"
+        | "manual"
+      event_attendee_source:
+        | "check_in"
+        | "imported_excel"
+        | "zoom_export"
+        | "manual"
+      lead_event_link_type: "confirmation" | "attendee" | "survey"
     }
     CompositeTypes: {
       [_ in never]: never

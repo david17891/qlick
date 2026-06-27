@@ -22,6 +22,7 @@
 
 import type { EventSurvey, EventSurveyUnmatchedReason } from "@/types/events";
 import { getSurveyById } from "./surveys-server";
+import { type EventSurveyRow } from "./event-mapper";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { findConfirmationByEmailOrPhone } from "./confirmations-server";

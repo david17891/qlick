@@ -11,13 +11,14 @@
  */
 
 import type { EventSurvey } from "@/types/events";
+import type { Json } from "@/types/supabase";
 import {
   mapEventSurveyRowToEventSurvey,
   type EventSurveyRow,
 } from "./event-mapper";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { normalizePhone } from "../crm/phone-utils";
+import { normalizePhone } from "../crm/phone-utils.ts";
 
 function isRealMode(): boolean {
   if (typeof window !== "undefined") return false;
@@ -141,7 +142,9 @@ export async function createSurvey(
       respondent_email: respondentEmail,
       respondent_phone: input.respondentPhone?.trim() || null,
       phone_normalized: phoneNormalized,
-      responses: input.responses,
+      // Cast a Json (tipo de la DB). input.responses es Record<string, unknown>
+      // pero el typegen quiere Json específicamente.
+      responses: input.responses as unknown as Json,
       consent_to_contact: input.consentToContact,
       commercial_interest: input.commercialInterest?.trim() || null,
       import_batch_id: input.importBatchId ?? null,

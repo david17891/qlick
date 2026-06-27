@@ -20,7 +20,7 @@ import {
 } from "./event-mapper";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { normalizePhone } from "../crm/phone-utils";
+import { normalizePhone } from "../crm/phone-utils.ts";
 
 function isRealMode(): boolean {
   if (typeof window !== "undefined") return false;
