@@ -79,21 +79,18 @@ export function AdminEventosClient({
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {initialSummaries.map((s) => (
           <Card key={s.event.id} className="p-0 flex flex-col overflow-hidden">
-            <div className="relative w-full h-32 overflow-hidden bg-brand-50">
-              {s.event.coverImageUrl ? (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img
-                  src={s.event.coverImageUrl}
-                  alt={`Portada de ${s.event.title}`}
-                  className="absolute inset-0 w-full h-full object-cover"
-                  loading="lazy"
-                />
-              ) : (
-                <div className="absolute inset-0 bg-gradient-to-br from-brand-100 to-brand-50 flex items-center justify-center text-brand-300 text-xs">
-                  sin portada
-                </div>
-              )}
-            </div>
+            {s.event.coverImageUrl ? (
+              <div
+                className="w-full h-32 bg-brand-50 bg-cover bg-center"
+                style={{ backgroundImage: `url(${s.event.coverImageUrl})` }}
+                role="img"
+                aria-label={`Portada de ${s.event.title}`}
+              />
+            ) : (
+              <div className="w-full h-32 bg-gradient-to-br from-brand-100 to-brand-50 flex items-center justify-center text-brand-300 text-xs">
+                sin portada
+              </div>
+            )}
             <div className="p-5 flex flex-col flex-1">
               <div className="flex items-center justify-between mb-2">
                 <Badge
