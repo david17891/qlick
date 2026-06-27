@@ -68,6 +68,21 @@ export async function POST(
       { status: 400 },
     );
   }
+
+  // Guard contra DoS / memory exhaustion: rechazamos archivos > 10 MB
+  // antes de cargarlos a memoria con arrayBuffer(). Excels de eventos
+  // reales típicamente son <1 MB (cientos de filas). Si alguien sube un
+  // archivo más grande es probablemente (a) error o (b) abuso.
+  const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `Archivo demasiado grande (${(file.size / 1024 / 1024).toFixed(1)} MB). Máximo ${MAX_FILE_SIZE_BYTES / 1024 / 1024} MB.`,
+      },
+      { status: 413 },
+    );
+  }
   if (typeof typeRaw !== "string" || !["confirmation", "attendee", "survey"].includes(typeRaw)) {
     return NextResponse.json(
       { ok: false, error: "Tipo inválido (debe ser confirmation/attendee/survey)." },

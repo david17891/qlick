@@ -83,6 +83,29 @@ pero el reporte queda sucio.
 
 **Fix propuesto:** considerar migrar a `exceljs` (mantenida, menos transitive deps) si los reportes se vuelven un problema. **Scope: si pasa a Fase 5 con CI/CD.**
 
+### 🟡 B-6 — `runEventImport` hace inserts SECUENCIALES (perf)
+
+**Síntoma:** `src/lib/events/runEventImport.ts` itera filas y llama
+`createConfirmation` / `createAttendee` / `createSurvey` uno por uno.
+Para un Excel de 170 filas (testeado por David) son 170 round-trips
+a Supabase secuenciales. Si la latencia promedio es 200ms por insert,
+son 34 segundos. Esto NO escala.
+
+**Origen:** el importer del CLI (`scripts/_test-fase2.mjs`) hace
+inserts paralelos con `Promise.allSettled` en chunks. El nuevo
+`runEventImport.ts` (server lib para el wizard) usa el patrón
+secuencial del server lib original. Diferencia intencional para
+mantener el orden de los audit logs y reducir la carga en la DB, pero
+es lento para Excels grandes.
+
+**Workaround:** importar Excels en chunks pequeños o aceptar la
+latencia.
+
+**Fix propuesto:** cambiar a `Promise.allSettled` con chunks de 10-20
+filas. Cada fila tiene su propio try/catch para que un fallo no aborte
+las demás. Scope: ~30 min, requiere test de concurrencia. **Severity 🟡
+porque tiene workaround (chunks pequeños).**
+
 ### 🟢 C-1 — Inconsistencia `LessonVideoProvider "external"` (deuda previa LMS)
 
 **Síntoma:** `LessonVideoProvider` tiene `"external"` en la CHECK constraint
