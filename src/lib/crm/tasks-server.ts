@@ -31,6 +31,49 @@ export async function getLeadTasks(leadId: string): Promise<CrmTaskRow[]> {
   return data ?? [];
 }
 
+/** Resultado de getAllPendingTasks: partición por estado temporal. */
+export interface PendingTasksSplit {
+  /** Tareas pendientes con due_at < ahora. */
+  overdue: CrmTaskRow[];
+  /** Tareas pendientes con due_at >= ahora O sin due_at. */
+  upcoming: CrmTaskRow[];
+}
+
+/**
+ * Lista TODAS las tareas pendientes (status='pending') de todos los leads,
+ * particionándolas en vencidas vs próximas. Las tareas sin due_at caen en
+ * `upcoming` (no se pueden vencer si no tienen fecha).
+ *
+ * Server-only: usa el cliente admin (bypass RLS). El caller valida admin.
+ */
+export async function getAllPendingTasks(): Promise<PendingTasksSplit> {
+  const empty: PendingTasksSplit = { overdue: [], upcoming: [] };
+  if (!checkSupabaseConfig().configured) return empty;
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("crm_tasks")
+    .select("*")
+    .eq("status", "pending")
+    .order("due_at", { ascending: true, nullsFirst: false });
+  if (error) {
+    // eslint-disable-next-line no-console
+    console.error("[tasks] getAllPendingTasks falló", { code: error.code });
+    return empty;
+  }
+  const rows = data ?? [];
+  const now = Date.now();
+  const overdue: CrmTaskRow[] = [];
+  const upcoming: CrmTaskRow[] = [];
+  for (const row of rows) {
+    if (row.due_at && new Date(row.due_at).getTime() < now) {
+      overdue.push(row);
+    } else {
+      upcoming.push(row);
+    }
+  }
+  return { overdue, upcoming };
+}
+
 /** Crea una tarea. title sanitizado. */
 export async function createCRMTask(
   input: {

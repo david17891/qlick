@@ -106,3 +106,20 @@ export async function createLeadTask(
   const data = await parseEnvelope<{ ok: true; task: CrmTaskRow }>(res);
   return data.task;
 }
+
+/** Split de tareas pendientes para el Calendario del CRM. */
+export interface PendingTasksSplitClient {
+  overdue: CrmTaskRow[];
+  upcoming: CrmTaskRow[];
+}
+
+/** GET /api/admin/crm/tasks → todas las tareas pendientes particionadas. */
+export async function fetchPendingCRMTasks(): Promise<PendingTasksSplitClient> {
+  const res = await fetch(`/api/admin/crm/tasks`, { cache: "no-store" });
+  const data = await parseEnvelope<{
+    ok: true;
+    overdue: CrmTaskRow[];
+    upcoming: CrmTaskRow[];
+  }>(res);
+  return { overdue: data.overdue, upcoming: data.upcoming };
+}

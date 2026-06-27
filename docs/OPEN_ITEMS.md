@@ -113,6 +113,39 @@ con `event_surveys.event_id` joined a `event_survey_unmatched.survey_id`,
 agrupado por `event_id`. Query simple, mismo patrón que el conteo de
 `leadsPromoted`. **Scope: cuando se toque `getAdminEvents` por otra razón.**
 
+### 🟡 B-2 — Calendario CRM no renderiza `crm_tasks` (sesión 2026-06-27)
+
+**Síntoma:** David reportó (2026-06-27 ~01:14) que la tarea de seguimiento
+que creó desde el drawer del lead aparece en el detalle del lead pero
+NO aparece en el tab "📅 Calendario" del CRM.
+
+**Diagnóstico:** el Calendario de `CRMView.tsx` (líneas 299-341) renderiza
+solo `appts` (citas comerciales agendadas), NO `crm_tasks` (tareas de
+seguimiento). Son dos entidades distintas en el modelo:
+
+- `appts` — citas tipo "call" / "whatsapp" / "meeting" / "follow_up",
+  agendadas explícitamente. → **sí** aparecen en Calendario.
+- `crm_tasks` — tareas internas de seguimiento, creadas en el drawer
+  del lead con `due_at` opcional. → **no** aparecen en Calendario.
+
+El comentario del código (línea 336-339) ya advertía:
+> Demo: no conectado a Google Calendar. El tipo Appointment deja el campo
+> externalCalendarId listo para sincronización futura.
+
+**Workaround actual:** las tareas se ven en el detalle del lead (sección
+"Tareas de seguimiento" del drawer). Si David quiere vista unificada de
+"qué tengo que hacer esta semana", tiene que abrir cada lead.
+
+**Fix propuesto:** agregar 2ª card en la sección Calendario del
+`CRMView.tsx` que liste `crm_tasks` con `status='pending'` y `due_at`
+futuro/vencido (ordenadas por `due_at` ascendente). Pasarlas al
+componente como nueva prop, fetch en `crm-service.ts` con el patrón
+que ya usa para `getLeadTasks`. Scope: ~30 min, no requiere migration.
+
+**Severidad 🟡** porque tiene workaround (la tarea sí es visible en el
+drawer), pero rompe el flujo mental de "calendario = todo lo que tengo
+pendiente". Detectado en el smoke test del Paso 1 de Fase 4.
+
 ---
 
 ## 2. Features pendientes por fase

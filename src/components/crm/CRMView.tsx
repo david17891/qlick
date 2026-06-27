@@ -45,6 +45,11 @@ import {
   appointmentStatusLabel,
   appointmentStatusTone
 } from "@/lib/crm/appointments";
+import {
+  fetchPendingCRMTasks,
+  type PendingTasksSplitClient
+} from "@/lib/crm/ops-client";
+import type { CrmTaskRow } from "@/lib/crm/crm-rows";
 import { getWhatsAppConfigStatus } from "@/lib/contact/whatsapp";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { LeadDetailDrawer } from "./LeadDetailDrawer";
@@ -86,6 +91,7 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
   const [realLeadsError, setRealLeadsError] = useState<string | null>(null);
   const [realOverview, setRealOverview] = useState<CRMOverview | null>(null);
   const [realOverviewError, setRealOverviewError] = useState<string | null>(null);
+  const [realPendingTasks, setRealPendingTasks] = useState<PendingTasksSplitClient | null>(null);
 
   // Deep-link desde /admin?leadId=... (usado por masterclass funnel).
   // Cuando los leads reales terminen de cargar, abre el drawer del lead
@@ -162,6 +168,22 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
     };
   }, [realMode]);
 
+  // Tareas pendientes reales: partición vencidas/próximas para el Calendario.
+  useEffect(() => {
+    if (!realMode) return;
+    let cancelled = false;
+    fetchPendingCRMTasks()
+      .then((split) => {
+        if (!cancelled) setRealPendingTasks(split);
+      })
+      .catch(() => {
+        if (!cancelled) setRealPendingTasks(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [realMode, selectedLead]);
+
   // Leads efectivos: reales si están cargados, null mientras cargan en modo real.
   const mockLeads = getLeads();
   const owners = getSalesOwners();
@@ -176,6 +198,18 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
   const upcomingAppts = getUpcomingAppointments();
   const profile = getAIAgentProfile();
   const waProviders = getWhatsAppProviders();
+
+  // Tareas pendientes: split entre datos reales y mock.
+  // En modo real, si la red falla devolvemos listas vacías para no mostrar
+  // datos ficticios junto a datos reales.
+  // En modo demo, mapeamos CRMTask (mock camelCase) → CrmTaskRow (snake_case
+  // de Supabase) para reusar el mismo sub-componente CalendarTaskRow.
+  const pendingTasks: PendingTasksSplitClient = realMode
+    ? realPendingTasks ?? { overdue: [], upcoming: [] }
+    : {
+        overdue: overdueTasks.map(mockTaskToRow),
+        upcoming: upcomingTasks.map(mockTaskToRow),
+      };
 
   // En modo real: si realLeads está null (cargando o sin sesión), mostramos
   // estado de carga. Si está cargado (incluso vacío), lo usamos.
@@ -333,9 +367,59 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
               </ul>
             )}
           </Card>
+
+          {/* Tareas vencidas (crm_tasks con due_at < hoy) */}
+          {pendingTasks.overdue.length > 0 && (
+            <Card className="p-5 border-red-200 bg-red-50/30">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-bold text-ink">Tareas vencidas</h3>
+                <Badge tone="danger">{pendingTasks.overdue.length} atrasadas</Badge>
+              </div>
+              <ul className="divide-y divide-red-100">
+                {pendingTasks.overdue.map((t) => (
+                  <CalendarTaskRow
+                    key={t.id}
+                    task={t}
+                    leads={leads}
+                    overdue
+                    onSelectLead={setSelectedLead}
+                  />
+                ))}
+              </ul>
+            </Card>
+          )}
+
+          {/* Tareas próximas (crm_tasks con due_at >= hoy o sin fecha) */}
+          <Card className="p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-bold text-ink">Tareas de seguimiento</h3>
+              <Badge tone="neutral">{pendingTasks.upcoming.length} pendientes</Badge>
+            </div>
+            {pendingTasks.upcoming.length === 0 ? (
+              <EmptyState
+                title="Sin tareas pendientes"
+                description="Crea tareas desde el detalle de un lead para verlas acá."
+              />
+            ) : (
+              <ul className="divide-y divide-brand-50">
+                {pendingTasks.upcoming.map((t) => (
+                  <CalendarTaskRow
+                    key={t.id}
+                    task={t}
+                    leads={leads}
+                    overdue={false}
+                    onSelectLead={setSelectedLead}
+                  />
+                ))}
+              </ul>
+            )}
+          </Card>
+
           <p className="text-xs text-ink-muted">
-            Demo: no conectado a Google Calendar. El tipo Appointment deja el campo
-            externalCalendarId listo para sincronización futura.
+            Citas sincronizan con Google Calendar en una fase posterior (campo
+            <code className="mx-1 px-1 rounded bg-brand-50">externalCalendarId</code>
+            ya queda listo). Las tareas viven en <code className="mx-1 px-1 rounded bg-brand-50">crm_tasks</code> y
+            se crean desde el drawer del lead.
           </p>
         </div>
       )}
@@ -424,6 +508,73 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
 }
 
 /* ----------------------- Sub-componentes ----------------------- */
+
+/**
+ * Adapta el CRMTask del mock (camelCase) al shape de crm_tasks en Supabase
+ * (snake_case). Usado solo en modo demo para alimentar el Calendario con
+ * datos ficticios. El `lead_id` del mock es opcional; en Supabase es NOT NULL,
+ * por lo que se usa string vacío cuando no hay lead asociado.
+ */
+function mockTaskToRow(t: import("@/types").CRMTask): CrmTaskRow {
+  return {
+    id: t.id,
+    lead_id: t.leadId ?? "",
+    title: t.title,
+    description: t.description ?? null,
+    due_at: t.dueAt,
+    status: t.done ? "completed" : "pending",
+    completed_at: t.done ? t.dueAt : null,
+    created_by_email: "demo@qlick.mx",
+    created_at: t.createdAt,
+  };
+}
+
+/**
+ * Fila de tarea en el Calendario del CRM. Muestra título, lead (clickeable →
+ * abre drawer) y fecha de vencimiento coloreada según overdue.
+ */
+function CalendarTaskRow({
+  task,
+  leads,
+  overdue,
+  onSelectLead
+}: {
+  task: CrmTaskRow;
+  leads: Lead[];
+  overdue: boolean;
+  onSelectLead: (lead: Lead) => void;
+}) {
+  const lead = task.lead_id ? leads.find((l) => l.id === task.lead_id) ?? null : null;
+  const dueLabel = task.due_at ? formatDate(task.due_at) : "Sin fecha";
+  return (
+    <li className="py-3 flex flex-wrap items-center justify-between gap-2">
+      <button
+        type="button"
+        onClick={() => lead && onSelectLead(lead)}
+        disabled={!lead}
+        className={
+          "min-w-0 text-left flex-1 " +
+          (lead ? "hover:opacity-80 cursor-pointer" : "cursor-default")
+        }
+        title={lead ? `Ver lead ${lead.name}` : "Lead no encontrado"}
+      >
+        <p className="font-semibold text-ink">{task.title}</p>
+        <p className="text-xs text-ink-muted">
+          {lead ? lead.name : "Lead no encontrado"} ·{" "}
+          {task.created_by_email ?? "sistema"}
+        </p>
+        {task.description && (
+          <p className="text-xs text-ink-soft mt-1 line-clamp-2">{task.description}</p>
+        )}
+      </button>
+      <div className="flex items-center gap-2">
+        <Badge tone={overdue ? "danger" : task.due_at ? "info" : "neutral"}>
+          {dueLabel}
+        </Badge>
+      </div>
+    </li>
+  );
+}
 
 function PipelineCard({
   lead,
