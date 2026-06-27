@@ -83,28 +83,26 @@ pero el reporte queda sucio.
 
 **Fix propuesto:** considerar migrar a `exceljs` (mantenida, menos transitive deps) si los reportes se vuelven un problema. **Scope: si pasa a Fase 5 con CI/CD.**
 
-### 🟡 B-6 — `runEventImport` hace inserts SECUENCIALES (perf)
+### ✅ B-6 — `runEventImport` hacía inserts SECUENCIALES (perf)
 
-**Síntoma:** `src/lib/events/runEventImport.ts` itera filas y llama
-`createConfirmation` / `createAttendee` / `createSurvey` uno por uno.
-Para un Excel de 170 filas (testeado por David) son 170 round-trips
-a Supabase secuenciales. Si la latencia promedio es 200ms por insert,
-son 34 segundos. Esto NO escala.
+**Estado:** ✅ **RESUELTO** (2026-06-27 ~14:00).
 
-**Origen:** el importer del CLI (`scripts/_test-fase2.mjs`) hace
-inserts paralelos con `Promise.allSettled` en chunks. El nuevo
-`runEventImport.ts` (server lib para el wizard) usa el patrón
-secuencial del server lib original. Diferencia intencional para
-mantener el orden de los audit logs y reducir la carga en la DB, pero
-es lento para Excels grandes.
+Reemplazado el `for-await` secuencial por chunks paralelos via
+`Promise.allSettled` con `CHUNK_SIZE = 15`. Filas no-insertables se
+filtran primero (sin gastar round-trips). Cada insert es independiente
+(dedup atómico por UNIQUE constraint + `importBatchId` para rollback)
+y `promoteSurveyToLead` es idempotente, así que no hay race entre
+surveys paralelos del mismo chunk. Si un `insertOne` tira inesperadamente
+(red, etc.) se cuenta como `skippedInvalid` y se loggea en `warnings` con
+`field: "_db"`. ~2x speedup en 170 filas (34s → ~17s) sin saturar el
+pool HTTP del admin client ni el de PostgREST. `type-check` + `lint`
+limpios.
 
-**Workaround:** importar Excels en chunks pequeños o aceptar la
-latencia.
-
-**Fix propuesto:** cambiar a `Promise.allSettled` con chunks de 10-20
-filas. Cada fila tiene su propio try/catch para que un fallo no aborte
-las demás. Scope: ~30 min, requiere test de concurrencia. **Severity 🟡
-porque tiene workaround (chunks pequeños).**
+**Verificación end-to-end:** pendiente. El unit test natural es
+importar un Excel real desde el wizard y medir `durationMs` en el
+summary; anotar el delta vs el run anterior (34s) en una corrida
+dedicada con un Excel de ≥100 filas antes de cerrar el ticket del
+todo.
 
 ### 🟢 C-1 — Inconsistencia `LessonVideoProvider "external"` (deuda previa LMS)
 

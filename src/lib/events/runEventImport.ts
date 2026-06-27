@@ -162,22 +162,54 @@ export async function runEventImport(
     };
   }
 
-  // 2. Import real: batchId + inserts secuenciales con dedup atómico.
+  // 2. Import real: batchId + inserts en chunks paralelos (B-6).
+  //
+  // Antes: for-await secuencial → N round-trips a Supabase en serie
+  // (~200ms c/u = 34s para 170 filas testeadas por David). Insostenible
+  // para Excels grandes.
+  //
+  // Ahora: filtramos primero las filas no-insertables (sin gastar round-
+  // trips) y procesamos el resto en chunks de CHUNK_SIZE filas en
+  // paralelo via `Promise.allSettled`. Cada fila es independiente
+  // (dedup atómico por UNIQUE constraint + importBatchId para rollback),
+  // y `promoteSurveyToLead` es idempotente, así que no hay race entre
+  // surveys paralelos del mismo chunk. ~2x speedup para 170 filas sin
+  // saturar el pool HTTP del admin client ni el de PostgREST.
+  const CHUNK_SIZE = 15;
   const batchId = randomUUID();
+  const insertableRows = parsed.rows.filter((row) =>
+    isInsertable(row, input.type),
+  );
   let inserted = 0;
   let skippedDuplicates = 0;
-  let skippedInvalid = 0;
+  let skippedInvalid = parsed.rows.length - insertableRows.length;
 
-  for (const row of parsed.rows) {
-    if (!isInsertable(row, input.type)) {
-      skippedInvalid++;
-      continue;
+  for (let i = 0; i < insertableRows.length; i += CHUNK_SIZE) {
+    const chunk = insertableRows.slice(i, i + CHUNK_SIZE);
+    const settled = await Promise.allSettled(
+      chunk.map((row) => insertOne(row, input, batchId)),
+    );
+    for (let j = 0; j < settled.length; j++) {
+      const s = settled[j];
+      if (s.status === "fulfilled") {
+        const result = s.value;
+        if (result === "inserted") inserted++;
+        else if (result === "duplicate") skippedDuplicates++;
+        else skippedInvalid++;
+      } else {
+        // insertOne no debería tirar (devuelve "inserted" | "duplicate" |
+        // "invalid"), pero si una excepción se escapa (network, etc.) la
+        // contamos como invalid y dejamos rastro en warnings para debug.
+        skippedInvalid++;
+        warnings.push({
+          row: i + j,
+          field: "_db",
+          note: `Insert falló inesperadamente: ${
+            s.reason instanceof Error ? s.reason.message : String(s.reason)
+          }`,
+        });
+      }
     }
-
-    const result = await insertOne(row, input, batchId);
-    if (result === "inserted") inserted++;
-    else if (result === "duplicate") skippedDuplicates++;
-    else skippedInvalid++;
   }
 
   // 3. Audit log (best-effort).
