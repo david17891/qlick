@@ -89,14 +89,62 @@ export const HEADER_SYNONYMS: Record<string, string[]> = {
 
 /**
  * Resuelve un header del Excel al campo canónico.
+ *
+ * Búsqueda en 2 fases:
+ * 1. Match exacto contra sinonimos (HEADER_SYNONYMS).
+ * 2. Fuzzy match con Levenshtein ≤ 2 para tolerar typos/acentos/1-2 chars de diff.
+ *
  * Devuelve null si no matchea ninguno conocido.
  */
 export function resolveHeader(rawHeader: string): string | null {
   const normalized = rawHeader.trim().toLowerCase();
+  if (!normalized) return null;
+
+  // 1. Exacto
   for (const [canonical, synonyms] of Object.entries(HEADER_SYNONYMS)) {
     if (synonyms.includes(normalized)) return canonical;
   }
+
+  // 2. Fuzzy: cada sinonimo contra el header, Levenshtein ≤ 2.
+  //    Útil para "nombres" (1 char), "e-mail" (1 char), "celular" vs "cel" (3),
+  //    "whatsapp" vs "whatapp" (1 char omitido), etc.
+  //    Threshold conservador para no matchear cosas random.
+  for (const [canonical, synonyms] of Object.entries(HEADER_SYNONYMS)) {
+    for (const syn of synonyms) {
+      if (levenshteinLE(syn, normalized, 2)) return canonical;
+    }
+  }
+
   return null;
+}
+
+/** Levenshtein distance. True si está dentro del threshold. O(n*m) — OK para headers cortos. */
+function levenshteinLE(a: string, b: string, maxDist: number): boolean {
+  const m = a.length;
+  const n = b.length;
+  if (Math.abs(m - n) > maxDist) return false;
+
+  // Fila anterior y actual de la matriz DP.
+  let prev = new Array(n + 1).fill(0).map((_, i) => i);
+  let curr = new Array(n + 1).fill(0);
+
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    let rowMin = curr[0];
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(
+        curr[j - 1] + 1,        // insertion
+        prev[j] + 1,            // deletion
+        prev[j - 1] + cost,     // substitution
+      );
+      if (curr[j] < rowMin) rowMin = curr[j];
+    }
+    // Early exit: si el mínimo de la fila > maxDist, ya no puede mejorar.
+    if (rowMin > maxDist) return false;
+    [prev, curr] = [curr, prev];
+  }
+  return prev[n] <= maxDist;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -167,7 +215,20 @@ function buildNormalizedRow(
 
     switch (canonical) {
       case "name":
-        if (typeof value === "string") out.name = value.trim();
+        if (typeof value === "string") {
+          // Transformación determinista: trim + capitalize cada palabra.
+          // "  ANA  Pérez-López  " -> "Ana Pérez-López".
+          // NO corregimos typos ni juntamos/partimos palabras (eso sería
+          // inventar / perder info).
+          out.name = capitalizeEachWord(value.trim());
+          if (out.name && !out.name.includes(" ") && out.name.length > 3) {
+            warnings.push({
+              row: rowNumber,
+              field: "name",
+              note: `nombre de una sola palabra: "${out.name}"`,
+            });
+          }
+        }
         break;
       case "email":
         out.email = typeof value === "string" ? value.trim().toLowerCase() : null;
@@ -295,6 +356,11 @@ function isValidEmailShape(email: string): boolean {
 /**
  * Parsea un valor "sí/no" tolerante a variaciones.
  * Devuelve boolean o null si no se puede parsear.
+ *
+ * ⚠️ Intencionalmente ESTRICTO: solo acepta los valores listados.
+ * NO infiere "sí plis" → Sí porque eso sería fabricar consentimiento
+ * (constraint legal GDPR/LFPDPPP). Si el Excel tiene variantes no
+ * listadas, agregalas al array, no las "limpies" automáticamente.
  */
 export function parseYesNo(value: unknown): boolean | null {
   if (value == null) return null;
@@ -308,6 +374,37 @@ export function parseYesNo(value: unknown): boolean | null {
   if (["sí", "si", "yes", "true", "1", "ok", "✓", "✔", "x"].includes(s)) return true;
   if (["no", "false", "0", "", "✗", "✘"].includes(s)) return false;
   return null;
+}
+
+/**
+ * Capitaliza cada palabra de un nombre. Determinista y seguro:
+ * - "ana PÉREZ" → "Ana Pérez"
+ * - "jose lopez" → "Jose Lopez"
+ *
+ * NO hace (lo dejamos para que el admin lo arregle manualmente):
+ * - Detectar nombres compuestos ("María del Carmen" → ?)
+ * - Corregir typos ortográficos
+ * - Inferir género desde el nombre
+ */
+export function capitalizeEachWord(s: string): string {
+  return s
+    .split(/\s+/)
+    .map((word) => {
+      if (!word) return "";
+      // Si la palabra tiene guiones, capitaliza cada parte.
+      // "pérez-lópez" → "Pérez-López"
+      return word
+        .split("-")
+        .map((part) => {
+          if (!part) return "";
+          // Mantenemos caracteres especiales (acentos) tal cual,
+          // solo capitalizamos la primera letra respetando Unicode.
+          return part.charAt(0).toLocaleUpperCase("es-MX") + part.slice(1);
+        })
+        .join("-");
+    })
+    .join(" ")
+    .trim();
 }
 
 /**

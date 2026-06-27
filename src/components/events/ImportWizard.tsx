@@ -65,113 +65,237 @@ export function ImportWizard({
   }
 
   return (
-    <div className="grid lg:grid-cols-2 gap-6">
-      {/* Columna 1: Form */}
-      <Card className="p-6">
-        <h2 className="font-bold text-ink mb-4">1. Elegí el archivo y tipo</h2>
+    <div className="space-y-6">
+      <FormatSpecPanel activeType={type} />
 
-        <div className="space-y-4">
-          <div>
-            <label
-              htmlFor="xlsx"
-              className="block text-sm font-semibold text-ink mb-1.5"
-            >
-              Archivo Excel (.xlsx)
-            </label>
-            <input
-              id="xlsx"
-              type="file"
-              accept=".xlsx"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              disabled={busy}
-              className="block w-full text-sm text-ink file:mr-3 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-brand-500 file:text-white file:font-semibold hover:file:bg-brand-600 file:cursor-pointer"
-            />
-            {file && (
-              <p className="mt-2 text-xs text-ink-muted">
-                {file.name} ({(file.size / 1024).toFixed(1)} KB)
-              </p>
-            )}
-          </div>
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* Columna 1: Form */}
+        <Card className="p-6">
+          <h2 className="font-bold text-ink mb-4">1. Elegí el archivo y tipo</h2>
 
-          <div>
-            <label
-              htmlFor="type"
-              className="block text-sm font-semibold text-ink mb-1.5"
-            >
-              Tipo de import
-            </label>
-            <select
-              id="type"
-              value={type}
-              onChange={(e) => setType(e.target.value as ImportInput["type"])}
-              disabled={busy}
-              className="w-full rounded-xl border border-brand-100 bg-white px-4 py-3 text-ink focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
-            >
-              <option value="confirmation">Confirmaciones (RSVPs)</option>
-              <option value="attendee">Asistentes (check-ins)</option>
-              <option value="survey">Encuestas post-evento</option>
-            </select>
-            <p className="mt-1 text-xs text-ink-muted">
-              Cada tipo usa un set diferente de columnas y reglas de dedup.
-            </p>
-          </div>
-
-          <label className="flex items-start gap-2 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={dryRun}
-              onChange={(e) => setDryRun(e.target.checked)}
-              disabled={busy}
-              className="mt-1"
-            />
+          <div className="space-y-4">
             <div>
-              <span className="text-sm font-semibold text-ink">Dry-run</span>
-              <p className="text-xs text-ink-muted">
-                Simula el import sin tocar la base de datos. Útil para
-                validar headers y ver cuántas filas se insertarían.
+              <label
+                htmlFor="xlsx"
+                className="block text-sm font-semibold text-ink mb-1.5"
+              >
+                Archivo Excel (.xlsx)
+              </label>
+              <input
+                id="xlsx"
+                type="file"
+                accept=".xlsx"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                disabled={busy}
+                className="block w-full text-sm text-ink file:mr-3 file:py-2 file:px-4 file:rounded-full file:border-0 file:bg-brand-500 file:text-white file:font-semibold hover:file:bg-brand-600 file:cursor-pointer"
+              />
+              {file && (
+                <p className="mt-2 text-xs text-ink-muted">
+                  {file.name} ({(file.size / 1024).toFixed(1)} KB)
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label
+                htmlFor="type"
+                className="block text-sm font-semibold text-ink mb-1.5"
+              >
+                Tipo de import
+              </label>
+              <select
+                id="type"
+                value={type}
+                onChange={(e) => setType(e.target.value as ImportInput["type"])}
+                disabled={busy}
+                className="w-full rounded-xl border border-brand-100 bg-white px-4 py-3 text-ink focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+              >
+                <option value="confirmation">Confirmaciones (RSVPs)</option>
+                <option value="attendee">Asistentes (check-ins)</option>
+                <option value="survey">Encuestas post-evento</option>
+              </select>
+              <p className="mt-1 text-xs text-ink-muted">
+                Cada tipo usa un set diferente de columnas y reglas de dedup.
               </p>
             </div>
-          </label>
 
-          {error && (
-            <div className="rounded-xl bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
-              {error}
-            </div>
-          )}
+            <label className="flex items-start gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={dryRun}
+                onChange={(e) => setDryRun(e.target.checked)}
+                disabled={busy}
+                className="mt-1"
+              />
+              <div>
+                <span className="text-sm font-semibold text-ink">Dry-run</span>
+                <p className="text-xs text-ink-muted">
+                  Simula el import sin tocar la base de datos. Útil para
+                  validar headers y ver cuántas filas se insertarían.
+                </p>
+              </div>
+            </label>
 
-          <div className="flex items-center gap-2 pt-2">
-            <Button onClick={handleRun} disabled={busy || !file}>
-              {busy
-                ? dryRun
-                  ? "Parseando…"
-                  : "Importando…"
-                : dryRun
-                  ? "Parsear (dry-run)"
-                  : "Importar de verdad"}
-            </Button>
-            {summary && (
-              <Button variant="outline" onClick={reset} disabled={busy}>
-                Limpiar
-              </Button>
+            {error && (
+              <div className="rounded-xl bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+                {error}
+              </div>
             )}
+
+            <div className="flex items-center gap-2 pt-2">
+              <Button onClick={handleRun} disabled={busy || !file}>
+                {busy
+                  ? dryRun
+                    ? "Parseando…"
+                    : "Importando…"
+                  : dryRun
+                    ? "Parsear (dry-run)"
+                    : "Importar de verdad"}
+              </Button>
+              {summary && (
+                <Button variant="outline" onClick={reset} disabled={busy}>
+                  Limpiar
+                </Button>
+              )}
+            </div>
           </div>
-        </div>
-      </Card>
+        </Card>
 
-      {/* Columna 2: Resultado */}
-      <Card className="p-6">
-        <h2 className="font-bold text-ink mb-4">2. Resultado</h2>
+        {/* Columna 2: Resultado */}
+        <Card className="p-6">
+          <h2 className="font-bold text-ink mb-4">2. Resultado</h2>
 
-        {!summary ? (
-          <EmptyState
-            title="Sin resultado todavía"
-            description="Subí un archivo y corré el import para ver el reporte acá."
-          />
-        ) : (
-          <SummaryReport summary={summary} eventTitle={eventTitle} />
-        )}
-      </Card>
+          {!summary ? (
+            <EmptyState
+              title="Sin resultado todavía"
+              description="Subí un archivo y corré el import para ver el reporte acá."
+            />
+          ) : (
+            <SummaryReport summary={summary} eventTitle={eventTitle} />
+          )}
+        </Card>
+      </div>
     </div>
+  );
+}
+
+/**
+ * Panel con la spec del formato esperado por tipo. Resalta el activo
+ * para que el admin sepa qué columnas necesita antes de subir.
+ */
+function FormatSpecPanel({
+  activeType,
+}: {
+  activeType: "confirmation" | "attendee" | "survey";
+}) {
+  const specs = {
+    confirmation: {
+      title: "Confirmaciones (RSVPs)",
+      emoji: "✉️",
+      columns: [
+        { name: "Nombre", required: true, hint: "2+ palabras, sin números" },
+        { name: "Email", required: false, hint: "Requerido si no hay teléfono" },
+        { name: "Teléfono", required: false, hint: "10 dígitos MX (se prefija +52)" },
+        { name: "Fuente", required: false, hint: "messenger/whatsapp/form/manual" },
+      ],
+      note: "Sin email ni phone → fila rechazada.",
+    },
+    attendee: {
+      title: "Asistentes (check-ins)",
+      emoji: "✅",
+      columns: [
+        { name: "Nombre", required: false, hint: "Opcional si hay email o phone" },
+        { name: "Email", required: false, hint: "" },
+        { name: "Teléfono", required: false, hint: "" },
+        { name: "Asistió", required: false, hint: "Sí/No/✓/✗" },
+        { name: "Fuente", required: false, hint: "check_in/zoom/manual" },
+      ],
+      note: "Al menos uno de (Nombre, Email, Phone). Walk-ins válidos sin nombre.",
+    },
+    survey: {
+      title: "Encuestas post-evento",
+      emoji: "📝",
+      columns: [
+        { name: "Nombre", required: false, hint: "" },
+        { name: "Email", required: false, hint: "Requerido si no hay teléfono" },
+        { name: "Teléfono", required: false, hint: "" },
+        { name: "Consent", required: true, hint: "Sí/No — determina promoción a lead" },
+        { name: "Interés", required: false, hint: "Texto libre" },
+      ],
+      note: "Sin email/phone o sin consent parseable → fila rechazada.",
+    },
+  } as const;
+
+  return (
+    <Card className="p-5">
+      <div className="flex items-start justify-between mb-3">
+        <div>
+          <h2 className="font-bold text-ink">Formato esperado</h2>
+          <p className="text-xs text-ink-muted mt-0.5">
+            El wizard NO usa AI — solo transformaciones deterministas. Si tu
+            Excel viene sucio, pasalo primero por ChatGPT/Gemini con el prompt
+            de <code className="bg-brand-50 px-1 rounded">docs/IMPORT_FORMAT.md</code>.
+          </p>
+        </div>
+      </div>
+      <div className="grid md:grid-cols-3 gap-3">
+        {(Object.keys(specs) as Array<keyof typeof specs>).map((k) => {
+          const spec = specs[k];
+          const isActive = k === activeType;
+          return (
+            <div
+              key={k}
+              className={
+                "rounded-xl border p-4 transition " +
+                (isActive
+                  ? "border-brand-400 bg-brand-50/50 ring-2 ring-brand-200"
+                  : "border-brand-100 bg-white")
+              }
+            >
+              <div className="flex items-center justify-between mb-2">
+                <p className="font-semibold text-ink text-sm">
+                  {spec.emoji} {spec.title}
+                </p>
+                {isActive && (
+                  <span className="text-[10px] uppercase tracking-wide font-bold text-brand-700">
+                    activo
+                  </span>
+                )}
+              </div>
+              <ul className="text-xs space-y-1 mb-2">
+                {spec.columns.map((c) => (
+                  <li key={c.name} className="flex items-start gap-1">
+                    <span
+                      className={
+                        c.required
+                          ? "text-red-600 font-bold"
+                          : "text-ink-muted"
+                      }
+                    >
+                      {c.required ? "•" : "○"}
+                    </span>
+                    <span>
+                      <span className="font-mono text-ink">{c.name}</span>
+                      {c.hint && (
+                        <span className="text-ink-muted"> · {c.hint}</span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-[11px] text-ink-muted italic mt-2 pt-2 border-t border-brand-100">
+                {spec.note}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-[11px] text-ink-muted mt-3">
+        <strong>Transformaciones automáticas (deterministas):</strong>{" "}
+        capitalize nombre (cada palabra), lowercase email, phone strip no-dígitos
+        y prefija +52 si hay 10 dígitos.
+      </p>
+    </Card>
   );
 }
 
