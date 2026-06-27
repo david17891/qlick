@@ -181,6 +181,49 @@ export async function updateEventStatus(
   return data.event;
 }
 
+/** Summary devuelto por el import wizard (mirror del server lib). */
+export interface ImportSummaryClient {
+  batchId: string;
+  eventSlug: string;
+  importType: "confirmation" | "attendee" | "survey";
+  totalRows: number;
+  inserted: number;
+  skippedDuplicates: number;
+  skippedInvalid: number;
+  warnings: { row: number; field: string; note: string }[];
+  durationMs: number;
+}
+
+/** Input del wizard de import. */
+export interface ImportInput {
+  file: File;
+  type: "confirmation" | "attendee" | "survey";
+  dryRun: boolean;
+  mapOverride?: Record<string, string>;
+}
+
+/** POST /api/admin/events/[id]/import → ejecuta o simula el import. */
+export async function runEventImport(
+  eventId: string,
+  input: ImportInput,
+): Promise<ImportSummaryClient> {
+  const form = new FormData();
+  form.append("file", input.file);
+  form.append("type", input.type);
+  form.append("dryRun", String(input.dryRun));
+  if (input.mapOverride) {
+    form.append("mapOverride", JSON.stringify(input.mapOverride));
+  }
+  const res = await fetch(`/api/admin/events/${eventId}/import`, {
+    method: "POST",
+    body: form,
+  });
+  const data = await parseEnvelope<{ ok: true; summary: ImportSummaryClient }>(
+    res,
+  );
+  return data.summary;
+}
+
 /** Genera un slug URL-safe a partir de un título (kebab-case, sin acentos básicos). */
 export function slugifyTitle(title: string): string {
   return title

@@ -87,9 +87,15 @@ export default async function AdminEventoDetailPage({ params }: Props) {
       <main className="min-h-screen bg-brand-50/30 py-10">
         <Container size="wide">
           {/* Breadcrumb */}
-          <div className="mb-4 text-xs text-ink-muted flex items-center gap-2">
+          <div className="mb-4 text-xs text-ink-muted flex items-center justify-between gap-2">
             <Link href="/admin/eventos" className="hover:text-ink">
               ← Eventos
+            </Link>
+            <Link
+              href={`/admin/eventos/${event.id}/import`}
+              className="inline-flex items-center gap-1 text-brand-700 hover:text-brand-800 font-semibold"
+            >
+              📥 Importar Excel
             </Link>
           </div>
 
