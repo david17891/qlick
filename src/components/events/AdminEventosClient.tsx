@@ -80,18 +80,24 @@ export function AdminEventosClient({
         {initialSummaries.map((s) => (
           <Card key={s.event.id} className="!p-0 !overflow-hidden flex flex-col">
             {s.event.coverImageUrl ? (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img
-                src={s.event.coverImageUrl}
-                alt={`Portada de ${s.event.title}`}
-                loading="lazy"
-                style={{
-                  width: "100%",
-                  height: "128px",
-                  objectFit: "cover",
-                  display: "block",
-                }}
-              />
+              /*
+                Wrapper dedicado con altura fija + overflow hidden.
+                Cierra B-5: el Card padre usa `flex flex-col` y por defecto
+                los flex items crecen (`align-items: stretch` + min-height auto),
+                lo que hacia que la imagen desbordara los 128px aunque
+                tuviéramos `height: 128px` + `object-fit: cover`. El wrapper
+                es un block normal con dimensiones explícitas, garantiza el
+                recorte.
+              */
+              <div className="w-full h-32 overflow-hidden bg-brand-50">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={s.event.coverImageUrl}
+                  alt={`Portada de ${s.event.title}`}
+                  loading="lazy"
+                  className="block w-full h-32 object-cover"
+                />
+              </div>
             ) : (
               <div className="w-full h-32 bg-gradient-to-br from-brand-100 to-brand-50 flex items-center justify-center text-brand-300 text-xs">
                 sin portada
