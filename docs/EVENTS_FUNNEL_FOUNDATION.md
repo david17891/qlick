@@ -187,18 +187,19 @@ src/types/supabase.ts                                  (+6 tablas + 4 enums, typ
 
 ## 7. Criterios de "done"
 
-- [x] Migration con 6 tablas + 4 enums + RLS + indexes
+- [x] Migration con 6 tablas + 4 enums + RLS + indexes — **aplicada por David en Supabase Dashboard**
 - [x] Tipos del dominio en `src/types/events.ts`
 - [x] Mapper row → dominio en `src/lib/events/event-mapper.ts`
 - [x] 5 server libs server-only (events, confirmations, attendees, surveys, promotion)
 - [x] `linkLeadToEventRecord` ya no es STUB (usa `lead_event_links`)
 - [x] `lead_event_links` cierra el H2 de Fase 2 por construcción (INSERT-only)
 - [x] Importador CLI funcional con `--dry-run` y `--map`
-- [x] 14 tests unitarios pasando
+- [x] 23 tests unitarios pasando (importer)
 - [x] Barrel público en `src/lib/events/index.ts`
 - [x] Doc `EVENTS_FUNNEL_FOUNDATION.md` completo
-- [ ] `_test-fase3.mjs` corre contra Supabase real (todos los tests pasan)
-- [ ] Merge a `main` con luz verde de David
+- [x] `_test-fase3.mjs` corre contra Supabase real — **7/7 PASS** con cleanup automático
+- [x] Typegen regenerado por David (`npx supabase gen types typescript --linked`), sin drift
+- [x] Merge a `main` con luz verde de David
 
 ---
 
@@ -222,17 +223,18 @@ src/types/supabase.ts                                  (+6 tablas + 4 enums, typ
 
 ## 9. Próximos pasos (Fase 4 — UI Admin + WhatsApp manual)
 
-1. **David aplica la migration** `20260627000000_events_funnel.sql` en Supabase.
-2. **David regenera el typegen**: `npx supabase gen types typescript --linked > src/types/supabase.ts`.
-3. **David corre el script de test** `_test-fase3.mjs` para validar end-to-end.
-4. **Merge a `main`** con luz verde.
-5. **Fase 4 (próxima rama)**:
+1. ~~**David aplica la migration** `20260627000000_events_funnel.sql` en Supabase.~~ ✅ Hecho.
+2. ~~**David regenera el typegen**: `npx supabase gen types typescript --linked > src/types/supabase.ts`.~~ ✅ Hecho, sin drift.
+3. ~~**David corre el script de test** `_test-fase3.mjs` para validar end-to-end.~~ ✅ 7/7 PASS.
+4. ~~**Merge a `main`** con luz verde.~~ ✅ Hecho.
+5. **Fase 4 (próxima rama, esperando luz verde)**:
    - `/admin/eventos` lista con cards
    - Detalle de evento con tabs: Confirmados / Asistentes / Encuestas / Leads
    - Wizard de import (subir .xlsx, ver preview, confirmar)
    - Drawer del lead con "📅 Vino de evento X, encuesta Y, interés Z"
    - WhatsApp manual: `buildWhatsAppMessage(lead, event)` + `wa.me/` link + audit
    - Server action público para que visitantes se registren al evento (form público)
+   - Ver deuda activa en `docs/OPEN_ITEMS.md` §2.
 6. **Fase 5 (cuando exista SMTP)**: notificaciones automáticas de encuestas entrantes.
 7. **Fase 6+**: WhatsApp Business API, multi-evento en un Excel, NLP sobre encuestas.
 
