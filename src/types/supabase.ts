@@ -697,6 +697,222 @@ export type Database = {
           },
         ]
       }
+      event_attendees: {
+        Row: {
+          checked_in_at: string
+          checked_in_by: string | null
+          confirmation_id: string | null
+          email: string | null
+          event_id: string
+          id: string
+          import_batch_id: string | null
+          name: string | null
+          phone_normalized: string | null
+          source: Database["public"]["Enums"]["event_attendee_source"]
+        }
+        Insert: {
+          checked_in_at?: string
+          checked_in_by?: string | null
+          confirmation_id?: string | null
+          email?: string | null
+          event_id: string
+          id?: string
+          import_batch_id?: string | null
+          name?: string | null
+          phone_normalized?: string | null
+          source?: Database["public"]["Enums"]["event_attendee_source"]
+        }
+        Update: {
+          checked_in_at?: string
+          checked_in_by?: string | null
+          confirmation_id?: string | null
+          email?: string | null
+          event_id?: string
+          id?: string
+          import_batch_id?: string | null
+          name?: string | null
+          phone_normalized?: string | null
+          source?: Database["public"]["Enums"]["event_attendee_source"]
+        }
+        Relationships: []
+      }
+      event_confirmations: {
+        Row: {
+          confirmed_at: string
+          email: string | null
+          event_id: string
+          id: string
+          import_batch_id: string | null
+          name: string
+          phone_normalized: string | null
+          phone_raw: string | null
+          source: Database["public"]["Enums"]["event_confirmation_source"]
+        }
+        Insert: {
+          confirmed_at?: string
+          email?: string | null
+          event_id: string
+          id?: string
+          import_batch_id?: string | null
+          name: string
+          phone_normalized?: string | null
+          phone_raw?: string | null
+          source?: Database["public"]["Enums"]["event_confirmation_source"]
+        }
+        Update: {
+          confirmed_at?: string
+          email?: string | null
+          event_id?: string
+          id?: string
+          import_batch_id?: string | null
+          name?: string
+          phone_normalized?: string | null
+          phone_raw?: string | null
+          source?: Database["public"]["Enums"]["event_confirmation_source"]
+        }
+        Relationships: []
+      }
+      event_survey_unmatched: {
+        Row: {
+          created_at: string
+          id: string
+          reason: string
+          survey_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          reason: string
+          survey_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          reason?: string
+          survey_id?: string
+        }
+        Relationships: []
+      }
+      event_surveys: {
+        Row: {
+          attendee_id: string | null
+          commercial_interest: string | null
+          confirmation_id: string | null
+          consent_to_contact: boolean
+          event_id: string
+          id: string
+          import_batch_id: string | null
+          phone_normalized: string | null
+          promoted_at: string | null
+          promoted_to_lead_id: string | null
+          respondent_email: string | null
+          respondent_phone: string | null
+          responses: Json
+          submitted_at: string
+        }
+        Insert: {
+          attendee_id?: string | null
+          commercial_interest?: string | null
+          confirmation_id?: string | null
+          consent_to_contact: boolean
+          event_id: string
+          id?: string
+          import_batch_id?: string | null
+          phone_normalized?: string | null
+          promoted_at?: string | null
+          promoted_to_lead_id?: string | null
+          respondent_email?: string | null
+          respondent_phone?: string | null
+          responses?: Json
+          submitted_at?: string
+        }
+        Update: {
+          attendee_id?: string | null
+          commercial_interest?: string | null
+          confirmation_id?: string | null
+          consent_to_contact?: boolean
+          event_id?: string
+          id?: string
+          import_batch_id?: string | null
+          phone_normalized?: string | null
+          promoted_at?: string | null
+          promoted_to_lead_id?: string | null
+          respondent_email?: string | null
+          respondent_phone?: string | null
+          responses?: Json
+          submitted_at?: string
+        }
+        Relationships: []
+      }
+      events: {
+        Row: {
+          cover_image_url: string | null
+          created_at: string
+          description: string | null
+          ends_at: string | null
+          id: string
+          location: string | null
+          slug: string
+          starts_at: string
+          status: Database["public"]["Enums"]["event_status"]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          cover_image_url?: string | null
+          created_at?: string
+          description?: string | null
+          ends_at?: string | null
+          id?: string
+          location?: string | null
+          slug: string
+          starts_at: string
+          status?: Database["public"]["Enums"]["event_status"]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          cover_image_url?: string | null
+          created_at?: string
+          description?: string | null
+          ends_at?: string | null
+          id?: string
+          location?: string | null
+          slug?: string
+          starts_at?: string
+          status?: Database["public"]["Enums"]["event_status"]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      lead_event_links: {
+        Row: {
+          created_at: string
+          event_id: string
+          id: string
+          lead_id: string
+          link_id: string
+          link_type: Database["public"]["Enums"]["lead_event_link_type"]
+        }
+        Insert: {
+          created_at?: string
+          event_id: string
+          id?: string
+          lead_id: string
+          link_id: string
+          link_type: Database["public"]["Enums"]["lead_event_link_type"]
+        }
+        Update: {
+          created_at?: string
+          event_id?: string
+          id?: string
+          lead_id?: string
+          link_id?: string
+          link_type?: Database["public"]["Enums"]["lead_event_link_type"]
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -931,6 +1147,19 @@ export const Constants = {
         "attended",
       ],
       masterclass_status: ["draft", "published", "archived"],
+      event_status: ["draft", "published", "archived"],
+      event_confirmation_source: [
+        "imported_excel",
+        "public_form",
+        "manual",
+      ],
+      event_attendee_source: [
+        "check_in",
+        "imported_excel",
+        "zoom_export",
+        "manual",
+      ],
+      lead_event_link_type: ["confirmation", "attendee", "survey"],
     },
   },
 } as const
