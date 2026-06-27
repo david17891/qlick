@@ -63,6 +63,16 @@ export interface CreateEventInput {
   status?: EventStatus;
 }
 
+/** Input para editar un evento (admin). Todos los campos opcionales salvo los requeridos. */
+export interface UpdateEventInput {
+  title?: string;
+  description?: string | null;
+  startsAt?: string; // ISO
+  endsAt?: string | null;
+  location?: string | null;
+  coverImageUrl?: string | null;
+}
+
 /** Resultado de operaciones admin sobre eventos. */
 export interface AdminEventOpResult {
   ok: boolean;
@@ -309,6 +319,122 @@ export async function createEvent(
     entity_type: "event",
     entity_id: event.id,
     metadata: { slug: event.slug, title: event.title },
+  });
+
+  return { ok: true, event };
+}
+
+/**
+ * Edita un evento (campos no-status). Admin only.
+ *
+ * - No permite cambiar slug ni status (eso va por updateEventStatus / re-create).
+ * - Aplica trim a strings y convierte "" → null para campos opcionales.
+ * - Registra audit log con from/to de cada campo modificado (mismo patrón que
+ *   updateLeadStatus).
+ * - Devuelve `note: "no_changes"` si el payload no tiene campos válidos.
+ */
+export async function updateEvent(
+  eventId: string,
+  input: UpdateEventInput,
+  actorEmail: string,
+): Promise<AdminEventOpResult> {
+  if (!isRealMode()) {
+    return { ok: false, note: "Supabase no configurado." };
+  }
+  if (!eventId || !actorEmail) {
+    return { ok: false, note: "Faltan datos (eventId/actor)." };
+  }
+
+  // Construimos el patch con los campos provistos (no vacíos → omitir).
+  // Tipamos explícitamente para que Supabase acepte el `.update()`.
+  const patch: {
+    title?: string;
+    description?: string | null;
+    starts_at?: string;
+    ends_at?: string | null;
+    location?: string | null;
+    cover_image_url?: string | null;
+  } = {};
+  const changes: Record<string, { from: string | null; to: string | null }> = {};
+
+  if (input.title !== undefined) {
+    const next = input.title.trim();
+    if (next) patch.title = next;
+  }
+  if (input.description !== undefined) {
+    patch.description = input.description?.trim() || null;
+  }
+  if (input.startsAt !== undefined) {
+    patch.starts_at = input.startsAt;
+  }
+  if (input.endsAt !== undefined) {
+    patch.ends_at = input.endsAt || null;
+  }
+  if (input.location !== undefined) {
+    patch.location = input.location?.trim() || null;
+  }
+  if (input.coverImageUrl !== undefined) {
+    patch.cover_image_url = input.coverImageUrl?.trim() || null;
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return { ok: false, note: "Sin cambios para aplicar." };
+  }
+
+  const supabase = createSupabaseAdminClient();
+
+  // Capturamos el estado previo para el audit log (qué cambió de qué a qué).
+  const { data: prev, error: prevErr } = await supabase
+    .from("events")
+    .select("*")
+    .eq("id", eventId)
+    .maybeSingle();
+
+  if (prevErr || !prev) {
+    return {
+      ok: false,
+      note: prevErr ? "Error leyendo evento." : "Evento no existe.",
+    };
+  }
+
+  const { data, error } = await supabase
+    .from("events")
+    .update(patch)
+    .eq("id", eventId)
+    .select("*")
+    .maybeSingle();
+
+  if (error || !data) {
+    // eslint-disable-next-line no-console
+    console.error("[events-server] updateEvent falló", {
+      code: error?.code,
+      eventId,
+    });
+    return { ok: false, note: "No se pudo actualizar el evento." };
+  }
+
+  // Diff para audit log (tipos planos: string | null para encajar en Json).
+  const prevRow = prev as EventRow;
+  const nextRow = data as EventRow;
+  for (const key of Object.keys(patch)) {
+    const fromVal = (prevRow as Record<string, unknown>)[key];
+    const toVal = (nextRow as Record<string, unknown>)[key];
+    if (fromVal !== toVal) {
+      changes[key] = {
+        from: fromVal == null ? null : String(fromVal),
+        to: toVal == null ? null : String(toVal),
+      };
+    }
+  }
+
+  const event = mapEventRowToEvent(nextRow);
+
+  await logAdminAction({
+    actor_email: actorEmail,
+    action: "event_update",
+    entity_type: "event",
+    entity_id: eventId,
+    metadata: { changes },
   });
 
   return { ok: true, event };

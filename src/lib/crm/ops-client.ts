@@ -14,6 +14,7 @@
  */
 
 import type { Lead, LeadStatus } from "@/types";
+import type { Event, EventStatus } from "@/types/events";
 import type { CrmNoteRow, CrmTaskRow } from "./crm-rows";
 
 /** Máquina de estados para cada operación del drawer. */
@@ -122,4 +123,82 @@ export async function fetchPendingCRMTasks(): Promise<PendingTasksSplitClient> {
     upcoming: CrmTaskRow[];
   }>(res);
   return { overdue: data.overdue, upcoming: data.upcoming };
+}
+
+/* ------------------------------------------------------------------ */
+/* CRUD admin de eventos                                                */
+/* ------------------------------------------------------------------ */
+
+/** Input del form de creación/edición de evento en el panel admin. */
+export interface EventFormInput {
+  slug: string;
+  title: string;
+  description?: string;
+  startsAt: string; // ISO (datetime-local → new Date().toISOString())
+  endsAt?: string;
+  location?: string;
+  coverImageUrl?: string;
+  /** Solo usado al crear; al editar se manda por updateEventStatus. */
+  status?: EventStatus;
+}
+
+/** POST /api/admin/events → crea un evento. */
+export async function createEvent(input: EventFormInput): Promise<Event> {
+  const res = await fetch(`/api/admin/events`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const data = await parseEnvelope<{ ok: true; event: Event }>(res);
+  return data.event;
+}
+
+/** PATCH /api/admin/events/[id] → edita campos no-status. */
+export async function updateEvent(
+  eventId: string,
+  patch: Partial<Omit<EventFormInput, "slug" | "status">>,
+): Promise<Event> {
+  const res = await fetch(`/api/admin/events/${eventId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  const data = await parseEnvelope<{ ok: true; event: Event }>(res);
+  return data.event;
+}
+
+/** PATCH /api/admin/events/[id]/status → cambia status (incluye archivar). */
+export async function updateEventStatus(
+  eventId: string,
+  status: EventStatus,
+): Promise<Event> {
+  const res = await fetch(`/api/admin/events/${eventId}/status`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+  const data = await parseEnvelope<{ ok: true; event: Event }>(res);
+  return data.event;
+}
+
+/** Genera un slug URL-safe a partir de un título (kebab-case, sin acentos básicos). */
+export function slugifyTitle(title: string): string {
+  return title
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // sin diacríticos
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")    // solo alfanumérico, espacios y guiones
+    .replace(/\s+/g, "-")             // espacios → guiones
+    .replace(/-+/g, "-")              // guiones repetidos
+    .replace(/^-+|-+$/g, "")          // trim de guiones
+    .slice(0, 80);
+}
+
+/** Convierte "2026-06-28T18:00" (datetime-local) a ISO string con offset Z. */
+export function datetimeLocalToIso(local: string): string {
+  if (!local) return "";
+  // new Date("2026-06-28T18:00") interpreta como local time. Si queremos UTC puro,
+  // podríamos ajustar, pero para un evento lo más útil es guardar la hora local del
+  // admin interpretándola como local del navegador.
+  return new Date(local).toISOString();
 }

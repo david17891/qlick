@@ -16,10 +16,12 @@ export {
   getEventById,
   getAdminEvents,
   createEvent,
+  updateEvent,
   updateEventStatus,
   listPublishedEventSlugs,
   type AdminEventSummary,
   type CreateEventInput,
+  type UpdateEventInput,
   type AdminEventOpResult,
 } from "./events-server";
 

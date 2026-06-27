@@ -113,6 +113,48 @@ con `event_surveys.event_id` joined a `event_survey_unmatched.survey_id`,
 agrupado por `event_id`. Query simple, mismo patrón que el conteo de
 `leadsPromoted`. **Scope: cuando se toque `getAdminEvents` por otra razón.**
 
+### 🟠 B-3 — Contadores globales en cards de eventos (sessions 2026-06-27)
+
+**Síntoma:** las cards en `/admin/eventos` muestran los MISMOS números
+para todos los eventos. Ejemplo observado: evento "QA Fase 4 — Demo" con
+5 confirmados / 3 asistentes / 3 encuestas; evento "Ejemplo" recién
+creado muestra también 5/3/3 (cuando debería ser 0/0/0). Solo
+"leadsPromoted" está bien porque SÍ se calcula por `event_id`.
+
+**Diagnóstico:** en `getAdminEvents` (events-server.ts), los queries de
+conteo usan `.in("event_id", eventIds)` con `count: "exact", head: true`
+sin GROUP BY → devuelve el TOTAL de filas que matchean cualquier evento,
+no por evento. Ese total único se asigna a `confirmationCount`,
+`attendeeCount`, `surveyCount` de cada card.
+
+**Origen:** bug pre-existente de Fase 3 server lib, detectado durante
+el smoke test del CRUD admin de eventos (2026-06-27 ~01:44). El bug
+C-3 (encima) es un sub-caso del mismo problema (mismo patrón).
+
+**Workaround actual:** entrar al detalle del evento (que sí calcula los
+conteos filtrando por `event_id` específico) para ver los números
+reales. La card global miente.
+
+**Fix propuesto:** cambiar las 3 queries problemáticas para hacer
+GROUP BY por event_id y devolver un Map<eventId, count>. Mismo patrón
+que ya se usa para `promotedByEvent`. Scope: ~30 min, no requiere
+migration. **Severity 🟠 porque David ya tiene 2 eventos y la
+información que ve es engañosa.**
+
+### 🟢 B-4 — Navbar "Mi panel" manda a `/dashboard` (alumnos) para admins
+
+**Síntoma:** estando en `/admin/*`, click en "Mi panel" del navbar lleva
+a `/login` (porque no hay sesión de alumno) o al dashboard de alumnos.
+
+**Origen:** bug pre-existente del layout (`Navbar.tsx`), no del CRUD de
+eventos. Detectado durante smoke test (2026-06-27).
+
+**Fix propuesto:** cambiar el link según rol (admin → `/admin`, alumno →
+`/dashboard`). Scope: ~15 min. **Severity 🟢 porque no bloquea nada,
+solo confunde.**
+
+---
+
 ### 🟡 B-2 — Calendario CRM no renderiza `crm_tasks` (sesión 2026-06-27)
 
 **Síntoma:** David reportó (2026-06-27 ~01:14) que la tarea de seguimiento
