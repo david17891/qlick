@@ -183,38 +183,35 @@ otro lado (¿grid stretching? ¿cross-browser?).
 
 ---
 
-### 🟡 B-2 — Calendario CRM no renderiza `crm_tasks` (sesión 2026-06-27)
+### ✅ B-2 — Calendario CRM no renderiza `crm_tasks` (sesión 2026-06-27)
 
-**Síntoma:** David reportó (2026-06-27 ~01:14) que la tarea de seguimiento
-que creó desde el drawer del lead aparece en el detalle del lead pero
-NO aparece en el tab "📅 Calendario" del CRM.
+**Estado:** ✅ **RESUELTO en commit `3d56caa`** (2026-06-27 ~01:29).
 
-**Diagnóstico:** el Calendario de `CRMView.tsx` (líneas 299-341) renderiza
-solo `appts` (citas comerciales agendadas), NO `crm_tasks` (tareas de
-seguimiento). Son dos entidades distintas en el modelo:
+El Calendario del CRM (`CRMView.tsx`) ahora pinta 3 cards, no 1:
 
-- `appts` — citas tipo "call" / "whatsapp" / "meeting" / "follow_up",
-  agendadas explícitamente. → **sí** aparecen en Calendario.
-- `crm_tasks` — tareas internas de seguimiento, creadas en el drawer
-  del lead con `due_at` opcional. → **no** aparecen en Calendario.
+- **Próximas citas** — `appts` (citas comerciales agendadas, igual que antes).
+- **Tareas vencidas** — `crm_tasks` con `status='pending'` y `due_at < ahora`.
+  Solo aparece si `overdue.length > 0`, con borde rojo.
+- **Tareas de seguimiento** — `crm_tasks` con `status='pending'` y
+  `due_at >= ahora` o sin fecha. Incluye todas las tareas próximas.
 
-El comentario del código (línea 336-339) ya advertía:
-> Demo: no conectado a Google Calendar. El tipo Appointment deja el campo
-> externalCalendarId listo para sincronización futura.
+Implementación:
+- `tasks-server.ts:getAllPendingTasks()` — particiona todas las tareas
+  pendientes (no por lead, globales) en `overdue`/`upcoming`.
+- `/api/admin/crm/tasks` — endpoint protegido por `requireAdmin()`.
+- `ops-client.ts:fetchPendingCRMTasks()` + tipo `PendingTasksSplitClient`.
+- `CRMView.tsx` — estado + fetch en `useEffect` + UI con 3 cards +
+  sub-componente `CalendarTaskRow` + mapper mock→row para que el
+  Calendario también funcione en modo demo (no solo real).
 
-**Workaround actual:** las tareas se ven en el detalle del lead (sección
-"Tareas de seguimiento" del drawer). Si David quiere vista unificada de
-"qué tengo que hacer esta semana", tiene que abrir cada lead.
+Cada `CalendarTaskRow` es clickeable → abre el drawer del lead asociado.
+La nota al pie explica el modelo (appts = agendadas, crm_tasks = internas)
+y menciona el campo `externalCalendarId` listo para sync futura con
+Google Calendar.
 
-**Fix propuesto:** agregar 2ª card en la sección Calendario del
-`CRMView.tsx` que liste `crm_tasks` con `status='pending'` y `due_at`
-futuro/vencido (ordenadas por `due_at` ascendente). Pasarlas al
-componente como nueva prop, fetch en `crm-service.ts` con el patrón
-que ya usa para `getLeadTasks`. Scope: ~30 min, no requiere migration.
-
-**Severidad 🟡** porque tiene workaround (la tarea sí es visible en el
-drawer), pero rompe el flujo mental de "calendario = todo lo que tengo
-pendiente". Detectado en el smoke test del Paso 1 de Fase 4.
+Verificación pendiente (visual con sesión admin): confirmar que la tarea
+vencida "Tarea 1" (en DB, due 2026-06-27) se renderiza en la card roja
+del Calendario.
 
 ---
 
@@ -365,6 +362,25 @@ multi-agente, dividir en <8 archivos o aceptar partial-state.
 ---
 
 ## 6. Resueltos reciente
+
+### ✅ B-2 — Cierre de paperwork (2026-06-27 ~17:00)
+
+B-2 ya estaba **resuelto en código** desde el commit `3d56caa` (David,
+2026-06-27 ~01:29) pero el doc quedó desactualizado (doc-rot). Detectado
+en pasada de QA visual al retomar la sesión. Cierre puro de paperwork:
+
+- Marcado como ✅ en la sección 1 (deuda técnica activa).
+- Esta entrada en "Resueltos reciente" como rastro.
+
+Implementación validada por lectura de código:
+- `CRMView.tsx` (líneas 334-425) pinta 3 cards en el Calendario.
+- `tasks-server.ts:getAllPendingTasks()` particiona global por `due_at`.
+- `fetchPendingCRMTasks()` ya está integrado en el `useEffect` del CRM.
+- `CalendarTaskRow` clickeable → abre drawer del lead.
+
+Verificación visual con sesión admin sigue pendiente — David puede abrir
+`/admin` → tab CRM → sub-tab Calendario y debería ver la tarea vencida
+"Tarea 1" (en DB desde hoy temprano) en la card con borde rojo.
 
 ### ✅ Validación visual del fix single-column en `/eventos/[slug]` (2026-06-27 ~16:45)
 
