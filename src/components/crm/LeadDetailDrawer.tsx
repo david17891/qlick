@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Lead, LeadStatus, SalesOwner } from "@/types";
-import { Card, Badge, Button, Input, Textarea, Spinner } from "@/components/ui";
+import { Card, Badge, Button, Input, Textarea, Field, Spinner } from "@/components/ui";
 import {
   leadStatusLabel,
   statusTone,
@@ -622,17 +622,26 @@ export function LeadDetailDrawer({
                   ))}
                 </ul>
               )}
-              <form onSubmit={handleCreateNote} className="mt-3 space-y-2">
-                <Textarea
-                  value={noteText}
-                  onChange={(e) => setNoteText(e.target.value)}
-                  placeholder="Escribe una nota interna…"
-                  rows={2}
-                  className="w-full"
-                />
-                {noteState === "error" && noteMsg && (
-                  <p className="text-xs text-red-700 bg-red-50 rounded-lg p-2">{noteMsg}</p>
-                )}
+              <form onSubmit={handleCreateNote} noValidate className="mt-3 space-y-2">
+                <Field
+                  label="Nota interna"
+                  error={noteState === "error" ? noteMsg : null}
+                  required
+                >
+                  <Textarea
+                    value={noteText}
+                    onChange={(e) => {
+                      setNoteText(e.target.value);
+                      if (noteState === "error") {
+                        setNoteState("idle");
+                        setNoteMsg(null);
+                      }
+                    }}
+                    placeholder="Escribe una nota interna…"
+                    rows={2}
+                    className="w-full"
+                  />
+                </Field>
                 <Button type="submit" size="sm" disabled={noteState === "loading"}>
                   {noteState === "loading" ? "Guardando…" : "Agregar nota"}
                 </Button>
@@ -682,20 +691,34 @@ export function LeadDetailDrawer({
                   ))}
                 </ul>
               )}
-              <form onSubmit={handleCreateTask} className="mt-3 space-y-2">
-                <Input
-                  value={taskForm.title}
-                  onChange={(e) => setTaskForm((f) => ({ ...f, title: e.target.value }))}
-                  placeholder="Título de la tarea"
-                  className="w-full"
-                />
-                <Textarea
-                  value={taskForm.description}
-                  onChange={(e) => setTaskForm((f) => ({ ...f, description: e.target.value }))}
-                  placeholder="Descripción (opcional)"
-                  rows={2}
-                  className="w-full"
-                />
+              <form onSubmit={handleCreateTask} noValidate className="mt-3 space-y-2">
+                <Field
+                  label="Título"
+                  error={taskState === "error" ? taskMsg : null}
+                  required
+                >
+                  <Input
+                    value={taskForm.title}
+                    onChange={(e) => {
+                      setTaskForm((f) => ({ ...f, title: e.target.value }));
+                      if (taskState === "error") {
+                        setTaskState("idle");
+                        setTaskMsg(null);
+                      }
+                    }}
+                    placeholder="Título de la tarea"
+                    className="w-full"
+                  />
+                </Field>
+                <Field label="Descripción (opcional)">
+                  <Textarea
+                    value={taskForm.description}
+                    onChange={(e) => setTaskForm((f) => ({ ...f, description: e.target.value }))}
+                    placeholder="Detalles de la tarea…"
+                    rows={2}
+                    className="w-full"
+                  />
+                </Field>
                 <div className="flex flex-wrap items-center gap-2">
                   <label className="text-xs text-ink-muted flex items-center gap-1">
                     Vence
@@ -710,9 +733,6 @@ export function LeadDetailDrawer({
                     {taskState === "loading" ? "Creando…" : "Crear tarea"}
                   </Button>
                 </div>
-                {taskState === "error" && taskMsg && (
-                  <p className="text-xs text-red-700 bg-red-50 rounded-lg p-2">{taskMsg}</p>
-                )}
               </form>
             </Section>
           )}
