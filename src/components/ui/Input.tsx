@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 export function Input({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
+      suppressHydrationWarning
       className={cn(
         "w-full rounded-xl border border-brand-100 bg-white px-4 py-3 text-ink placeholder:text-ink-muted/60",
         "focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition",
@@ -20,6 +21,7 @@ export function Textarea({
 }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea
+      suppressHydrationWarning
       className={cn(
         "w-full rounded-xl border border-brand-100 bg-white px-4 py-3 text-ink placeholder:text-ink-muted/60",
         "focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition",
