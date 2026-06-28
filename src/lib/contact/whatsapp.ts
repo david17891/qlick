@@ -278,6 +278,66 @@ export function getWhatsAppConfigStatus(): WhatsAppConfigStatus {
 }
 
 /* ============================================================
+ * Sub-bloque C base: link directo al lead (no a la empresa)
+ *
+ * A diferencia de getWhatsAppLink (que arma wa.me/{sales_number} para
+ * que el LEAD le escriba a la empresa), esta funcion arma
+ * wa.me/{lead_phone} para que el ADMIN le escriba al LEAD.
+ *
+ * Caso de uso: el admin abre el tab Leads del admin de eventos,
+ * ve un lead que quiere contactar, hace click en "WhatsApp", y se
+ * abre wa.me con el numero del LEAD + un mensaje pre-armado.
+ * ============================================================ */
+
+/**
+ * Construye un link wa.me directo al numero del LEAD (no al de la
+ * empresa). Usado por el admin para iniciar conversacion con un lead
+ * especifico.
+ *
+ * Si el telefono no es valido (< 10 digitos), devuelve null. El caller
+ * decide si mostrar un fallback o no mostrar nada.
+ */
+export function buildDirectWhatsAppLink(
+  phone: string | null | undefined,
+  message: string,
+): string | null {
+  if (!phone) return null;
+  const digits = phone.replace(/[^\d]/g, "");
+  if (digits.length < 10) return null;
+  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
+}
+
+/**
+ * Template del mensaje del admin al lead. Pensado para el flujo
+ * "el admin vio a este lead en el admin de eventos y le escribe
+ * por WhatsApp para retomar el interes comercial".
+ *
+ * Personaliza con: nombre del lead, titulo del evento, interes
+ * comercial declarado en la encuesta (si existe).
+ */
+export function buildLeadOutreachMessage(input: {
+  leadName: string;
+  eventTitle?: string;
+  commercialInterest?: string;
+}): string {
+  const greet = input.leadName?.trim() ? `Hola ${input.leadName.trim()}` : "Hola";
+  const lines: string[] = [];
+  lines.push(`${greet},`);
+  if (input.eventTitle) {
+    lines.push(`te escribimos de Qlick porque confirmaste tu interes en "${input.eventTitle}".`);
+  } else {
+    lines.push("te escribimos de Qlick para dar seguimiento a tu interes en nuestros cursos.");
+  }
+  if (input.commercialInterest?.trim()) {
+    lines.push(`En la encuesta mencionaste interes en: ${input.commercialInterest.trim()}.`);
+  }
+  lines.push("Te gustaria agendar una llamada corta para resolver tus dudas?");
+  lines.push("");
+  lines.push("— Equipo Qlick");
+  return lines.join("\n");
+}
+
+/* ============================================================
  * BROADCAST: recordatorio de evento a TODOS los confirmados
  *
  * Sub-bloque del WhatsApp manual workflow (Sub-bloque C de Fase 4).

@@ -18,6 +18,7 @@ import { PipelineColumn } from "./_components/PipelineColumn";
 import { PipelineCard } from "./_components/PipelineCard";
 import { markSurveyReviewedAction } from "./_actions";
 import { buildEventBroadcast } from "@/lib/contact/whatsapp";
+import { buildDirectWhatsAppLink, buildLeadOutreachMessage } from "@/lib/contact/whatsapp";
 
 interface Props {
   params: { id: string };
@@ -705,6 +706,27 @@ export default async function AdminEventoDetailPage({
                       >
                         Ver lead en CRM →
                       </Link>
+                      {(() => {
+                        // Sub-bloque C base: link wa.me al numero del LEAD
+                        // (no al de la empresa) con mensaje pre-armado.
+                        const message = buildLeadOutreachMessage({
+                          leadName: lead.name,
+                          eventTitle: event.title,
+                          commercialInterest: lead.courseOfInterest ?? undefined,
+                        });
+                        const link = buildDirectWhatsAppLink(lead.phone, message);
+                        if (!link) return null;
+                        return (
+                          <a
+                            href={link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-500 text-white hover:bg-emerald-600 transition"
+                          >
+                            📱 WhatsApp
+                          </a>
+                        );
+                      })()}
                     </div>
                   </li>
                 ))}
@@ -829,16 +851,48 @@ export default async function AdminEventoDetailPage({
                     Sin leads aún
                   </p>
                 ) : (
-                  leadsWithLinks.map(({ lead, links }) => (
-                    <PipelineCard
-                      key={lead.id}
-                      name={lead.name}
-                      email={lead.email}
-                      phone={lead.phone}
-                      source={links[0]?.linkType ?? lead.source}
-                      href={`/admin?tab=crm&leadId=${lead.id}`}
-                    />
-                  ))
+                  leadsWithLinks.map(({ lead, links }) => {
+                    // Sub-bloque C base: link wa.me al numero del LEAD.
+                    const message = buildLeadOutreachMessage({
+                      leadName: lead.name,
+                      eventTitle: event.title,
+                      commercialInterest: lead.courseOfInterest ?? undefined,
+                    });
+                    const waLink = buildDirectWhatsAppLink(lead.phone, message);
+                    return (
+                      <PipelineCard
+                        key={lead.id}
+                        name={lead.name}
+                        email={lead.email}
+                        phone={lead.phone}
+                        source={links[0]?.linkType ?? lead.source}
+                        action={
+                          <div className="flex flex-col gap-1.5">
+                            {waLink ? (
+                              <a
+                                href={waLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-500 text-white hover:bg-emerald-600 transition"
+                              >
+                                📱 WhatsApp
+                              </a>
+                            ) : (
+                              <p className="text-[10px] text-ink-muted text-center">
+                                sin telefono
+                              </p>
+                            )}
+                            <Link
+                              href={`/admin?tab=crm&leadId=${lead.id}`}
+                              className="text-[10px] text-brand-700 hover:underline text-center"
+                            >
+                              Ver en CRM →
+                            </Link>
+                          </div>
+                        }
+                      />
+                    );
+                  })
                 )}
               </PipelineColumn>
 
