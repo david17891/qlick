@@ -264,8 +264,29 @@ lo que el typegen regenere.
       muestra un skeleton en vez del texto plano "Cargando panel…".
     - Mismo patron que `/admin/eventos/loading.tsx` y `/admin/eventos/[id]/loading.tsx` (ya existentes de Bloque 4).
     - Verificado: `type-check` ✅, `lint` ✅, tests 96/98 (2 fails pre-existentes).
-  - **3E validacion de inputs** — ⏳ Pendiente (proximo Bloque 3).
-  - **3F mobile polish** — ⏳ Pendiente (despues de 3E).
+  - **3E validacion de inputs** — ✅ **CERRADO en `56a6ff2, 7af16a3, 29e2885, 8240b4f`**.
+    - Componente `Field` (en `@/components/ui/Input.tsx`) extendido con:
+      - `error?: string | null` — pinta borde rojo en el child (Input/Textarea),
+        inyecta `aria-invalid={true}` + `aria-describedby` via `React.cloneElement`,
+        renderiza `<p role="alert">` con el mensaje debajo del input.
+      - `required?: boolean` — pinta asterisco rojo + sr-only "(obligatorio)".
+      - Auto-id: si el caller no pasa `htmlFor`, genera uno con `useId()` y
+        lo inyecta en Input/Textarea. Si pasa `htmlFor`, el caller es
+        responsable del `id` (caso multi-child o custom).
+    - `Input` y `Textarea` aceptan `invalid?: boolean` + `errorId?: string`
+      para borde rojo + a11y cuando vienen de Field.
+    - `Label` acepta `required?: boolean` para asterisco rojo.
+    - Aplicado a 4 forms:
+      - `EventDrawer` (todos los campos del evento: título, slug, descripción,
+        fechas, ubicación, cover, status). Per-field errors + clear-on-change.
+      - `LeadDetailDrawer` — form de Notas (text area + error inline).
+      - `LeadDetailDrawer` — form de Tareas (título + descripción + fecha).
+      - `LeadDetailDrawer` — form de Interacciones (canal + dirección + resumen).
+    - Patrón: `noValidate` en `<form>` (evita doble validación browser+nuestra),
+      `set("field", value)` limpia el error del field en cuanto el usuario
+      empieza a corregirlo.
+    - Verificado: `type-check` ✅, `lint` ✅.
+  - **3F mobile polish** — ⏳ Pendiente.
 - **Bloque 4**: Cierre (EVENTS_ADMIN_GUIDE.md, plan review con David).
 
 ### 🟠 Auditoría externa 2026-06-27 — Hallazgos y cierres
