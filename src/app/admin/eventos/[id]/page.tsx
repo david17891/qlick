@@ -16,7 +16,13 @@ import { formatDate } from "@/lib/utils";
 
 interface Props {
   params: { id: string };
-  searchParams: { tab?: string };
+  searchParams: {
+    tab?: string;
+    /** Búsqueda por nombre/email/teléfono en Confirmados. */
+    q?: string;
+    /** Filtro por fuente de la confirmación. */
+    source?: string;
+  };
 }
 
 export const dynamic = "force-dynamic";
@@ -78,6 +84,34 @@ export default async function AdminEventoDetailPage({
   ).includes(requestedTab ?? "")
     ? (requestedTab as EventDetailTab)
     : DEFAULT_TAB;
+
+  // Filtros de Confirmados. Se aplican client-side (en el server
+  // component) sobre el array que ya devuelve `getConfirmationsByEventId`.
+  // La query a Supabase es barata para volúmenes esperados (~50-100
+  // confirmados por evento); si creciera a 1000+, mover el filtro al
+  // server lib con `ilike` + `eq` server-side.
+  const CONFIRMATION_SOURCES = [
+    "imported_excel",
+    "public_form",
+    "manual",
+  ] as const;
+  type ConfirmationSource = (typeof CONFIRMATION_SOURCES)[number];
+  const rawSource = searchParams.source ?? "";
+  const activeSource: ConfirmationSource | "" = (
+    CONFIRMATION_SOURCES as readonly string[]
+  ).includes(rawSource)
+    ? (rawSource as ConfirmationSource)
+    : "";
+  const searchQuery = (searchParams.q ?? "").trim();
+
+  /** Helper para construir URLs de tab preservando los filtros activos. */
+  function tabHref(tabId: EventDetailTab): string {
+    const queryParams = new URLSearchParams();
+    queryParams.set("tab", tabId);
+    if (searchQuery) queryParams.set("q", searchQuery);
+    if (activeSource) queryParams.set("source", activeSource);
+    return `/admin/eventos/${params.id}?${queryParams.toString()}`;
+  }
 
   // Fetch del evento + 4 datasets en paralelo. El admin abre esta
   // página para ver "todo lo relacionado con este evento", así que
@@ -200,7 +234,7 @@ export default async function AdminEventoDetailPage({
               return (
                 <Link
                   key={t.id}
-                  href={`/admin/eventos/${event.id}?tab=${t.id}`}
+                  href={tabHref(t.id)}
                   role="tab"
                   aria-selected={isActive}
                   scroll={false}
@@ -229,37 +263,130 @@ export default async function AdminEventoDetailPage({
           </div>
 
           {/* Sección 1: Confirmados */}
-          {activeTab === "confirmations" && (
-            <Section
-              title="Confirmados"
-              subtitle={`${confirmedCount} personas dijeron que iban. Aún no sabemos si vinieron.`}
-            >
-            {confirmations.length === 0 ? (
-              <EmptyState
-                title="Sin confirmaciones aún"
-                description="Importá el Excel de confirmados o usá el formulario público para empezar."
-              />
-            ) : (
-              <Table headers={["Nombre", "Email", "Teléfono", "Fuente", "Confirmó"]}>
-                {confirmations.map((c) => (
-                  <tr key={c.id} className="hover:bg-brand-50/30">
-                    <td className="px-5 py-3 font-medium text-ink">{c.name}</td>
-                    <td className="px-5 py-3 text-ink-muted">{c.email ?? "—"}</td>
-                    <td className="px-5 py-3 text-ink-muted">
-                      {c.phoneNormalized ?? c.phoneRaw ?? "—"}
-                    </td>
-                    <td className="px-5 py-3">
-                      <Badge tone="neutral">{c.source}</Badge>
-                    </td>
-                    <td className="px-5 py-3 text-ink-muted text-xs">
-                      {formatDate(c.confirmedAt)}
-                    </td>
-                  </tr>
-                ))}
-              </Table>
-            )}
-          </Section>
-          )}
+          {activeTab === "confirmations" && (() => {
+            // Filtrado client-side (en el server component) sobre el array
+            // que ya devuelve getConfirmationsByEventId. Case-insensitive
+            // contra name/email/phoneRaw/phoneNormalized.
+            const normalizedQ = searchQuery.toLowerCase();
+            const filteredConfirmations = confirmations.filter((c) => {
+              if (activeSource && c.source !== activeSource) return false;
+              if (normalizedQ) {
+                const haystack = [
+                  c.name,
+                  c.email,
+                  c.phoneRaw,
+                  c.phoneNormalized,
+                ]
+                  .filter((v): v is string => Boolean(v))
+                  .join(" ")
+                  .toLowerCase();
+                if (!haystack.includes(normalizedQ)) return false;
+              }
+              return true;
+            });
+            const isFiltered = Boolean(searchQuery) || Boolean(activeSource);
+            return (
+              <Section
+                title="Confirmados"
+                subtitle={
+                  isFiltered
+                    ? `Mostrando ${filteredConfirmations.length} de ${confirmedCount} confirmaciones con los filtros activos.`
+                    : `${confirmedCount} personas dijeron que iban. Aún no sabemos si vinieron.`
+                }
+              >
+                {/* Form de filtros — GET, preserva `tab=confirmations` */}
+                <form
+                  method="GET"
+                  action=""
+                  className="p-5 border-b border-brand-50 flex flex-wrap gap-3 items-end bg-brand-50/30"
+                  role="search"
+                  aria-label="Filtrar confirmados"
+                >
+                  <input type="hidden" name="tab" value="confirmations" />
+                  <div className="flex-1 min-w-[200px]">
+                    <label
+                      htmlFor="confirmations-q"
+                      className="block text-xs font-semibold text-ink-muted mb-1"
+                    >
+                      Buscar
+                    </label>
+                    <input
+                      id="confirmations-q"
+                      name="q"
+                      type="search"
+                      defaultValue={searchQuery}
+                      placeholder="Nombre, email o teléfono…"
+                      className="w-full px-3 py-2 border border-brand-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-300"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="confirmations-source"
+                      className="block text-xs font-semibold text-ink-muted mb-1"
+                    >
+                      Fuente
+                    </label>
+                    <select
+                      id="confirmations-source"
+                      name="source"
+                      defaultValue={activeSource}
+                      className="px-3 py-2 border border-brand-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-300"
+                    >
+                      <option value="">Todas</option>
+                      <option value="imported_excel">Importado Excel</option>
+                      <option value="public_form">Formulario público</option>
+                      <option value="manual">Manual</option>
+                    </select>
+                  </div>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-brand-500 text-white rounded-lg text-sm font-semibold hover:bg-brand-600 transition"
+                  >
+                    Aplicar
+                  </button>
+                  {isFiltered && (
+                    <Link
+                      href={`/admin/eventos/${params.id}?tab=confirmations`}
+                      scroll={false}
+                      className="px-4 py-2 text-ink-soft hover:text-ink text-sm underline self-center"
+                    >
+                      Limpiar filtros
+                    </Link>
+                  )}
+                </form>
+
+                {confirmations.length === 0 ? (
+                  <EmptyState
+                    title="Sin confirmaciones aún"
+                    description="Importá el Excel de confirmados o usá el formulario público para empezar."
+                  />
+                ) : filteredConfirmations.length === 0 ? (
+                  <EmptyState
+                    title="Sin resultados con esos filtros"
+                    description="Probá quitar el filtro de fuente o limpiar la búsqueda."
+                  />
+                ) : (
+                  <Table headers={["Nombre", "Email", "Teléfono", "Fuente", "Confirmó"]}>
+                    {filteredConfirmations.map((c) => (
+                      <tr key={c.id} className="hover:bg-brand-50/30">
+                        <td className="px-5 py-3 font-medium text-ink">{c.name}</td>
+                        <td className="px-5 py-3 text-ink-muted">{c.email ?? "—"}</td>
+                        <td className="px-5 py-3 text-ink-muted">
+                          {c.phoneNormalized ?? c.phoneRaw ?? "—"}
+                        </td>
+                        <td className="px-5 py-3">
+                          <Badge tone="neutral">{c.source}</Badge>
+                        </td>
+                        <td className="px-5 py-3 text-ink-muted text-xs">
+                          {formatDate(c.confirmedAt)}
+                        </td>
+                      </tr>
+                    ))}
+                  </Table>
+                )}
+              </Section>
+            );
+          })()}
 
           {/* Sección 2: Asistentes */}
           {activeTab === "attendees" && (
