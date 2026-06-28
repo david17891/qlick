@@ -176,3 +176,56 @@ export async function createSurvey(
     note: "Encuesta creada en Supabase.",
   };
 }
+
+// ─────────────────────────────────────────────────────────────
+// Capa 4 de Fase 4: "Marcar como revisada"
+// ─────────────────────────────────────────────────────────────
+
+export interface MarkReviewedResult {
+  ok: boolean;
+  note: string;
+}
+
+/**
+ * Marca una encuesta como revisada por el admin.
+ *
+ * Setea `reviewed_at = now()` y `reviewed_by = reviewerEmail` en la fila.
+ * Si ya estaba revisada, SOBREESCRIBE (revisa de nuevo, nuevo timestamp).
+ *
+ * Idempotente en el sentido: ejecutar 2 veces tiene el mismo efecto que
+ * ejecutar 1. No es destructivo.
+ *
+ * Si el admin pasa `null`/`undefined` como `reviewerEmail`, queda el
+ * timestamp sin autor (caso raro, ej. automation).
+ */
+export async function markSurveyReviewed(
+  surveyId: string,
+  reviewerEmail: string | null,
+): Promise<MarkReviewedResult> {
+  if (!isRealMode()) {
+    return { ok: false, note: "Supabase no configurado." };
+  }
+  if (!surveyId) {
+    return { ok: false, note: "Falta surveyId." };
+  }
+  const supabase = createSupabaseAdminClient();
+  const { error } = await supabase
+    .from("event_surveys")
+    .update({
+      reviewed_at: new Date().toISOString(),
+      reviewed_by: reviewerEmail,
+    })
+    .eq("id", surveyId);
+  if (error) {
+    // eslint-disable-next-line no-console
+    console.error("[surveys-server] markSurveyReviewed falló", {
+      code: error.code,
+      surveyId,
+    });
+    return {
+      ok: false,
+      note: `No se pudo marcar como revisada (${error.code ?? "unknown"}).`,
+    };
+  }
+  return { ok: true, note: "Encuesta marcada como revisada." };
+}

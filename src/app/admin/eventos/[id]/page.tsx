@@ -16,6 +16,7 @@ import { formatDate } from "@/lib/utils";
 import { filterConfirmations, resolveConfirmationSource } from "@/lib/events/confirmation-filter";
 import { PipelineColumn } from "./_components/PipelineColumn";
 import { PipelineCard } from "./_components/PipelineCard";
+import { markSurveyReviewedAction } from "./_actions";
 
 interface Props {
   params: { id: string };
@@ -483,7 +484,7 @@ export default async function AdminEventoDetailPage({
               />
             ) : (
               <Table
-                headers={["Email", "Teléfono", "Consent", "Interés", "Promovido a lead"]}
+                headers={["Email", "Teléfono", "Consent", "Interés", "Promovido a lead", "Revisada"]}
               >
                 {surveys.map((s) => (
                   <tr key={s.id} className="hover:bg-brand-50/30">
@@ -510,6 +511,28 @@ export default async function AdminEventoDetailPage({
                         </span>
                       ) : (
                         <span className="text-ink-muted">—</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3 text-xs">
+                      {s.reviewedAt ? (
+                        <div className="flex flex-col gap-0.5">
+                          <Badge tone="success">Revisada</Badge>
+                          <span className="text-ink-muted text-[10px]">
+                            {formatDate(s.reviewedAt)}
+                            {s.reviewedBy && ` · ${s.reviewedBy}`}
+                          </span>
+                        </div>
+                      ) : (
+                        <form action={markSurveyReviewedAction.bind(null, null)}>
+                          <input type="hidden" name="surveyId" value={s.id} />
+                          <input type="hidden" name="eventId" value={event.id} />
+                          <button
+                            type="submit"
+                            className="text-xs px-2 py-1 rounded-md bg-brand-500 text-white hover:bg-brand-600 transition font-semibold"
+                          >
+                            ✓ Marcar revisada
+                          </button>
+                        </form>
                       )}
                     </td>
                   </tr>
@@ -650,6 +673,24 @@ export default async function AdminEventoDetailPage({
                       phone={s.phoneNormalized ?? s.respondentPhone}
                       source={s.consentToContact ? "consent sí" : "consent no"}
                       date={formatDate(s.submittedAt)}
+                      reviewedAt={s.reviewedAt}
+                      action={
+                        !s.reviewedAt ? (
+                          <form
+                            action={markSurveyReviewedAction.bind(null, null)}
+                            className="w-full"
+                          >
+                            <input type="hidden" name="surveyId" value={s.id} />
+                            <input type="hidden" name="eventId" value={event.id} />
+                            <button
+                              type="submit"
+                              className="w-full text-xs px-2 py-1 rounded-md bg-brand-500 text-white hover:bg-brand-600 transition font-semibold"
+                            >
+                              ✓ Marcar revisada
+                            </button>
+                          </form>
+                        ) : null
+                      }
                     />
                   ))
                 )}

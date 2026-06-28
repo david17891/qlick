@@ -24,9 +24,22 @@ interface Props {
   date?: string | null;
   /** Link opcional al detalle en el CRM / tab del evento. */
   href?: string;
+  /** Si la card fue revisada (Capa 4: badge "Revisada" + fecha). */
+  reviewedAt?: string | null;
+  /** Slot opcional para acciones (form, botones) debajo del contenido. */
+  action?: React.ReactNode;
 }
 
-export function PipelineCard({ name, email, phone, source, date, href }: Props) {
+export function PipelineCard({
+  name,
+  email,
+  phone,
+  source,
+  date,
+  href,
+  reviewedAt,
+  action,
+}: Props) {
   const inner = (
     <>
       <p className="font-semibold text-sm text-ink truncate">{name}</p>
@@ -43,6 +56,12 @@ export function PipelineCard({ name, email, phone, source, date, href }: Props) 
           <span className="text-[10px] text-ink-muted ml-auto">{date}</span>
         )}
       </div>
+      {reviewedAt && (
+        <div className="mt-1.5 pt-1.5 border-t border-brand-50">
+          <Badge tone="success">✓ Revisada</Badge>
+        </div>
+      )}
+      {action && <div className="mt-2">{action}</div>}
     </>
   );
 

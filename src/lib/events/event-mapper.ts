@@ -106,6 +106,9 @@ export function mapEventSurveyRowToEventSurvey(
     importBatchId: row.import_batch_id ?? undefined,
     promotedToLeadId: row.promoted_to_lead_id ?? undefined,
     promotedAt: row.promoted_at ?? undefined,
+    // Capa 4: reviewed_at + reviewed_by (agregados por migration 20260627020000).
+    reviewedAt: row.reviewed_at ?? undefined,
+    reviewedBy: row.reviewed_by ?? undefined,
   };
 }
 

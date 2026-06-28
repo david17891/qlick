@@ -150,6 +150,14 @@ export interface EventSurvey {
   /** Si se promovió a lead, el ID del lead creado. */
   promotedToLeadId?: string;
   promotedAt?: string;
+  /**
+   * Si el admin ya marcó esta encuesta como revisada, timestamp de
+   * cuándo. NULL = pendiente. Agregado en migration 20260627020000
+   * (Capa 4 de Fase 4).
+   */
+  reviewedAt?: string;
+  /** Email del admin que la marcó. Metadata interna. */
+  reviewedBy?: string;
 }
 
 /* ------------------------------------------------------------------ */
