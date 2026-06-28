@@ -21,45 +21,88 @@
 
 ## 1. Deuda técnica activa
 
-### 🟡 Sesión 2026-06-28 (domingo, madrugada) — Auto-evaluación visual con Playwright MCP (cerrada por límite de 5h)
+### ✅ Sesión 2026-06-28 (domingo, madrugada + tarde) — Dev login bypass + auditoría visual con Playwright MCP
 
-**Branch:** `feat/admin-eventos`. Working tree limpio. **NO se aplicaron fixes** — solo screenshots y hallazgos documentados. Próxima sesión los aborda.
+**Branch:** `feat/admin-eventos`. Working tree limpio. **3 commits en la sesión:**
 
-**Pantallas inspeccionadas (viewport ~1040×663, fullPage):**
+- `eb83eaa` feat(dev): endpoint `/api/dev/login` (POST one-shot) + script `tests/playwright/dev-login.mjs` + doc `docs/DEV_LOGIN_BYPASS.md` (referenciada en código pero no existía)
+- `b375ac8` fix(crm): "Próximas citas" lista solo `upcomingAppts`, no `appts` todas
+- `ac11b0a` docs(open-items): cierre por límite de 5h de la sesión de madrugada
+
+### Dev login bypass — cómo usarlo desde Playwright MCP
+
+```js
+// 1) POST al endpoint (secret inline desde .env.local):
+const r = await fetch('/api/dev/login', {
+  method: 'POST',
+  headers: {'Content-Type':'application/json'},
+  body: JSON.stringify({ email: 'david17891@gmail.com', secret: '<DEV_ADMIN_SECRET>' })
+});
+// → 200 + Set-Cookie sb-*
+
+// 2) Ahora navega a /admin y funciona (no redirige a /admin/login).
+```
+
+O desde CLI: `node tests/playwright/dev-login.mjs` → JSON con `{email, password, userId}` para uso manual/debug.
+
+### Auditoría visual — pantallas inspeccionadas con Playwright MCP (sesión completa, post-login)
+
+**Admin (con sesión real vía dev/login):**
 
 | Pantalla | URL | Estado | Hallazgo |
 |---|---|---|---|
-| Catálogo público | `/eventos` | ✅ OK | 3 cards, gradiente B-5 v2, h3 visible. Falsa alarma de "Ejemplo" sin texto — sí está, es 1 palabra corta. |
-| Detalle público taller | `/eventos/taller-funnels-venta-cdmx` | ⚠️ 2 issues | (a) Console: 1 hydration warning `Extra attributes from the server: style` en Input. (b) **Typo en DB**: descripción dice "disenar" y "conversion" sin acentos. |
-| Detalle público taller — form | (mismo) | ✅ OK | Nombre + Email/Tel (50/50), honeypot con `left:-10000px`, consentimiento obligatorio, CTA prominente. |
-| Home | `/` | ✅ OK | Hero, features grid, cursos destacados, testimonios, instructores, CTA, footer. Sin issues. |
-| Login alumno | `/login` | ✅ OK | Google OAuth + badge "Acceso con tu cuenta Google · un toque y adentro" + link a `/admin/login`. |
-| Admin login | `/admin/login` | ✅ OK | Email field + "Enviar enlace mágico" + link a login alumno. |
+| Resumen admin | `/admin` | ✅ OK | Header sticky + métricas globales (3 alumnos / 5 cursos / $2,538 ingresos / 49% progreso) + tabs. |
+| Embudo de eventos | `/admin/eventos` | ✅ OK | 3 cards (Taller / QA Fase 4 / Ejemplo) con gradiente B-5 v2 + métricas. **Falsa alarma anterior descartada**: el h3 de "Ejemplo" SÍ se ve (es 1 palabra, se ve chico). |
+| Detail admin QA Fase 4 | `/admin/eventos/[id]` (tab Confirmados) | ✅ OK | Stats + conversión del funnel + tabla con broadcast WhatsApp. |
+| Detail admin — Asistentes | (mismo, tab attendees) | ✅ OK | Match manual para walk-ins. Dropdown "Sin match" + botón "Matchear". |
+| Detail admin — Encuestas | (mismo, tab surveys) | ✅ OK | 3 respuestas, 2 con consent comercial. Botón "Marcar revisada". |
+| Detail admin — Leads promovidos | (mismo, tab leads) | ✅ OK | 1 lead (David Esparza), badge "Source: event" + "survey" (inconsistencia menor: "survey" en minúscula). Dropdown WhatsApp status con 4 opciones correctas. |
+| CRM Pipeline | `/admin?tab=crm` | ✅ OK | 4 cards en "Nuevo", 0 en otras columnas. |
+| CRM Calendario | `/admin?tab=crm&section=calendario` | 🐛 **BUG ARREGLADO** | Ver abajo. |
+| CRM Agente IA | `/admin?tab=crm&section=agente` | ✅ OK | Negocio + cursos + reglas + acciones. |
+| Drawer lead (modal) | `?leadId=...` | ✅ OK | Header con status + datos + WhatsApp actions (deshabilitados, falta config). |
 
-**Pendientes para próxima sesión:**
+### Bug crítico arreglado en esta sesión
 
-1. 🟡 **Hydration warning en Input.tsx** (`src/components/ui/Input.tsx:13`)
-   - `Warning: Extra attributes from the server: %s%s style at input`
-   - Probable causa: extensión de browser (password manager) inyecta `style` en inputs. Confirmado que NO viene de nuestro código.
-   - Fix defensivo sugerido: agregar `suppressHydrationWarning` al `<input>` (Next.js doc lo recomienda para extensiones).
-   - Impacto: cosmético (warning en console), sin efecto funcional.
+🐛 **Bug #1 (cerrado en `b375ac8`)** — CRM Calendario, card "Próximas citas"
 
-2. 🟡 **Typo en seed del taller funnels-vente** (DB, 1 fila)
-   - Tabla `events`, slug `taller-funnels-venta-cdmx`.
-   - Campo `description`: "disenar funnels" + "conversion" (sin acentos).
-   - Fix: `UPDATE events SET description = REPLACE(REPLACE(description, 'disenar', 'diseñar'), 'conversion', 'conversión') WHERE slug = 'taller-funnels-venta-cdmx';`
-   - Necesita luz verde de David antes de tocar DB.
-   - Impacto: cosmético en copy pública. Visible para cualquier visitante del detail público.
+**Síntoma:** El badge decía "1 agendadas" pero la lista mostraba 6 citas (incluyendo "No asistió" del 3 jun y "Completada" del 18 jun).
 
-**No inspeccionadas (limitaciones):**
+**Causa:** `src/components/crm/CRMView.tsx:345` usaba `appts.map()` en vez de `upcomingAppts.map()`. El badge contaba `upcomingAppts.length` (filtradas) pero la lista renderizaba `appts` (todas).
 
-- ❌ `/admin/**` — magic link de Supabase Auth bloquea Playwright. David abre en su navegador y captura si quiere.
-- ❌ Tests end-to-end con flujos reales (form submit, server action mutation) — sin auth.
-- ❌ Mobile (375px viewport) — no se probó responsive.
-- ❌ `/cursos`, `/contacto`, `/acerca`, `/beneficios`, `/faq`, `/privacidad`, `/dashboard`, `/mi-panel` — no visitadas.
-- ❌ `/eventos/qa-fase4-demo` (el evento demo principal) — solo el taller.
+**Fix:** 1 línea — cambiar `appts.map` → `upcomingAppts.map`.
 
-**Decisión de cierre:** documentación > fix, dado que ya superamos presupuesto de cómputo y quedan 2 items triviales para próxima sesión (un `UPDATE` de DB + un `suppressHydrationWarning` en Input.tsx).
+**Verificado visualmente** con Playwright MCP: tras el fix, la card muestra solo la cita del 30 jun ("Webinar: embudo de conversión"), consistente con el badge.
+
+### Bugs pendientes para próxima sesión
+
+🟡 **Bug #2 — Hydration warning en Input.tsx** (`src/components/ui/Input.tsx:13`)
+- `Warning: Extra attributes from the server: %s%s style at input`
+- Probable causa: extensión de browser (password manager) inyecta `style` en inputs. Confirmado que NO viene de nuestro código (`document.querySelectorAll('input[style]')` solo lo encuentra en `bg-white/80` del header).
+- Fix defensivo sugerido: agregar `suppressHydrationWarning` al `<input>` (Next.js doc lo recomienda para extensiones).
+- Impacto: cosmético (warning en console), sin efecto funcional.
+
+🟡 **Bug #3 — Typo en seed del taller funnels-vente** (DB, 1 fila)
+- Tabla `events`, slug `taller-funnels-venta-cdmx`.
+- Campo `description`: "disenar funnels" + "conversion" (sin acentos).
+- Fix: `UPDATE events SET description = REPLACE(REPLACE(description, 'disenar', 'diseñar'), 'conversion', 'conversión') WHERE slug = 'taller-funnels-venta-cdmx';`
+- Necesita luz verde de David antes de tocar DB.
+- Impacto: cosmético en copy pública. Visible para cualquier visitante del detail público.
+
+### Observaciones menores (no bugs)
+
+- **Header "duplicado" en screenshots fullPage** — artifact de Playwright con `position: sticky` (la Navbar aparece "duplicada" al stitch del scroll). DOM real: solo 1 `<header>`. Confirmado con `document.querySelectorAll('header').length === 1`.
+- **Email del lead en drawer vs encuesta** — el lead `david.esparza@qa-fase4-demo.test` (con `.test`) difiere del confirmation `david.esparza@example.com`. Es por el seed (genera emails únicos para evitar colisiones), no es bug.
+- **Badge "survey" en minúscula vs otros badges** — en tab Leads, junto a "Source: event" hay un badge "survey" en minúscula. Cosmético, no bloquea.
+
+### Pantallas NO inspeccionadas (por tiempo)
+
+- ❌ Vista pipeline real del detail del evento (toggle "Vista tabs / Vista pipeline") — el click me llevó al CRM Pipeline en lugar del toggle.
+- ❌ `/admin/cursos`, `/admin/alumnos`, `/admin/inscripciones`, `/admin/pagos`, `/admin/masterclass/*`
+- ❌ `/admin/eventos/[id]/import` (wizard de import)
+- ❌ `/cursos`, `/contacto`, `/acerca`, `/beneficios`, `/faq`, `/privacidad`, `/dashboard`, `/mi-panel`
+- ❌ Mobile (375px viewport)
+- ❌ Tests E2E con flujos reales (submit forms, server action mutation con Playwright library)
 
 ---
 
