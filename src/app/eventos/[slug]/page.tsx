@@ -39,7 +39,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     openGraph: {
       title: event.title,
       description,
-      images: event.coverImageUrl ? [event.coverImageUrl] : undefined,
+      // Decisión B-5: sin cover images en OG (no hay cover real todavía).
+      // Si se reactiva, ver OPEN_ITEMS.md → B-5.
     },
     robots: { index: true, follow: true },
   };

@@ -129,20 +129,16 @@ function EventCard({
   return (
     <Link href={`/eventos/${event.slug}`} className="group block">
       <Card className="overflow-hidden h-full transition group-hover:shadow-md group-hover:border-brand-300">
-        {event.coverImageUrl ? (
-          <div className="w-full h-40 overflow-hidden bg-brand-50">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={event.coverImageUrl}
-              alt={event.title}
-              className="w-full h-full object-cover"
-            />
-          </div>
-        ) : (
-          <div className="w-full h-40 bg-brand-gradient flex items-center justify-center text-white text-3xl font-bold">
-            🎟️
-          </div>
-        )}
+        {/*
+          Decisión B-5: cover visual siempre con gradiente de marca. Las
+          imágenes de portada quedaron fuera de scope (debug problemático,
+          costo de mantener assets). Si en el futuro se reactiva, ver
+          OPEN_ITEMS.md → B-5. El campo `cover_image_url` se conserva en DB
+          para no romper compat.
+        */}
+        <div className="w-full h-40 bg-brand-gradient flex items-center justify-center text-white text-3xl font-bold">
+          🎟️
+        </div>
         <div className="p-5 space-y-3">
           <div className="flex items-center justify-between gap-2">
             <Badge tone={status === "upcoming" ? "success" : "neutral"}>

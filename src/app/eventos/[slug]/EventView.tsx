@@ -154,13 +154,11 @@ export function EventView({ event, pastEvent }: Props) {
               </li>
             )}
           </ul>
-          {event.coverImageUrl && (
-            <img
-              src={event.coverImageUrl}
-              alt={event.title}
-              className="mt-8 w-full max-h-96 object-cover rounded-2xl shadow-sm"
-            />
-          )}
+          {/*
+            Decisión B-5: hero sin imagen. Solo tipografía + meta. Si se
+            reactiva, ver OPEN_ITEMS.md → B-5. El campo cover_image_url
+            en DB se conserva (no se borra) por compat.
+          */}
           {event.description && (
             <p className="mt-8 text-lg text-ink-soft whitespace-pre-line leading-relaxed">
               {event.description}

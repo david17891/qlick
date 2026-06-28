@@ -78,8 +78,10 @@ next-env.d.ts
 # body temporal de PR (se borra después de crear el PR con `gh pr create`)
 /PR_BODY.md
 
-dev-server.log
-dev-server.err.log
+# Logs efímeros del dev server local (rotan entre sesiones del agente).
+# Patrón cubre tanto los nombres viejos (`dev-server.log`,
+# `dev-server.err.log`) como los nuevos (`dev-out.log`, `dev-err.log`).
+dev-*.log
 
 # ============================================================================
 # Política de datos — NUNCA commitear datos personales / PII
