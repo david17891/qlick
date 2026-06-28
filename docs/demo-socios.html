@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Qlick Marketing · Admin de Eventos · Demo Socios</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Brand tokens — keep in sync con tailwind.config.js del proyecto */
+    .brand-gradient { background: linear-gradient(135deg, #6d28d9 0%, #c026d3 50%, #f97316 100%); }
+    .text-brand-700 { color: #6d28d9; }
+    .bg-brand-50 { background-color: #faf5ff; }
+    .bg-brand-100 { background-color: #f3e8ff; }
+    .bg-brand-500 { background-color: #a855f7; }
+    .bg-brand-700 { background-color: #6d28d9; }
+    .border-brand-200 { border-color: #e9d5ff; }
+    .border-brand-300 { border-color: #d8b4fe; }
+    .ring-brand-100 { --tw-ring-color: #f3e8ff; }
+    .shadow-card { box-shadow: 0 4px 20px -4px rgba(109, 40, 217, 0.08); }
+    .shadow-glow { box-shadow: 0 12px 36px -8px rgba(192, 38, 211, 0.18); }
+  </style>
+</head>
+<body class="bg-white text-slate-900 antialiased">
+
+  <!-- HERO -->
+  <header class="brand-gradient text-white py-20 px-6">
+    <div class="max-w-5xl mx-auto text-center">
+      <p class="text-sm font-bold uppercase tracking-widest opacity-90 mb-4">
+        Qlick Marketing · Plataforma de eventos
+      </p>
+      <h1 class="text-4xl sm:text-6xl font-bold font-display mb-6 leading-tight">
+        De Excel manual a plataforma funcional<br>
+        en <span class="underline decoration-wavy decoration-yellow-300">un día</span>
+      </h1>
+      <p class="text-lg sm:text-xl opacity-95 max-w-3xl mx-auto leading-relaxed">
+        Lo que antes llevaba 1-2 horas de trabajo manual por evento (pegar Excel, mandar WhatsApp uno por uno,
+        anotar quién vino, quiénes son leads), ahora corre en minutos — con audit log, métricas y
+        trazabilidad de punta a punta.
+      </p>
+      <div class="mt-10 flex flex-wrap justify-center gap-4 text-sm font-semibold">
+        <span class="bg-white/15 backdrop-blur px-4 py-2 rounded-full">📊 Métricas en vivo</span>
+        <span class="bg-white/15 backdrop-blur px-4 py-2 rounded-full">📥 Import wizard con dry-run</span>
+        <span class="bg-white/15 backdrop-blur px-4 py-2 rounded-full">💬 WhatsApp workflow + audit</span>
+        <span class="bg-white/15 backdrop-blur px-4 py-2 rounded-full">🧲 CRM integrado</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- BEFORE / AFTER -->
+  <section class="py-20 px-6 bg-slate-50">
+    <div class="max-w-6xl mx-auto">
+      <h2 class="text-3xl sm:text-4xl font-bold text-center mb-4">Antes vs. Después</h2>
+      <p class="text-center text-slate-600 mb-12 max-w-2xl mx-auto">
+        Un evento típico de ~50 confirmados. Tiempos estimados para procesar el ciclo completo (importar datos,
+        hacer match de walk-ins, mandar WhatsApp, promover leads).
+      </p>
+      <div class="grid md:grid-cols-2 gap-8">
+        <!-- ANTES -->
+        <div class="bg-white rounded-2xl border-2 border-slate-200 p-8">
+          <div class="text-xs font-bold uppercase tracking-wide text-slate-500 mb-3">Antes</div>
+          <h3 class="text-2xl font-bold mb-6 text-slate-700">~1-2 horas · Manual · Sin trazabilidad</h3>
+          <ul class="space-y-4">
+            <li class="flex items-start gap-3">
+              <span class="text-2xl shrink-0">📋</span>
+              <div>
+                <p class="font-semibold">Confirmados copiados a mano</p>
+                <p class="text-sm text-slate-600">Del Excel del cliente → Google Sheet → CRM (3 pasos, errores de dedo)</p>
+              </div>
+            </li>
+            <li class="flex items-start gap-3">
+              <span class="text-2xl shrink-0">📱</span>
+              <div>
+                <p class="font-semibold">WhatsApp uno por uno</p>
+                <p class="text-sm text-slate-600">Abrir chat con cada uno, copiar template, personalizar. 50 personas = 50 minutos.</p>
+              </div>
+            </li>
+            <li class="flex items-start gap-3">
+              <span class="text-2xl shrink-0">📝</span>
+              <div>
+                <p class="font-semibold">Asistentes en otro Excel</p>
+                <p class="text-sm text-slate-600">Check-in manual del staff → hoja aparte → cruzar con confirmados al día siguiente</p>
+              </div>
+            </li>
+            <li class="flex items-start gap-3">
+              <span class="text-2xl shrink-0">🤷</span>
+              <div>
+                <p class="font-semibold">Encuestas sin saber quién es lead</p>
+                <p class="text-sm text-slate-600">"Sí me interesa" → ¿es lead nuevo o ya estaba en el CRM? Decisión a ojo.</p>
+              </div>
+            </li>
+            <li class="flex items-start gap-3">
+              <span class="text-2xl shrink-0">📉</span>
+              <div>
+                <p class="font-semibold">Sin métricas de funnel</p>
+                <p class="text-sm text-slate-600">No hay conversión confirmados→asistentes→leads. Reportes a mano.</p>
+              </div>
+            </li>
+          </ul>
+        </div>
+
+        <!-- DESPUÉS -->
+        <div class="brand-gradient rounded-2xl p-8 text-white shadow-glow">
+          <div class="text-xs font-bold uppercase tracking-wide opacity-90 mb-3">Después</div>
+          <h3 class="text-2xl font-bold mb-6">~15 min · Automatizado · Audit log</h3>
+          <ul class="space-y-4">
+            <li class="flex items-start gap-3">
+              <span class="text-2xl shrink-0">📥</span>
+              <div>
+                <p class="font-semibold">Drop .xlsx → wizard con dry-run</p>
+                <p class="text-sm opacity-95">Auto-detección de headers (ES/EN), preview con warnings antes de tocar la DB. 2 minutos.</p>
+              </div>
+            </li>
+            <li class="flex items-start gap-3">
+              <span class="text-2xl shrink-0">💬</span>
+              <div>
+                <p class="font-semibold">Broadcast WhatsApp pre-armado</p>
+                <p class="text-sm opacity-95">Un click genera mensaje personalizado para cada confirmado, con audit log de cada envío.</p>
+              </div>
+            </li>
+            <li class="flex items-start gap-3">
+              <span class="text-2xl shrink-0">🔗</span>
+              <div>
+                <p class="font-semibold">Match automático + manual</p>
+                <p class="text-sm opacity-95">Walk-ins se matchean con confirmados por email/phone. Sin match → dropdown sugiere candidatos.</p>
+              </div>
+            </li>
+            <li class="flex items-start gap-3">
+              <span class="text-2xl shrink-0">🧲</span>
+              <div>
+                <p class="font-semibold">Survey con consent → auto-promoción a lead</p>
+                <p class="text-sm opacity-95">Consent = Sí → crea/merge en `leads` con `commercial_interest`. Visible inmediato en CRM.</p>
+              </div>
+            </li>
+            <li class="flex items-start gap-3">
+              <span class="text-2xl shrink-0">📊</span>
+              <div>
+                <p class="font-semibold">Métricas de funnel en vivo</p>
+                <p class="text-sm opacity-95">Confirmados/asistentes/encuestas/leads + ratios de conversión en cada tab. Sin SQL.</p>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- QUICK WINS -->
+  <section class="py-20 px-6">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="text-3xl sm:text-4xl font-bold text-center mb-4">Lo que está automatizado hoy</h2>
+      <p class="text-center text-slate-600 mb-12 max-w-2xl mx-auto">
+        Funcionalidad real, desplegada en la rama <code class="bg-slate-100 px-2 py-1 rounded">feat/admin-eventos</code>.
+        Lista para producción una vez que David dé luz verde.
+      </p>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-card">
+          <div class="text-3xl mb-3">📊</div>
+          <h3 class="font-bold mb-2">Detalle del evento</h3>
+          <p class="text-sm text-slate-600">
+            4 tabs (Confirmados / Asistentes / Encuestas / Leads promovidos) + vista Pipeline kanban + métricas
+            de funnel en vivo. Búsqueda y filtro por fuente en Confirmados.
+          </p>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-card">
+          <div class="text-3xl mb-3">📥</div>
+          <h3 class="font-bold mb-2">Import wizard</h3>
+          <p class="text-sm text-slate-600">
+            Upload .xlsx, detección automática de headers (ES + EN + fuzzy), dry-run antes de tocar DB,
+            report con inserted/duplicates/invalid/warnings. Idempotente por batchId.
+          </p>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-card">
+          <div class="text-3xl mb-3">💬</div>
+          <h3 class="font-bold mb-2">WhatsApp workflow</h3>
+          <p class="text-sm text-slate-600">
+            Estados por lead (no_contactado → contactado → interested/lost) + audit log
+            de cada mensaje. Broadcast pre-armado para confirmados.
+          </p>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-card">
+          <div class="text-3xl mb-3">🧲</div>
+          <h3 class="font-bold mb-2">CRM + drawer del lead</h3>
+          <p class="text-sm text-slate-600">
+            Pipeline kanban 4 cols + drawer con badge de evento de origen, historial de contactos,
+            notas internas, tareas de seguimiento. Validación inline + a11y.
+          </p>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-card">
+          <div class="text-3xl mb-3">📱</div>
+          <h3 class="font-bold mb-2">Mobile-friendly</h3>
+          <p class="text-sm text-slate-600">
+            Funciona en 375×812 (iPhone 13). Hamburger, grids que collapsan, sin overflow horizontal,
+            console limpio. Verificado con Playwright MCP en todas las admin pages.
+          </p>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-card">
+          <div class="text-3xl mb-3">🔒</div>
+          <h3 class="font-bold mb-2">Security-first</h3>
+          <p class="text-sm text-slate-600">
+            RLS en todas las tablas, <code class="text-xs bg-slate-100 px-1 rounded">requireAdmin()</code>
+            en todos los endpoints, PII fuera de logs, magic links para login. Auditoría externa
+            documentada.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MÉTRICAS -->
+  <section class="py-20 px-6 bg-slate-50">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="text-3xl sm:text-4xl font-bold text-center mb-12">Por los números</h2>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 text-center">
+        <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-card">
+          <p class="text-5xl font-bold text-brand-700 mb-2">~30</p>
+          <p class="text-sm font-semibold text-slate-700">commits en Fase 4</p>
+          <p class="text-xs text-slate-500 mt-1">Cierre de 18+ en esta sesión</p>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-card">
+          <p class="text-5xl font-bold text-brand-700 mb-2">98/98</p>
+          <p class="text-sm font-semibold text-slate-700">tests pasando</p>
+          <p class="text-xs text-slate-500 mt-1">type-check ✅ · lint ✅</p>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-card">
+          <p class="text-5xl font-bold text-brand-700 mb-2">9</p>
+          <p class="text-sm font-semibold text-slate-700">server libs</p>
+          <p class="text-xs text-slate-500 mt-1">events / confirmations / attendees / surveys / promotion</p>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-card">
+          <p class="text-5xl font-bold text-brand-700 mb-2">6</p>
+          <p class="text-sm font-semibold text-slate-700">tablas nuevas</p>
+          <p class="text-xs text-slate-500 mt-1">con RLS + 4 enums</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TECH STACK -->
+  <section class="py-20 px-6">
+    <div class="max-w-5xl mx-auto text-center">
+      <h2 class="text-3xl sm:text-4xl font-bold mb-4">Stack</h2>
+      <p class="text-slate-600 mb-8">Lo que corre abajo. Server-rendered, edge-friendly, lock-in mínimo.</p>
+      <div class="flex flex-wrap justify-center gap-3">
+        <span class="px-4 py-2 bg-slate-100 rounded-full text-sm font-semibold">Next.js 14 (App Router)</span>
+        <span class="px-4 py-2 bg-slate-100 rounded-full text-sm font-semibold">Supabase (Postgres + Auth + RLS)</span>
+        <span class="px-4 py-2 bg-slate-100 rounded-full text-sm font-semibold">TypeScript strict</span>
+        <span class="px-4 py-2 bg-slate-100 rounded-full text-sm font-semibold">Tailwind CSS</span>
+        <span class="px-4 py-2 bg-slate-100 rounded-full text-sm font-semibold">node:test (98 tests)</span>
+        <span class="px-4 py-2 bg-slate-100 rounded-full text-sm font-semibold">Playwright MCP (audit visual)</span>
+        <span class="px-4 py-2 bg-slate-100 rounded-full text-sm font-semibold">xlsx (deterministic, no AI)</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- CIERRE -->
+  <section class="brand-gradient text-white py-20 px-6">
+    <div class="max-w-3xl mx-auto text-center">
+      <h2 class="text-3xl sm:text-4xl font-bold mb-4">Listo para escalar</h2>
+      <p class="text-lg opacity-95 mb-8">
+        La plataforma de eventos quedó funcional. Lo que sigue es ejecución operativa
+        (procesar eventos reales, iterar UX con feedback de los socios) y roadmap Fase 5+
+        (notificaciones automáticas, WhatsApp Business API, multi-evento en Excel).
+      </p>
+      <p class="text-sm opacity-80">
+        Detalle técnico completo en <code class="bg-white/15 px-2 py-1 rounded">docs/EVENTS_ADMIN_GUIDE.md</code> ·
+        <code class="bg-white/15 px-2 py-1 rounded">docs/EVENTS_FUNNEL_FOUNDATION.md</code>
+      </p>
+    </div>
+  </section>
+
+  <footer class="py-8 px-6 text-center text-sm text-slate-500 border-t border-slate-200">
+    Qlick Marketing Integral · Demo 1-pager para socios · 2026-06-28
+  </footer>
+
+</body>
+</html>
