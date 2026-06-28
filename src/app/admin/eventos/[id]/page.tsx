@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Navbar, Footer } from "@/components/layout";
-import { Container, Card, Badge, EmptyState } from "@/components/ui";
+import { Container, Card, Badge, EmptyState, SubmitButton } from "@/components/ui";
 import { requireAdmin } from "@/lib/auth/session";
 import {
   getEventById,
@@ -720,12 +720,9 @@ export default async function AdminEventoDetailPage({
                               </option>
                             ))}
                           </select>
-                          <button
-                            type="submit"
-                            className="text-xs px-2 py-1 rounded-md bg-brand-500 text-white hover:bg-brand-600 transition font-semibold"
-                          >
+                          <SubmitButton pendingLabel="Matcheando...">
                             Matchear
-                          </button>
+                          </SubmitButton>
                         </form>
                       )}
                     </td>
@@ -790,24 +787,23 @@ export default async function AdminEventoDetailPage({
                           <form action={unmarkSurveyReviewedAction.bind(null, null)} className="mt-1">
                             <input type="hidden" name="surveyId" value={s.id} />
                             <input type="hidden" name="eventId" value={event.id} />
-                            <button
-                              type="submit"
-                              className="text-[10px] text-ink-muted hover:text-ink underline"
+                            <SubmitButton
+                              variant="ghost"
+                              size="sm"
+                              pendingLabel="..."
+                              className="text-[10px] text-ink-muted hover:text-ink underline !p-0 !bg-transparent"
                             >
                               des-marcar
-                            </button>
+                            </SubmitButton>
                           </form>
                         </div>
                       ) : (
                         <form action={markSurveyReviewedAction.bind(null, null)}>
                           <input type="hidden" name="surveyId" value={s.id} />
                           <input type="hidden" name="eventId" value={event.id} />
-                          <button
-                            type="submit"
-                            className="text-xs px-2 py-1 rounded-md bg-brand-500 text-white hover:bg-brand-600 transition font-semibold"
-                          >
+                          <SubmitButton pendingLabel="Marcando...">
                             ✓ Marcar revisada
-                          </button>
+                          </SubmitButton>
                         </form>
                       )}
                     </td>
@@ -875,12 +871,7 @@ export default async function AdminEventoDetailPage({
                               </option>
                             ))}
                           </select>
-                          <button
-                            type="submit"
-                            className="text-xs px-2 py-1 rounded-md bg-brand-500 text-white hover:bg-brand-600 transition font-semibold"
-                          >
-                            Actualizar
-                          </button>
+                          <SubmitButton pendingLabel="...">Actualizar</SubmitButton>
                         </form>
                       </div>
                       <Link
@@ -1072,12 +1063,12 @@ export default async function AdminEventoDetailPage({
                                   </option>
                                 ))}
                               </select>
-                              <button
-                                type="submit"
-                                className="text-[10px] px-1.5 py-0.5 rounded bg-brand-500 text-white hover:bg-brand-600 transition font-semibold"
+                              <SubmitButton
+                                pendingLabel="..."
+                                className="text-[10px] px-1.5 py-0.5"
                               >
                                 ✓
-                              </button>
+                              </SubmitButton>
                             </form>
                             {waLink ? (
                               <a
