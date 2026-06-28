@@ -65,19 +65,16 @@
 
 #### Bugs pendientes (no críticos, no bloquean demo)
 
-- 🟡 **Hydration warning en Input.tsx** (`src/components/ui/Input.tsx:13`)
-  - `Warning: Extra attributes from the server: %s%s style at input`
-  - Confirmado que NO viene de nuestro código (solo aparece en inputs del header con `bg-white/80`).
-  - Causa probable: extensión de browser (password manager) inyecta `style`.
-  - Fix defensivo sugerido: agregar `suppressHydrationWarning` al `<input>`.
-  - Impacto: cosmético.
+- ✅ **Hydration warning en Input.tsx** — **CERRADO en `4e88bd8`**
+  - Fix: agregar `suppressHydrationWarning` a `<input>` y `<textarea>` en `src/components/ui/Input.tsx`.
+  - Patrón recomendado por Next.js para casos donde extensiones de browser (password managers) modifican DOM del cliente.
+  - 2 líneas de cambio, surgical.
 
-- 🟡 **Typo en seed del taller funnels-vente** (DB, 1 fila)
-  - Tabla `events`, slug `taller-funnels-venta-cdmx`.
-  - Campo `description`: "disenar funnels" + "conversion" (sin acentos).
-  - Fix SQL: `UPDATE events SET description = REPLACE(REPLACE(description, 'disenar', 'diseñar'), 'conversion', 'conversión') WHERE slug = 'taller-funnels-venta-cdmx';`
-  - Necesita luz verde de David antes de tocar DB.
-  - Impacto: cosmético en copy pública.
+- ✅ **Typo en seed del taller funnels-vente** — **CERRADO en `29490cb`** (script reusable)
+  - DB actualizada: `events.description` row `taller-funnels-venta-cdmx` ahora tiene "diseñar" + "conversión".
+  - UPDATE aplicado con luz verde explícita de David (2026-06-28 04:17).
+  - Script reusable: `scripts/fix-taller-typo.mjs` (preview → update → verify + rollback hint).
+  - Verificado visualmente con Playwright MCP: "Aprende a diseñar funnels... nurturing, conversión." ✅
 
 #### Observaciones (no bugs)
 
