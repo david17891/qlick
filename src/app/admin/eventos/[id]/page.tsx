@@ -10,13 +10,14 @@ import {
   getAttendeesByEventId,
   getUnmatchedAttendees,
   getSurveysByEventId,
+  getUnmatchedConfirmations,
 } from "@/lib/events";
 import { getLeadsForEvent } from "@/lib/crm";
 import { formatDate } from "@/lib/utils";
 import { filterConfirmations, resolveConfirmationSource } from "@/lib/events/confirmation-filter";
 import { PipelineColumn } from "./_components/PipelineColumn";
 import { PipelineCard } from "./_components/PipelineCard";
-import { markSurveyReviewedAction } from "./_actions";
+import { markSurveyReviewedAction, unmarkSurveyReviewedAction, linkAttendeeToConfirmationAction } from "./_actions";
 import { buildEventBroadcast } from "@/lib/contact/whatsapp";
 import { buildDirectWhatsAppLink, buildLeadOutreachMessage } from "@/lib/contact/whatsapp";
 
@@ -151,6 +152,7 @@ export default async function AdminEventoDetailPage({
     unmatchedAttendees,
     surveys,
     leadsWithLinks,
+    unmatchedConfirmations,
   ] = await Promise.all([
     getEventById(params.id),
     getConfirmationsByEventId(params.id),
@@ -158,6 +160,7 @@ export default async function AdminEventoDetailPage({
     getUnmatchedAttendees(params.id),
     getSurveysByEventId(params.id),
     getLeadsForEvent(params.id),
+    getUnmatchedConfirmations(params.id),
   ]);
 
   if (!event) {
@@ -560,7 +563,7 @@ export default async function AdminEventoDetailPage({
               />
             ) : (
               <Table
-                headers={["Nombre", "Email", "Teléfono", "Confirmación", "Check-in"]}
+                headers={["Nombre", "Email", "Teléfono", "Confirmación", "Check-in", "Match manual"]}
               >
                 {attendees.map((a) => (
                   <tr key={a.id} className="hover:bg-brand-50/30">
@@ -584,6 +587,45 @@ export default async function AdminEventoDetailPage({
                         <span className="text-ink-muted">
                           {" "}por {a.checkedInBy}
                         </span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3">
+                      {a.confirmationId ? (
+                        <span className="text-xs text-ink-muted">—</span>
+                      ) : unmatchedConfirmations.length === 0 ? (
+                        <span className="text-xs text-ink-muted italic">
+                          Sin candidatos
+                        </span>
+                      ) : (
+                        <form
+                          action={linkAttendeeToConfirmationAction.bind(null, null)}
+                          className="flex gap-1.5"
+                        >
+                          <input type="hidden" name="attendeeId" value={a.id} />
+                          <input type="hidden" name="eventId" value={event.id} />
+                          <select
+                            name="confirmationId"
+                            required
+                            className="text-xs border border-brand-200 rounded-md px-1.5 py-1 bg-white max-w-[180px]"
+                            defaultValue=""
+                          >
+                            <option value="" disabled>
+                              Elegir…
+                            </option>
+                            {unmatchedConfirmations.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.name}
+                                {c.email ? ` · ${c.email}` : ""}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="submit"
+                            className="text-xs px-2 py-1 rounded-md bg-brand-500 text-white hover:bg-brand-600 transition font-semibold"
+                          >
+                            Matchear
+                          </button>
+                        </form>
                       )}
                     </td>
                   </tr>
@@ -643,6 +685,16 @@ export default async function AdminEventoDetailPage({
                             {formatDate(s.reviewedAt)}
                             {s.reviewedBy && ` · ${s.reviewedBy}`}
                           </span>
+                          <form action={unmarkSurveyReviewedAction.bind(null, null)} className="mt-1">
+                            <input type="hidden" name="surveyId" value={s.id} />
+                            <input type="hidden" name="eventId" value={event.id} />
+                            <button
+                              type="submit"
+                              className="text-[10px] text-ink-muted hover:text-ink underline"
+                            >
+                              des-marcar
+                            </button>
+                          </form>
                         </div>
                       ) : (
                         <form action={markSurveyReviewedAction.bind(null, null)}>

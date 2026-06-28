@@ -206,6 +206,150 @@ export async function createAttendee(
 }
 
 // ─────────────────────────────────────────────────────────────
+// Capa 3 de Fase 4: match manual attendee <-> confirmation
+// ─────────────────────────────────────────────────────────────
+
+export interface LinkAttendeeResult {
+  ok: boolean;
+  note: string;
+}
+
+/**
+ * Vincula manualmente un attendee (walk-in) con una confirmation
+ * existente. El attendee se identifica por su nombre/email/phone, y
+ * la confirmation es la persona que dijo "si, voy" pero no se
+ * checkeo.
+ *
+ * Reglas:
+ * - El attendee DEBE existir y DEBE tener confirmation_id NULL
+ *   (no sobreescribimos matches ya hechos).
+ * - La confirmation DEBE existir y pertenecer al mismo evento
+ *   (no mezclamos eventos).
+ * - Si todo OK, UPDATE event_attendees SET confirmation_id = $confirmationId.
+ *
+ * Devuelve un objeto con `ok` y `note` para feedback al admin.
+ */
+export async function linkAttendeeToConfirmation(
+  attendeeId: string,
+  confirmationId: string,
+): Promise<LinkAttendeeResult> {
+  if (!isRealMode()) {
+    return { ok: false, note: "Supabase no configurado." };
+  }
+  if (!attendeeId || !confirmationId) {
+    return { ok: false, note: "Faltan attendeeId o confirmationId." };
+  }
+  const supabase = createSupabaseAdminClient();
+
+  // 1. Traer el attendee + verificar que es del mismo evento que
+  //    la confirmation (anti-cross-evento). Hacemos una sola query
+  //    con JOIN.
+  const { data: linkData, error: linkErr } = await supabase
+    .from("event_attendees")
+    .select(
+      `
+      id,
+      event_id,
+      confirmation_id,
+      confirmation:event_confirmations ( id, event_id )
+    `,
+    )
+    .eq("id", attendeeId)
+    .maybeSingle();
+
+  if (linkErr || !linkData) {
+    return {
+      ok: false,
+      note: "No se encontro el attendee.",
+    };
+  }
+  if (linkData.confirmation_id) {
+    return {
+      ok: false,
+      note: "Este attendee ya esta matcheado. No se sobreescribe.",
+    };
+  }
+  // El JOIN devuelve `confirmation` como objeto o null (puede ser
+  // array segun version del cliente). Normalizamos.
+  type ConfJoin = { id: string; event_id: string };
+  const confJoin = linkData.confirmation as ConfJoin | ConfJoin[] | null;
+  const linkedConf: ConfJoin | null = Array.isArray(confJoin)
+    ? confJoin[0] ?? null
+    : confJoin;
+  if (linkedConf && linkedConf.id === confirmationId && linkedConf.event_id !== linkData.event_id) {
+    return {
+      ok: false,
+      note: "La confirmation no pertenece al mismo evento.",
+    };
+  }
+
+  // 2. UPDATE
+  const { error: updErr } = await supabase
+    .from("event_attendees")
+    .update({ confirmation_id: confirmationId })
+    .eq("id", attendeeId);
+
+  if (updErr) {
+    // eslint-disable-next-line no-console
+    console.error("[attendees-server] linkAttendeeToConfirmation falló", {
+      code: updErr.code,
+      attendeeId,
+      confirmationId,
+    });
+    return {
+      ok: false,
+      note: `No se pudo matchear (${updErr.code ?? "unknown"}).`,
+    };
+  }
+  return { ok: true, note: "Attendee matcheado con la confirmation." };
+}
+
+/**
+ * Lista las confirmations que todavia NO estan matcheadas con un
+ * attendee. Usado por el dropdown de "Match manual" — la UI solo
+ * muestra opciones que tiene sentido matchear (no las ya vinculadas).
+ */
+export async function getUnmatchedConfirmations(
+  eventId: string,
+): Promise<
+  Array<{
+    id: string;
+    name: string;
+    email: string | null;
+    phone: string | null;
+  }>
+> {
+  if (!isRealMode()) return [];
+  const supabase = createSupabaseAdminClient();
+  // Traemos TODAS las confirmations del evento y FILTRAMOS en memoria
+  // las que ya estan matcheadas con un attendee. Esto evita un subquery
+  // complejo. Si el volumen crece, cambiar a LEFT JOIN.
+  const [{ data: confs, error: confsErr }, { data: links, error: linksErr }] =
+    await Promise.all([
+      supabase
+        .from("event_confirmations")
+        .select("id, name, email, phone_normalized, phone_raw")
+        .eq("event_id", eventId),
+      supabase
+        .from("event_attendees")
+        .select("confirmation_id")
+        .eq("event_id", eventId)
+        .not("confirmation_id", "is", null),
+    ]);
+
+  if (confsErr || linksErr || !confs) return [];
+  const linkedIds = new Set((links ?? []).map((l) => l.confirmation_id).filter(Boolean));
+  return confs
+    .filter((c) => !linkedIds.has(c.id))
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+      email: c.email ?? null,
+      phone: c.phone_normalized ?? c.phone_raw ?? null,
+    }));
+}
+
+// ─────────────────────────────────────────────────────────────
 // Re-export para importador CLI
 // ─────────────────────────────────────────────────────────────
 

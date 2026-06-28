@@ -38,8 +38,11 @@ export {
   getAttendeesByEventId,
   getUnmatchedAttendees,
   createAttendee,
+  linkAttendeeToConfirmation,
+  getUnmatchedConfirmations,
   type CreateAttendeeInput,
   type CreateAttendeeResult,
+  type LinkAttendeeResult,
 } from "./attendees-server";
 
 export {
