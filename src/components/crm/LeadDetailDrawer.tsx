@@ -27,9 +27,11 @@ import {
   createLeadNote,
   fetchLeadTasks,
   createLeadTask,
+  fetchEventContext,
   type OpStatus
 } from "@/lib/crm/ops-client";
 import { mapNoteRow, mapTaskRow, type NoteView, type TaskView } from "@/lib/crm/rows-mapper";
+import type { LeadEventContext } from "@/lib/crm";
 import { formatDate, formatMXN } from "@/lib/utils";
 import { WhatsAppButton } from "@/components/contact/WhatsAppButton";
 
@@ -57,7 +59,8 @@ export function LeadDetailDrawer({
   owners,
   onClose,
   realMode = false,
-  onLeadChanged
+  onLeadChanged,
+  eventContext = null,
 }: {
   lead: Lead;
   owners: SalesOwner[];
@@ -66,6 +69,9 @@ export function LeadDetailDrawer({
   realMode?: boolean;
   /** Callback cuando un PATCH actualiza el lead (p. ej. status). */
   onLeadChanged?: (lead: Lead) => void;
+  /** Si el lead viene de un evento, contexto del mismo (evento + survey).
+   *  `null` o `undefined` si el lead no tiene origen de evento. */
+  eventContext?: LeadEventContext | null;
 }) {
   // Estado local del lead: en modo real puede cambiar al hacer PATCH.
   const [currentLead, setCurrentLead] = useState<Lead>(lead);
@@ -86,6 +92,10 @@ export function LeadDetailDrawer({
   const [realNotes, setRealNotes] = useState<NoteView[] | null>(null);
   const [realTasks, setRealTasks] = useState<TaskView[] | null>(null);
   const [dataError, setDataError] = useState<string | null>(null);
+  /** Contexto del evento del que provino el lead (badge en el header).
+   *  Cargado solo en modo real; null si el lead no tiene origen de evento. */
+  const [fetchedEventContext, setFetchedEventContext] =
+    useState<LeadEventContext | null>(null);
 
   // Cerrar con tecla Escape.
   useEffect(() => {
@@ -103,11 +113,17 @@ export function LeadDetailDrawer({
     setDataError(null);
     setRealNotes(null);
     setRealTasks(null);
-    Promise.all([fetchLeadNotes(currentLead.id), fetchLeadTasks(currentLead.id)])
-      .then(([n, t]) => {
+    setFetchedEventContext(null);
+    Promise.all([
+      fetchLeadNotes(currentLead.id),
+      fetchLeadTasks(currentLead.id),
+      fetchEventContext(currentLead.id),
+    ])
+      .then(([n, t, ec]) => {
         if (cancelled) return;
         setRealNotes(n.map(mapNoteRow));
         setRealTasks(t.map(mapTaskRow));
+        setFetchedEventContext(ec);
       })
       .catch((err) => {
         if (!cancelled) setDataError(err instanceof Error ? err.message : "Error cargando datos.");
@@ -240,6 +256,50 @@ export function LeadDetailDrawer({
             <p className="text-sm text-ink-muted truncate">
               {currentLead.courseOfInterest ?? "Sin curso de interés"}
             </p>
+            {/*
+              Badge de origen del evento (Sub-bloque B de Fase 4). Solo se
+              muestra si el lead tiene un link a un evento en
+              lead_event_links. Da contexto inmediato: "este lead viene del
+              evento X, su interés comercial era Y". El admin no tiene
+              que abrir otra pestaña para saberlo.
+            */}
+            {/*
+              Badge de origen del evento (Sub-bloque B de Fase 4). Solo se
+              muestra si el lead tiene un link a un evento en
+              lead_event_links. Da contexto inmediato: "este lead viene del
+              evento X, su interés comercial era Y". El admin no tiene
+              que abrir otra pestaña para saberlo.
+
+              Precedence: la prop `eventContext` (que el padre, CRMView,
+              puede pre-cargar) gana sobre el fetch interno en realMode.
+              Si la prop es `null` y el padre no la proveyó, usamos el
+              resultado del fetch interno (realMode) o nada (demo).
+            */}
+            {(eventContext ?? fetchedEventContext) && (
+              <div className="mt-2 inline-flex flex-wrap items-center gap-1.5 text-xs bg-brand-50 border border-brand-200 rounded-full pl-1.5 pr-3 py-1 max-w-full">
+                <span className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-brand-500 text-white text-[10px]">
+                  📅
+                </span>
+                <span className="font-semibold text-brand-800 truncate">
+                  De: {(eventContext ?? fetchedEventContext)!.eventTitle}
+                </span>
+                {(eventContext ?? fetchedEventContext)!.linkType === "survey" &&
+                  (eventContext ?? fetchedEventContext)!.commercialInterest && (
+                    <span className="text-ink-muted truncate">
+                      · Interés:{" "}
+                      {(eventContext ?? fetchedEventContext)!.commercialInterest}
+                    </span>
+                  )}
+                {(eventContext ?? fetchedEventContext)!.linkType !== "survey" && (
+                  <span className="text-ink-muted">
+                    ·{" "}
+                    {(eventContext ?? fetchedEventContext)!.linkType === "confirmation"
+                      ? "confirmó"
+                      : "asistió"}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
           <button
             onClick={onClose}

@@ -919,3 +919,94 @@ export async function getLeadsForEvent(
 
   return Array.from(byLeadId.values());
 }
+
+/**
+ * Contexto del evento del que provino un lead.
+ *
+ * Usado por el drawer del CRM (LeadDetailDrawer) para mostrar el badge
+ * "📅 Vino de evento X" cuando un lead tiene source='event'. Devuelve
+ * `null` si el lead no tiene links a eventos (la mayoría de los leads
+ * orgánicos no).
+ *
+ * Si hay múltiples links (poco probable pero posible), devuelve el más
+ * reciente (`ORDER BY created_at DESC LIMIT 1`).
+ *
+ * @server
+ */
+export interface LeadEventContext {
+  eventId: string;
+  eventTitle: string;
+  eventSlug: string;
+  startsAt: string;
+  /** Tipo del link: "confirmation" | "attendee" | "survey". */
+  linkType: LeadEventLinkType;
+  /** Solo si linkType === "survey": interés comercial declarado. */
+  commercialInterest?: string;
+  /** Solo si linkType === "survey": fecha de envío de la encuesta. */
+  surveySubmittedAt?: string;
+}
+
+export async function getEventContextForLead(
+  leadId: string,
+): Promise<LeadEventContext | null> {
+  if (!isRealMode()) return null;
+
+  const supabase = createSupabaseAdminClient();
+
+  // 1. Buscar el link más reciente del lead + datos del evento en JOIN.
+  const { data: linkData, error: linkErr } = await supabase
+    .from("lead_event_links")
+    .select(
+      `
+      link_type,
+      link_id,
+      event:events (id, title, slug, starts_at)
+    `,
+    )
+    .eq("lead_id", leadId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (linkErr) {
+    // eslint-disable-next-line no-console
+    console.error("[leads-server] getEventContextForLead link fetch falló", {
+      code: linkErr.code,
+      leadId,
+    });
+    return null;
+  }
+  if (!linkData) return null;
+
+  // El JOIN de Supabase devuelve `event` como objeto anidado o array
+  // según la versión del cliente. Normalizamos a objeto único.
+  type EventJoin = { id: string; title: string; slug: string; starts_at: string };
+  const eventRaw = linkData.event as EventJoin | EventJoin[] | null;
+  const event: EventJoin | null = Array.isArray(eventRaw)
+    ? eventRaw[0] ?? null
+    : eventRaw;
+  if (!event) return null;
+
+  const result: LeadEventContext = {
+    eventId: event.id,
+    eventTitle: event.title,
+    eventSlug: event.slug,
+    startsAt: event.starts_at,
+    linkType: linkData.link_type as LeadEventLinkType,
+  };
+
+  // 2. Si el link es de tipo survey, traer commercial_interest y fecha.
+  if (result.linkType === "survey") {
+    const { data: survey } = await supabase
+      .from("event_surveys")
+      .select("commercial_interest, submitted_at")
+      .eq("id", linkData.link_id)
+      .maybeSingle();
+    if (survey) {
+      result.commercialInterest = survey.commercial_interest ?? undefined;
+      result.surveySubmittedAt = survey.submitted_at;
+    }
+  }
+
+  return result;
+}

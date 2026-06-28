@@ -16,6 +16,7 @@
 import type { Lead, LeadStatus } from "@/types";
 import type { Event, EventStatus } from "@/types/events";
 import type { CrmNoteRow, CrmTaskRow } from "./crm-rows";
+import type { LeadEventContext } from ".";
 
 /** Máquina de estados para cada operación del drawer. */
 export type OpStatus = "idle" | "loading" | "success" | "error";
@@ -92,6 +93,24 @@ export async function fetchLeadTasks(leadId: string): Promise<CrmTaskRow[]> {
   });
   const data = await parseEnvelope<{ ok: true; tasks: CrmTaskRow[] }>(res);
   return data.tasks;
+}
+
+/**
+ * GET /api/admin/leads/[id]/event-context → contexto del evento del
+ * que provino el lead (o null si el lead no tiene origen de evento).
+ * Usado por el drawer del CRM para mostrar el badge "📅 Vino de evento X".
+ */
+export async function fetchEventContext(
+  leadId: string,
+): Promise<LeadEventContext | null> {
+  const res = await fetch(`/api/admin/leads/${leadId}/event-context`, {
+    cache: "no-store",
+  });
+  const data = await parseEnvelope<{
+    ok: true;
+    context: LeadEventContext | null;
+  }>(res);
+  return data.context;
 }
 
 /** POST /api/admin/leads/[id]/tasks → crea una tarea; la devuelve. */
