@@ -134,6 +134,13 @@ export interface Lead {
   estimatedValueMXN?: number;
   /** Nota corta visible en el card del pipeline. */
   summary?: string;
+  /**
+   * Estado del flujo de WhatsApp manual (Bloque 2 de Fase 4).
+   * Default: "no_contactado". Cambia con `markWhatsAppStatus`.
+   */
+  whatsappStatus?: "no_contactado" | "contactado" | "interested" | "lost";
+  /** Timestamp del ultimo contacto por WhatsApp. */
+  lastContactedAt?: string;
 }
 
 /* ------------------------------------------------------------------ */

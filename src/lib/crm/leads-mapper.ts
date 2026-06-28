@@ -73,6 +73,13 @@ export function mapLeadRowToLead(row: LeadRow): Lead {
       row.estimated_value_mxn == null ? undefined : Number(row.estimated_value_mxn),
     nextFollowUpAt: row.next_follow_up_at ?? undefined,
     consentToContact: row.consent_to_contact,
+    // Bloque 2: estado de WhatsApp follow-up (migration 20260628000000).
+    whatsappStatus: (row.whatsapp_status ?? "no_contactado") as
+      | "no_contactado"
+      | "contactado"
+      | "interested"
+      | "lost",
+    lastContactedAt: row.last_contacted_at ?? undefined,
     // `message` no se expone en el tipo Lead (privacidad); queda en la DB.
     createdAt: row.created_at,
     updatedAt: row.updated_at,

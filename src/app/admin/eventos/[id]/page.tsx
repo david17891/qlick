@@ -17,7 +17,8 @@ import { formatDate } from "@/lib/utils";
 import { filterConfirmations, resolveConfirmationSource } from "@/lib/events/confirmation-filter";
 import { PipelineColumn } from "./_components/PipelineColumn";
 import { PipelineCard } from "./_components/PipelineCard";
-import { markSurveyReviewedAction, unmarkSurveyReviewedAction, linkAttendeeToConfirmationAction } from "./_actions";
+import { markSurveyReviewedAction, unmarkSurveyReviewedAction, linkAttendeeToConfirmationAction, markWhatsAppStatusAction } from "./_actions";
+import { WHATSAPP_STATUSES, WHATSAPP_STATUS_LABEL, WHATSAPP_STATUS_TONE, type WhatsAppStatus } from "@/lib/leads/whatsapp-status";
 import { buildEventBroadcast } from "@/lib/contact/whatsapp";
 import { buildDirectWhatsAppLink, buildLeadOutreachMessage } from "@/lib/contact/whatsapp";
 import { calculateEventMetrics } from "@/lib/events/event-metrics";
@@ -821,7 +822,35 @@ export default async function AdminEventoDetailPage({
                               {l.linkType}
                             </Badge>
                           ))}
+                          <Badge tone={WHATSAPP_STATUS_TONE[(lead.whatsappStatus ?? "no_contactado") as WhatsAppStatus]}>
+                            💬 {WHATSAPP_STATUS_LABEL[(lead.whatsappStatus ?? "no_contactado") as WhatsAppStatus]}
+                          </Badge>
                         </div>
+                        {/* Bloque 2: form para cambiar estado de WhatsApp. */}
+                        <form
+                          action={markWhatsAppStatusAction.bind(null, null)}
+                          className="flex gap-1.5 mt-1.5"
+                        >
+                          <input type="hidden" name="leadId" value={lead.id} />
+                          <input type="hidden" name="eventId" value={event.id} />
+                          <select
+                            name="newStatus"
+                            defaultValue={lead.whatsappStatus ?? "no_contactado"}
+                            className="text-xs border border-brand-200 rounded-md px-1.5 py-1 bg-white"
+                          >
+                            {WHATSAPP_STATUSES.map((s) => (
+                              <option key={s} value={s}>
+                                {WHATSAPP_STATUS_LABEL[s]}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="submit"
+                            className="text-xs px-2 py-1 rounded-md bg-brand-500 text-white hover:bg-brand-600 transition font-semibold"
+                          >
+                            Actualizar
+                          </button>
+                        </form>
                       </div>
                       <Link
                         href={`/admin?tab=crm&leadId=${lead.id}`}
@@ -982,6 +1011,7 @@ export default async function AdminEventoDetailPage({
                       commercialInterest: lead.courseOfInterest ?? undefined,
                     });
                     const waLink = buildDirectWhatsAppLink(lead.phone, message);
+                    const leadStatus = (lead.whatsappStatus ?? "no_contactado") as WhatsAppStatus;
                     return (
                       <PipelineCard
                         key={lead.id}
@@ -991,6 +1021,33 @@ export default async function AdminEventoDetailPage({
                         source={links[0]?.linkType ?? lead.source}
                         action={
                           <div className="flex flex-col gap-1.5">
+                            <Badge tone={WHATSAPP_STATUS_TONE[leadStatus]}>
+                              💬 {WHATSAPP_STATUS_LABEL[leadStatus]}
+                            </Badge>
+                            <form
+                              action={markWhatsAppStatusAction.bind(null, null)}
+                              className="flex gap-1"
+                            >
+                              <input type="hidden" name="leadId" value={lead.id} />
+                              <input type="hidden" name="eventId" value={event.id} />
+                              <select
+                                name="newStatus"
+                                defaultValue={leadStatus}
+                                className="text-xs border border-brand-200 rounded-md px-1 py-0.5 bg-white flex-1 min-w-0"
+                              >
+                                {WHATSAPP_STATUSES.map((s) => (
+                                  <option key={s} value={s}>
+                                    {WHATSAPP_STATUS_LABEL[s]}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                type="submit"
+                                className="text-[10px] px-1.5 py-0.5 rounded bg-brand-500 text-white hover:bg-brand-600 transition font-semibold"
+                              >
+                                ✓
+                              </button>
+                            </form>
                             {waLink ? (
                               <a
                                 href={waLink}

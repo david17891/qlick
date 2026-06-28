@@ -15,6 +15,7 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth/session";
 import { markSurveyReviewed } from "@/lib/events/surveys-server";
 import { linkAttendeeToConfirmation } from "@/lib/events/attendees-server";
+import { markWhatsAppStatus, isValidWhatsAppStatus, type WhatsAppStatus } from "@/lib/leads/whatsapp-status";
 
 export interface FormState {
   ok: boolean;
@@ -119,5 +120,48 @@ export async function linkAttendeeToConfirmationAction(
 
   const result = await linkAttendeeToConfirmation(attendeeId, confirmationId);
   revalidatePath(`/admin/eventos/${eventId}`);
+  return { ok: result.ok, note: result.note };
+}
+
+/**
+ * Cambia el estado de WhatsApp de un lead. Loggea el cambio en
+ * `lead_whatsapp_log` (audit append-only).
+ *
+ * FormData: leadId, newStatus, eventId (opcional, para trazabilidad),
+ * messagePreview (opcional, primeros 200 chars del mensaje enviado).
+ */
+export async function markWhatsAppStatusAction(
+  _prev: FormState | null,
+  formData: FormData,
+): Promise<FormState> {
+  const admin = await requireAdmin();
+  if (!admin) {
+    return { ok: false, note: "No autenticado como admin." };
+  }
+
+  const leadId = formData.get("leadId");
+  const newStatus = formData.get("newStatus");
+  const eventId = formData.get("eventId");
+  const messagePreview = formData.get("messagePreview");
+  if (typeof leadId !== "string" || typeof newStatus !== "string") {
+    return { ok: false, note: "Faltan leadId o newStatus." };
+  }
+  if (!isValidWhatsAppStatus(newStatus)) {
+    return { ok: false, note: `Estado invalido: ${newStatus}.` };
+  }
+
+  const result = await markWhatsAppStatus({
+    leadId,
+    newStatus: newStatus as WhatsAppStatus,
+    actorEmail: admin.email ?? null,
+    eventId: typeof eventId === "string" && eventId ? eventId : null,
+    messagePreview:
+      typeof messagePreview === "string" && messagePreview
+        ? messagePreview.slice(0, 200)
+        : null,
+  });
+  if (typeof eventId === "string" && eventId) {
+    revalidatePath(`/admin/eventos/${eventId}`);
+  }
   return { ok: result.ok, note: result.note };
 }
