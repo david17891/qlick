@@ -326,6 +326,50 @@ lo que el typegen regenere.
     `C:\Users\User\mobile_masterclass_detail.png`,
     `C:\Users\User\mobile_admin_supabase.png`,
     `C:\Users\User\mobile_admin_import.png`.
+- **🟢 Bloque 4 — Cierre Fase 4 (6 commits, +1300 lineas de docs)**
+  - **`c3c0ea6` fix(events): fuzzy match desactivado para headers cortos**
+    - Bug en `levenshteinLE` de `importer.ts`: threshold ≤2 era demasiado
+      agresivo para strings ≤3 chars (un edit es 33-50% del string, ambiguo).
+      Casos rotos: `resolveHeader("a") → email_yes` (matcheaba "1" con
+      Levenshtein 1), `resolveHeader("Foo") → email_yes` (matcheaba "ok" con
+      Levenshtein 2).
+    - Fix: fuzzy match desactivado para `minLen ≤ 3` (devuelve `false`).
+      Exact match sigue funcionando (loop previo en `resolveHeader`).
+    - Cierra 2 tests pre-existentes que estaban fallando desde Bloque 3
+      (`resolveHeader: headers desconocidos → null` y
+      `parseXlsxForImport: sin headers reconocibles devuelve warnings, no rows`).
+    - **Tests: 96/98 → 98/98** (2 fails cerrados).
+  - **`9e9ca5f` docs(admin): EVENTS_ADMIN_GUIDE.md (620 lineas)**
+    - Manual operativo completo del panel admin de eventos.
+    - 13 secciones: acceso, lista eventos, detail (4 tabs), pipeline view,
+      wizard import, EventDrawer, drawer del lead (CRM), workflow post-evento,
+      WhatsApp workflow, estados del evento, troubleshooting, permisos/seguridad,
+      glosario, schema quick reference + apendices (comandos utiles, refs cruzadas).
+    - Single source of truth para David y futuros admins.
+  - **`d752cb5` docs(demo): demo-socios.html (276 lineas)**
+    - 1-pager HTML self-contained con brand colors para mostrar a socios.
+    - Hero "De Excel manual a plataforma funcional en un dia".
+    - Secciones: Antes/Despues, Quick Wins (6 cards), Por los numeros, Stack, Cierre.
+    - Usar Tailwind CDN (sin build step). Abrir en cualquier browser.
+  - **`2db8ada` docs: CHANGELOG.md (161 lineas)**
+    - Release notes consolidadas. Convencion Keep a Changelog en espanol.
+    - Covers [Unreleased] Fase 4 + [v0.7.0] Fase 3 + [v0.9.0] LMS + [v1.0.x] Entitlements.
+    - Single source of truth para historial de releases.
+  - **`896bab4` docs: PRE_MERGE_CHECKLIST.md (157 lineas)**
+    - Gate explicito antes de mergear `feat/admin-eventos` a `main`.
+    - 9 secciones de checks: calidad tecnica, seguridad, funcionalidad,
+      documentacion, testing manual, decisiones pendientes, riesgos, pasos
+      de merge, post-merge.
+    - David marca cada item antes de aprobar el merge.
+- **🟢 Estado final Fase 4 (2026-06-28 06:00)**
+  - **Branch:** `feat/admin-eventos` — 19 commits ahead of origin.
+  - **Tests:** 98/98 ✅.
+  - **Type-check:** ✅ · **Lint:** ✅.
+  - **Manual:** `docs/EVENTS_ADMIN_GUIDE.md`.
+  - **Demo:** `docs/demo-socios.html` (abrir en browser).
+  - **Release notes:** `CHANGELOG.md`.
+  - **Merge gate:** `docs/PRE_MERGE_CHECKLIST.md`.
+  - **Pendiente:** push de David (`git push`) + PR + review + merge a main.
 - **Bloque 4**: Cierre (EVENTS_ADMIN_GUIDE.md, plan review con David).
 
 ### 🟠 Auditoría externa 2026-06-27 — Hallazgos y cierres
