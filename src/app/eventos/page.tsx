@@ -130,14 +130,30 @@ function EventCard({
     <Link href={`/eventos/${event.slug}`} className="group block">
       <Card className="overflow-hidden h-full transition group-hover:shadow-md group-hover:border-brand-300">
         {/*
-          Decisión B-5: cover visual siempre con gradiente de marca. Las
-          imágenes de portada quedaron fuera de scope (debug problemático,
-          costo de mantener assets). Si en el futuro se reactiva, ver
-          OPEN_ITEMS.md → B-5. El campo `cover_image_url` se conserva en DB
-          para no romper compat.
+          B-5 v2: cover visual con gradiente de marca + título del evento.
+          Consistente con la página, no depende de assets externos, único
+          por evento (no emoji genérico repetido en todas las cards).
+          El campo `cover_image_url` en DB se conserva por compat con
+          imports previos. Ver `docs/OPEN_ITEMS.md` → B-5.
         */}
-        <div className="w-full h-40 bg-brand-gradient flex items-center justify-center text-white text-3xl font-bold">
-          🎟️
+        <div className="relative w-full h-40 overflow-hidden bg-gradient-to-br from-brand-700 via-brand-500 to-brand-400 group-hover:scale-[1.02] transition-transform duration-300">
+          {/* Patrón sutil para textura, no dominante */}
+          <div
+            aria-hidden="true"
+            className="absolute inset-0 opacity-20"
+            style={{
+              backgroundImage:
+                "radial-gradient(circle at 20% 80%, white 0%, transparent 40%), radial-gradient(circle at 80% 20%, white 0%, transparent 35%)",
+            }}
+          />
+          {/* Título del evento — heading semántico, bold, line-clamp para
+              títulos largos. Color blanco con drop-shadow para contraste
+              sobre el gradiente. */}
+          <div className="relative h-full flex items-end p-4">
+            <h3 className="text-white font-bold text-lg leading-tight drop-shadow-md line-clamp-3">
+              {event.title}
+            </h3>
+          </div>
         </div>
         <div className="p-5 space-y-3">
           <div className="flex items-center justify-between gap-2">
@@ -146,9 +162,6 @@ function EventCard({
             </Badge>
             <span className="text-xs text-ink-muted">Evento Qlick</span>
           </div>
-          <h3 className="text-lg font-bold text-ink leading-tight group-hover:text-brand-700 transition">
-            {event.title}
-          </h3>
           {event.description && (
             <p className="text-sm text-ink-soft line-clamp-2">
               {event.description}

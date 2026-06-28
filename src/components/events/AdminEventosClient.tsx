@@ -79,30 +79,28 @@ export function AdminEventosClient({
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {initialSummaries.map((s) => (
           <Card key={s.event.id} className="!p-0 !overflow-hidden flex flex-col">
-            {s.event.coverImageUrl ? (
-              /*
-                Wrapper dedicado con altura fija + overflow hidden.
-                Cierra B-5: el Card padre usa `flex flex-col` y por defecto
-                los flex items crecen (`align-items: stretch` + min-height auto),
-                lo que hacia que la imagen desbordara los 128px aunque
-                tuviéramos `height: 128px` + `object-fit: cover`. El wrapper
-                es un block normal con dimensiones explícitas, garantiza el
-                recorte.
-              */
-              <div className="w-full h-32 overflow-hidden bg-brand-50">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={s.event.coverImageUrl}
-                  alt={`Portada de ${s.event.title}`}
-                  loading="lazy"
-                  className="block w-full h-32 object-cover"
-                />
+            {/*
+              B-5 v2 (cierre en admin): cover visual siempre con gradiente
+              de marca + título del evento, idéntico al patrón del catálogo
+              público (`/eventos`). Consistente, no depende de assets
+              externos. El campo `cover_image_url` en DB se conserva por
+              compat. Ver `docs/OPEN_ITEMS.md` → B-5.
+            */}
+            <div className="relative w-full h-32 overflow-hidden bg-gradient-to-br from-brand-700 via-brand-500 to-brand-400">
+              <div
+                aria-hidden="true"
+                className="absolute inset-0 opacity-20"
+                style={{
+                  backgroundImage:
+                    "radial-gradient(circle at 20% 80%, white 0%, transparent 40%), radial-gradient(circle at 80% 20%, white 0%, transparent 35%)",
+                }}
+              />
+              <div className="relative h-full flex items-end p-3">
+                <h3 className="text-white font-bold text-sm leading-tight drop-shadow-md line-clamp-2">
+                  {s.event.title}
+                </h3>
               </div>
-            ) : (
-              <div className="w-full h-32 bg-gradient-to-br from-brand-100 to-brand-50 flex items-center justify-center text-brand-300 text-xs">
-                sin portada
-              </div>
-            )}
+            </div>
             <div className="p-5 flex flex-col flex-1">
               <div className="flex items-center justify-between mb-2">
                 <Badge
@@ -122,9 +120,8 @@ export function AdminEventosClient({
                 </Badge>
                 <span className="text-xs text-ink-muted">/{s.event.slug}</span>
               </div>
-              <h2 className="font-bold text-ink text-lg leading-tight mb-1">
-                {s.event.title}
-              </h2>
+              {/* El título ya está en el cover del card (gradient + h3).
+                  No lo duplicamos acá. */}
               {s.event.description && (
                 <p className="text-sm text-ink-soft line-clamp-2 mb-3">
                   {s.event.description}
