@@ -16,6 +16,7 @@ import { formatDate } from "@/lib/utils";
 
 interface Props {
   params: { id: string };
+  searchParams: { tab?: string };
 }
 
 export const dynamic = "force-dynamic";
@@ -30,6 +31,23 @@ export async function generateMetadata({ params }: Props) {
   };
 }
 
+/**
+ * Tabs disponibles en `/admin/eventos/[id]`. URL-driven (server-side,
+ * sin JS adicional): el admin hace click en un pill y la URL cambia a
+ * `?tab=<id>`. Default: "confirmations".
+ *
+ * Mantener en sync con los condicionales `{activeTab === "..." && ...}`
+ * más abajo y con el array `tabs` que renderiza los pills.
+ */
+type EventDetailTab = "confirmations" | "attendees" | "surveys" | "leads";
+const VALID_TABS: readonly EventDetailTab[] = [
+  "confirmations",
+  "attendees",
+  "surveys",
+  "leads",
+] as const;
+const DEFAULT_TAB: EventDetailTab = "confirmations";
+
 const statusTone = {
   published: "success" as const,
   draft: "warning" as const,
@@ -42,11 +60,24 @@ const statusLabel = {
   archived: "Archivado",
 };
 
-export default async function AdminEventoDetailPage({ params }: Props) {
+export default async function AdminEventoDetailPage({
+  params,
+  searchParams,
+}: Props) {
   const admin = await requireAdmin();
   if (!admin) {
     notFound();
   }
+
+  // Resolver tab activo desde query string. Si llega un valor
+  // desconocido (ej. ?tab=xyz), caemos al default para no romper la
+  // página ni exponer un estado vacío raro.
+  const requestedTab = searchParams.tab;
+  const activeTab: EventDetailTab = (
+    VALID_TABS as readonly string[]
+  ).includes(requestedTab ?? "")
+    ? (requestedTab as EventDetailTab)
+    : DEFAULT_TAB;
 
   // Fetch del evento + 4 datasets en paralelo. El admin abre esta
   // página para ver "todo lo relacionado con este evento", así que
@@ -80,6 +111,20 @@ export default async function AdminEventoDetailPage({ params }: Props) {
     (s) => s.consentToContact,
   ).length;
   const leadsPromoted = leadsWithLinks.length;
+
+  // Pills de tabs. Mismo patrón visual que `AdminView.tsx` (pills
+  // redondos, activo lleno de brand, inactivos hover brand-50).
+  const tabs: Array<{
+    id: EventDetailTab;
+    label: string;
+    icon: string;
+    count: number;
+  }> = [
+    { id: "confirmations", label: "Confirmados", icon: "📋", count: confirmedCount },
+    { id: "attendees", label: "Asistentes", icon: "✅", count: attendedCount },
+    { id: "surveys", label: "Encuestas", icon: "📝", count: surveysCount },
+    { id: "leads", label: "Leads promovidos", icon: "🧲", count: leadsPromoted },
+  ];
 
   return (
     <>
@@ -143,11 +188,52 @@ export default async function AdminEventoDetailPage({ params }: Props) {
             </div>
           </Card>
 
-          {/* Sección 1: Confirmados */}
-          <Section
-            title="Confirmados"
-            subtitle={`${confirmedCount} personas dijeron que iban. Aún no sabemos si vinieron.`}
+          {/* Pills de tabs (URL-driven: ?tab=confirmations|attendance|surveys|leads).
+              Server-side, sin JS: cada pill es un Link que cambia el search param. */}
+          <div
+            role="tablist"
+            aria-label="Secciones del detalle del evento"
+            className="flex flex-wrap items-center gap-2 mb-6 border-b border-brand-100 pb-3"
           >
+            {tabs.map((t) => {
+              const isActive = activeTab === t.id;
+              return (
+                <Link
+                  key={t.id}
+                  href={`/admin/eventos/${event.id}?tab=${t.id}`}
+                  role="tab"
+                  aria-selected={isActive}
+                  scroll={false}
+                  className={
+                    "inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold transition whitespace-nowrap " +
+                    (isActive
+                      ? "bg-brand-500 text-white"
+                      : "text-ink-soft hover:bg-brand-50")
+                  }
+                >
+                  <span aria-hidden="true">{t.icon}</span>
+                  {t.label}
+                  <span
+                    className={
+                      "ml-1 inline-flex items-center justify-center min-w-[1.5rem] h-5 px-1.5 rounded-full text-xs " +
+                      (isActive
+                        ? "bg-white/25 text-white"
+                        : "bg-brand-50 text-brand-700")
+                    }
+                  >
+                    {t.count}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+
+          {/* Sección 1: Confirmados */}
+          {activeTab === "confirmations" && (
+            <Section
+              title="Confirmados"
+              subtitle={`${confirmedCount} personas dijeron que iban. Aún no sabemos si vinieron.`}
+            >
             {confirmations.length === 0 ? (
               <EmptyState
                 title="Sin confirmaciones aún"
@@ -173,12 +259,14 @@ export default async function AdminEventoDetailPage({ params }: Props) {
               </Table>
             )}
           </Section>
+          )}
 
           {/* Sección 2: Asistentes */}
-          <Section
-            title="Asistentes"
-            subtitle={`${attendedCount} check-ins registrados. ${unmatchedCount} vinieron sin confirmar antes (asistió "walk-in").`}
-          >
+          {activeTab === "attendees" && (
+            <Section
+              title="Asistentes"
+              subtitle={`${attendedCount} check-ins registrados. ${unmatchedCount} vinieron sin confirmar antes (asistió "walk-in").`}
+            >
             {attendees.length === 0 ? (
               <EmptyState
                 title="Aún sin asistentes"
@@ -217,12 +305,14 @@ export default async function AdminEventoDetailPage({ params }: Props) {
               </Table>
             )}
           </Section>
+          )}
 
           {/* Sección 3: Encuestas */}
-          <Section
-            title="Encuestas"
-            subtitle={`${surveysCount} respuestas · ${surveysWithConsent} con consentimiento comercial · ${surveysCount - surveysWithConsent} sin consentimiento (visibilidad, no se promovieron a lead).`}
-          >
+          {activeTab === "surveys" && (
+            <Section
+              title="Encuestas"
+              subtitle={`${surveysCount} respuestas · ${surveysWithConsent} con consentimiento comercial · ${surveysCount - surveysWithConsent} sin consentimiento (visibilidad, no se promovieron a lead).`}
+            >
             {surveys.length === 0 ? (
               <EmptyState
                 title="Sin encuestas aún"
@@ -264,12 +354,14 @@ export default async function AdminEventoDetailPage({ params }: Props) {
               </Table>
             )}
           </Section>
+          )}
 
           {/* Sección 4: Leads promovidos */}
-          <Section
-            title="Leads promovidos desde este evento"
-            subtitle={`${leadsPromoted} leads generados a partir de encuestas con consent o confirmados con datos.`}
-          >
+          {activeTab === "leads" && (
+            <Section
+              title="Leads promovidos desde este evento"
+              subtitle={`${leadsPromoted} leads generados a partir de encuestas con consent o confirmados con datos.`}
+            >
             {leadsWithLinks.length === 0 ? (
               <EmptyState
                 title="Sin leads aún"
@@ -312,6 +404,7 @@ export default async function AdminEventoDetailPage({ params }: Props) {
               </ul>
             )}
           </Section>
+          )}
         </Container>
       </main>
       <Footer />
