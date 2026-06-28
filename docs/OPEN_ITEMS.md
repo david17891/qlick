@@ -21,20 +21,63 @@
 
 ## 1. Deuda técnica activa
 
-### ⚪ Sesión 2026-06-27 (sábado) — 13 commits de cierre de Fase 4
+### 🟡 Sesión 2026-06-28 (domingo, madrugada) — Auto-evaluación visual con Playwright MCP (cerrada por límite de 5h)
+
+**Branch:** `feat/admin-eventos`. Working tree limpio. **NO se aplicaron fixes** — solo screenshots y hallazgos documentados. Próxima sesión los aborda.
+
+**Pantallas inspeccionadas (viewport ~1040×663, fullPage):**
+
+| Pantalla | URL | Estado | Hallazgo |
+|---|---|---|---|
+| Catálogo público | `/eventos` | ✅ OK | 3 cards, gradiente B-5 v2, h3 visible. Falsa alarma de "Ejemplo" sin texto — sí está, es 1 palabra corta. |
+| Detalle público taller | `/eventos/taller-funnels-venta-cdmx` | ⚠️ 2 issues | (a) Console: 1 hydration warning `Extra attributes from the server: style` en Input. (b) **Typo en DB**: descripción dice "disenar" y "conversion" sin acentos. |
+| Detalle público taller — form | (mismo) | ✅ OK | Nombre + Email/Tel (50/50), honeypot con `left:-10000px`, consentimiento obligatorio, CTA prominente. |
+| Home | `/` | ✅ OK | Hero, features grid, cursos destacados, testimonios, instructores, CTA, footer. Sin issues. |
+| Login alumno | `/login` | ✅ OK | Google OAuth + badge "Acceso con tu cuenta Google · un toque y adentro" + link a `/admin/login`. |
+| Admin login | `/admin/login` | ✅ OK | Email field + "Enviar enlace mágico" + link a login alumno. |
+
+**Pendientes para próxima sesión:**
+
+1. 🟡 **Hydration warning en Input.tsx** (`src/components/ui/Input.tsx:13`)
+   - `Warning: Extra attributes from the server: %s%s style at input`
+   - Probable causa: extensión de browser (password manager) inyecta `style` en inputs. Confirmado que NO viene de nuestro código.
+   - Fix defensivo sugerido: agregar `suppressHydrationWarning` al `<input>` (Next.js doc lo recomienda para extensiones).
+   - Impacto: cosmético (warning en console), sin efecto funcional.
+
+2. 🟡 **Typo en seed del taller funnels-vente** (DB, 1 fila)
+   - Tabla `events`, slug `taller-funnels-venta-cdmx`.
+   - Campo `description`: "disenar funnels" + "conversion" (sin acentos).
+   - Fix: `UPDATE events SET description = REPLACE(REPLACE(description, 'disenar', 'diseñar'), 'conversion', 'conversión') WHERE slug = 'taller-funnels-venta-cdmx';`
+   - Necesita luz verde de David antes de tocar DB.
+   - Impacto: cosmético en copy pública. Visible para cualquier visitante del detail público.
+
+**No inspeccionadas (limitaciones):**
+
+- ❌ `/admin/**` — magic link de Supabase Auth bloquea Playwright. David abre en su navegador y captura si quiere.
+- ❌ Tests end-to-end con flujos reales (form submit, server action mutation) — sin auth.
+- ❌ Mobile (375px viewport) — no se probó responsive.
+- ❌ `/cursos`, `/contacto`, `/acerca`, `/beneficios`, `/faq`, `/privacidad`, `/dashboard`, `/mi-panel` — no visitadas.
+- ❌ `/eventos/qa-fase4-demo` (el evento demo principal) — solo el taller.
+
+**Decisión de cierre:** documentación > fix, dado que ya superamos presupuesto de cómputo y quedan 2 items triviales para próxima sesión (un `UPDATE` de DB + un `suppressHydrationWarning` en Input.tsx).
+
+---
+
+### ✅ Sesión 2026-06-27 (sábado) — 13 commits de cierre de Fase 4
 
 Branch: `feat/admin-eventos`. Working tree limpio al cierre.
 
-**Migrations pendientes de aplicar en Supabase** (proxima sesion):
+**Migrations aplicadas** (David las aplicó en Supabase Dashboard durante esta sesión):
 - `20260627010000_funnel_hardening.sql` — race conditions, unique constraints (auditor)
 - `20260627020000_survey_reviewed.sql` — `reviewed_at` + `reviewed_by` en `event_surveys`
 - `20260628000000_whatsapp_followup.sql` — `whatsapp_status` + tabla `lead_whatsapp_log`
 
 **Typegen**: hay 2 ediciones manuales en `src/types/supabase.ts` (los patches que
 agregaron `leads.phone_normalized` y `whatsapp_status` + tabla `lead_whatsapp_log`).
-Re-generar con `npx supabase gen types typescript` despues de aplicar TODAS las
-migrations. Si el diff es solo reordenamiento, descartar mis edits. Si hay
-columnas nuevas que mi edicion no tenia (de la migration 28000000), preservar
+David corrió `npx supabase gen types typescript` y los patches manuales se
+preservaron. **Próxima sesión**: verificar con `git diff src/types/supabase.ts`
+que no haya drift vs. migrations aplicadas. Si todo cuadra, los patches manuales
+pueden dejarse como están.
 lo que el typegen regenere.
 
 **Commits del dia (13 en `feat/admin-eventos`)**:
