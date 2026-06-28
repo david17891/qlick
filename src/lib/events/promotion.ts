@@ -218,6 +218,23 @@ export async function promoteSurveyToLead(
     });
   }
 
+  // 9. Notificación al admin (Fase 5 Bloque 1).
+  // Best-effort: si falla el email, NO rollbackeamos la promoción.
+  // El lead ya está creado y linkado; el admin puede enterarse igual
+  // abriendo el CRM manualmente. Loggeamos para debugging.
+  //
+  // Usamos los datos que ya tenemos a mano (leadInput, survey, event)
+  // en vez de hacer un SELECT extra del lead. El `CreateLeadFromEventResult`
+  // solo expone leadId, no el objeto completo.
+  await sendAdminNotificationForNewLead({
+    leadId: leadResult.leadId,
+    leadName: leadInput.name,
+    leadEmail: survey.respondentEmail ?? leadInput.email ?? "(sin email)",
+    leadPhone: survey.respondentPhone ?? leadInput.phone ?? null,
+    eventTitle: event.title as string,
+    commercialInterest: survey.commercialInterest,
+  });
+
   return {
     ok: true,
     promoted: true,
@@ -228,6 +245,59 @@ export async function promoteSurveyToLead(
         ? "Encuesta promovida; lead nuevo creado."
         : "Encuesta promovida; lead existente reutilizado.",
   };
+}
+
+/**
+ * Helper interno: manda el email de notificación al admin.
+ * Encapsulado para mantener `promoteSurveyToLead` limpio y para poder
+ * mockearlo en tests.
+ *
+ * Lee `ADMIN_NOTIFICATION_EMAILS` (CSV) del env. Si está vacío, NO manda
+ * (solo loggea warning).
+ */
+async function sendAdminNotificationForNewLead(input: {
+  leadId: string;
+  leadName: string;
+  leadEmail: string;
+  leadPhone: string | null;
+  eventTitle: string;
+  commercialInterest?: string | null;
+}): Promise<void> {
+  const adminEmails = process.env.ADMIN_NOTIFICATION_EMAILS?.trim();
+  if (!adminEmails) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[promotion] ADMIN_NOTIFICATION_EMAILS no configurado — email no enviado.",
+    );
+    return;
+  }
+
+  const { sendEmail } = await import("@/lib/email/resend-client");
+  const { renderSurveyWithConsentEmail } = await import(
+    "@/lib/email/templates/survey-with-consent"
+  );
+
+  const { subject, html } = renderSurveyWithConsentEmail({
+    leadName: input.leadName,
+    leadEmail: input.leadEmail,
+    leadPhone: input.leadPhone,
+    eventTitle: input.eventTitle,
+    commercialInterest: input.commercialInterest ?? null,
+    leadId: input.leadId,
+  });
+
+  const result = await sendEmail({
+    to: adminEmails,
+    subject,
+    html,
+  });
+
+  if (!result.ok) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[promotion] notificación admin falló: ${result.error ?? "(sin error)"}`,
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────
