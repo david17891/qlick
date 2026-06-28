@@ -12,3 +12,4 @@ export {
   Spinner,
   SectionHeading
 } from "./Feedback";
+export { SubmitButton } from "./SubmitButton";
