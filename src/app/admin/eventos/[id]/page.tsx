@@ -13,6 +13,7 @@ import {
 } from "@/lib/events";
 import { getLeadsForEvent } from "@/lib/crm";
 import { formatDate } from "@/lib/utils";
+import { filterConfirmations, resolveConfirmationSource } from "@/lib/events/confirmation-filter";
 
 interface Props {
   params: { id: string };
@@ -85,23 +86,11 @@ export default async function AdminEventoDetailPage({
     ? (requestedTab as EventDetailTab)
     : DEFAULT_TAB;
 
-  // Filtros de Confirmados. Se aplican client-side (en el server
-  // component) sobre el array que ya devuelve `getConfirmationsByEventId`.
-  // La query a Supabase es barata para volúmenes esperados (~50-100
-  // confirmados por evento); si creciera a 1000+, mover el filtro al
-  // server lib con `ilike` + `eq` server-side.
-  const CONFIRMATION_SOURCES = [
-    "imported_excel",
-    "public_form",
-    "manual",
-  ] as const;
-  type ConfirmationSource = (typeof CONFIRMATION_SOURCES)[number];
+  // Filtros de Confirmados. Se aplican via `filterConfirmations`
+  // (función pura en `src/lib/events/confirmation-filter.ts`,
+  // testeada en `tests/confirmation-filter.test.mjs`).
   const rawSource = searchParams.source ?? "";
-  const activeSource: ConfirmationSource | "" = (
-    CONFIRMATION_SOURCES as readonly string[]
-  ).includes(rawSource)
-    ? (rawSource as ConfirmationSource)
-    : "";
+  const activeSource = resolveConfirmationSource(rawSource);
   const searchQuery = (searchParams.q ?? "").trim();
 
   /** Helper para construir URLs de tab preservando los filtros activos. */
@@ -264,27 +253,14 @@ export default async function AdminEventoDetailPage({
 
           {/* Sección 1: Confirmados */}
           {activeTab === "confirmations" && (() => {
-            // Filtrado client-side (en el server component) sobre el array
-            // que ya devuelve getConfirmationsByEventId. Case-insensitive
-            // contra name/email/phoneRaw/phoneNormalized.
-            const normalizedQ = searchQuery.toLowerCase();
-            const filteredConfirmations = confirmations.filter((c) => {
-              if (activeSource && c.source !== activeSource) return false;
-              if (normalizedQ) {
-                const haystack = [
-                  c.name,
-                  c.email,
-                  c.phoneRaw,
-                  c.phoneNormalized,
-                ]
-                  .filter((v): v is string => Boolean(v))
-                  .join(" ")
-                  .toLowerCase();
-                if (!haystack.includes(normalizedQ)) return false;
-              }
-              return true;
-            });
-            const isFiltered = Boolean(searchQuery) || Boolean(activeSource);
+            // Filtrado via `filterConfirmations` (puro, testeado en
+            // `tests/confirmation-filter.test.mjs`).
+            const { filtered: filteredConfirmations, isFiltered } =
+              filterConfirmations({
+                confirmations,
+                query: searchQuery,
+                source: activeSource,
+              });
             return (
               <Section
                 title="Confirmados"
