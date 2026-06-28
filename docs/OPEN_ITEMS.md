@@ -21,6 +21,60 @@
 
 ## 1. Deuda técnica activa
 
+### ⚪ Sesión 2026-06-27 (sábado) — 13 commits de cierre de Fase 4
+
+Branch: `feat/admin-eventos`. Working tree limpio al cierre.
+
+**Migrations pendientes de aplicar en Supabase** (proxima sesion):
+- `20260627010000_funnel_hardening.sql` — race conditions, unique constraints (auditor)
+- `20260627020000_survey_reviewed.sql` — `reviewed_at` + `reviewed_by` en `event_surveys`
+- `20260628000000_whatsapp_followup.sql` — `whatsapp_status` + tabla `lead_whatsapp_log`
+
+**Typegen**: hay 2 ediciones manuales en `src/types/supabase.ts` (los patches que
+agregaron `leads.phone_normalized` y `whatsapp_status` + tabla `lead_whatsapp_log`).
+Re-generar con `npx supabase gen types typescript` despues de aplicar TODAS las
+migrations. Si el diff es solo reordenamiento, descartar mis edits. Si hay
+columnas nuevas que mi edicion no tenia (de la migration 28000000), preservar
+lo que el typegen regenere.
+
+**Commits del dia (13 en `feat/admin-eventos`)**:
+
+| Commit | Tipo | Resumen |
+|---|---|---|
+| `6224192` | fix | B-5 v2: cover con gradiente + titulo del evento |
+| `dcb0ce7` | feat | Drawer del lead con badge "Vino de evento X" (Sub-bloque B) |
+| `cd86f45` | fix | Funnel hardening (auditor): race + PII |
+| `e777d68` | chore | Helper `_get-event-id.mjs` |
+| `7f9fd95` | docs | Paperwork auditoria |
+| `2f28e01` | fix | Fix leads.phone_normalized (migration que no se aplicaba) |
+| `329da7c` | feat | Pipeline view (Kanban 5 columnas) |
+| `6e4d3ed` | feat | Capa 4: Marcar encuestas como revisadas |
+| `d3233c8` | feat | Broadcast WhatsApp a TODOS los confirmados |
+| `fdd08de` | feat | Sub-bloque C base: WhatsApp directo al lead |
+| `db8658f` | feat | Bloque 1: Match manual attendee<->confirmation + des-marcar |
+| `60f7809` | feat | Bloque 1C: Metricas de conversion del funnel |
+| `2ed6b29` | feat | Bloque 2: Estados WhatsApp follow-up + audit log |
+
+**Tests: 62 pasando** (filtro + broadcast + lead link + metrics + whatsapp-status).
+
+**Scope de Fase 4 cerrado por este batch**:
+- [x] `/admin/eventos/[id]` detalle con tabs navegables
+- [x] Filtros y busqueda en Confirmados
+- [x] Pipeline view (5 columnas con conteos)
+- [x] Acciones por nivel: match manual, marcar/des-marcar revisada, WhatsApp directo, broadcast
+- [x] Metricas de conversion reales (4 ratios)
+- [x] Estados de WhatsApp follow-up + audit log (no_contactado -> contactado -> interested/lost)
+- [x] Drawer del lead con contexto del evento
+- [x] Auditoria externa (race + PII)
+- [x] Cover con gradiente + titulo (B-5 v2)
+
+**Queda abierto en Fase 4** (para proximas sesiones):
+- **2E**: Historial de contactos WhatsApp en el drawer del CRM (re-uso del
+  endpoint `lead_interactions` — solo UI, server lib ya existe).
+- **Bloque 3**: Robustez & polish de admin (empty states diseñados, loading
+  states explicitos, error handling, validacion de inputs, mobile-friendly).
+- **Bloque 4**: Cierre (EVENTS_ADMIN_GUIDE.md, plan review con David).
+
 ### 🟠 Auditoría externa 2026-06-27 — Hallazgos y cierres
 
 Auditoría externa independiente (sesión separada, sin tocar archivos).
