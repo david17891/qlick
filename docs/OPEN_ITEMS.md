@@ -286,7 +286,23 @@ lo que el typegen regenere.
       `set("field", value)` limpia el error del field en cuanto el usuario
       empieza a corregirlo.
     - Verificado: `type-check` ✅, `lint` ✅.
-  - **3F mobile polish** — ⏳ Pendiente.
+  - **3F mobile polish** — ✅ **CERRADO en `705cb59`**.
+    - Auditadas con Playwright MCP viewport 375×812 las 4 paginas pendientes:
+      `/admin/masterclass`, `/admin/masterclass/[id]`, `/admin/system/supabase`,
+      `/admin/eventos/[id]/import`.
+    - Hallazgos (codigo) + verificados visualmente:
+      - `/admin/masterclass/[id]` line 112: `grid-cols-4` (4 metric boxes) →
+        `grid-cols-2 sm:grid-cols-4` (2 cols en mobile, 4 en tablet+). Sin
+        este fix las cajas quedaban ~85px cada una con texto apretado.
+      - `ImportWizard.tsx` line 436: `grid-cols-4` (stats del summary) →
+        `grid-cols-2 sm:grid-cols-4`.
+    - Sin overflow horizontal en ninguna de las 4 paginas
+      (`scrollWidth=366 < width=375`).
+    - Console limpio (0 errors, 0 warnings salvo INFO de React DevTools).
+    - Screenshots archivados en `C:\Users\User\AppData\Local\Temp\`:
+      `mobile_masterclass_list.png`, `mobile_masterclass_detail.png`,
+      `mobile_admin_supabase.png`, `mobile_admin_import.png`.
+    - Verificado: `type-check` ✅, `lint` ✅.
 - **Bloque 4**: Cierre (EVENTS_ADMIN_GUIDE.md, plan review con David).
 
 ### 🟠 Auditoría externa 2026-06-27 — Hallazgos y cierres
