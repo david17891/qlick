@@ -100,6 +100,10 @@ export function EventDrawer({
   const [pendingStatusChange, setPendingStatusChange] = useState<EventStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  /** Errores de validación por campo (inline). Mostrados bajo cada <Field>. */
+  const [fieldErrors, setFieldErrors] = useState<
+    Partial<Record<keyof FormState, string>>
+  >({});
 
   // Si cambia el evento/modo desde fuera, resetea el form.
   useEffect(() => setForm(initial), [initial]);
@@ -122,26 +126,40 @@ export function EventDrawer({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, saving, statusChanging]);
 
-  const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
+  const set = <K extends keyof FormState>(k: K, v: FormState[K]) => {
     setForm((p) => ({ ...p, [k]: v }));
+    // Limpia el error del campo en cuanto el usuario empieza a corregirlo.
+    setFieldErrors((prev) => {
+      if (!prev[k]) return prev;
+      const next = { ...prev };
+      delete next[k];
+      return next;
+    });
+  };
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setSuccess(null);
 
+    // Validación inline por campo. Cada error se muestra bajo su Field
+    // (con borde rojo + role="alert" para screen readers).
+    const errs: Partial<Record<keyof FormState, string>> = {};
     if (!form.title.trim()) {
-      setError("El título es obligatorio.");
-      return;
+      errs.title = "El título es obligatorio.";
     }
     if (!form.startsAtLocal) {
-      setError("La fecha de inicio es obligatoria.");
-      return;
+      errs.startsAtLocal = "La fecha de inicio es obligatoria.";
     }
     if (mode === "create" && !form.slug.trim()) {
-      setError("El slug es obligatorio (se autogenra del título, editalo si hace falta).");
+      errs.slug =
+        "El slug es obligatorio (se autogenra del título, editalo si hace falta).";
+    }
+    if (Object.keys(errs).length > 0) {
+      setFieldErrors(errs);
       return;
     }
+    setFieldErrors({});
 
     setSaving(true);
     try {
@@ -257,9 +275,9 @@ export function EventDrawer({
           </button>
         </header>
 
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+        <form onSubmit={handleSubmit} noValidate className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
           {error && (
-            <div className="rounded-xl bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+            <div role="alert" className="rounded-xl bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
               {error}
             </div>
           )}
@@ -269,7 +287,7 @@ export function EventDrawer({
             </div>
           )}
 
-          <Field label="Título" htmlFor="evt-title">
+          <Field label="Título" htmlFor="evt-title" error={fieldErrors.title} required>
             <Input
               id="evt-title"
               value={form.title}
@@ -285,6 +303,8 @@ export function EventDrawer({
               label="Slug (URL)"
               htmlFor="evt-slug"
               hint="Solo letras, números y guiones. Se autogenra del título."
+              error={fieldErrors.slug}
+              required
             >
               <Input
                 id="evt-slug"
@@ -309,7 +329,7 @@ export function EventDrawer({
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Inicio" htmlFor="evt-start">
+            <Field label="Inicio" htmlFor="evt-start" error={fieldErrors.startsAtLocal} required>
               <Input
                 id="evt-start"
                 type="datetime-local"
