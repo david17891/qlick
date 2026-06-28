@@ -233,8 +233,14 @@ lo que el typegen regenere.
 - [x] Cover con gradiente + titulo (B-5 v2)
 
 **Queda abierto en Fase 4** (para proximas sesiones):
-- **2E**: Historial de contactos WhatsApp en el drawer del CRM (re-uso del
-  endpoint `lead_interactions` — solo UI, server lib ya existe).
+- ✅ **2E**: Historial de contactos WhatsApp en el drawer del CRM — **CERRADO en `c472927`**.
+  - API: GET/POST `/api/admin/leads/[id]/interactions` (admin-only, mismo patrón que notes/tasks).
+  - Server lib: re-uso de `getLeadInteractions` + `createLeadInteraction` (existentes).
+  - UI: drawer muestra historial real con badges dirección (inbound/outbound/system) + canal (whatsapp/email/phone/form/system) + form para registrar nuevo contacto.
+  - Seed: `scripts/seed-lead-interactions.mjs` (4 interacciones demo en lead existente, idempotente).
+  - Verificado E2E via Node script: login → GET (4) → POST → GET (5) → cleanup OK.
+  - Verificado UI con Playwright MCP: 4 cards visibles + form funcional, 0 console errors.
+  - Tests: 96/98 passing (2 fails pre-existentes en `event-importer.test.mjs`, no introducidos por este cambio).
 - **Bloque 3**: Robustez & polish de admin (empty states diseñados, loading
   states explicitos, error handling, validacion de inputs, mobile-friendly).
 - **Bloque 4**: Cierre (EVENTS_ADMIN_GUIDE.md, plan review con David).
