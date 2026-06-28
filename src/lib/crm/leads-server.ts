@@ -521,6 +521,10 @@ async function createNewLeadForEvent(
     name: input.name.trim(),
     email,
     phone: normalizedPhone,
+    // phone_normalized agregado por migration 20260627010000. El
+    // caller ya normalizó via normalizePhone(input.phone). Si solo
+    // hay email, queda NULL (no viola el UNIQUE INDEX parcial).
+    phone_normalized: normalizedPhone,
     course_of_interest: input.commercialInterest?.trim() || null,
     status: "new",
     source: "event",
@@ -565,10 +569,30 @@ async function createNewLeadForEvent(
     // para el mismo prospecto van a chocar aquí. El segundo INSERT
     // falla con 23505; hacemos SELECT del existente y lo devolvemos
     // como si fuera el "ya existía" path.
+    //
+    // OPTIMIZACIÓN post-migration: ahora podemos hacer el SELECT
+    // directo por el campo unique (sin LIMIT 200 + phonesMatch en
+    // memoria). Si el INSERT chocó por email, buscamos por email.
+    // Si chocó por phone_normalized, buscamos por phone_normalized.
     if (error.code === "23505") {
-      const existing = normalizedEmail
-        ? await findLeadByEmail(normalizedEmail)
-        : await findLeadByPhone(normalizedPhone ?? "");
+      const supabase2 = createSupabaseAdminClient();
+      let existing: Lead | null = null;
+      if (normalizedEmail) {
+        const { data } = await supabase2
+          .from("leads")
+          .select("*")
+          .eq("email", normalizedEmail)
+          .maybeSingle();
+        if (data) existing = mapLeadRowToLead(data as Parameters<typeof mapLeadRowToLead>[0]);
+      }
+      if (!existing && normalizedPhone) {
+        const { data } = await supabase2
+          .from("leads")
+          .select("*")
+          .eq("phone_normalized", normalizedPhone)
+          .maybeSingle();
+        if (data) existing = mapLeadRowToLead(data as Parameters<typeof mapLeadRowToLead>[0]);
+      }
       if (existing) {
         return {
           ok: true,
