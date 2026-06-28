@@ -242,6 +242,26 @@ export async function updateEventStatus(
   return data.event;
 }
 
+/**
+ * POST /api/admin/events/[id]/clone → clona un evento.
+ * Devuelve el evento nuevo y el sourceEvent original (para mostrar
+ * contexto en el toast de éxito).
+ */
+export async function cloneEvent(eventId: string): Promise<{
+  event: Event;
+  sourceEvent?: Event;
+}> {
+  const res = await fetch(`/api/admin/events/${eventId}/clone`, {
+    method: "POST",
+  });
+  const data = await parseEnvelope<{
+    ok: true;
+    event: Event;
+    sourceEvent?: Event;
+  }>(res);
+  return { event: data.event, sourceEvent: data.sourceEvent };
+}
+
 /** Summary devuelto por el import wizard (mirror del server lib). */
 export interface ImportSummaryClient {
   batchId: string;

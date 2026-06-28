@@ -7,6 +7,7 @@ import {
   createEvent,
   updateEvent,
   updateEventStatus,
+  cloneEvent,
   slugifyTitle,
   datetimeLocalToIso,
 } from "@/lib/crm/ops-client";
@@ -81,12 +82,21 @@ export function EventDrawer({
   event,
   onClose,
   onSaved,
+  onCloned,
+  onArchived,
 }: {
   mode: Mode;
   event?: Event | null;
   onClose: () => void;
   /** Notifica al padre tras un save o status change OK. */
   onSaved: (event: Event) => void;
+  /** Notifica al padre tras un clone OK con el evento nuevo (Fase 5 Paquete D). */
+  onCloned?: (clone: Event) => void;
+  /**
+   * Notifica al padre tras archivar un evento (Fase 5 Paquete D — Undo).
+   * El padre usa esto para mostrar un toast con botón "Deshacer".
+   */
+  onArchived?: (event: Event) => void;
 }) {
   const initial = useMemo<FormState>(
     () => (mode === "edit" && event ? eventToForm(event) : emptyForm()),
@@ -95,6 +105,7 @@ export function EventDrawer({
 
   const [form, setForm] = useState<FormState>(initial);
   const [saving, setSaving] = useState(false);
+  const [cloning, setCloning] = useState(false);
   const [statusChanging, setStatusChanging] = useState<EventStatus | null>(null);
   /** Status pendiente de confirmar en modal. null = no hay modal abierto. */
   const [pendingStatusChange, setPendingStatusChange] = useState<EventStatus | null>(null);
@@ -120,11 +131,11 @@ export function EventDrawer({
   // Cerrar con Escape.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !saving && !statusChanging) onClose();
+      if (e.key === "Escape" && !saving && !statusChanging && !cloning) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, saving, statusChanging]);
+  }, [onClose, saving, statusChanging, cloning]);
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => {
     setForm((p) => ({ ...p, [k]: v }));
@@ -206,10 +217,17 @@ export function EventDrawer({
     setStatusChanging(newStatus);
     try {
       const updated = await updateEventStatus(event.id, newStatus);
+      // Si el destino es archived, notificamos al padre con el callback
+      // dedicado (Fase 5 Paquete D — Undo). Si no, solo notificamos via
+      // onSaved (refresh) y cerramos.
+      if (newStatus === "archived" && onArchived) {
+        onArchived(updated);
+      } else {
+        onSaved(updated);
+      }
       // Notificamos al padre (router.refresh) Y cerramos el drawer en el mismo
       // tick. Hacer ambos juntos evita depender de timers que pueden perderse
       // cuando Next.js re-monta el componente durante el refresh.
-      onSaved(updated);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error cambiando status.");
@@ -235,6 +253,44 @@ export function EventDrawer({
     await handleStatusChange(s);
   }
 
+  /**
+   * Clona el evento actual (Fase 5 Paquete D).
+   *
+   * Crea un nuevo evento con slug único (`<slug>-copia` / `-copia-N`),
+   * título con sufijo " (Copia)" y status='draft'. NO copia confirmados,
+   * asistentes ni encuestas.
+   *
+   * Tras OK: notifica al padre con `onCloned(clone)` (que se usa para
+   * mostrar el toast "Clonado — Abrir"), refresca la lista y cierra el
+   * drawer. El clon queda en status='draft', el admin debe editarlo y
+   * publicarlo explícitamente.
+   */
+  async function handleClone() {
+    if (!event) return;
+    setError(null);
+    setSuccess(null);
+    setCloning(true);
+    try {
+      const { event: clone } = await cloneEvent(event.id);
+      if (onCloned) {
+        onCloned(clone);
+      } else {
+        onSaved(clone);
+      }
+      // El padre hace router.refresh() via onSaved/onCloned. Cerramos
+      // el drawer en el mismo tick para no depender de timers.
+      onClose();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? `No se pudo clonar: ${err.message}`
+          : "No se pudo clonar el evento.",
+      );
+    } finally {
+      setCloning(false);
+    }
+  }
+
   const currentStatus: EventStatus = event?.status ?? form.status;
 
   return (
@@ -243,7 +299,7 @@ export function EventDrawer({
       <button
         type="button"
         aria-label="Cerrar drawer"
-        onClick={() => !saving && !statusChanging && onClose()}
+        onClick={() => !saving && !statusChanging && !cloning && onClose()}
         className="fixed inset-0 bg-ink/40 z-40 cursor-default"
       />
       {/* Drawer */}
@@ -267,7 +323,7 @@ export function EventDrawer({
           <button
             type="button"
             onClick={onClose}
-            disabled={saving || !!statusChanging}
+            disabled={saving || !!statusChanging || cloning}
             className="rounded-lg px-3 py-1 text-sm text-ink-muted hover:bg-brand-50 disabled:opacity-50"
             aria-label="Cerrar"
           >
@@ -413,7 +469,7 @@ export function EventDrawer({
                   size="sm"
                   variant="accent"
                   type="button"
-                  disabled={saving || !!statusChanging || !!pendingStatusChange}
+                  disabled={saving || !!statusChanging || !!pendingStatusChange || cloning}
                   onClick={() => requestStatusChange("published")}
                 >
                   {statusChanging === "published" ? "…" : "Publicar"}
@@ -424,7 +480,7 @@ export function EventDrawer({
                   size="sm"
                   variant="outline"
                   type="button"
-                  disabled={saving || !!statusChanging || !!pendingStatusChange}
+                  disabled={saving || !!statusChanging || !!pendingStatusChange || cloning}
                   onClick={() => requestStatusChange("draft")}
                 >
                   {statusChanging === "draft" ? "…" : "Volver a borrador"}
@@ -435,7 +491,7 @@ export function EventDrawer({
                   size="sm"
                   variant="outline"
                   type="button"
-                  disabled={saving || !!statusChanging || !!pendingStatusChange}
+                  disabled={saving || !!statusChanging || !!pendingStatusChange || cloning}
                   onClick={() => requestStatusChange("archived")}
                 >
                   {statusChanging === "archived" ? "…" : "Archivar"}
@@ -446,7 +502,7 @@ export function EventDrawer({
                   size="sm"
                   variant="accent"
                   type="button"
-                  disabled={saving || !!statusChanging || !!pendingStatusChange}
+                  disabled={saving || !!statusChanging || !!pendingStatusChange || cloning}
                   onClick={() => requestStatusChange("draft")}
                 >
                   {statusChanging === "draft" ? "…" : "Reactivar"}
@@ -455,19 +511,38 @@ export function EventDrawer({
             </div>
           )}
 
+          {/* Fila de acciones secundarias: Clonar (Fase 5 Paquete D) */}
+          {mode === "edit" && event && (
+            <div className="flex items-center justify-between border-t border-brand-100 pt-3">
+              <Button
+                size="sm"
+                variant="ghost"
+                type="button"
+                disabled={saving || !!statusChanging || !!pendingStatusChange || cloning}
+                onClick={handleClone}
+                aria-label="Clonar este evento (crea una copia en borrador)"
+              >
+                {cloning ? "Clonando…" : "📋 Clonar evento"}
+              </Button>
+              <p className="text-[10px] text-ink-muted italic">
+                La copia queda en borrador.
+              </p>
+            </div>
+          )}
+
           <div className="flex items-center justify-end gap-2">
             <Button
               type="button"
               variant="outline"
               onClick={onClose}
-              disabled={saving || !!statusChanging}
+              disabled={saving || !!statusChanging || cloning}
             >
               Cancelar
             </Button>
             <Button
               type="submit"
               onClick={(e) => handleSubmit(e as unknown as React.FormEvent)}
-              disabled={saving || !!statusChanging}
+              disabled={saving || !!statusChanging || cloning}
             >
               {saving ? "Guardando…" : mode === "create" ? "Crear evento" : "Guardar cambios"}
             </Button>

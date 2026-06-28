@@ -18,6 +18,7 @@ export {
   createEvent,
   updateEvent,
   updateEventStatus,
+  cloneEvent,
   listPublishedEventSlugs,
   listPublishedEvents,
   type AdminEventSummary,

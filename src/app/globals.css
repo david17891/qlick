@@ -66,3 +66,25 @@ h1, h2, h3, h4, h5 {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* Animación del countdown del toast de Undo (5s linear).
+   Se aplica a la barrita inferior del toast cuando es de tipo undo-archive. */
+@keyframes toast-progress {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+.toast-progress {
+  animation: toast-progress 5s linear forwards;
+}
+
+/* Respeto por prefers-reduced-motion: desactiva la animación del countdown. */
+@media (prefers-reduced-motion: reduce) {
+  .toast-progress {
+    animation: none;
+    width: 0%;
+  }
+}

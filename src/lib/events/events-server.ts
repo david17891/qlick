@@ -605,5 +605,172 @@ export async function listPublishedEvents(): Promise<Event[]> {
   return (data as EventRow[]).map(mapEventRowToEvent);
 }
 
+// ─────────────────────────────────────────────────────────────
+// Clone (Fase 5 Paquete D)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Genera un slug único para un clon basado en el slug original.
+ *
+ * Estrategia:
+ * 1. Si `<slug>-copia` no existe → usar ese.
+ * 2. Si ya existe → probar `<slug>-copia-2`, `<slug>-copia-3`, etc.
+ *    hasta encontrar uno libre (cap a 50 intentos para evitar loop infinito).
+ *
+ * Si el slug original ya tiene sufijo `-copia` / `-copia-N`, lo limpiamos
+ * primero para evitar acumulación: `taller-copia` → `taller-copia-2`,
+ * `taller-copia-2` → `taller-copia-3`, etc.
+ *
+ * Devuelve null si no encuentra slot libre (caso patológico: 50 copias
+ * ya existen). El caller devuelve error al usuario.
+ */
+async function generateUniqueCloneSlug(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  baseSlug: string,
+): Promise<string | null> {
+  // Limpia sufijos previos de copia: "taller-copia" → "taller",
+  // "taller-copia-3" → "taller".
+  const cleanBase = baseSlug.replace(/-copia(-\d+)?$/, "");
+
+  const MAX_TRIES = 50;
+  for (let i = 1; i <= MAX_TRIES; i++) {
+    const candidate = i === 1 ? `${cleanBase}-copia` : `${cleanBase}-copia-${i}`;
+    const { data } = await supabase
+      .from("events")
+      .select("id")
+      .eq("slug", candidate)
+      .maybeSingle();
+    if (!data) return candidate;
+  }
+  return null;
+}
+
+/**
+ * Clona un evento existente. Crea un NUEVO evento con los mismos campos
+ * no-status del original, pero:
+ * - `slug` único (sufijo `-copia` / `-copia-N`)
+ * - `title` con sufijo " (Copia)" / " (Copia N)"
+ * - `status` = 'draft' (forzado — un clon publicado sería peligroso;
+ *   el admin debe revisarlo y publicarlo explícitamente)
+ * - NO copia confirmados/asistentes/encuestas/leads (esas tablas están
+ *   vinculadas al event_id; empezar de cero en el clon).
+ *
+ * Si el evento origen no existe → devuelve `{ ok:false, note }`.
+ * Si no se puede generar slug único → devuelve `{ ok:false, note }`.
+ *
+ * Audit: registra `event_clone` con `metadata.source_event_id` y
+ * snapshots `before`/`after` (before = origen, after = clon).
+ */
+export async function cloneEvent(
+  sourceEventId: string,
+  actorEmail: string,
+): Promise<AdminEventOpResult & { sourceEvent?: Event }> {
+  if (!isRealMode()) {
+    return { ok: false, note: "Supabase no configurado." };
+  }
+  if (!sourceEventId || !actorEmail) {
+    return { ok: false, note: "Faltan datos (sourceEventId/actor)." };
+  }
+
+  const supabase = createSupabaseAdminClient();
+
+  // 1. Leer evento origen (incluyendo campos no expuestos via mapper).
+  const { data: sourceRow, error: sourceErr } = await supabase
+    .from("events")
+    .select("*")
+    .eq("id", sourceEventId)
+    .maybeSingle();
+
+  if (sourceErr || !sourceRow) {
+    return {
+      ok: false,
+      note: sourceErr
+        ? "Error leyendo el evento origen."
+        : "El evento origen no existe.",
+    };
+  }
+  const source = sourceRow as EventRow;
+
+  // 2. Generar slug único.
+  const newSlug = await generateUniqueCloneSlug(supabase, source.slug);
+  if (!newSlug) {
+    return {
+      ok: false,
+      note: "No se pudo generar un slug único (hay 50+ copias de este evento). Borrá alguna o cambiá el slug manualmente.",
+    };
+  }
+
+  // 3. Generar título: "<title> (Copia)" o "<title> (Copia N)" si ya hay.
+  // El sufijo numérico debe coincidir con el slug.
+  const slugSuffixMatch = newSlug.match(/-copia-(\d+)$/);
+  const titleSuffix = slugSuffixMatch
+    ? ` (Copia ${slugSuffixMatch[1]})`
+    : " (Copia)";
+  const newTitle = `${source.title}${titleSuffix}`;
+
+  // 4. Insertar el clon.
+  const { data: insertData, error: insertErr } = await supabase
+    .from("events")
+    .insert({
+      slug: newSlug,
+      title: newTitle,
+      description: source.description,
+      starts_at: source.starts_at,
+      ends_at: source.ends_at,
+      location: source.location,
+      cover_image_url: source.cover_image_url,
+      status: "draft", // forzado — el clon debe revisarse antes de publicar
+    })
+    .select("*")
+    .single();
+
+  if (insertErr || !insertData) {
+    // eslint-disable-next-line no-console
+    console.error("[events-server] cloneEvent insert falló", {
+      code: insertErr?.code,
+      sourceEventId,
+    });
+    return {
+      ok: false,
+      note: insertErr?.code === "23505"
+        ? "Slug duplicado (otro admin creó una copia al mismo tiempo). Reintentá."
+        : "No se pudo crear la copia.",
+    };
+  }
+
+  const clone = mapEventRowToEvent(insertData as EventRow);
+
+  // 5. Audit log: source → clon.
+  await logAdminAction({
+    actor_email: actorEmail,
+    action: "event_clone",
+    entity_type: "event",
+    entity_id: clone.id,
+    metadata: {
+      source_event_id: source.id,
+      source_slug: source.slug,
+      source_title: source.title,
+    },
+    before: {
+      id: source.id,
+      slug: source.slug,
+      title: source.title,
+      status: source.status,
+    },
+    after: {
+      id: clone.id,
+      slug: clone.slug,
+      title: clone.title,
+      status: clone.status,
+    },
+  });
+
+  return {
+    ok: true,
+    event: clone,
+    sourceEvent: source ? mapEventRowToEvent(source) : undefined,
+  };
+}
+
 /** Tipo del import por si el caller (CLI / server lib) lo necesita. */
 export type { EventImportType };
