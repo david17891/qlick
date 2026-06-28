@@ -28,9 +28,18 @@ import {
   fetchLeadTasks,
   createLeadTask,
   fetchEventContext,
+  fetchLeadInteractions,
+  createLeadInteraction,
   type OpStatus
 } from "@/lib/crm/ops-client";
-import { mapNoteRow, mapTaskRow, type NoteView, type TaskView } from "@/lib/crm/rows-mapper";
+import {
+  mapNoteRow,
+  mapTaskRow,
+  mapInteractionRow,
+  type NoteView,
+  type TaskView,
+  type InteractionView
+} from "@/lib/crm/rows-mapper";
 import type { LeadEventContext } from "@/lib/crm";
 import { formatDate, formatMXN } from "@/lib/utils";
 import { WhatsAppButton } from "@/components/contact/WhatsAppButton";
@@ -87,10 +96,18 @@ export function LeadDetailDrawer({
   const [taskForm, setTaskForm] = useState({ title: "", description: "", dueAt: "" });
   const [taskState, setTaskState] = useState<OpStatus>("idle");
   const [taskMsg, setTaskMsg] = useState<string | null>(null);
+  const [interactionForm, setInteractionForm] = useState<{
+    summary: string;
+    channel: "whatsapp" | "email" | "phone" | "form" | "system";
+    direction: "inbound" | "outbound" | "system";
+  }>({ summary: "", channel: "whatsapp", direction: "outbound" });
+  const [interactionState, setInteractionState] = useState<OpStatus>("idle");
+  const [interactionMsg, setInteractionMsg] = useState<string | null>(null);
 
   // --- Datos reales (solo se cargan en modo real) ---
   const [realNotes, setRealNotes] = useState<NoteView[] | null>(null);
   const [realTasks, setRealTasks] = useState<TaskView[] | null>(null);
+  const [realInteractions, setRealInteractions] = useState<InteractionView[] | null>(null);
   const [dataError, setDataError] = useState<string | null>(null);
   /** Contexto del evento del que provino el lead (badge en el header).
    *  Cargado solo en modo real; null si el lead no tiene origen de evento. */
@@ -113,16 +130,19 @@ export function LeadDetailDrawer({
     setDataError(null);
     setRealNotes(null);
     setRealTasks(null);
+    setRealInteractions(null);
     setFetchedEventContext(null);
     Promise.all([
       fetchLeadNotes(currentLead.id),
       fetchLeadTasks(currentLead.id),
+      fetchLeadInteractions(currentLead.id),
       fetchEventContext(currentLead.id),
     ])
-      .then(([n, t, ec]) => {
+      .then(([n, t, ints, ec]) => {
         if (cancelled) return;
         setRealNotes(n.map(mapNoteRow));
         setRealTasks(t.map(mapTaskRow));
+        setRealInteractions(ints.map(mapInteractionRow));
         setFetchedEventContext(ec);
       })
       .catch((err) => {
@@ -221,6 +241,35 @@ export function LeadDetailDrawer({
     } catch (err) {
       setTaskState("error");
       setTaskMsg(err instanceof Error ? err.message : "No se pudo crear la tarea.");
+    }
+  }
+
+  async function handleCreateInteraction(e: React.FormEvent) {
+    e.preventDefault();
+    if (interactionState === "loading") return;
+    const summary = interactionForm.summary.trim();
+    if (!summary) {
+      setInteractionState("error");
+      setInteractionMsg("El resumen es obligatorio.");
+      return;
+    }
+    setInteractionState("loading");
+    setInteractionMsg(null);
+    try {
+      // El server devuelve la lista actualizada; evitamos un fetch extra.
+      const updated = await createLeadInteraction(currentLead.id, {
+        summary,
+        channel: interactionForm.channel,
+        direction: interactionForm.direction,
+      });
+      setRealInteractions(updated.map(mapInteractionRow));
+      setInteractionForm({ summary: "", channel: "whatsapp", direction: "outbound" });
+      setInteractionState("success");
+      setInteractionMsg("Contacto registrado.");
+      setTimeout(() => setInteractionState("idle"), 2000);
+    } catch (err) {
+      setInteractionState("error");
+      setInteractionMsg(err instanceof Error ? err.message : "No se pudo registrar el contacto.");
     }
   }
 
@@ -438,31 +487,121 @@ export function LeadDetailDrawer({
             </section>
           )}
 
-          {/* Historial */}
-          <Section title="Historial de interacciones">
-            {interactions.length === 0 ? (
-              <Empty text="Sin interacciones registradas." />
-            ) : (
-              <ul className="space-y-3">
-                {interactions.map((it) => (
-                  <li key={it.id} className="text-sm">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <Badge tone={it.direction === "inbound" ? "info" : "brand"}>
-                        {it.direction === "inbound" ? "Entrante" : "Saliente"}
-                      </Badge>
-                      <span className="text-xs text-ink-muted">
-                        {channelLabel(it.channel)} · {formatDate(it.at)}
-                      </span>
-                    </div>
-                    <p className="text-ink-soft">{it.content}</p>
-                    {it.author && (
-                      <p className="text-xs text-ink-muted">— {it.author}</p>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Section>
+          {/* Historial de interacciones (modo real: persistido; demo: mock). */}
+          {realMode ? (
+            <Section title="Historial de contactos">
+              {realInteractions === null ? (
+                <Spinner className="h-4 w-4" />
+              ) : realInteractions.length === 0 ? (
+                <Empty text="Sin contactos registrados." />
+              ) : (
+                <ul className="space-y-3">
+                  {realInteractions.map((it) => (
+                    <li key={it.id} className="text-sm border border-brand-100 rounded-lg p-3 bg-white">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Badge tone={interactionTone(it.direction)}>
+                          {interactionDirectionLabel(it.direction)}
+                        </Badge>
+                        <Badge tone="neutral">{interactionChannelLabel(it.channel)}</Badge>
+                        <span className="text-xs text-ink-muted">
+                          {formatDate(it.createdAt)}
+                        </span>
+                      </div>
+                      <p className="text-ink-soft">{it.summary}</p>
+                      <p className="text-xs text-ink-muted mt-1">— {it.authorEmail}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <form onSubmit={handleCreateInteraction} className="mt-3 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="text-xs text-ink-muted flex items-center gap-1">
+                    Canal
+                    <select
+                      value={interactionForm.channel}
+                      onChange={(e) =>
+                        setInteractionForm((f) => ({
+                          ...f,
+                          channel: e.target.value as typeof f.channel,
+                        }))
+                      }
+                      className="rounded-lg border border-brand-100 bg-white px-2 py-1 text-sm text-ink focus:outline-none focus:border-brand-400"
+                    >
+                      <option value="whatsapp">WhatsApp</option>
+                      <option value="email">Email</option>
+                      <option value="phone">Llamada</option>
+                      <option value="form">Formulario</option>
+                      <option value="system">Sistema</option>
+                    </select>
+                  </label>
+                  <label className="text-xs text-ink-muted flex items-center gap-1">
+                    Dirección
+                    <select
+                      value={interactionForm.direction}
+                      onChange={(e) =>
+                        setInteractionForm((f) => ({
+                          ...f,
+                          direction: e.target.value as typeof f.direction,
+                        }))
+                      }
+                      className="rounded-lg border border-brand-100 bg-white px-2 py-1 text-sm text-ink focus:outline-none focus:border-brand-400"
+                    >
+                      <option value="outbound">Saliente (yo lo contacté)</option>
+                      <option value="inbound">Entrante (me contactó)</option>
+                      <option value="system">Sistema</option>
+                    </select>
+                  </label>
+                </div>
+                <Textarea
+                  value={interactionForm.summary}
+                  onChange={(e) =>
+                    setInteractionForm((f) => ({ ...f, summary: e.target.value }))
+                  }
+                  placeholder="Resumen del contacto (ej. 'Confirmó inscripción, manda liga de pago')…"
+                  rows={2}
+                  className="w-full"
+                />
+                {interactionState === "error" && interactionMsg && (
+                  <p className="text-xs text-red-700 bg-red-50 rounded-lg p-2">
+                    {interactionMsg}
+                  </p>
+                )}
+                {interactionState === "success" && interactionMsg && (
+                  <p className="text-xs text-emerald-700 bg-emerald-50 rounded-lg p-2">
+                    {interactionMsg}
+                  </p>
+                )}
+                <Button type="submit" size="sm" disabled={interactionState === "loading"}>
+                  {interactionState === "loading" ? "Registrando…" : "Registrar contacto"}
+                </Button>
+              </form>
+            </Section>
+          ) : (
+            <Section title="Historial de interacciones (demo)">
+              {interactions.length === 0 ? (
+                <Empty text="Sin interacciones registradas." />
+              ) : (
+                <ul className="space-y-3">
+                  {interactions.map((it) => (
+                    <li key={it.id} className="text-sm">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <Badge tone={it.direction === "inbound" ? "info" : "brand"}>
+                          {it.direction === "inbound" ? "Entrante" : "Saliente"}
+                        </Badge>
+                        <span className="text-xs text-ink-muted">
+                          {channelLabel(it.channel)} · {formatDate(it.at)}
+                        </span>
+                      </div>
+                      <p className="text-ink-soft">{it.content}</p>
+                      {it.author && (
+                        <p className="text-xs text-ink-muted">— {it.author}</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Section>
+          )}
 
           {/* Notas */}
           {realMode ? (
@@ -695,4 +834,33 @@ function channelLabel(channel: string): string {
     system: "Sistema"
   };
   return map[channel] ?? channel;
+}
+
+/** Labels para los enums de DB lead_interactions (Bloque 2E). */
+function interactionChannelLabel(channel: string): string {
+  const map: Record<string, string> = {
+    whatsapp: "WhatsApp",
+    email: "Email",
+    phone: "Llamada",
+    form: "Formulario",
+    system: "Sistema"
+  };
+  return map[channel] ?? channel;
+}
+
+function interactionDirectionLabel(direction: string): string {
+  const map: Record<string, string> = {
+    inbound: "Entrante",
+    outbound: "Saliente",
+    system: "Sistema"
+  };
+  return map[direction] ?? direction;
+}
+
+/** Tone del badge según dirección. */
+type Tone = "neutral" | "brand" | "success" | "warning" | "danger" | "info";
+function interactionTone(direction: string): Tone {
+  if (direction === "inbound") return "info";
+  if (direction === "outbound") return "brand";
+  return "neutral";
 }

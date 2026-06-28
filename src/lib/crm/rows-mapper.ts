@@ -10,7 +10,12 @@
  * notas/tareas son datos internos del CRM, no parte del modelo del producto.
  */
 
-import type { CrmNoteRow, CrmTaskRow, CrmTaskStatus } from "./crm-rows";
+import type {
+  CrmNoteRow,
+  CrmTaskRow,
+  CrmTaskStatus,
+  LeadInteractionRow
+} from "./crm-rows";
 
 /** Nota lista para renderizar. */
 export interface NoteView {
@@ -31,6 +36,17 @@ export interface TaskView {
   completedAt: string | null;
 }
 
+/** Interacción lista para renderizar (Bloque 2E — Fase 4). */
+export interface InteractionView {
+  id: string;
+  channel: LeadInteractionRow["channel"];
+  direction: LeadInteractionRow["direction"];
+  summary: string;
+  authorEmail: string;
+  createdAt: string;
+  metadata: LeadInteractionRow["metadata"];
+}
+
 export function mapNoteRow(row: CrmNoteRow): NoteView {
   return {
     id: row.id,
@@ -49,5 +65,17 @@ export function mapTaskRow(row: CrmTaskRow): TaskView {
     dueAt: row.due_at,
     createdAt: row.created_at,
     completedAt: row.completed_at,
+  };
+}
+
+export function mapInteractionRow(row: LeadInteractionRow): InteractionView {
+  return {
+    id: row.id,
+    channel: row.channel,
+    direction: row.direction,
+    summary: row.summary,
+    authorEmail: row.created_by_email,
+    createdAt: row.created_at,
+    metadata: row.metadata,
   };
 }

@@ -15,8 +15,13 @@
 
 import type { Lead, LeadStatus } from "@/types";
 import type { Event, EventStatus } from "@/types/events";
-import type { CrmNoteRow, CrmTaskRow } from "./crm-rows";
+import type { CrmNoteRow, CrmTaskRow, LeadInteractionRow } from "./crm-rows";
 import type { LeadEventContext } from ".";
+
+/** Canales válidos para crear una interacción (mirror del enum Supabase). */
+export type InteractionChannel = "whatsapp" | "email" | "phone" | "form" | "system";
+/** Dirección válida (mirror del enum Supabase). */
+export type InteractionDirection = "inbound" | "outbound" | "system";
 
 /** Máquina de estados para cada operación del drawer. */
 export type OpStatus = "idle" | "loading" | "success" | "error";
@@ -142,6 +147,43 @@ export async function fetchPendingCRMTasks(): Promise<PendingTasksSplitClient> {
     upcoming: CrmTaskRow[];
   }>(res);
   return { overdue: data.overdue, upcoming: data.upcoming };
+}
+
+/* ------------------------------------------------------------------ */
+/* Interacciones del lead (Bloque 2E — Fase 4)                        */
+/* ------------------------------------------------------------------ */
+
+/** Input para crear una interacción (registrar un contacto outbound/inbound). */
+export interface NewInteractionInput {
+  summary: string;
+  channel?: InteractionChannel;
+  direction?: InteractionDirection;
+}
+
+/** GET /api/admin/leads/[id]/interactions → historial (snake_case). */
+export async function fetchLeadInteractions(leadId: string): Promise<LeadInteractionRow[]> {
+  const res = await fetch(`/api/admin/leads/${leadId}/interactions`, {
+    cache: "no-store",
+  });
+  const data = await parseEnvelope<{ ok: true; interactions: LeadInteractionRow[] }>(res);
+  return data.interactions;
+}
+
+/**
+ * POST /api/admin/leads/[id]/interactions → registra un contacto.
+ * Devuelve la lista actualizada para que el drawer refresque en una sola llamada.
+ */
+export async function createLeadInteraction(
+  leadId: string,
+  input: NewInteractionInput,
+): Promise<LeadInteractionRow[]> {
+  const res = await fetch(`/api/admin/leads/${leadId}/interactions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const data = await parseEnvelope<{ ok: true; interactions: LeadInteractionRow[] }>(res);
+  return data.interactions;
 }
 
 /* ------------------------------------------------------------------ */
