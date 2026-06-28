@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import type { User, PaymentStatus } from "@/types";
 import { getCurrentUser } from "@/lib/auth/mock-auth";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { Container, Card, Button, Badge, EmptyState, ProgressBar } from "@/components/ui";
+import { Container, Card, Button, Badge, EmptyState, ProgressBar, Skeleton } from "@/components/ui";
 import { StatCard } from "@/components/dashboard";
 import {
   getAllCourses,
@@ -90,9 +90,36 @@ export function AdminView() {
   }, [router]);
 
   if (!ready) {
+    // Skeleton durante el useEffect que resuelve `getCurrentUser()` +
+    // `isSupabaseConfigured()`. Reemplaza el "Cargando panel…" plano
+    // para que el flash pre-contenido se vea como una transición natural.
+    // Mismo patrón que `src/app/admin/loading.tsx` (server skeleton del route).
     return (
-      <Container className="py-20">
-        <p className="text-ink-muted text-center">Cargando panel…</p>
+      <Container size="wide" className="py-10">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-8 w-72" />
+          </div>
+          <Skeleton className="h-7 w-20 rounded-full" />
+        </div>
+        <div className="flex flex-wrap items-center gap-2 mb-8 border-b border-brand-100 pb-3">
+          {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+            <Skeleton key={i} className="h-9 w-24 rounded-full" />
+          ))}
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i} className="p-5">
+              <Skeleton className="h-3 w-20 mb-2" />
+              <Skeleton className="h-7 w-24 mb-1" />
+              <Skeleton className="h-3 w-32" />
+            </Card>
+          ))}
+        </div>
+        <p className="text-center text-ink-muted mt-10 text-sm">
+          Cargando panel…
+        </p>
       </Container>
     );
   }
