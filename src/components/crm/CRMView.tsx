@@ -342,7 +342,7 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
               <EmptyState title="Sin citas próximas" description="Agenda llamadas o sesiones demo desde el detalle de un lead." />
             ) : (
               <ul className="divide-y divide-brand-50">
-                {appts.map((a) => {
+                {upcomingAppts.map((a) => {
                   const lead = leads.find((l) => l.id === a.leadId);
                   return (
                     <li key={a.id} className="py-3 flex flex-wrap items-center justify-between gap-2">
