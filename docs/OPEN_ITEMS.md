@@ -21,6 +21,55 @@
 
 ## 1. Deuda técnica activa
 
+### 🟠 Auditoría externa 2026-06-27 — Hallazgos y cierres
+
+Auditoría externa independiente (sesión separada, sin tocar archivos).
+Cierra con commit `cd86f45` (funnel hardening).
+
+**Cerrados en commit `cd86f45`**:
+
+- 🔴 `promoteSurveyToLead` check-then-act race — cerrado con UNIQUE INDEX
+  sobre `leads.email` y `leads.phone_normalized` (parcial, NOT NULL) + refactor
+  de `createNewLeadForEvent` que captura `23505` y devuelve el existente.
+- 🔴 `lead_event_links_unique` mal definido — cerrado cambiando la constraint
+  a `(link_type, link_id)`. Cada record de evento (survey, confirmation,
+  attendee) se vincula a UN solo lead.
+- 🟡 `markSurveyUnmatched` upsert fallaba — cerrado con UNIQUE INDEX
+  sobre `event_survey_unmatched.survey_id`. El upsert ahora detecta
+  conflict y no duplica.
+- 🟡 PII en 5 logs (mock-contact-provider, crm-service, leads-server,
+  registrations-server) — cerrado. Logs ahora reportan `nameLength`,
+  `emailLength`, `emailDomain`, `tagCount` (no valores crudos).
+
+**Pendientes (no cerrados en el commit)**:
+
+- 🟡 `config.ts:56` mezcla secret en módulo importable por cliente (riesgo
+  de frontera, no explotado). Refactor mayor, scope para después del lunes.
+- 🟡 `npm audit` no limpio (B-1). xlsx + next/postcss/glob con advisories
+  sin fix upstream. Cerrar requiere migrar a `exceljs` o esperar.
+- 🟡 H8 `findLeadByPhone` LIMIT 200 (deuda previa, no es race).
+
+**Verificados OK por el auditor** (no requieren acción):
+
+- RLS habilitado en `events`, `event_confirmations`, `event_attendees`,
+  `event_surveys`, `event_survey_unmatched`, `lead_event_links`.
+- Todos los `/api/admin/**` llaman `requireAdmin()`.
+- `consent_to_contact=false` se rechaza en `promoteSurveyToLead`.
+- `linkLeadToEventRecord` valida `recordType` contra enum.
+- `/api/dev/simulate-webhook` rechaza en producción antes de auth/DB.
+
+**Riesgo residual conocido** (auditor lo mencionó, sin fixing inmediato):
+el `ALTER TABLE lead_event_links_unique` puede fallar en producción si
+hay datos pre-existentes que violen la nueva constraint (ej. una survey
+vinculada a 2 leads por la race previa). Query para detectar antes de
+migrar:
+```sql
+SELECT link_type, link_id, COUNT(*)
+FROM public.lead_event_links
+GROUP BY link_type, link_id
+HAVING COUNT(*) > 1;
+```
+
 ### 🔴 H2 del QA Fase 2 — Race en `linkLeadToEventRecord` (tags)
 
 **Estado:** ✅ **RESUELTO en Fase 3** (commit `d0acaaa`).
