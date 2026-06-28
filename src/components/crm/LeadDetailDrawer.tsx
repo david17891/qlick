@@ -513,7 +513,7 @@ export function LeadDetailDrawer({
                   ))}
                 </ul>
               )}
-              <form onSubmit={handleCreateInteraction} className="mt-3 space-y-2">
+              <form onSubmit={handleCreateInteraction} noValidate className="mt-3 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <label className="text-xs text-ink-muted flex items-center gap-1">
                     Canal
@@ -552,20 +552,25 @@ export function LeadDetailDrawer({
                     </select>
                   </label>
                 </div>
-                <Textarea
-                  value={interactionForm.summary}
-                  onChange={(e) =>
-                    setInteractionForm((f) => ({ ...f, summary: e.target.value }))
-                  }
-                  placeholder="Resumen del contacto (ej. 'Confirmó inscripción, manda liga de pago')…"
-                  rows={2}
-                  className="w-full"
-                />
-                {interactionState === "error" && interactionMsg && (
-                  <p className="text-xs text-red-700 bg-red-50 rounded-lg p-2">
-                    {interactionMsg}
-                  </p>
-                )}
+                <Field
+                  label="Resumen del contacto"
+                  error={interactionState === "error" ? interactionMsg : null}
+                  required
+                >
+                  <Textarea
+                    value={interactionForm.summary}
+                    onChange={(e) => {
+                      setInteractionForm((f) => ({ ...f, summary: e.target.value }));
+                      if (interactionState === "error") {
+                        setInteractionState("idle");
+                        setInteractionMsg(null);
+                      }
+                    }}
+                    placeholder="Resumen del contacto (ej. 'Confirmó inscripción, manda liga de pago')…"
+                    rows={2}
+                    className="w-full"
+                  />
+                </Field>
                 {interactionState === "success" && interactionMsg && (
                   <p className="text-xs text-emerald-700 bg-emerald-50 rounded-lg p-2">
                     {interactionMsg}
