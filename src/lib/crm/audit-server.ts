@@ -64,3 +64,125 @@ export async function logAdminAction(input: LogAdminActionInput): Promise<void> 
     console.error("[audit] logAdminAction excepción", err);
   }
 }
+
+// ─────────────────────────────────────────────────────────────
+// Lectura (para /admin/system/audit-log) — Fase 5 Bloque 2
+// ─────────────────────────────────────────────────────────────
+
+export interface AuditLogEntry {
+  id: string;
+  actorEmail: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface ListAuditLogsInput {
+  actorEmail?: string;
+  entityType?: string;
+  entityId?: string;
+  action?: string;
+  /** ISO date string. Filtra `created_at >= from`. */
+  from?: string;
+  /** ISO date string. Filtra `created_at <= to`. */
+  to?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface ListAuditLogsResult {
+  ok: boolean;
+  entries: AuditLogEntry[];
+  total: number;
+  error?: string;
+}
+
+/**
+ * Lista entries de audit log con filtros opcionales.
+ *
+ * Devuelve `total` (count sin paginación) además de las entries para que
+ * la UI pueda mostrar "Mostrando X de Y".
+ *
+ * **Tipado:** el `before`/`after` se castean porque la tabla ahora las
+ * tiene (post-migration 20260629000000_admin_audit_log_diff.sql) pero el
+ * typegen pre-existente no las conoce. Regenerar con
+ * `npx supabase gen types typescript` post-migration.
+ */
+export async function listAuditLogs(
+  filters: ListAuditLogsInput = {},
+): Promise<ListAuditLogsResult> {
+  if (!checkSupabaseConfig().configured) {
+    return { ok: true, entries: [], total: 0 };
+  }
+
+  const supabase = createSupabaseAdminClient();
+  let query = supabase
+    .from("admin_audit_log")
+    .select("*", { count: "exact" })
+    .order("created_at", { ascending: false });
+
+  if (filters.actorEmail) {
+    query = query.eq("actor_email", filters.actorEmail);
+  }
+  if (filters.entityType) {
+    query = query.eq("entity_type", filters.entityType);
+  }
+  if (filters.entityId) {
+    query = query.eq("entity_id", filters.entityId);
+  }
+  if (filters.action) {
+    query = query.eq("action", filters.action);
+  }
+  if (filters.from) {
+    query = query.gte("created_at", filters.from);
+  }
+  if (filters.to) {
+    query = query.lte("created_at", filters.to);
+  }
+  const limit = Math.min(filters.limit ?? 50, 200);
+  const offset = filters.offset ?? 0;
+  query = query.range(offset, offset + limit - 1);
+
+  const { data, count, error } = await query;
+  if (error) {
+    return {
+      ok: false,
+      entries: [],
+      total: 0,
+      error: error.message,
+    };
+  }
+
+  // Cast: typegen no conoce `before`/`after` aún.
+  const rows = (data ?? []) as unknown as Array<{
+    id: string;
+    actor_email: string;
+    action: string;
+    entity_type: string;
+    entity_id: string;
+    before: Record<string, unknown> | null;
+    after: Record<string, unknown> | null;
+    metadata: Record<string, unknown> | null;
+    created_at: string;
+  }>;
+
+  return {
+    ok: true,
+    entries: rows.map((row) => ({
+      id: row.id,
+      actorEmail: row.actor_email,
+      action: row.action,
+      entityType: row.entity_type,
+      entityId: row.entity_id,
+      before: row.before ?? null,
+      after: row.after ?? null,
+      metadata: row.metadata ?? null,
+      createdAt: row.created_at,
+    })),
+    total: count ?? 0,
+  };
+}
