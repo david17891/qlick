@@ -331,6 +331,8 @@ export async function createEvent(
     entity_type: "event",
     entity_id: event.id,
     metadata: { slug: event.slug, title: event.title },
+    before: null,
+    after: { id: event.id, slug: event.slug, title: event.title, status: event.status },
   });
 
   return { ok: true, event };
@@ -447,6 +449,24 @@ export async function updateEvent(
     entity_type: "event",
     entity_id: eventId,
     metadata: { changes },
+    before: {
+      slug: prevRow.slug,
+      title: prevRow.title,
+      description: prevRow.description,
+      starts_at: prevRow.starts_at,
+      ends_at: prevRow.ends_at,
+      location: prevRow.location,
+      cover_image_url: prevRow.cover_image_url,
+    },
+    after: {
+      slug: nextRow.slug,
+      title: nextRow.title,
+      description: nextRow.description,
+      starts_at: nextRow.starts_at,
+      ends_at: nextRow.ends_at,
+      location: nextRow.location,
+      cover_image_url: nextRow.cover_image_url,
+    },
   });
 
   return { ok: true, event };
@@ -518,6 +538,8 @@ export async function updateEventStatus(
     entity_type: "event",
     entity_id: eventId,
     metadata: { from: prevStatus, to: newStatus },
+    before: { status: prevStatus },
+    after: { status: newStatus },
   });
 
   return { ok: true, event };
