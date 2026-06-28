@@ -118,10 +118,25 @@ export function resolveHeader(rawHeader: string): string | null {
   return null;
 }
 
-/** Levenshtein distance. True si está dentro del threshold. O(n*m) — OK para headers cortos. */
+/** Levenshtein distance. True si está dentro del threshold. O(n*m) — OK para headers cortos.
+ *
+ * Threshold adaptativo por longitud: para strings ≤ 3 chars exigimos
+ * Levenshtein ≤ 1 (un typo es ~33-50% del string, ya es ambiguo permitir
+ * 2 edits). Para strings ≥ 4 chars mantenemos el threshold del caller
+ * (default 2 — un typo de 2 chars es ~33% del string, aceptable).
+ *
+ * Sin esto, fuzzy matchea "foo" con "ok" (synonym de `email_yes`) con
+ * Levenshtein 2, false positive (test `resolveHeader: headers
+ * desconocidos -> null`). */
 function levenshteinLE(a: string, b: string, maxDist: number): boolean {
   const m = a.length;
   const n = b.length;
+  const minLen = Math.min(m, n);
+  // Para strings cortos (≤ 3 chars), un solo edit es ~33-50% del string,
+  // demasiado ambiguo para fuzzy. El caller tiene el loop de exact match
+  // primero, así que devolver false acá no rompe nada — solo evita
+  // false positives como "a" matcheando "1" o "foo" matcheando "ok".
+  if (minLen <= 3) return false;
   if (Math.abs(m - n) > maxDist) return false;
 
   // Fila anterior y actual de la matriz DP.
