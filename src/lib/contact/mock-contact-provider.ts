@@ -29,14 +29,16 @@ export const mockContactProvider: ContactProvider = {
 
     const messageId = randomId("msg");
 
-    // Log de demo (no sensitive). Ayuda a verificar durante QA.
+    // Log de demo SIN PII: solo flags y longitudes (cumple política
+    // de datos del repo). Útil para QA sin exponer datos del usuario.
     if (typeof console !== "undefined") {
       // eslint-disable-next-line no-console
       console.info("[contact:mock] mensaje registrado", {
         messageId,
-        name: message.name,
-        email: message.email,
-        topic: message.topic
+        nameLength: message.name.length,
+        emailLength: message.email.length,
+        emailDomain: message.email.split("@")[1] ?? "(none)",
+        topic: message.topic,
       });
     }
 

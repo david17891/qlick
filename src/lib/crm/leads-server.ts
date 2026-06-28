@@ -531,13 +531,15 @@ async function createNewLeadForEvent(
 
   if (!isRealMode()) {
     // Fallback a mock: el mock no tiene `tags`, así que solo loggeamos.
+    // Log SIN PII: solo flags y longitudes, no valores (cumple política
+    // de datos del repo).
     // eslint-disable-next-line no-console
     console.info("[crm:demo] lead desde evento (no persistido)", {
       eventSlug: input.eventSlug,
-      name: input.name,
       hasEmail: !!normalizedEmail,
       hasPhone: !!normalizedPhone,
-      tags,
+      nameLength: input.name.trim().length,
+      tagCount: tags.length,
     });
     return {
       ok: true,
@@ -557,10 +559,33 @@ async function createNewLeadForEvent(
     .select("id")
     .single();
 
-  if (error || !data) {
+  if (error) {
+    // RACE HANDLER (auditor 2026-06-27): con los nuevos UNIQUE INDEX
+    // sobre leads.email y leads.phone_normalized, 2 requests paralelos
+    // para el mismo prospecto van a chocar aquí. El segundo INSERT
+    // falla con 23505; hacemos SELECT del existente y lo devolvemos
+    // como si fuera el "ya existía" path.
+    if (error.code === "23505") {
+      const existing = normalizedEmail
+        ? await findLeadByEmail(normalizedEmail)
+        : await findLeadByPhone(normalizedPhone ?? "");
+      if (existing) {
+        return {
+          ok: true,
+          leadId: existing.id,
+          created: false,
+          reactivated: false,
+          persisted: true,
+          demo: false,
+          note: "Lead ya existía (race resuelta por UNIQUE INDEX).",
+        };
+      }
+    }
+    // Cualquier otro error: log SIN PII (solo código y evento).
     // eslint-disable-next-line no-console
     console.error("[leads-server] createLeadFromEvent: insert falló", {
-      code: error?.code,
+      code: error.code,
+      eventSlug: input.eventSlug,
     });
     return {
       ok: false,
@@ -570,6 +595,18 @@ async function createNewLeadForEvent(
       persisted: false,
       demo: true,
       note: "No se pudo crear el lead del evento. Revisa logs.",
+    };
+  }
+
+  if (!data) {
+    return {
+      ok: false,
+      leadId: "",
+      created: false,
+      reactivated: false,
+      persisted: false,
+      demo: true,
+      note: "INSERT no devolvió datos.",
     };
   }
 

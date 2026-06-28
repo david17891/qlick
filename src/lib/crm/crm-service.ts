@@ -152,13 +152,15 @@ export function createLeadFromContactForm(
 ): CreateLeadResult {
   const leadId = `lead_demo_${Date.now().toString(36)}`;
 
-  // Demo: solo registramos en consola para QA. No se guarda PII real.
+  // Demo: solo registramos en consola para QA. Log SIN PII: solo IDs
+  // y flags. Cumple política de datos del repo.
   if (typeof console !== "undefined") {
     // eslint-disable-next-line no-console
     console.info("[crm:demo] lead creado (no persistido)", {
       leadId,
-      name: input.name,
-      email: input.email,
+      nameLength: input.name.length,
+      emailLength: input.email.length,
+      emailDomain: input.email.split("@")[1] ?? "(none)",
       intent: input.intent ?? "course_information",
       consent: input.consentToContact
     });

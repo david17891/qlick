@@ -126,10 +126,12 @@ export async function createMasterclassRegistration(
     .maybeSingle();
 
   if (leadFindError) {
+    // Log SIN PII: solo código de error y longitud (no el email crudo,
+    // cumple política de datos del repo).
     // eslint-disable-next-line no-console
     console.error(
       "[registrations-server] búsqueda de lead falló",
-      { code: leadFindError.code, email },
+      { code: leadFindError.code, emailLength: email.length, emailDomain: email.split("@")[1] ?? "(none)" },
     );
     // No es bloqueante: seguimos y creamos el lead si no existe.
   } else if (existingLead) {
@@ -158,10 +160,11 @@ export async function createMasterclassRegistration(
       .single();
 
     if (leadInsertError || !newLead) {
+      // Log SIN PII: solo código de error y longitud/dominio del email.
       // eslint-disable-next-line no-console
       console.error(
         "[registrations-server] creación de lead falló",
-        { code: leadInsertError?.code, email },
+        { code: leadInsertError?.code, emailLength: email.length, emailDomain: email.split("@")[1] ?? "(none)" },
       );
       // Si falla el lead, igual intentamos crear el registration sin lead_id
       // para no perder la captura (el admin puede vincularlo después).
