@@ -21,13 +21,94 @@
 
 ## 1. Deuda técnica activa
 
-### ✅ Sesión 2026-06-28 (domingo, madrugada + tarde) — Dev login bypass + auditoría visual con Playwright MCP
+### ✅ Sesión 2026-06-28 (domingo, madrugada + tarde) — Dev login bypass + auditoría visual con Playwright MCP (2 PASADAS)
 
-**Branch:** `feat/admin-eventos`. Working tree limpio. **3 commits en la sesión:**
+**Branch:** `feat/admin-eventos`. Working tree limpio. **4 commits en la sesión:**
 
 - `eb83eaa` feat(dev): endpoint `/api/dev/login` (POST one-shot) + script `tests/playwright/dev-login.mjs` + doc `docs/DEV_LOGIN_BYPASS.md` (referenciada en código pero no existía)
 - `b375ac8` fix(crm): "Próximas citas" lista solo `upcomingAppts`, no `appts` todas
 - `ac11b0a` docs(open-items): cierre por límite de 5h de la sesión de madrugada
+- `18cc247` docs(open-items): sesión 2026-06-28 dev login + auditoría admin
+
+### Resumen auditoría 2 PASADAS (post dev login bypass)
+
+#### Pasada 1 — Links / navegación (script de fetch bulk sobre todos los hrefs)
+
+| Test | Resultado |
+|---|---|
+| 13 links únicos en /admin → fetch status | **0 rotos**, todos 200 |
+| Rutas /admin/{cursos,alumnos,inscripciones,pagos} → fetch status | **404** (no están linkeadas en UI, observación no bug) |
+| /admin/eventos/{UUID}/import (UUID real) → fetch status | **200** |
+| /admin/eventos/{slug}/import (slug manual) → fetch status | **404** (no es bug, UI solo usa UUID) |
+| /admin/masterclass → fetch status | **200** |
+| /admin/eventos/{fake-UUID} → fetch status | **404** (página custom OK) |
+| /admin?tab=crm&leadId={fake} → fetch status | **200** (no crash, drawer no aparece) |
+
+#### Pasada 2 — Estética / mobile / edge cases / accesibilidad
+
+| Test | Resultado |
+|---|---|
+| /admin en 375×812 (iPhone 13) | ✅ Hamburger funciona, tabs wrap a grid 2×4, no overflow, footer legible |
+| /admin/eventos/[id] en 375×812 | ✅ Pipeline cards stack vertical, métricas en grid 2×2 |
+| /admin/eventos/{fake-id} en 375×812 | ✅ Custom 404 con "Volver al inicio" + "Ver cursos" |
+| Form submit /eventos/{slug} con email vacío | ✅ Server valida: hint "Necesitamos al menos uno de los dos" |
+| Form submit /eventos/{slug} sin consent | ✅ Server rechaza: "Debes aceptar el consentimiento..." (verificado contra DB: NO se insertó) |
+| Accesibilidad inputs (file upload + dry-run checkbox) | ✅ Ambos con `<label for>` asociado, no unlabeled |
+| Console errors en todas las admin pages | ✅ **0 errors reales** (solo INFO/LOG de Fast Refresh en dev) |
+| Warnings únicos | 🟡 "No default component for parallel route" cuando 404 (cosmético, no bloquea) |
+| Masterclass list (1 masterclass: Clase gratuita Marketing Digital) | ✅ Render OK, métricas, "Ver detalle" prominente |
+| Masterclass detail (2 registrados: luis + Jorge) | ✅ Badges estado + 6 acciones por persona |
+
+#### Bugs encontrados y arreglados
+
+- ✅ **CRM Próximas citas** (`b375ac8`): badge decía "1 agendadas" pero lista mostraba 6. Fix: `appts.map` → `upcomingAppts.map` en `CRMView.tsx:345`.
+
+#### Bugs pendientes (no críticos, no bloquean demo)
+
+- 🟡 **Hydration warning en Input.tsx** (`src/components/ui/Input.tsx:13`)
+  - `Warning: Extra attributes from the server: %s%s style at input`
+  - Confirmado que NO viene de nuestro código (solo aparece en inputs del header con `bg-white/80`).
+  - Causa probable: extensión de browser (password manager) inyecta `style`.
+  - Fix defensivo sugerido: agregar `suppressHydrationWarning` al `<input>`.
+  - Impacto: cosmético.
+
+- 🟡 **Typo en seed del taller funnels-vente** (DB, 1 fila)
+  - Tabla `events`, slug `taller-funnels-venta-cdmx`.
+  - Campo `description`: "disenar funnels" + "conversion" (sin acentos).
+  - Fix SQL: `UPDATE events SET description = REPLACE(REPLACE(description, 'disenar', 'diseñar'), 'conversion', 'conversión') WHERE slug = 'taller-funnels-venta-cdmx';`
+  - Necesita luz verde de David antes de tocar DB.
+  - Impacto: cosmético en copy pública.
+
+#### Observaciones (no bugs)
+
+- **Header "duplicado" en screenshots fullPage**: artifact de Playwright con `position: sticky` (la Navbar aparece "duplicada" al stitch del scroll). DOM real: solo 1 `<header>`. Confirmado con `document.querySelectorAll('header').length === 1`.
+- **Email del lead en drawer vs encuesta**: el lead `david.esparza@qa-fase4-demo.test` (con `.test`) difiere del confirmation `david.esparza@example.com`. Es por el seed (genera emails únicos para evitar colisiones), no es bug.
+- **Badge "survey" en minúscula vs otros badges**: en tab Leads, junto a "Source: event" hay un badge "survey" en minúscula. Cosmético, no bloquea.
+- **`getEventById` solo busca por UUID** (no slug): si navegas manual con slug a /admin/eventos/[slug] o /admin/eventos/[slug]/import, da 404. La UI siempre genera hrefs con UUID, así que NO es bug funcional. Si se quisiera soportar ambos, helper en `src/lib/events/events-server.ts:146`.
+- **/admin/{cursos,alumnos,inscripciones,pagos} dan 404**: rutas huérfanas no linkeadas. Tabs del /admin son state interno (no links). No es bug funcional pero suma "superficie muerta" para crawlers/scanners.
+
+#### Screenshots archivados (auditoría visual)
+
+`C:\Users\User\AppData\Local\Temp\admin_*.png`:
+- `admin_panel.png` — /admin con sesión real
+- `admin_eventos_list.png` — lista eventos con gradiente B-5 v2
+- `admin_event_detail.png` — detail con tabs Confirmados
+- `admin_asistentes.png` — tab Asistentes con dropdown match
+- `admin_encuestas.png` — tab Encuestas
+- `admin_leads.png` — tab Leads promovidos
+- `admin_lead_drawer.png` — modal de lead con WhatsApp actions
+- `admin_pipeline.png` — vista pipeline del detail
+- `admin_crm_pipeline.png` — CRM kanban 4 columnas
+- `admin_crm_calendario.png` — bug "Próximas citas" (antes)
+- `admin_crm_calendario_fixed.png` — bug arreglado (después)
+- `admin_crm_agente.png` — CRM agente IA con reglas
+- `admin_masterclass.png` — lista masterclass
+- `admin_masterclass_detail.png` — detail con acciones por registrado
+- `admin_import_wizard_real.png` — wizard con UUID real
+- `mobile_admin_home.png` — /admin en 375×812
+- `mobile_admin_pipeline.png` — detail evento en 375×812
+- `mobile_admin_menu.png` — hamburger drawer abierto
+- `edge_fake_event.png` — 404 custom con slug fake
 
 ### Dev login bypass — cómo usarlo desde Playwright MCP
 
