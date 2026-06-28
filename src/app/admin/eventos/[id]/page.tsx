@@ -17,6 +17,7 @@ import { filterConfirmations, resolveConfirmationSource } from "@/lib/events/con
 import { PipelineColumn } from "./_components/PipelineColumn";
 import { PipelineCard } from "./_components/PipelineCard";
 import { markSurveyReviewedAction } from "./_actions";
+import { buildEventBroadcast } from "@/lib/contact/whatsapp";
 
 interface Props {
   params: { id: string };
@@ -28,6 +29,8 @@ interface Props {
     source?: string;
     /** Vista activa: "tabs" (default) o "pipeline" (Kanban). */
     view?: string;
+    /** Broadcast de WhatsApp abierto: "1" muestra el panel en Confirmados. */
+    broadcast?: string;
   };
 }
 
@@ -322,6 +325,21 @@ export default async function AdminEventoDetailPage({
                 query: searchQuery,
                 source: activeSource,
               });
+            // Panel broadcast: ?broadcast=1 muestra la lista pre-armada
+            // de links wa.me para mandar recordatorio a los confirmados.
+            const showBroadcast = searchParams.broadcast === "1";
+            const broadcast = buildEventBroadcast({
+              confirmations: filteredConfirmations.map((c) => ({
+                id: c.id,
+                name: c.name,
+                phoneNormalized: c.phoneNormalized,
+                phoneRaw: c.phoneRaw,
+              })),
+              eventTitle: event.title,
+              eventDate: formatDate(event.startsAt),
+              eventLocation: event.location,
+              eventUrl: `${process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000"}/eventos/${event.slug}`,
+            });
             return (
               <Section
                 title="Confirmados"
@@ -331,6 +349,109 @@ export default async function AdminEventoDetailPage({
                     : `${confirmedCount} personas dijeron que iban. Aún no sabemos si vinieron.`
                 }
               >
+                {/* Toolbar con accion de broadcast WhatsApp. */}
+                <div className="p-5 border-b border-brand-50 flex flex-wrap items-center justify-between gap-3 bg-brand-50/20">
+                  <p className="text-xs text-ink-muted">
+                    Recordatorio masivo por WhatsApp a los confirmados con telefono.
+                  </p>
+                  {showBroadcast ? (
+                    <Link
+                      href={`/admin/eventos/${params.id}?tab=confirmations${searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : ""}${activeSource ? `&source=${activeSource}` : ""}`}
+                      scroll={false}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold border border-brand-200 text-ink-soft hover:bg-brand-50 transition"
+                    >
+                      ← Volver a la lista
+                    </Link>
+                  ) : (
+                    <Link
+                      href={`/admin/eventos/${params.id}?tab=confirmations&broadcast=1${searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : ""}${activeSource ? `&source=${activeSource}` : ""}`}
+                      scroll={false}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600 transition shadow-sm"
+                    >
+                      📱 Generar broadcast de WhatsApp
+                    </Link>
+                  )}
+                </div>
+
+                {/* Panel broadcast: ?broadcast=1 muestra la lista pre-armada
+                    de links wa.me. Solo si hay config (sales number) y al
+                    menos un item/skipped. */}
+                {showBroadcast && (
+                  <div className="p-5 border-b border-brand-50 bg-emerald-50/40">
+                    {!broadcast.configured ? (
+                      <div className="rounded-lg bg-amber-50 border border-amber-200 p-4 text-sm text-amber-800">
+                        <strong>Configuracion pendiente:</strong> define{" "}
+                        <code className="bg-amber-100 px-1.5 py-0.5 rounded text-xs">
+                          NEXT_PUBLIC_WHATSAPP_SALES_NUMBER
+                        </code>{" "}
+                        en <code className="bg-amber-100 px-1.5 py-0.5 rounded text-xs">.env.local</code>{" "}
+                        para habilitar el broadcast. El resto del admin sigue funcionando.
+                      </div>
+                    ) : (
+                      <>
+                        <div className="mb-4 p-3 rounded-lg bg-white border border-brand-200">
+                          <p className="text-xs font-semibold text-ink-muted mb-1">
+                            Vista previa del mensaje (se envia a todos):
+                          </p>
+                          <pre className="text-xs text-ink-soft whitespace-pre-wrap font-sans">
+                            {broadcast.messagePreview}
+                          </pre>
+                        </div>
+                        {broadcast.items.length === 0 ? (
+                          <p className="text-sm text-ink-muted italic">
+                            Ningun confirmado con telefono valido. Importá los telefonos o limpia los filtros.
+                          </p>
+                        ) : (
+                          <ul className="space-y-2">
+                            {broadcast.items.map((item) => (
+                              <li
+                                key={item.confirmationId}
+                                className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg border border-brand-100 bg-white"
+                              >
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-sm text-ink truncate">
+                                    {item.name}
+                                  </p>
+                                  <p className="text-xs text-ink-muted">
+                                    +{item.phone.slice(0, 2)} {item.phone.slice(2, 6)} {item.phone.slice(6, 10)}
+                                  </p>
+                                </div>
+                                <a
+                                  href={item.waLink}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-500 text-white hover:bg-emerald-600 transition shrink-0"
+                                >
+                                  📱 Abrir WhatsApp
+                                </a>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {broadcast.skipped.length > 0 && (
+                          <div className="mt-4 pt-4 border-t border-brand-100">
+                            <p className="text-xs font-semibold text-ink-muted mb-2">
+                              Sin telefono ({broadcast.skipped.length}):
+                            </p>
+                            <ul className="text-xs text-ink-muted space-y-1">
+                              {broadcast.skipped.map((s) => (
+                                <li key={s.confirmationId}>
+                                  • {s.name}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        <p className="mt-4 text-xs text-ink-muted">
+                          Tip: hace click en cada "Abrir WhatsApp" para mandar el mensaje. WhatsApp Web
+                          se abre en una pestana nueva. No automatiza envios masivos (eso requiere
+                          WhatsApp Business API, Fase 6+).
+                        </p>
+                      </>
+                    )}
+                  </div>
+                )}
+
                 {/* Form de filtros — GET, preserva `tab=confirmations` */}
                 <form
                   method="GET"

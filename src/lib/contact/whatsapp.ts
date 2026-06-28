@@ -276,3 +276,154 @@ export function getWhatsAppConfigStatus(): WhatsAppConfigStatus {
     anyConfigured: salesNumber || supportNumber || groupUrl
   };
 }
+
+/* ============================================================
+ * BROADCAST: recordatorio de evento a TODOS los confirmados
+ *
+ * Sub-bloque del WhatsApp manual workflow (Sub-bloque C de Fase 4).
+ * A diferencia del WhatsAppButton individual (que va del admin al
+ * LEAD), este broadcast va del admin a los CONFIRMADOS del evento
+ * (todavia no son leads, son prospectos en frio que dijeron "si, voy").
+ *
+ * El flujo es: el admin hace click en "Generar broadcast", ve una
+ * lista de confirmados con telefono + un link wa.me pre-armado,
+ * y va abriendo uno por uno para mandar el recordatorio.
+ *
+ * No automatiza el envio (no envia N mensajes de una): eso requiere
+ * WhatsApp Business API (Fase 6+). Por ahora es un acelerador del
+ * trabajo manual: el admin no tiene que pensar el mensaje, ni copiar
+ * el telefono, ni armar el link.
+ * ============================================================ */
+
+/** Item de un broadcast. Uno por confirmado con telefono. */
+export interface BroadcastItem {
+  /** ID de la confirmation (para key en listas React). */
+  confirmationId: string;
+  /** Nombre del confirmado (puede ser "Sin nombre" si falta). */
+  name: string;
+  /** Telefono normalizado E.164 (sin +, sin espacios). Listo para wa.me. */
+  phone: string;
+  /** Link wa.me pre-armado con el mensaje del recordatorio. */
+  waLink: string;
+}
+
+/** Item "skip" — el confirmado no tiene telefono, no se puede mandar. */
+export interface BroadcastSkip {
+  confirmationId: string;
+  name: string;
+  reason: "no_phone";
+}
+
+/** Resultado completo de un broadcast. */
+export interface BroadcastResult {
+  items: BroadcastItem[];
+  skipped: BroadcastSkip[];
+  /** true si al menos el numero de ventas esta configurado. */
+  configured: boolean;
+  /** Texto del mensaje que se usara (para mostrar en preview). */
+  messagePreview: string;
+}
+
+/**
+ * Construye el mensaje de recordatorio de un evento.
+ *
+ * Template generico: saludo + nombre del evento + fecha + lugar + URL.
+ * Si falta algun dato, se omite esa parte (no deja huecos visibles).
+ *
+ * Pura — facil de testear. NO usa env vars ni DB.
+ */
+export function buildEventReminderMessage(input: {
+  name: string;
+  eventTitle: string;
+  eventDate?: string;
+  eventLocation?: string;
+  eventUrl: string;
+}): string {
+  const greet = input.name?.trim() ? `Hola ${input.name.trim()}` : "Hola";
+  const parts: string[] = [];
+  parts.push(`${greet},`);
+  parts.push(`te recordamos que confirmaste tu asistencia a "${input.eventTitle}".`);
+  if (input.eventDate) {
+    parts.push(`Cuándo: ${input.eventDate}.`);
+  }
+  if (input.eventLocation) {
+    parts.push(`Dónde: ${input.eventLocation}.`);
+  }
+  parts.push(`Confirma o actualiza tu asistencia aquí: ${input.eventUrl}`);
+  parts.push("");
+  parts.push("¡Te esperamos!");
+  parts.push("— Equipo Qlick");
+  return parts.join("\n");
+}
+
+/**
+ * Construye un broadcast: una lista de items wa.me pre-armados para
+ * todos los confirmados con telefono + la lista de skipped.
+ *
+ * El numero de WhatsApp destino (wa.me/{phone}) es el telefono del
+ * PROPIO confirmado, no el de la empresa. Esto es recordatorio
+ * 1-a-1, no envio masivo desde el numero del negocio.
+ *
+ * Si el numero de ventas no esta configurado, devuelve
+ * `configured: false` y la UI debe mostrar "configura
+ * NEXT_PUBLIC_WHATSAPP_SALES_NUMBER antes de usar" (o algo asi).
+ *
+ * @param confirmations Array de EventConfirmation (las que ya filtraste).
+ * @param eventTitle Titulo del evento para el mensaje.
+ * @param eventDate Fecha legible del evento (formateada).
+ * @param eventLocation Lugar legible del evento.
+ * @param eventUrl URL absoluta del detalle del evento (para que el
+ *                 confirmado pueda confirmar/ver).
+ */
+export function buildEventBroadcast(input: {
+  confirmations: Array<{
+    id: string;
+    name: string;
+    phoneNormalized?: string | null;
+    phoneRaw?: string | null;
+  }>;
+  eventTitle: string;
+  eventDate?: string;
+  eventLocation?: string;
+  eventUrl: string;
+}): BroadcastResult {
+  const configured = Boolean(getSalesNumber());
+
+  // Construimos un mensaje "base" con un nombre placeholder. Para
+  // cada item el mensaje es igual (solo cambia el saludo), pero como
+  // wa.me trata el texto como literal, no personalizamos por
+  // individuo en el link (el admin edita manualmente al mandar).
+  // Alternativa: personalizar por individuo. Lo dejamos generico
+  // para consistencia visual (todos los links tienen el mismo cuerpo).
+  const baseMessage = buildEventReminderMessage({
+    name: "{nombre}", // placeholder visible en preview
+    eventTitle: input.eventTitle,
+    eventDate: input.eventDate,
+    eventLocation: input.eventLocation,
+    eventUrl: input.eventUrl,
+  });
+
+  const items: BroadcastItem[] = [];
+  const skipped: BroadcastSkip[] = [];
+
+  for (const c of input.confirmations) {
+    const phone = (c.phoneNormalized ?? c.phoneRaw ?? "").replace(/[^\d]/g, "");
+    if (phone.length < 10) {
+      skipped.push({ confirmationId: c.id, name: c.name, reason: "no_phone" });
+      continue;
+    }
+    items.push({
+      confirmationId: c.id,
+      name: c.name,
+      phone,
+      waLink: `https://wa.me/${phone}?text=${encodeURIComponent(baseMessage)}`,
+    });
+  }
+
+  return {
+    items,
+    skipped,
+    configured,
+    messagePreview: baseMessage.replace("{nombre}", "[nombre del confirmado]"),
+  };
+}
