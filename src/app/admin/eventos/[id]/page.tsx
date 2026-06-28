@@ -14,6 +14,8 @@ import {
 import { getLeadsForEvent } from "@/lib/crm";
 import { formatDate } from "@/lib/utils";
 import { filterConfirmations, resolveConfirmationSource } from "@/lib/events/confirmation-filter";
+import { PipelineColumn } from "./_components/PipelineColumn";
+import { PipelineCard } from "./_components/PipelineCard";
 
 interface Props {
   params: { id: string };
@@ -23,6 +25,8 @@ interface Props {
     q?: string;
     /** Filtro por fuente de la confirmación. */
     source?: string;
+    /** Vista activa: "tabs" (default) o "pipeline" (Kanban). */
+    view?: string;
   };
 }
 
@@ -55,6 +59,14 @@ const VALID_TABS: readonly EventDetailTab[] = [
 ] as const;
 const DEFAULT_TAB: EventDetailTab = "confirmations";
 
+/**
+ * Vistas disponibles: "tabs" (default, 4 secciones apiladas) o
+ * "pipeline" (Kanban 5 columnas con cards por nivel del funnel).
+ */
+type EventDetailView = "tabs" | "pipeline";
+const VALID_VIEWS: readonly EventDetailView[] = ["tabs", "pipeline"] as const;
+const DEFAULT_VIEW: EventDetailView = "tabs";
+
 const statusTone = {
   published: "success" as const,
   draft: "warning" as const,
@@ -86,6 +98,14 @@ export default async function AdminEventoDetailPage({
     ? (requestedTab as EventDetailTab)
     : DEFAULT_TAB;
 
+  // Resolver vista activa (tabs vs pipeline). Default: tabs.
+  const requestedView = searchParams.view;
+  const activeView: EventDetailView = (
+    VALID_VIEWS as readonly string[]
+  ).includes(requestedView ?? "")
+    ? (requestedView as EventDetailView)
+    : DEFAULT_VIEW;
+
   // Filtros de Confirmados. Se aplican via `filterConfirmations`
   // (función pura en `src/lib/events/confirmation-filter.ts`,
   // testeada en `tests/confirmation-filter.test.mjs`).
@@ -99,6 +119,20 @@ export default async function AdminEventoDetailPage({
     queryParams.set("tab", tabId);
     if (searchQuery) queryParams.set("q", searchQuery);
     if (activeSource) queryParams.set("source", activeSource);
+    return `/admin/eventos/${params.id}?${queryParams.toString()}`;
+  }
+
+  /** Helper para construir URLs de view (tabs/pipeline), preservando
+   *  el tab activo y los filtros del modo tabs. */
+  function viewHref(viewId: EventDetailView): string {
+    const queryParams = new URLSearchParams();
+    queryParams.set("view", viewId);
+    if (viewId === "tabs") {
+      // En modo tabs, preservamos el tab activo + filtros.
+      queryParams.set("tab", activeTab);
+      if (searchQuery) queryParams.set("q", searchQuery);
+      if (activeSource) queryParams.set("source", activeSource);
+    }
     return `/admin/eventos/${params.id}?${queryParams.toString()}`;
   }
 
@@ -211,13 +245,38 @@ export default async function AdminEventoDetailPage({
             </div>
           </Card>
 
+          {/* Toggle de vista: "Tabs" (lista con pills) o "Pipeline" (Kanban).
+              URL-driven con ?view=tabs|pipeline. Default: tabs. */}
+          <div className="flex items-center gap-1 mb-4 p-1 bg-brand-50/50 rounded-full w-fit" role="tablist" aria-label="Modo de vista">
+            {(["tabs", "pipeline"] as const).map((v) => {
+              const isActive = activeView === v;
+              return (
+                <Link
+                  key={v}
+                  href={viewHref(v)}
+                  role="tab"
+                  aria-selected={isActive}
+                  className={
+                    "px-4 py-1.5 rounded-full text-xs font-semibold transition " +
+                    (isActive
+                      ? "bg-white text-brand-700 shadow-sm"
+                      : "text-ink-soft hover:text-ink")
+                  }
+                >
+                  {v === "tabs" ? "📑 Vista tabs" : "🧩 Vista pipeline"}
+                </Link>
+              );
+            })}
+          </div>
+
           {/* Pills de tabs (URL-driven: ?tab=confirmations|attendance|surveys|leads).
               Server-side, sin JS: cada pill es un Link que cambia el search param. */}
-          <div
-            role="tablist"
-            aria-label="Secciones del detalle del evento"
-            className="flex flex-wrap items-center gap-2 mb-6 border-b border-brand-100 pb-3"
-          >
+          {activeView === "tabs" && (
+            <div
+              role="tablist"
+              aria-label="Secciones del detalle del evento"
+              className="flex flex-wrap items-center gap-2 mb-6 border-b border-brand-100 pb-3"
+            >
             {tabs.map((t) => {
               const isActive = activeTab === t.id;
               return (
@@ -250,6 +309,7 @@ export default async function AdminEventoDetailPage({
               );
             })}
           </div>
+          )}
 
           {/* Sección 1: Confirmados */}
           {activeTab === "confirmations" && (() => {
@@ -507,6 +567,131 @@ export default async function AdminEventoDetailPage({
               </ul>
             )}
           </Section>
+          )}
+
+          {/* Vista Pipeline (Kanban 5 columnas). Solo se renderiza cuando
+              ?view=pipeline. Display-only por ahora: cada card muestra
+              nombre, contacto, source y fecha. Las acciones por nivel
+              (match manual, marcar revisada, WhatsApp) llegan en commits
+              separados (Capa 3, Capa 4, Sub-bloque C). */}
+          {activeView === "pipeline" && (
+            <div
+              className="grid gap-4 lg:grid-cols-5 md:grid-cols-3 sm:grid-cols-2 grid-cols-1"
+              role="region"
+              aria-label="Pipeline del evento"
+            >
+              {/* Columna 1: Confirmados */}
+              <PipelineColumn
+                icon="📋"
+                title="Confirmados"
+                count={confirmedCount}
+                tone="brand"
+              >
+                {confirmations.length === 0 ? (
+                  <p className="text-xs text-ink-muted italic text-center py-4">
+                    Nadie ha confirmado aún
+                  </p>
+                ) : (
+                  confirmations.map((c) => (
+                    <PipelineCard
+                      key={c.id}
+                      name={c.name}
+                      email={c.email}
+                      phone={c.phoneNormalized ?? c.phoneRaw}
+                      source={c.source}
+                      date={formatDate(c.confirmedAt)}
+                    />
+                  ))
+                )}
+              </PipelineColumn>
+
+              {/* Columna 2: Asistentes */}
+              <PipelineColumn
+                icon="✅"
+                title="Asistentes"
+                count={attendedCount}
+                tone="emerald"
+              >
+                {attendees.length === 0 ? (
+                  <p className="text-xs text-ink-muted italic text-center py-4">
+                    Sin check-ins aún
+                  </p>
+                ) : (
+                  attendees.map((a) => (
+                    <PipelineCard
+                      key={a.id}
+                      name={a.name ?? "Sin nombre"}
+                      email={a.email}
+                      phone={a.phoneNormalized}
+                      source={a.source}
+                      date={formatDate(a.checkedInAt)}
+                    />
+                  ))
+                )}
+              </PipelineColumn>
+
+              {/* Columna 3: Encuestas */}
+              <PipelineColumn
+                icon="📝"
+                title="Encuestas"
+                count={surveysCount}
+                tone="amber"
+              >
+                {surveys.length === 0 ? (
+                  <p className="text-xs text-ink-muted italic text-center py-4">
+                    Sin encuestas aún
+                  </p>
+                ) : (
+                  surveys.map((s) => (
+                    <PipelineCard
+                      key={s.id}
+                      name={s.respondentEmail ?? s.respondentPhone ?? "Anónimo"}
+                      email={s.respondentEmail}
+                      phone={s.phoneNormalized ?? s.respondentPhone}
+                      source={s.consentToContact ? "consent sí" : "consent no"}
+                      date={formatDate(s.submittedAt)}
+                    />
+                  ))
+                )}
+              </PipelineColumn>
+
+              {/* Columna 4: Leads promovidos */}
+              <PipelineColumn
+                icon="🧲"
+                title="Leads promovidos"
+                count={leadsPromoted}
+                tone="blue"
+              >
+                {leadsWithLinks.length === 0 ? (
+                  <p className="text-xs text-ink-muted italic text-center py-4">
+                    Sin leads aún
+                  </p>
+                ) : (
+                  leadsWithLinks.map(({ lead, links }) => (
+                    <PipelineCard
+                      key={lead.id}
+                      name={lead.name}
+                      email={lead.email}
+                      phone={lead.phone}
+                      source={links[0]?.linkType ?? lead.source}
+                      href={`/admin?tab=crm&leadId=${lead.id}`}
+                    />
+                  ))
+                )}
+              </PipelineColumn>
+
+              {/* Columna 5: Inscritos (futuro, sin server lib todavía) */}
+              <PipelineColumn
+                icon="🎓"
+                title="Inscritos"
+                count={0}
+                tone="neutral"
+              >
+                <p className="text-xs text-ink-muted italic text-center py-4">
+                  Fase 5+ — sin inscripciones a cursos aún
+                </p>
+              </PipelineColumn>
+            </div>
           )}
         </Container>
       </main>
