@@ -3,9 +3,9 @@
 > **Manual operativo del panel de administración de eventos** (`/admin/eventos` + tab CRM del `/admin`).
 > Para David y futuros admins que operan el día a día de los eventos: webinars, talleres, masterclasses.
 >
-> **Última revisión:** 2026-06-28 (cierre de Fase 4 — Bloque 4).
+> **Última revisión:** 2026-06-28 (cierre de Fase 5 — Paquete A+B+C+D+E).
 > **Audiencia:** David (admin principal), socios con `ADMIN_EMAIL_ALLOWLIST`, futuros operadores.
-> **Stack:** Next.js 14 + Supabase (Auth + DB + RLS) + Remotion + custom admin UI.
+> **Stack:** Next.js 14 + Supabase (Auth + DB + RLS) + Resend (email) + custom admin UI.
 
 ---
 
@@ -31,10 +31,14 @@
 7. [Flujo post-evento típico (workflow)](#7-flujo-post-evento-típico-workflow)
 8. [WhatsApp workflow (estados + audit log)](#8-whatsapp-workflow-estados--audit-log)
 9. [Estados del evento](#9-estados-del-evento)
-10. [Troubleshooting](#10-troubleshooting)
-11. [Permisos y seguridad](#11-permisos-y-seguridad)
-12. [Glosario](#12-glosario)
-13. [Schema quick reference](#13-schema-quick-reference)
+   - [Undo archivar (toast 5s)](#undo-archivar-toast-5s)
+   - [Clonar evento (Fase 5 Paquete D)](#clonar-evento-fase-5-paquete-d)
+10. [Audit log (`/admin/system/audit-log`)](#10-audit-log-adminsystemaudit-log)
+11. [Notificaciones por email (Resend)](#11-notificaciones-por-email-resend)
+12. [Troubleshooting](#12-troubleshooting)
+13. [Permisos y seguridad](#13-permisos-y-seguridad)
+14. [Glosario](#14-glosario)
+15. [Schema quick reference](#15-schema-quick-reference)
 
 ---
 
@@ -427,7 +431,96 @@ No almacena el contenido completo del mensaje (PII innecesaria en DB).
 
 **Importante:** Archivar NO borra datos. Confirmados, asistentes, encuestas y leads se conservan. Reactivar = vuelve a `draft` (no se re-publica automáticamente).
 
+### Undo archivar (toast 5s)
+
+Cuando archivas un evento desde el EventDrawer, aparece un **toast no-bloqueante** en la esquina inferior derecha con:
+- Título: `"<título del evento>" archivado`
+- Botón **Deshacer** (vuelve el evento a `draft`)
+- Hint "Se cierra en 5s" + barrita de progreso animada
+- Auto-dismiss en 5 segundos (cerralo antes con la ✕ si querés)
+
+Si clickeás "Deshacer" antes de los 5 segundos, el evento vuelve a `draft` y el toast desaparece. Si dejás pasar los 5s, el toast se cierra solo y el archivado queda confirmado.
+
+**Accesibilidad:** el toast tiene `role="status"` y `aria-live="polite"` para que screen readers lo anuncien sin interrumpir. Respeta `prefers-reduced-motion` (anula la animación de la barrita).
+
+### Clonar evento (Fase 5 Paquete D)
+
+En el footer del EventDrawer (modo edit), hay una fila separada con el botón **📋 Clonar evento**. Click creará una copia del evento actual con:
+- Título: `"<título> (Copia)"` o `"<título> (Copia N)"` si ya hay copias
+- Slug: `"<slug>-copia"` / `"<slug>-copia-N"` (único, auto-incrementa)
+- Status: **`draft`** (forzado — la copia debe revisarse antes de publicar)
+- Confirmados, asistentes, encuestas y leads: **NO se copian** (esos tienen FK al event_id, empiezan de cero en el clon)
+
+Tras el OK, aparece un toast no-bloqueante **"`<título> (Copia)` clonado en borrador"** con link **Abrir clon** que te lleva al detail del nuevo evento. El clon queda en `draft` y debes editarlo/publicarlo explícitamente.
+
+**Casos de error:**
+- 409 si hay 50+ copias del mismo evento (caso patológico): borra alguna manualmente o cambia el slug manualmente.
+- 409 si otro admin creó una copia al mismo tiempo (slug duplicado): reintentá.
+
 ---
+
+## 10. Audit log (`/admin/system/audit-log`)
+
+**Acceso:** `/admin/system/audit-log` (requiere admin).
+
+**Qué registra:** cada acción que un admin hace sobre una entidad (crear evento, editar, cambiar status, archivar, clonar, promover survey a lead, etc.). Append-only — no se borra.
+
+**Schema** (tabla `admin_audit_log`):
+- `id` (uuid)
+- `actor_email` (email del admin que hizo la acción)
+- `action` (string, ej: `event_create`, `event_update`, `event_status_change`, `event_clone`)
+- `entity_type` (`event`, `lead`, `survey`, `note`, `task`, `interaction`)
+- `entity_id` (uuid de la entidad afectada)
+- `metadata` (jsonb, contexto adicional — ej: `{changes: {...}}` para updates)
+- `before` (jsonb, snapshot del estado ANTES — solo si aplica)
+- `after` (jsonb, snapshot del estado DESPUÉS — solo si aplica)
+- `created_at` (timestamp)
+
+**Filtros disponibles** (URL-driven, no JS):
+- `actorEmail` (email del admin)
+- `entityType` (event / lead / survey / etc.)
+- `action` (parcial: `event_create`, `event_status`, etc.)
+- `from` / `to` (rango de fechas)
+
+**Diff view:** cada fila con `before`/`after` muestra un expandible **"Ver diff"** que pinta los snapshots en rojo (antes) vs verde (después). Útil para entender exactamente qué cambió en un update sin tener que revisar el código.
+
+**Casos de uso típicos:**
+- "¿Quién archivó el evento X?" → filtrar por `entityType=event` + `action=event_status_change` + scroll.
+- "¿Qué cambios hizo David en el último mes?" → filtrar por `actorEmail=david@qlick.mx` + `from=2026-06-01`.
+- "¿Qué se modificó en este evento?" → filtrar por `entityId=<uuid>` + expandir el diff.
+
+**Privacidad:** NO se loggea PII cruda (nombres, emails de leads/personas) en metadata. Solo IDs y métricas agregadas (ej: `surveyCount: 3`, no `respondentEmail: "..."`).
+
+---
+
+## 11. Notificaciones por email (Resend)
+
+**Estado actual (post-Fase 5):** el wrapper de Resend está integrado pero **necesita setup** (ver `docs/SMTP_SETUP.md`). Sin API key, dev mode loggea en consola y todo funciona igual.
+
+**Qué dispara emails:**
+- `promoteSurveyToLead` (al promover una encuesta con consent=true) → manda email al admin.
+
+**Configuración en `.env.local`:**
+```
+RESEND_API_KEY=re_xxxxx  # de resend.com/api-keys
+RESEND_FROM_ADDRESS=notificaciones@qlick.mx
+RESEND_REPLY_TO=david@qlick.mx
+ADMIN_NOTIFICATION_EMAILS=david@qlick.mx,socio@qlick.mx
+```
+
+Si `RESEND_API_KEY` falta → dev mode (logs en consola, sin send real).
+Si `RESEND_API_KEY` está pero falla el send → la operación principal (promover lead) sigue, se loggea el error.
+
+**Template `survey-with-consent`:**
+- Subject: "🎯 Nuevo lead de encuesta — <título del evento>"
+- HTML inline con brand colors, link al drawer del lead.
+- NO incluye nombre/email del respondente en el subject (anti-spam).
+
+**Para activar:** seguir `docs/SMTP_SETUP.md` (signup → DNS records → API key → test). Tiempo estimado: 30 min.
+
+---
+
+## 12. Troubleshooting
 
 ## 10. Troubleshooting
 

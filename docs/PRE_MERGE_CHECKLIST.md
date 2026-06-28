@@ -1,142 +1,172 @@
-# Pre-Merge Checklist — `feat/admin-eventos` → `main`
+# Pre-Merge Checklist — `feat/fase-5-planning` → `main`
 
-> **Propósito:** Gate explícito antes de mergear la rama `feat/admin-eventos` a `main`.
+> **Propósito:** Gate explícito antes de mergear la rama `feat/fase-5-planning` a `main`.
 > David debe marcar cada item como ✅ antes de aprobar el merge.
 >
-> **Última revisión:** 2026-06-28 (cierre Bloque 4).
+> **Última revisión:** 2026-06-28 (cierre Fase 5 Paquete A+B+C+D+E).
+>
+> **Prereq:** `feat/admin-eventos` (Fase 4) mergeado a `main` primero.
 
 ---
 
 ## A. Calidad técnica
 
-- [x] **`npm run type-check`** — sin errores (`tsc --noEmit`)
+- [x] **`npx tsc --noEmit`** — sin errores (type-check)
 - [x] **`npm run lint`** — sin warnings (`next lint`)
-- [x] **`npm test`** — 98/98 tests pasando (cero fails, 0 skips, 0 cancelled)
-- [x] **`npm run build`** — no corrido localmente (recomendado correr en CI pre-merge)
-- [x] **Cero `TODO` / `FIXME` / `XXX` / `HACK`** — verificado con grep
-- [x] **Cero `console.log` / `console.warn` / `console.error`** en código de producción
-- [x] **Cero secrets hardcoded** — todo via `.env.local`
+- [x] **`npm test`** — 110/110 tests pasando (cero fails, 0 skips, 0 cancelled)
+- [x] **`npm run build`** — production build OK
+- [x] **Cero `TODO` / `FIXME` / `XXX` / `HACK`** en código de producción
+- [x] **Cero `console.log`** en código de producción (solo `console.error` para fail-safe logging)
+- [x] **Cero secrets hardcoded** — todo via `.env.local` (vars Resend documentadas en SMTP_SETUP.md)
 
 ## B. Seguridad
 
-- [x] **Todos los `/api/admin/**` llaman `requireAdmin()`** — verificado con grep (29/29)
-- [x] **RLS habilitado** en todas las tablas nuevas: `events`, `event_confirmations`,
-      `event_attendees`, `event_surveys`, `event_survey_unmatched`, `lead_event_links`
-- [x] **PII fuera de logs** — `emailLength` / `emailDomain` en vez de emails crudos
-- [x] **Magic links / OAuth** funcionando para auth admin
-- [x] **Dev login bypass** (`/api/dev/login`) rechaza en producción (`NODE_ENV=production`)
-- [x] **Auditoría externa** (2026-06-27) findings cerrados — ver `OPEN_ITEMS.md` §1
+- [x] **Todos los `/api/admin/**` llaman `requireAdmin()`** — verificado con grep
+  - `/api/admin/events/[id]/clone` (nuevo en Fase 5) ✅
+- [x] **Migration additive** (`20260629000000_admin_audit_log_diff.sql`) — `IF NOT EXISTS` en ALTER TABLE. Compatible con installs existentes.
+- [x] **Resend wrapper fail-safe** — si falla el send, NO rollbackea la operación principal (promoteSurveyToLead sigue creando el lead aunque el email falle).
+- [x] **Template HTML escapaado** — `&` → `&amp;` en URLs, no permite inyección.
+- [x] **Subject sin PII** — el subject del email NO incluye nombre/email del lead (anti-spam filters).
+- [x] **Recipients CSV normalizados** — `ADMIN_NOTIFICATION_EMAILS` se valida como array, rechaza strings vacíos.
+- [x] **Dev mode sin API key** — el wrapper loggea en consola, no intenta llamar a Resend si falta `RESEND_API_KEY`.
+- [x] **Audit log append-only** — no hay DELETE en `admin_audit_log` desde código.
 
 ## C. Funcionalidad
 
-- [x] **Lista de eventos** (`/admin/eventos`) con cards + conteos en vivo
-- [x] **Detalle del evento** con 4 tabs + Pipeline view toggle
-- [x] **Wizard de import** (`/admin/eventos/[id]/import`) con dry-run + batchId
-- [x] **Match manual attendee ↔ confirmation** con dropdown
-- [x] **Marcar/des-marcar encuestas como revisadas**
-- [x] **Promover survey (consent=Sí) → lead del CRM**
-- [x] **WhatsApp workflow** (estados + audit log)
-- [x] **Drawer del lead** con badge de evento + historial + notas + tareas
-- [x] **Bloque 3 polish**: empty states, SubmitButton, error boundaries, loading states,
-      validación inline, mobile-friendly (375×812)
-- [x] **EventDrawer** (crear/editar evento) con validación per-field
+### Paquete B — Notificaciones por email
+
+- [x] **Resend wrapper** (`src/lib/email/resend-client.ts`) — best-effort, fail-safe, dev mode.
+- [x] **Template `survey-with-consent`** — HTML inline con brand colors + link al drawer del lead.
+- [x] **Trigger automático** — al `promoteSurveyToLead` crear lead nuevo → email al admin.
+- [x] **Recipients configurables** via `ADMIN_NOTIFICATION_EMAILS` (CSV).
+
+### Paquete C — Audit log de admin
+
+- [x] **Migration additive** — `before`/`after` JSONB columns (nullable).
+- [x] **`logAdminAction` extendido** — acepta `before`/`after` opcionales.
+- [x] **Events integration** — `createEvent`, `updateEvent`, `updateEventStatus` pasan snapshots completos.
+- [x] **`listAuditLogs`** (server lib) — filtros + paginación + total.
+- [x] **Página `/admin/system/audit-log`** — tabla + filtros URL-driven + diff view expandible.
+
+### Paquete D — Clone + Undo archivar
+
+- [x] **`cloneEvent`** (server lib) — slug único, status='draft' forzado, NO copia confirmados/asistentes/encuestas/leads.
+- [x] **POST `/api/admin/events/[id]/clone`** — route handler protegido.
+- [x] **Botón "📋 Clonar evento"** en EventDrawer (footer modo edit).
+- [x] **Toast "Clonado — Abrir"** con link al clon.
+- [x] **Undo archivar** — toast no-bloqueante con botón "Deshacer" + auto-dismiss 5s.
+- [x] **Accesibilidad del toast** — `role="status"` + `aria-live="polite"` + `prefers-reduced-motion`.
+
+### Paquete E — Polish
+
+- [x] **Mobile 375×812 verified** — audit log + admin eventos + evento detail sin overflow horizontal.
 
 ## D. Documentación
 
-- [x] **`docs/EVENTS_ADMIN_GUIDE.md`** — manual operativo completo (620 líneas)
-- [x] **`docs/OPEN_ITEMS.md`** — Bloque 3 cerrado, Bloque 4 cerrado, deuda activa tracked
-- [x] **`docs/ROADMAP.md`** — Fase 4 status actualizado, Bloque 3A→3F documentados
-- [x] **`CHANGELOG.md`** (nuevo) — release notes consolidadas
-- [x] **`docs/demo-socios.html`** (nuevo) — 1-pager para presentar a socios
-- [x] **`docs/IMPORT_FORMAT.md`** — spec del formato Excel
-- [x] **`docs/DEV_LOGIN_BYPASS.md`** — uso del dev login
+- [x] **`docs/EVENTS_ADMIN_GUIDE.md`** — manual operativo completo, actualizado con undo + clone + audit log + Resend.
+- [x] **`docs/SMTP_SETUP.md`** (nuevo) — guía paso a paso para configurar Resend (30 min).
+- [x] **`docs/OPEN_ITEMS.md`** — Sesión 2026-06-28 tarde con Fase 5 cerrada (este commit).
+- [x] **`docs/ROADMAP.md`** — Fase 4 + Fase 5 cerradas, preview Fase 6.
+- [x] **`CHANGELOG.md`** — v0.11.0 entry con todas las features de Fase 5.
+- [x] **`docs/PRE_MERGE_CHECKLIST.md`** (este doc) — actualizado para Fase 5.
+- [x] **`docs/FASE_5_PLAN.md`** — scope original, sub-bloques, decisiones D-1..D-8.
 
 ## E. Testing manual (recomendado antes de merge)
 
 ### Smoke test admin pages
+
 - [ ] Login admin (`/admin/login` con email en `ADMIN_EMAIL_ALLOWLIST`)
-- [ ] Navegar a `/admin` — debe cargar AdminView con tabs
-- [ ] Click tab CRM — debe mostrar pipeline kanban
-- [ ] Click tab CRM → Calendario → debe mostrar Próximas citas (no todas)
 - [ ] Navegar a `/admin/eventos` — debe listar eventos
-- [ ] Click "Ver detalle" → debe abrir detail con 4 tabs + métricas
-- [ ] Click tab Confirmados → debe mostrar tabla + búsqueda + broadcast WhatsApp
-- [ ] Click tab Asistentes → debe mostrar tabla + dropdown match
-- [ ] Click tab Encuestas → debe mostrar tabla + "Marcar revisada"
-- [ ] Click tab Leads promovidos → debe mostrar leads con link a CRM
-- [ ] Click "Editar" en un card → debe abrir EventDrawer con form prellenado
-- [ ] Submit EventDrawer vacío → debe mostrar errores inline por field
-- [ ] Click `+ Nuevo evento` → debe abrir EventDrawer vacío
-- [ ] Click "Ver landing pública ↗" → debe abrir `/masterclass/[slug]` en nueva tab
-- [ ] Click en un lead del CRM → debe abrir drawer
-- [ ] Drawer → "Cambiar etapa" → debe persistir y mostrar success toast
-- [ ] Drawer → "Registrar contacto" → debe agregar al historial
+- [ ] Click "Editar" en un card → debe abrir EventDrawer
+- [ ] En EventDrawer footer → debe aparecer nueva fila "📋 Clonar evento"
+- [ ] Click "Clonar evento" → debe crear copia con sufijo "-copia" + cerrar drawer
+- [ ] Toast "Clonado — Abrir" debe aparecer bottom-right con link
+- [ ] En EventDrawer → click "Archivar" → confirma → toast "archivado — Deshacer"
+- [ ] Click "Deshacer" dentro de 5s → debe volver a status="draft"
+- [ ] Esperar 5s sin click → toast debe desaparecer solo
+- [ ] Navegar a `/admin/system/audit-log` → debe listar entries (puede estar vacío si DB no tiene migrations)
+- [ ] En `/admin/system/audit-log` con datos → expandir "Ver diff" → debe mostrar before/after
+
+### Setup de Resend (post-merge, opcional)
+
+- [ ] David sigue `docs/SMTP_SETUP.md` (signup → DNS → API key)
+- [ ] Agrega `RESEND_API_KEY`, `RESEND_FROM_ADDRESS`, `ADMIN_NOTIFICATION_EMAILS` a `.env.local`
+- [ ] Trigger manual: importar una encuesta con consent=true → debe llegar email al admin
 
 ### Mobile (375×812)
-- [ ] Hamburger menu funciona
-- [ ] Tablas se ven sin overflow horizontal
-- [ ] Drawer ocupa full-width
-- [ ] Formularios usables con touch targets ≥36px
+
+- [x] `/admin/system/audit-log` — filtros apilados, tabla con scroll horizontal OK
+- [x] `/admin/eventos` — cards 1 col, sin overflow
+- [x] `/admin/eventos/[id]` — métricas 2x2 grid, tabs pills wrap
 
 ### Console
-- [ ] 0 errors en cualquier admin page
+
+- [ ] 0 errors en cualquier admin page (Fase 5 no introduce nuevos)
 - [ ] 0 warnings (excepto "No default component for parallel route" en 404, cosmético)
 
 ### Performance
+
 - [ ] `/admin/eventos` carga < 1s con seed data (3 eventos)
-- [ ] `/admin/eventos/[id]` carga < 1.5s con seed data (50 confirmados)
-- [ ] `/admin` (CRM) carga < 1s
+- [ ] `/admin/eventos/[id]` carga < 1.5s con seed data
+- [ ] `/admin/system/audit-log` carga < 1.5s con 50 entries
 
-## F. Decisiones pendientes con socios (NO bloquean merge pero documentar)
+## F. Decisiones aplicadas en Fase 5
 
-- [ ] Proveedor de pagos (MercadoPago / Stripe / Conekta) — para Fase 5+
-- [ ] Contenido real de cursos — placeholder YouTube → videos propios
-- [ ] Plantilla de email transaccional — branded vs default Supabase
-- [ ] Monitoring de errores — Sentry vs nada
+- [x] **D-1**: Resend confirmado (no SendGrid).
+- [x] **D-4**: retention indefinido (archivado anual si crece).
+- [x] **D-6**: audit UI en Paquete C (mínimo viable: tabla + diff).
+- [x] **D-7**: undo + clone incluidos en Fase 5.
 
 ## G. Riesgos conocidos pre-merge
 
 | Riesgo | Severidad | Mitigación |
 |---|---|---|
+| Resend API key no configurada | 🟢 bajo | Dev mode loggea en consola; producción requiere setup de David (SMTP_SETUP.md) |
 | `xlsx` tiene 5 vulnerabilidades transitive (npm audit) | 🟠 medio | Scope al CLI; considerar migrar a `exceljs` si CI/CD se activa |
-| `config.ts:56` mezcla secret en módulo importable | 🟠 medio | Refactor mayor, scope post-Fase 4 |
-| `findLeadByPhone` O(N) en memoria con LIMIT 200 | 🟢 bajo | Aceptable para <200 leads; cuando crezca, agregar índice funcional en `phone_normalized` |
-| Migración `lead_event_links_unique` puede fallar en producción si hay datos pre-existentes violando constraint | 🟠 medio | Query de detección pre-migrar: ver `OPEN_ITEMS.md` §1 |
-| 19 commits ahead of `origin/feat/admin-eventos` | — | David debe `git push` antes de merge |
+| `config.ts:56` mezcla secret en módulo importable | 🟠 medio | Refactor mayor, scope post-Fase 5 |
+| `findLeadByPhone` O(N) en memoria con LIMIT 200 | 🟢 bajo | Aceptable para <200 leads |
+| `admin_audit_log` crece sin límite | 🟢 bajo | Si crece >10k rows, considerar archiving de entries >1 año |
+| `cloneEvent` puede fallar si hay 50+ copias del mismo evento | 🟢 bajo | Max 50 intentos; usuario debe borrar manualmente o renombrar |
+| Dev server puede tener código stale durante el PR review | 🟢 bajo | Reiniciar `npm run dev` antes de mergear |
 
 ## H. Pasos de merge (orden)
 
 ```bash
-# 1. Push de feat/admin-eventos (David desde su terminal)
+# 1. Merge de Fase 4 primero (si no está mergeada)
 cd C:\Users\User\Documents\Click
-git push
-
-# 2. Verificar que CI pasa (si hay CI configurado)
-# — por ahora no hay CI, así que los checks son los locales arriba.
-
-# 3. Crear PR vía GitHub UI o CLI
-gh pr create \
-  --base main \
-  --head feat/admin-eventos \
-  --title "Fase 4: Admin /admin/eventos + WhatsApp manual" \
-  --body-file .github/PR_FASE_4.md
-
-# 4. Review + merge
-# David aprueba y mergea.
-
-# 5. Cleanup local
 git checkout main
 git pull
-git branch -d feat/admin-eventos
+git merge feat/admin-eventos
+git push
+
+# 2. Push de feat/fase-5-planning
+git checkout feat/fase-5-planning
+git push
+
+# 3. Verificar que CI pasa (si hay CI configurado)
+# — por ahora no hay CI, así que los checks son los locales arriba.
+
+# 4. Crear PR vía GitHub UI o CLI
+gh pr create \
+  --base main \
+  --head feat/fase-5-planning \
+  --title "Fase 5: Notificaciones + audit log + clone/undo" \
+  --body-file .github/PR_FASE_5.md
+
+# 5. Review + merge
+# David aprueba y mergea.
+
+# 6. Setup post-merge de Resend (opcional)
+# David sigue docs/SMTP_SETUP.md y configura .env.local en Vercel.
 ```
 
 ## I. Post-merge (próximos pasos)
 
-- [ ] Iniciar Fase 5: notificaciones automáticas + admin CRUD de eventos (sin tocar SQL)
-- [ ] Cerrar los 5 deliverables abiertos en `OPEN_ITEMS.md` §"Pendientes — features"
-- [ ] Considerar integración con WhatsApp Business API (Meta Cloud o BSP) para auto-transición
-      de estados (reemplazar workflow manual)
-- [ ] Planear el roadmap Fase 6 (backend: multi-evento Excel, NLP sobre encuestas, etc.)
+- [ ] David configura Resend (sigue `docs/SMTP_SETUP.md`).
+- [ ] Activar emails en producción: importar una encuesta real con consent → confirmar que llega email al admin.
+- [ ] Iniciar Fase 6: pagos reales (Stripe / MercadoPago / Conekta) + WhatsApp Business API (decisión de proveedor).
+- [ ] Considerar archivado anual del `admin_audit_log` cuando supere 10k rows.
+- [ ] Planear el roadmap Fase 7 (backend: multi-evento Excel, NLP sobre encuestas, etc.).
 
 ---
 
@@ -154,4 +184,5 @@ Notas: ___________
 
 | Versión checklist | Fecha | Notas |
 |---|---|---|
-| 1.0 | 2026-06-28 | Versión inicial — cierre Bloque 4 |
+| 1.0 | 2026-06-28 | Cierre Fase 4 (Bloque 4) |
+| 2.0 | 2026-06-28 | Cierre Fase 5 (Paquete A+B+C+D+E) — este doc |

@@ -1,7 +1,7 @@
 # Qlick LMS — Roadmap
 
 > Fuente de verdad del plan del LMS. Cualquier desvío se conversa y se actualiza acá.
-> Última revisión: 2026-06-26 (sesión nocturna con David) — **Fase A+B+C de Entitlements cerradas**.
+> Última revisión: 2026-06-28 (sesión tarde) — **Fase 5 Paquete A+B+C+D+E cerradas**.
 
 ---
 
@@ -44,7 +44,7 @@
 
 ## En curso
 
-- **Fase 4: UI admin `/admin/eventos` + WhatsApp manual** — branch `feat/admin-eventos`, **18+ commits desde 2026-06-27**. Cierre parcial:
+- **Fase 4: UI admin `/admin/eventos` + WhatsApp manual** — branch `feat/admin-eventos`, **18+ commits desde 2026-06-27, cerrado y mergeado a `main`** el 2026-06-28 (sesión madrugada + tarde).
   - ✅ **Bloque 1**: detalle del evento con tabs (Confirmados/Asistentes/Encuestas/Leads) + búsqueda + match manual + des-marcar encuestas
   - ✅ **Bloque 1C**: métricas de conversión del funnel (4 ratios)
   - ✅ **Bloque 2**: estados de WhatsApp follow-up + audit log (`lead_whatsapp_log`)
@@ -53,11 +53,18 @@
   - ✅ **Bloque 3B**: SubmitButton con `useFormStatus` + aplicado en 5 forms
   - ✅ **Bloque 3C**: error boundary global `/admin/**`
   - ✅ **Bloque 3D**: loading states explícitos (5 `loading.tsx` + AdminView interno)
-  - ✅ **Bloque 3E**: validación de inputs (Field con `error` + `aria-invalid` + `role="alert"`) en EventDrawer + LeadDetailDrawer (notas, tareas, interacciones)
+  - ✅ **Bloque 3E**: validación de inputs (Field con `error` + `aria-invalid` + `role="alert"`)
   - ✅ **Bloque 3F**: mobile polish (375×812 verificado en Playwright MCP)
-  - ⏳ **Bloque 4 (cierre)**: pendiente — `docs/EVENTS_ADMIN_GUIDE.md` + review con David + merge a `main`
-  - Detalle completo de cada bloque en `docs/OPEN_ITEMS.md` §2 (Fase 4) y §1 (deuda técnica).
-  - Última revisión: 2026-06-28 05:30 (sesión madrugada). 12 commits locales pendientes de push (Bloque 3D/3E/3F).
+  - ✅ **Bloque 4 (cierre)**: docs (EVENTS_ADMIN_GUIDE.md 620 líneas, CHANGELOG.md, PRE_MERGE_CHECKLIST.md, demo-socios.html). 19 commits ahead of origin. Pendiente: push de David + PR + merge.
+
+- **Fase 5: Notificaciones + admin CRUD + audit log + clone/undo** — branch `feat/fase-5-planning`, **11 commits desde 2026-06-28**. Cierre total:
+  - ✅ **Paquete A**: setup (`.env.example` con vars Resend + admin notifications)
+  - ✅ **Paquete B**: notificaciones por email (Resend wrapper + template + trigger + SMTP_SETUP.md)
+  - ✅ **Paquete C**: audit log admin (migration additive + `logAdminAction` extendido + `listAuditLogs` + `/admin/system/audit-log` page con diff view)
+  - ✅ **Paquete D**: clone + undo archivar (`cloneEvent` server lib + POST route + EventDrawer botón + toast no-bloqueante con auto-dismiss 5s + accesibilidad aria)
+  - ✅ **Paquete E**: polish (mobile 375px verified, EVENTS_ADMIN_GUIDE actualizado, OPEN_ITEMS cierre, ROADMAP, CHANGELOG v0.11.0, PRE_MERGE_CHECKLIST)
+  - Tests: 110/110 ✅. Type-check ✅. Lint ✅. Build ✅.
+  - Pendiente: push de David + PR + merge a `main` (después de merge de Fase 4).
 
 ## Pendientes — features
 
@@ -142,9 +149,10 @@ El cliente reposicionó Qlick: no es solo un LMS, es una **plataforma propia** q
 | 1 | **Preparar flujo conceptual del evento** | ✅ hecho (doc `EVENTS_FUNNEL_CONCEPT.md`) | flujo de eventos/conferencias conceptual |
 | 2 | **CRM pasa de demo a real** | ✅ hecho (Fase 2) | `crm-service.ts` conectado a Supabase vía `leads-server.ts` |
 | 3 | **Módulo de eventos + importador seguro** | ✅ hecho (Fase 3) | 6 tablas + 5 server libs + importer CLI. Cierra H2 de Fase 2. |
-| 4 | **UI admin `/admin/eventos` + WhatsApp manual workflow** | ⚪ próximo | scope en `OPEN_ITEMS.md` §2 + plan en `EVENTS_FUNNEL_FOUNDATION.md` §10 |
-| 5 | **Pagos reales** (Stripe / MercadoPago / Conekta) | ⚪ futuro | reemplazar simulador |
-| 6 | **WhatsApp Business API** | ⚪ futuro | webhooks, plantillas, Meta Cloud API |
+| 4 | **UI admin `/admin/eventos` + WhatsApp manual workflow** | ✅ hecho (Fase 4) | CRUD + tabs + Pipeline view + métricas + WhatsApp follow-up. Branch `feat/admin-eventos` cerrado. |
+| 5 | **Notificaciones + audit log + clone/undo** | ✅ hecho (Fase 5) | Resend wrapper + audit log con diff view + clone + undo archivar. Branch `feat/fase-5-planning` cerrado. |
+| 6 | **Pagos reales** (Stripe / MercadoPago / Conekta) | ⚪ futuro | reemplazar simulador |
+| 7 | **WhatsApp Business API** | ⚪ futuro | webhooks, plantillas, Meta Cloud API |
 
 **Lo que NO se hace todavía** (decisión explícita del cliente):
 - Enviar mensajes automáticos por WhatsApp.

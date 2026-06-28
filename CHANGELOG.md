@@ -8,7 +8,51 @@
 
 ---
 
-## [Unreleased] — Fase 4 (Admin `/admin/eventos` + WhatsApp manual)
+## [Unreleased] — Fase 5 (Admin notificaciones + audit log + clone/undo)
+
+**Branch:** `feat/fase-5-planning` (11 commits desde 2026-06-28).
+**Status:** 🟡 Funcional + tested, pendiente merge a `main` post-review de David.
+**Prereq:** `feat/admin-eventos` (Fase 4) mergeado a `main` primero.
+
+### Added
+
+#### Notificaciones por email (Paquete B)
+
+- **Resend wrapper** (`src/lib/email/resend-client.ts`) — funciona en dev mode (loggea en consola sin API key), fail-safe (no rompe la operación principal si falla el send), normaliza recipients CSV → array.
+- **Template `survey-with-consent`** (`src/lib/email/templates/survey-with-consent.ts`) — HTML inline con brand colors, NO PII en subject (anti-spam), escapea HTML para evitar inyección, link al drawer del lead con `&amp;` correcto.
+- **Trigger automático** (`src/lib/events/promotion.ts`) — al `promoteSurveyToLead` crear un lead nuevo → manda email al admin. Best-effort: si falla, NO rollbackea.
+- **Doc `SMTP_SETUP.md`** — guía paso a paso para David configurar Resend (signup → DNS → API key → test).
+
+#### Audit log de admin (Paquete C)
+
+- **Migration `20260629000000_admin_audit_log_diff.sql`** — additive `ALTER TABLE` para agregar `before`/`after` columns (snapshots JSONB). Compatible con installs existentes (entrys viejas quedan con null).
+- **`logAdminAction` extendido** — ahora acepta `before` + `after` snapshots. Compatible con callers viejos (campos opcionales).
+- **Events integration** — `createEvent`, `updateEvent`, `updateEventStatus` pasan snapshots completos del estado.
+- **`listAuditLogs`** (server lib) — filtros por actor/entity/action/fechas + paginación + `total` count.
+- **Página `/admin/system/audit-log`** — tabla paginada con filtros URL-driven (admin/entity/acción/fechas), badge de acción coloreado, **diff view expandible** (rojo `before` vs verde `after`).
+
+#### Clone + Undo archivar (Paquete D)
+
+- **`cloneEvent`** (server lib) — genera slug único (`<slug>-copia` / `-copia-N`, limpia sufijos previos; max 50 intentos), título con ` (Copia)`, status=`draft` FORZADO. NO copia confirmados/asistentes/encuestas/leads.
+- **POST `/api/admin/events/[id]/clone`** — route handler protegido por `requireAdmin`, devuelve `{ event, sourceEvent }`.
+- **Botón "📋 Clonar evento"** en EventDrawer (footer modo edit) — fila separada con hint "La copia queda en borrador".
+- **Toast "Clonado — Abrir"** con link al clon (no auto-dismiss).
+- **Undo archivar** — toast no-bloqueante con botón "Deshacer" (vuelve a `draft`) + barrita de progreso animada + auto-dismiss en 5s.
+- **Accesibilidad del toast** — `role="status"` con `aria-live="polite"` para undo/info, `role="alert"` para errores. Respeta `prefers-reduced-motion`.
+- **Audit log**: action `event_clone` con `metadata.source_event_id` + snapshots before/after.
+
+### Internal
+
+- **CSS** (`globals.css`): keyframe `toast-progress` (5s linear) + media query `prefers-reduced-motion`.
+- **Barrel update** (`src/lib/events/index.ts`): re-exporta `cloneEvent`.
+
+### Tests
+
+- 110/110 pasando (sin cambios — el flujo ya está cubierto por los tests de createEvent/updateEvent existentes; undo/clone no agregan lógica nueva que rompa los tests). E2E manual en `EVENTS_ADMIN_GUIDE.md` §10.
+
+---
+
+## [v0.10.0] — Fase 4 (Admin `/admin/eventos` + WhatsApp manual) — 2026-06-28
 
 **Branch:** `feat/admin-eventos` (~30 commits desde 2026-06-27).
 **Status:** ✅ Funcional. Pendiente merge a `main` post-review de David.

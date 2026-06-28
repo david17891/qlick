@@ -21,7 +21,76 @@
 
 ## 1. Deuda técnica activa
 
-### ✅ Sesión 2026-06-28 (domingo, madrugada + tarde) — Dev login bypass + auditoría visual con Playwright MCP (2 PASADAS)
+### ✅ Sesión 2026-06-28 (domingo, tarde) — Fase 5 Paquete A+B+C+D+E cerrado
+
+**Branch:** `feat/fase-5-planning`. Working tree limpio. **12 commits** (11 previos + 1 docs):
+- `9e3d67b` chore(env): agregar vars de Resend + admin notifications (.env.example Fase 5)
+- `3781758` feat(email): Resend wrapper client con fallback dev
+- `00eba4c` feat(email): template 'survey-with-consent' con HTML inline brand-colors + a11y
+- `189d9b5` feat(crm): trigger email al admin cuando promoteSurveyToLead crea un lead
+- `6e6704a` docs(admin): SMTP_SETUP.md
+- `c65e0da` feat(db): migration 20260629000000_admin_audit_log (schema + indices + RLS)
+- `99c0d7b` feat(audit): server lib recordAuditLog + listAuditLogs (best-effort, fail-safe)
+- `1a63df7` feat(audit): extender logAdminAction con before/after (snapshots JSONB)
+- `4cfa13c` feat(admin): /admin/system/audit-log con tabla + filtros URL-driven + diff view
+- `b8e4765` feat(audit): listAuditLogs en audit-server.ts (cierra lectura del audit log)
+- `5bcf520` feat(events): clone + undo archivar (toast 5s) — Fase 5 Paquete D
+- `docs-pending` docs: ROADMAP + CHANGELOG v0.11.0 + OPEN_ITEMS + PRE_MERGE_CHECKLIST (este commit)
+
+### Paquete A — Setup (1 commit)
+- `.env.example` con vars de Resend + admin notifications (RESEND_API_KEY, RESEND_FROM_ADDRESS, RESEND_REPLY_TO, ADMIN_NOTIFICATION_EMAILS).
+
+### Paquete B — Notificaciones (4 commits)
+- **Wrapper Resend** (`src/lib/email/resend-client.ts`) — dev mode loggea en consola, no crashea si falla el send, normaliza recipients CSV → array.
+- **Template** (`src/lib/email/templates/survey-with-consent.ts`) — HTML inline con brand colors, NO PII en subject (anti-spam), escapea HTML, link al drawer del lead.
+- **Trigger** (`src/lib/events/promotion.ts`) — al `promoteSurveyToLead` crear lead → email al admin. Best-effort: si falla, NO rollbackea.
+- **SMTP_SETUP.md** — guía paso a paso para David configurar Resend (signup → DNS → API key → test).
+
+### Paquete C — Audit log (4 commits)
+- **Migration** `20260629000000_admin_audit_log_diff.sql` — additive `ALTER TABLE` para agregar `before`/`after` columns (snapshots JSONB).
+- **`logAdminAction`** extendido — ahora acepta `before`/`after`. Compatible con callers viejos (campos opcionales).
+- **Events integration** (`events-server.ts`) — `createEvent`, `updateEvent`, `updateEventStatus` pasan snapshots completos.
+- **UI page** (`/admin/system/audit-log`) — tabla paginada con filtros URL-driven, badge de acción coloreado, **diff view** expandible (before rojo vs after verde).
+
+### Paquete D — Clone + Undo archivar (1 commit)
+- **`cloneEvent`** (`src/lib/events/events-server.ts`) — genera slug único (`<slug>-copia` / `-copia-N`, limpia sufijos previos; max 50 intentos), título con " (Copia)", status='draft' FORZADO. NO copia confirmados/asistentes/encuestas/leads.
+- **POST `/api/admin/events/[id]/clone`** — route handler protegido por `requireAdmin`.
+- **`cloneEvent` client** (`src/lib/crm/ops-client.ts`) — helper client que llama al route.
+- **Botón "📋 Clonar evento"** en `EventDrawer` (footer modo edit) — fila separada con hint "La copia queda en borrador".
+- **Toast "Clonado — Abrir"** con link al clon (no auto-dismiss).
+- **Undo archivar** — callback `onArchived` desde `EventDrawer` → `AdminEventosClient` muestra toast no-bloqueante bottom-right con:
+  - Título: `"<title>" archivado`
+  - Botón "Deshacer" → `updateEventStatus(id, "draft")`
+  - Hint "Se cierra en 5s" + barrita de progreso animada (`@keyframes toast-progress`)
+  - Auto-dismiss en 5000ms vía setTimeout
+  - `role="status"` + `aria-live="polite"`
+  - Respeta `prefers-reduced-motion`
+- **CSS** (`globals.css`): keyframe `toast-progress` (5s linear) + media query reduced-motion.
+
+### Paquete E — Polish + paperwork (1 commit)
+- Mobile 375px verified (3 screenshots en `C:\Users\User\`): audit log filtros apilados + tabla con scroll horizontal OK, admin eventos cards 1 col, evento detail métricas 2x2 grid.
+- EVENTS_ADMIN_GUIDE.md actualizado con secciones undo + clone + audit log + Resend.
+- ROADMAP.md: Fase 4 cerrada, Fase 5 cerrada, preview Fase 6.
+- CHANGELOG.md: v0.11.0 entry con todas las features de Fase 5.
+- OPEN_ITEMS.md: este bloque.
+- PRE_MERGE_CHECKLIST.md: actualizado para `feat/fase-5-planning`.
+
+### Estado final Fase 5 (2026-06-28 13:51)
+- **Branch:** `feat/fase-5-planning` — 12 commits ahead of `feat/admin-eventos`.
+- **Tests:** 110/110 ✅.
+- **Type-check:** ✅ · **Lint:** ✅ · **Build:** ✅.
+- **Pendiente:** push de David (`git push`) + merge de Fase 4 + Fase 5 a `main` después de testear Resend con un survey real.
+
+### Dependencias externas para activar email
+- ⚠️ Fase B depende del setup de Resend por David. Sin Resend, dev mode loggea en consola y funciona igual. Doc `SMTP_SETUP.md` paso a paso (30 min de signup → DNS → API key → test).
+
+### Decisiones aplicadas
+- **D-1**: Resend confirmado (no SendGrid). Wrapper soporta swap si David cambia de opinión.
+- **D-4**: retention indefinido (archivado anual si crece la tabla).
+- **D-6**: audit UI en Paquete C (mínimo viable: tabla + diff).
+- **D-7**: undo + clone incluidos en Fase 5.
+
+### Sesión 2026-06-28 (domingo, madrugada + tarde) — Dev login bypass + auditoría visual con Playwright MCP (2 PASADAS)
 
 **Branch:** `feat/admin-eventos`. Working tree limpio. **4 commits en la sesión:**
 
