@@ -553,5 +553,35 @@ export async function listPublishedEventSlugs(): Promise<string[]> {
   return (data as Pick<EventRow, "slug">[]).map((r) => r.slug);
 }
 
+/**
+ * Lista los eventos publicados (status='published') ordenados por fecha
+ * ascendente — los próximos primero, los pasados al final. Usado por
+ * `/eventos` (landing pública de catálogo, Fase 4 cierre).
+ *
+ * A diferencia de `getAdminEvents`, NO incluye conteos ni drafts/archived.
+ * Solo el shape `Event` mínimo para renderizar cards de discoverability.
+ */
+export async function listPublishedEvents(): Promise<Event[]> {
+  if (!isRealMode()) return [];
+
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("events")
+    .select("*")
+    .eq("status", "published")
+    .order("starts_at", { ascending: true });
+
+  if (error || !data) {
+    if (error) {
+      // eslint-disable-next-line no-console
+      console.error("[events-server] listPublishedEvents falló", {
+        code: error.code,
+      });
+    }
+    return [];
+  }
+  return (data as EventRow[]).map(mapEventRowToEvent);
+}
+
 /** Tipo del import por si el caller (CLI / server lib) lo necesita. */
 export type { EventImportType };

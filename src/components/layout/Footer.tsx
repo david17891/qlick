@@ -7,6 +7,7 @@ const cols = [
     title: "Plataforma",
     links: [
       { href: "/cursos", label: "Cursos" },
+      { href: "/eventos", label: "Eventos" },
       { href: "/dashboard", label: "Mi panel" },
       { href: "/login", label: "Acceso alumnos" }
     ]

@@ -19,6 +19,7 @@ export {
   updateEvent,
   updateEventStatus,
   listPublishedEventSlugs,
+  listPublishedEvents,
   type AdminEventSummary,
   type CreateEventInput,
   type UpdateEventInput,
