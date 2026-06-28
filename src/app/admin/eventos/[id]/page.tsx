@@ -20,6 +20,7 @@ import { PipelineCard } from "./_components/PipelineCard";
 import { markSurveyReviewedAction, unmarkSurveyReviewedAction, linkAttendeeToConfirmationAction } from "./_actions";
 import { buildEventBroadcast } from "@/lib/contact/whatsapp";
 import { buildDirectWhatsAppLink, buildLeadOutreachMessage } from "@/lib/contact/whatsapp";
+import { calculateEventMetrics } from "@/lib/events/event-metrics";
 
 interface Props {
   params: { id: string };
@@ -177,6 +178,20 @@ export default async function AdminEventoDetailPage({
   ).length;
   const leadsPromoted = leadsWithLinks.length;
 
+  // Metricas de conversion (Sub-bloque 1C). Calculadas en server-side,
+  // no se rerenderizan con la interaccion del cliente.
+  const metrics = calculateEventMetrics({
+    event,
+    confirmedCount,
+    attendedCount,
+    unmatchedCount,
+    surveysCount,
+    surveysWithConsent,
+    leadsPromoted,
+  });
+  /** Formatea un rate o devuelve "—" si es null (sin datos). */
+  const fmtRate = (r: number | null): string => (r === null ? "—" : `${r}%`);
+
   // Pills de tabs. Mismo patrón visual que `AdminView.tsx` (pills
   // redondos, activo lleno de brand, inactivos hover brand-50).
   const tabs: Array<{
@@ -250,6 +265,62 @@ export default async function AdminEventoDetailPage({
                 hint="vinieron sin confirmar"
                 tone="neutral"
               />
+            </div>
+          </Card>
+
+          {/* Sub-bloque 1C: Metricas de conversion del evento.
+              Tasas reales del funnel (no counts): asistencia, consent,
+              conversion a lead, overall. Si el denominador es 0,
+              mostramos "—". */}
+          <Card className="p-5 mb-6">
+            <h2 className="text-sm font-bold uppercase text-brand-600 mb-3">
+              Conversion del funnel
+            </h2>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="rounded-xl bg-brand-50/50 p-3">
+                <p className="text-[10px] uppercase text-ink-muted font-semibold">
+                  Asistencia
+                </p>
+                <p className="text-2xl font-bold text-brand-700 mt-1">
+                  {fmtRate(metrics.attendanceRate)}
+                </p>
+                <p className="text-[10px] text-ink-muted mt-0.5">
+                  {attendedCount} de {confirmedCount} confirmados
+                </p>
+              </div>
+              <div className="rounded-xl bg-amber-50/50 p-3">
+                <p className="text-[10px] uppercase text-ink-muted font-semibold">
+                  Consent
+                </p>
+                <p className="text-2xl font-bold text-amber-700 mt-1">
+                  {fmtRate(metrics.consentRate)}
+                </p>
+                <p className="text-[10px] text-ink-muted mt-0.5">
+                  {surveysWithConsent} de {surveysCount} encuestas
+                </p>
+              </div>
+              <div className="rounded-xl bg-blue-50/50 p-3">
+                <p className="text-[10px] uppercase text-ink-muted font-semibold">
+                  A lead
+                </p>
+                <p className="text-2xl font-bold text-blue-700 mt-1">
+                  {fmtRate(metrics.leadConversionRate)}
+                </p>
+                <p className="text-[10px] text-ink-muted mt-0.5">
+                  {leadsPromoted} de {surveysWithConsent} con consent
+                </p>
+              </div>
+              <div className="rounded-xl bg-emerald-50/50 p-3">
+                <p className="text-[10px] uppercase text-ink-muted font-semibold">
+                  Overall
+                </p>
+                <p className="text-2xl font-bold text-emerald-700 mt-1">
+                  {fmtRate(metrics.overallConversionRate)}
+                </p>
+                <p className="text-[10px] text-ink-muted mt-0.5">
+                  {leadsPromoted} de {confirmedCount} confirmados
+                </p>
+              </div>
             </div>
           </Card>
 
