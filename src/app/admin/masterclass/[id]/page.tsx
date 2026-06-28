@@ -109,7 +109,7 @@ export default async function AdminMasterclassDetailPage({ params }: Props) {
                 <li>🎤 {masterclass.instructorName}</li>
               )}
             </ul>
-            <div className="grid grid-cols-4 gap-3 mt-5 pt-5 border-t border-brand-100">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-5 pt-5 border-t border-brand-100">
               <div>
                 <p className="text-xs text-ink-muted">Registrados</p>
                 <p className="text-2xl font-bold text-ink">

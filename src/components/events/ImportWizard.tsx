@@ -433,7 +433,7 @@ function SummaryReport({
       </div>
 
       {/* Conteos */}
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <Stat label="Filas" value={summary.totalRows} />
         <Stat label="Insertados" value={summary.inserted} tone="success" />
         <Stat
