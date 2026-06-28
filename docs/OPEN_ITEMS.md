@@ -303,6 +303,29 @@ lo que el typegen regenere.
       `mobile_masterclass_list.png`, `mobile_masterclass_detail.png`,
       `mobile_admin_supabase.png`, `mobile_admin_import.png`.
     - Verificado: `type-check` ✅, `lint` ✅.
+- **🟢 Auditoría larga 2026-06-28 05:30 — pre-merge review Bloque 3 (12 commits, +632/-67)**
+  - **Pass 1 — Enumerar cambios**: 12 commits en `feat/admin-eventos` desde
+    `25c0f71` (cierre 2E). Scope: 5 `loading.tsx` nuevos + Input.tsx extended
+    + EventDrawer / LeadDetailDrawer / AdminView refactors + 3 docs.
+  - **Pass 2 — Code smells**: ✅ Sin TODO/FIXME/console.log/secrets hardcoded.
+    Cambios son UI-only.
+  - **Pass 3 — Security**: ✅ 29/29 endpoints en `src/app/api/admin/**`
+    llaman `requireAdmin()` (verificado con grep). Ningún endpoint nuevo
+    introducido por Bloque 3.
+  - **Pass 4 — Visual**: ✅ 375x812 mobile (4 paginas) + spot check 1440x900
+    desktop (masterclass list/detail). 0 horizontal overflow. Console 0 errors.
+  - **Pass 5 — Docs**: 🟡 **ROADMAP.md estaba stale** (decia "Fase 4 no
+    arrancada" pero ya teniamos 18+ commits). Actualizado en este commit con
+    el status Bloque 3A→3F cerrados y Bloque 4 pendiente.
+  - **Findings accionables**: ninguno critico. Siguiente paso natural es
+    Bloque 4 (EVENTS_ADMIN_GUIDE.md + review + merge a main).
+  - **Screenshots archivados**:
+    `C:\Users\User\desktop_masterclass_list.png`,
+    `C:\Users\User\desktop_masterclass_detail.png`,
+    `C:\Users\User\mobile_masterclass_list.png`,
+    `C:\Users\User\mobile_masterclass_detail.png`,
+    `C:\Users\User\mobile_admin_supabase.png`,
+    `C:\Users\User\mobile_admin_import.png`.
 - **Bloque 4**: Cierre (EVENTS_ADMIN_GUIDE.md, plan review con David).
 
 ### 🟠 Auditoría externa 2026-06-27 — Hallazgos y cierres

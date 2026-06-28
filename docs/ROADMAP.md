@@ -44,7 +44,20 @@
 
 ## En curso
 
-- (vacío — listo para arrancar **Fase 4: UI admin `/admin/eventos` + WhatsApp manual** cuando David dé luz verde. Plan completo en `docs/EVENTS_FUNNEL_FOUNDATION.md` §10 + deuda activa en `docs/OPEN_ITEMS.md` §2.)
+- **Fase 4: UI admin `/admin/eventos` + WhatsApp manual** — branch `feat/admin-eventos`, **18+ commits desde 2026-06-27**. Cierre parcial:
+  - ✅ **Bloque 1**: detalle del evento con tabs (Confirmados/Asistentes/Encuestas/Leads) + búsqueda + match manual + des-marcar encuestas
+  - ✅ **Bloque 1C**: métricas de conversión del funnel (4 ratios)
+  - ✅ **Bloque 2**: estados de WhatsApp follow-up + audit log (`lead_whatsapp_log`)
+  - ✅ **Bloque 2E**: historial de contactos WhatsApp en el drawer del CRM (`lead_interactions` API + UI)
+  - ✅ **Bloque 3A**: empty states diseñados con iconos y CTAs
+  - ✅ **Bloque 3B**: SubmitButton con `useFormStatus` + aplicado en 5 forms
+  - ✅ **Bloque 3C**: error boundary global `/admin/**`
+  - ✅ **Bloque 3D**: loading states explícitos (5 `loading.tsx` + AdminView interno)
+  - ✅ **Bloque 3E**: validación de inputs (Field con `error` + `aria-invalid` + `role="alert"`) en EventDrawer + LeadDetailDrawer (notas, tareas, interacciones)
+  - ✅ **Bloque 3F**: mobile polish (375×812 verificado en Playwright MCP)
+  - ⏳ **Bloque 4 (cierre)**: pendiente — `docs/EVENTS_ADMIN_GUIDE.md` + review con David + merge a `main`
+  - Detalle completo de cada bloque en `docs/OPEN_ITEMS.md` §2 (Fase 4) y §1 (deuda técnica).
+  - Última revisión: 2026-06-28 05:30 (sesión madrugada). 12 commits locales pendientes de push (Bloque 3D/3E/3F).
 
 ## Pendientes — features
 
