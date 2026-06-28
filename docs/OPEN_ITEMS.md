@@ -156,10 +156,25 @@ reales), evento "Ejemplo" (sin datos) muestra 0/0/0/0.
 tanto en el botón desktop (línea ~161) como en el mobile menu (~253).
 Cierra B-4.
 
-### 🟡 B-5 — Cover image de evento sobresale del card en `/admin/eventos`
+### ✅ B-5 — Cover image de evento sobresale del card en `/admin/eventos`
 
-**Estado:** ⚠️ **PARCIALMENTE MITIGADO** (2026-06-27 ~03:30). Requiere
-investigación fresca con DevTools en próxima sesión.
+**Estado:** ✅ **RESUELTO** (2026-06-27 ~20:18, commit `8900bed`).
+
+**Decisión final:** quitar la `<img>` de cover en el flujo público y
+dejar siempre el gradiente de marca (`bg-brand-gradient`). El bug de
+overflow queda cerrado por construcción — no hay `<img>` que pueda
+desbordar. Cambios:
+
+- `src/app/eventos/page.tsx` → `EventCard` siempre usa gradiente + emoji 🎟️
+- `src/app/eventos/[slug]/EventView.tsx` → hero sin imagen (solo tipografía + meta)
+- `src/app/eventos/[slug]/page.tsx` → OpenGraph metadata sin `images`
+
+El campo `cover_image_url` en DB se conserva (no se borra) por compat
+con imports previos. Si en el futuro se reactiva la cover image,
+agregar como nuevo B-XX con scope definido (asset pipeline + decisión
+de quién sube las imágenes).
+
+**Historia del debug** (4 intentos previos, todos fallaron):
 
 4 intentos + DevTools diagnosticaron que el `<img>` SÍ recibe `height:
 128px` + `object-fit: cover` correctamente, pero el Card padre con
@@ -170,16 +185,12 @@ que sigue fallando, lo cual sugiere que el problema es más profundo
 (quizá el normalize de Tailwind `img { height: auto }` está ganando
 contra el style del wrapper, o el browser está cacheando HTML viejo).
 
-**Workaround:** la cover image es decorativa en el listado. El detalle
-del evento sigue funcionando OK.
+Cierre por owner: en lugar de seguir debugueando el render del `<img>`,
+se optó por eliminar la dependencia. Pragmático, sin workaround
+parcial, mobile-friendly por default (gradiente no requiere asset
+externo).
 
-**Investigación fresca:** abrir el proyecto con DevTools, inspeccionar
-`<div class="w-full h-32 overflow-hidden bg-brand-50">` (wrapper nuevo)
-y su `<img>` adentro. Confirmar Computed heights. Si el `<img>` mide
-128px y el wrapper mide 128px y `overflow: hidden`, el bug está en
-otro lado (¿grid stretching? ¿cross-browser?).
-
-**Severity 🟡** — tiene workaround.
+**Severity al cierre:** 🟡 → ⚪.
 
 ---
 
