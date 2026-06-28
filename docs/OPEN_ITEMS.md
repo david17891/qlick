@@ -243,6 +243,29 @@ lo que el typegen regenere.
   - Tests: 96/98 passing (2 fails pre-existentes en `event-importer.test.mjs`, no introducidos por este cambio).
 - **Bloque 3**: Robustez & polish de admin (empty states diseñados, loading
   states explicitos, error handling, validacion de inputs, mobile-friendly).
+  - **3A empty states** — ✅ **CERRADO en `7e82477`**.
+    - Componente `EmptyState` (en `@/components/ui/Feedback.tsx`) con icono,
+      titulo, descripcion y CTA opcional. Aplicado en todas las secciones
+      de admin que renderean listas (eventos, leads, masterclass, etc.).
+  - **3B SubmitButton** — ✅ **CERRADO en `95f8ba1` + `94310d0`**.
+    - Componente `SubmitButton` con estado pending via `useFormStatus`.
+    - Aplicado en 5 forms del admin (notes, tasks, interactions, etc.).
+  - **3C error boundary** — ✅ **CERRADO en `34da163`**.
+    - `src/app/admin/error.tsx` (route-level) + `eventos/error.tsx` +
+      `eventos/[id]/error.tsx` + `eventos/[id]/import/page.tsx` (try/catch).
+  - **3D loading states** — ✅ **CERRADO en `28d11b3, d70c58b, 5b39afd, 27d3e1e, e8c1e60`**.
+    - `loading.tsx` skeletons (usan `Skeleton` de Feedback.tsx, no divs crudos):
+      - `src/app/admin/loading.tsx` — header + 7 tabs + 4 stat cards + 2 cards (Resumen)
+      - `src/app/admin/masterclass/loading.tsx` — header + 3 cards grid
+      - `src/app/admin/masterclass/[id]/loading.tsx` — breadcrumb + header card + 4 metric boxes + card de Registrados con 3 filas
+      - `src/app/admin/system/supabase/loading.tsx` — header + 4 cards apilados (slate-50, no brand-50)
+      - `src/app/admin/eventos/[id]/import/loading.tsx` — breadcrumb + h1 + card del wizard (step indicator + upload area)
+    - Bonus: `AdminView` client component — el estado `ready=false` ahora
+      muestra un skeleton en vez del texto plano "Cargando panel…".
+    - Mismo patron que `/admin/eventos/loading.tsx` y `/admin/eventos/[id]/loading.tsx` (ya existentes de Bloque 4).
+    - Verificado: `type-check` ✅, `lint` ✅, tests 96/98 (2 fails pre-existentes).
+  - **3E validacion de inputs** — ⏳ Pendiente (proximo Bloque 3).
+  - **3F mobile polish** — ⏳ Pendiente (despues de 3E).
 - **Bloque 4**: Cierre (EVENTS_ADMIN_GUIDE.md, plan review con David).
 
 ### 🟠 Auditoría externa 2026-06-27 — Hallazgos y cierres
