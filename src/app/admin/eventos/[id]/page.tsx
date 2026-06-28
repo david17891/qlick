@@ -591,13 +591,33 @@ export default async function AdminEventoDetailPage({
 
                 {confirmations.length === 0 ? (
                   <EmptyState
-                    title="Sin confirmaciones aún"
-                    description="Importá el Excel de confirmados o usá el formulario público para empezar."
+                    icon="📭"
+                    title="Aun no hay confirmados"
+                    description="Importa el Excel de confirmados o comparte el link publico del evento para que la gente confirme."
+                    action={
+                      <div className="flex flex-wrap gap-2 justify-center">
+                        <Link
+                          href={`/admin/eventos/${event.id}/import`}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-brand-500 text-white hover:bg-brand-600 transition"
+                        >
+                          📥 Importar Excel
+                        </Link>
+                        <a
+                          href={`/eventos/${event.slug}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold border border-brand-200 text-ink-soft hover:bg-brand-50 transition"
+                        >
+                          🔗 Ver link publico
+                        </a>
+                      </div>
+                    }
                   />
                 ) : filteredConfirmations.length === 0 ? (
                   <EmptyState
+                    icon="🔍"
                     title="Sin resultados con esos filtros"
-                    description="Probá quitar el filtro de fuente o limpiar la búsqueda."
+                    description="Proba quitar el filtro de fuente o limpiar la busqueda."
                   />
                 ) : (
                   <Table headers={["Nombre", "Email", "Teléfono", "Fuente", "Confirmó"]}>
@@ -630,8 +650,17 @@ export default async function AdminEventoDetailPage({
             >
             {attendees.length === 0 ? (
               <EmptyState
-                title="Aún sin asistentes"
-                description="Hacé check-in desde el panel el día del evento o importá el Excel de asistencia."
+                icon="🚶"
+                title="Aun no hay check-ins"
+                description="Hace check-in desde el panel el dia del evento o importa el Excel de asistencia post-evento."
+                action={
+                  <Link
+                    href={`/admin/eventos/${event.id}/import`}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-brand-500 text-white hover:bg-brand-600 transition"
+                  >
+                    📥 Importar Excel
+                  </Link>
+                }
               />
             ) : (
               <Table
@@ -715,8 +744,9 @@ export default async function AdminEventoDetailPage({
             >
             {surveys.length === 0 ? (
               <EmptyState
-                title="Sin encuestas aún"
-                description="Cuando alguien complete la encuesta post-evento, va a aparecer acá."
+                icon="📭"
+                title="Aun no hay encuestas"
+                description="Cuando alguien complete la encuesta post-evento, va a aparecer aca. Las que tienen consent=true se promueven automaticamente a lead."
               />
             ) : (
               <Table
@@ -796,8 +826,9 @@ export default async function AdminEventoDetailPage({
             >
             {leadsWithLinks.length === 0 ? (
               <EmptyState
-                title="Sin leads aún"
-                description="Los leads se generan automáticamente cuando una encuesta tiene consent=true + email/phone."
+                icon="🧲"
+                title="Aun no hay leads promovidos"
+                description="Los leads se generan automaticamente cuando una encuesta tiene consent=true + email/phone. La automatizacion respeta la politica de PII del repo."
               />
             ) : (
               <ul className="divide-y divide-brand-50">
@@ -906,8 +937,8 @@ export default async function AdminEventoDetailPage({
                 tone="brand"
               >
                 {confirmations.length === 0 ? (
-                  <p className="text-xs text-ink-muted italic text-center py-4">
-                    Nadie ha confirmado aún
+                  <p className="text-xs text-ink-muted italic text-center py-6 px-2">
+                    Aun sin confirmados
                   </p>
                 ) : (
                   confirmations.map((c) => (
@@ -931,8 +962,8 @@ export default async function AdminEventoDetailPage({
                 tone="emerald"
               >
                 {attendees.length === 0 ? (
-                  <p className="text-xs text-ink-muted italic text-center py-4">
-                    Sin check-ins aún
+                  <p className="text-xs text-ink-muted italic text-center py-6 px-2">
+                    Aun sin check-ins
                   </p>
                 ) : (
                   attendees.map((a) => (
@@ -956,8 +987,8 @@ export default async function AdminEventoDetailPage({
                 tone="amber"
               >
                 {surveys.length === 0 ? (
-                  <p className="text-xs text-ink-muted italic text-center py-4">
-                    Sin encuestas aún
+                  <p className="text-xs text-ink-muted italic text-center py-6 px-2">
+                    Aun sin encuestas
                   </p>
                 ) : (
                   surveys.map((s) => (
@@ -999,8 +1030,8 @@ export default async function AdminEventoDetailPage({
                 tone="blue"
               >
                 {leadsWithLinks.length === 0 ? (
-                  <p className="text-xs text-ink-muted italic text-center py-4">
-                    Sin leads aún
+                  <p className="text-xs text-ink-muted italic text-center py-6 px-2">
+                    Aun sin leads
                   </p>
                 ) : (
                   leadsWithLinks.map(({ lead, links }) => {
@@ -1083,8 +1114,8 @@ export default async function AdminEventoDetailPage({
                 count={0}
                 tone="neutral"
               >
-                <p className="text-xs text-ink-muted italic text-center py-4">
-                  Fase 5+ — sin inscripciones a cursos aún
+                <p className="text-xs text-ink-muted italic text-center py-6 px-2">
+                  Fase 5+ — Inscritos a cursos
                 </p>
               </PipelineColumn>
             </div>
