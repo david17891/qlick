@@ -140,11 +140,13 @@ Output:
 
 El login de alumno es **distinto** al de admin. No usan el mismo endpoint.
 
+> **Actualizado 2026-06-29:** desde la sesión nocturna, **se permite dualidad**. Un mismo email puede actuar como admin Y como alumno (decidido por la ruta). RLS previene que un admin vea datos de otros alumnos. Por lo tanto, la nota en 4.1 sobre "un admin no puede entrar como alumno" ya no aplica.
+
 ### 4.1. Google OAuth (método principal)
 
 1. Andá a http://localhost:3000/login
 2. Click en "Continuar con Google"
-3. Elegí tu cuenta de Google (o cualquier Gmail que no esté en `ADMIN_EMAIL_ALLOWLIST` — un admin no puede entrar como alumno por diseño)
+3. Elegí tu cuenta de Google (cualquier Gmail sirve, incluido uno en `ADMIN_EMAIL_ALLOWLIST`)
 4. Listo, ya estás como alumno. Te lleva a `/dashboard`
 
 ### 4.2. Magic link (fallback)
@@ -299,6 +301,56 @@ Andá a http://localhost:3000/admin/system/audit-log (con sesión admin). Filtro
 - **El dev server tiene hot reload.** Guardás un archivo → la página se refresca sola. Si no se refresca, mirá la terminal: a veces Next.js reporta un error de compilación y deja la pantalla en el último estado bueno.
 - **No commitees `.env.local`.** Ya está en `.gitignore`. Si por error lo commiteás, rotá las API keys de inmediato.
 - **El visual E2E con Playwright MCP** lo corro yo cuando querés. Avisame y abrimos el sitio, capturamos screenshots, y revisamos las 5 rutas clave (`/`, `/login`, `/dashboard`, `/admin`, `/admin/eventos`) en 25 min.
+
+---
+
+## 9. Dev login en production (para Mavis / Playwright / tests E2E)
+
+> **Nuevo 2026-06-29.** El endpoint `/api/dev/login` ahora funciona también en production (gated solo por `DEV_ADMIN_SECRET`, que está en Vercel + `.env.local`). Esto permite que Mavis (el agente) testee en production sin browser interactivo.
+
+### Login como admin
+
+```powershell
+$secret = (Get-Content .env.local | Select-String 'DEV_ADMIN_SECRET="([^"]+)"').Matches[0].Groups[1].Value
+$body = @{ email = "david17891@gmail.com"; secret = $secret } | ConvertTo-Json
+Invoke-WebRequest -Uri "https://qlick-three.vercel.app/api/dev/login" `
+  -Method Post -Body $body -ContentType "application/json" `
+  -UseBasicParsing -SessionVariable sv
+
+# Cookies quedan en $sv, próximas requests con -WebSession $sv
+Invoke-WebRequest -Uri "https://qlick-three.vercel.app/admin" -UseBasicParsing -WebSession $sv
+```
+
+Response: `{ "ok": true, "email": "...", "isAdmin": true, "redirectTo": "/admin" }`.
+
+### Login como student (cualquier email, auto-crea el user)
+
+```powershell
+$body = @{ email = "mavis+test@qlick.app"; secret = $secret } | ConvertTo-Json
+Invoke-WebRequest -Uri "https://qlick-three.vercel.app/api/dev/login" `
+  -Method Post -Body $body -ContentType "application/json" `
+  -UseBasicParsing -SessionVariable sv
+
+Invoke-WebRequest -Uri "https://qlick-three.vercel.app/dashboard" -UseBasicParsing -WebSession $sv
+```
+
+Response: `{ "ok": true, "email": "...", "isAdmin": false, "redirectTo": "/dashboard" }`.
+
+### Login como visitante (sin auth)
+
+Sin llamar al endpoint. Solo navegar sin cookies:
+
+```powershell
+Invoke-WebRequest -Uri "https://qlick-three.vercel.app/" -UseBasicParsing  # 200
+Invoke-WebRequest -Uri "https://qlick-three.vercel.app/dashboard" -UseBasicParsing -MaximumRedirection 0
+# 307 → /login (correcto, no hay sesión)
+```
+
+### Seguridad
+
+- El secret es la **única barrera**. No publicar. Si se compromete: rotar en `.env.local` + Vercel env vars simultáneamente.
+- El endpoint **auto-crea usuarios** en Supabase auth.users. Útil para tests, no abusar en producción real.
+- La sesión caduca según config de Supabase (default 1h access token, 7d refresh).
 
 ---
 
