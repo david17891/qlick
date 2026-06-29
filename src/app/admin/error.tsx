@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 /**
  * Error boundary global para `/admin/**` (cubre cualquier pagina
@@ -9,7 +9,8 @@
 
 import { useEffect } from "react";
 import { Container, Card, Button, Badge } from "@/components/ui";
-import { Navbar, Footer } from "@/components/layout";
+import { Navbar as NavbarClient } from "@/components/layout/Navbar";
+import { Footer } from "@/components/layout/Footer";
 
 export default function AdminError({
   error,
@@ -30,7 +31,7 @@ export default function AdminError({
 
   return (
     <>
-      <Navbar />
+      <NavbarClient />
       <main className="min-h-screen bg-brand-50/30 py-10">
         <Container size="wide">
           <div className="max-w-2xl mx-auto">
@@ -81,3 +82,4 @@ export default function AdminError({
     </>
   );
 }
+

@@ -13,7 +13,8 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { Container, Card, Button, Badge } from "@/components/ui";
-import { Navbar, Footer } from "@/components/layout";
+import { Navbar as NavbarClient } from "@/components/layout/Navbar";
+import { Footer } from "@/components/layout/Footer";
 
 export default function LessonError({
   error,
@@ -29,7 +30,7 @@ export default function LessonError({
 
   return (
     <>
-      <Navbar />
+      <NavbarClient />
       <section className="bg-brand-50/40 min-h-[calc(100vh-4rem)]">
         <Container className="py-14">
           <div className="max-w-2xl mx-auto">

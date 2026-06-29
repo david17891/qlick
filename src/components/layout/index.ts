@@ -4,6 +4,10 @@
 // client hidrataba con identity vacío. Si necesitás usar el Navbar client
 // directamente (sin SSR), importá `NavbarClient` desde "./Navbar".
 export { NavbarServer as Navbar } from "./NavbarServer";
+// `NavbarClient` es el componente client puro. Solo necesario en
+// `error.tsx` (client boundary) donde no podemos usar server components.
+// En todas las pages normales, importá `Navbar` (que es el wrapper SSR).
+export { Navbar as NavbarClient } from "./Navbar";
 // Re-export del tipo para que otros archivos puedan tipar la identidad si
 // lo necesitan (e.g. tests).
 export type { NavbarIdentity } from "./Navbar";

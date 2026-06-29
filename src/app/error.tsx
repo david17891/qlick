@@ -23,7 +23,14 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { Container, Card, Button, Badge } from "@/components/ui";
-import { Navbar, Footer } from "@/components/layout";
+// Imports directos (sin pasar por `layout/index.ts`) para NO arrastrar el
+// server component NavbarServer al bundle del client error boundary.
+// En `error.tsx` (client component) no podemos usar server components
+// que lean `next/headers`. Acá no necesitamos la identidad SSR — el
+// client component hidratará con identity vacío y resolverá vía
+// useEffect si corresponde.
+import { Navbar as NavbarClient } from "@/components/layout/Navbar";
+import { Footer } from "@/components/layout/Footer";
 
 export default function RootError({
   error,
@@ -39,7 +46,7 @@ export default function RootError({
 
   return (
     <>
-      <Navbar />
+      <NavbarClient />
       <section className="bg-brand-50/40 min-h-[calc(100vh-4rem)]">
         <Container className="py-14">
           <div className="max-w-2xl mx-auto">

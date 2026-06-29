@@ -3,7 +3,11 @@
 import { Suspense, useState, useEffect } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Navbar, Footer } from "@/components/layout";
+// Import directo del client component (no del wrapper SSR) porque esta
+// page es "use client". La identidad del Navbar no es relevante en el
+// login (siempre es "no authed").
+import { Navbar as NavbarClient } from "@/components/layout/Navbar";
+import { Footer } from "@/components/layout/Footer";
 import { Container, Card, Button, Field, Input, Badge } from "@/components/ui";
 import { Logo } from "@/components/brand";
 import { requestMagicLinkClient } from "@/lib/auth/admin-auth-client";
@@ -67,7 +71,7 @@ function AdminLoginPageInner() {
 
   return (
     <>
-      <Navbar />
+      <NavbarClient />
       <section className="bg-brand-50/40 min-h-[calc(100vh-4rem)]">
         <Container className="py-14">
           <div className="max-w-md mx-auto">

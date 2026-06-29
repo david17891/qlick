@@ -1,0 +1,1 @@
+{"function":"async () => { const secret = 'b5508db851bd47f1abab32692518e8f5d7c1f4c68a9d421c8f50cab045b09773'; const r = await fetch('https://qlick-three.vercel.app/api/dev/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'david17891@gmail.com', secret }) }); return { status: r.status, body: await r.text() }; }"}
