@@ -1,3 +1,0 @@
-{
-    "function":  "async () =\u003e { const r = await fetch(\u0027https://qlick-three.vercel.app/api/dev/login\u0027, { method: \u0027POST\u0027, headers: { \u0027Content-Type\u0027: \u0027application/json\u0027 }, body: JSON.stringify({ email: \u0027david17891@gmail.com\u0027, secret: \u0027b5508db851bd47f1abab32692518e8f5d7c1f4c68a9d421c8f50cab045b09773\u0027 }), credentials: \u0027include\u0027 }); return r.status; }"
-}
