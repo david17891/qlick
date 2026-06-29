@@ -63,6 +63,7 @@ de bugs viejos + redeploys). Limpiados vía `DELETE /v13/deployments/{id}`:
 | **Login alumno OAuth Google** | ✅ | `qlick-three.vercel.app/login` → consent → callback-student → `/dashboard` |
 | **Login alumno magic link** | ✅ | Mismo callback, sin redirect a Google |
 | **Admin login (magic link)** | ✅ | `qlick-three.vercel.app/admin/login` → `/admin` (requiere email en allowlist) |
+| **Admin login (Google OAuth)** | ✅ TEMPORAL | Mismo `/admin/login` → click "Continuar con Google" → consent → `/admin`. Callback `/auth/callback` valida allowlist (mismo que magic link). Solo funciona para `david17891@gmail.com` por ahora. **Para retirar:** eliminar `AdminGoogleLoginButton.tsx` + el bloque que lo usa en `admin/login/page.tsx` (commit `b8ab547`). |
 | **Admin Resumen** | ✅ | Métricas globales reales (de Supabase) |
 | **Admin Eventos** | ✅ | Lista eventos (de Supabase) |
 | **Admin Masterclasses** | ✅ | Lista masterclasses (de Supabase) |
@@ -125,18 +126,23 @@ Ver `docs/CRM_MODE_STATUS.md` para detalle. Resumen:
 
 **Síntoma reportado (David):** login como alumno OK → /dashboard OK → navega a /cursos, /eventos, /acerca, /beneficios → OK. Click en "Mi panel" → redirect a /login. Navbar tampoco mostraba "Mi panel" después de un rato.
 
-**Causa raíz:** el middleware matcher cubría solo `/admin/*` y `/api/admin/*`. El patrón oficial de `@supabase/ssr` requiere que el middleware refresque el access_token JWT usando el refresh_token. Sin ese refresh, después de ~1h el JWT expiraba y `supabase.auth.getUser()` fallaba con `user=null` en el server component de /dashboard. La Navbar (browser client) tenía el mismo síntoma.
+**Causa raíz real (3 iteraciones para encontrarla):**
 
-**Fix aplicado (commit `ae34e12`):** extender el matcher del middleware para incluir `/dashboard/:path*`, `/aprender/:path*`, `/pagar/:path*`. La función `middleware()` ahora tiene dos ramas explícitas:
-- **Rama admin** (`/admin/*`, `/api/admin/*`): valida allowlist como antes.
-- **Rama student** (`/dashboard`, `/aprender/*`, `/pagar/*`): solo refresca sesión, NO bloquea. La decisión de redirect la sigue tomando el server component (`requireStudent()` + RLS).
+1. **Iteración 1:** pensé que era middleware matcher incompleto. Apliqué fix `ae34e12` (extender matcher + propagar cookies a `req.cookies`). David reportó "mismo comportamiento, no mejoró nada".
+
+2. **Iteración 2:** `commit 6082e5e` — encontré la causa real via Playwright network inspector: el DashboardView tenía `<Button href="/logout">` como link "Cerrar sesión". Next.js pre-carga el RSC de los links visibles (GET a `/logout`), y el handler ejecutaba `signOut()` server-side ANTES de que el usuario hiciera clic, borrando las cookies. Fix doble: cambiar link por botón con `onClick` que llama `signOut()` del browser client + endurecer `/logout` para que solo acepte POST.
+
+3. **Iteración 3:** David reportó flash visual "Acceso alumnos" → "Mi panel" en navbar. Causa: Navbar era client component que renderizaba con identity vacío en SSR y `useEffect` actualizaba post-hidratación. Fix `7671843`: Navbar ahora es wrapper server (`NavbarServer.tsx`) que calcula la identidad SSR via `getCurrentStudent` / `getCurrentAdmin` y la pasa al Navbar client como `initialIdentity` prop. HTML servido ya tiene los botones correctos desde el primer byte.
 
 **Verificado en producción:**
-- `POST /api/dev/login` → 200 OK con 2 cookies `sb-*-auth-token.{0,1}` (expires Aug 2027).
-- `GET /dashboard` con esas cookies → 200 OK (no 307 a /login).
-- Build output: `ƒ Middleware  83.4 kB` confirma middleware compilado con matcher extendido.
+- Login → /dashboard → /cursos → /dashboard: cookies 2 throughout ✓
+- `nav.innerText` después de navegar como authed: `"Cursos Eventos Acerca de Beneficios Preguntas Contacto Mi panel Salir"` ✓
+- Network inspector muestra 0 referencias activas a `/logout` (solo comentarios que documentan el fix).
 
-**Lección:** en @supabase/ssr con Next.js, el middleware DEBE cubrir TODAS las rutas que llamen `getUser()` server-side. Asumir que solo las rutas admin necesitan matcher es un bug silencioso que se manifiesta ~1h después del login.
+**Lección:** en @supabase/ssr con Next.js, hay 3 puntos que SIEMPRE hay que validar:
+1. Middleware matcher cubre TODAS las rutas con `getUser()` server-side
+2. NINGÚN `<a href>` o `<Button href>` apunta a endpoints con side effects (RSC prefetch los ejecuta)
+3. Client components que muestran estado derivado de auth deben recibir `initialIdentity` desde SSR (no hidratar con default + useEffect)
 
 ---
 
