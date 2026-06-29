@@ -17,13 +17,14 @@
 | Campo | Valor |
 |---|---|
 | **Dominio** | `https://qlick-three.vercel.app` |
-| **Production deploy ID** | `dpl_BBwdygHPDVgL6PfbdMWCSCAqLGW8` |
-| **Production URL (auto)** | `qlick-iapyjobkx-david17891-9351s-projects.vercel.app` |
+| **Production deploy ID** | `dpl_71DEQKQaeRqMgzq9YB8FjJtRgiqj` |
+| **Production URL (auto)** | `qlick-m36svv0cz-david17891-9351s-projects.vercel.app` |
 | **Branch** | `feat/fase-6-hitos` |
-| **Commit** | `1cf252a` (HEAD — fix de student-auth + import isAuthEnabled) |
-| **Mensaje** | `fix(student-auth): restaurar import de isAuthEnabled para getCurrentAdmin` |
+| **Commit** | `ddce508` (HEAD — docs/HOW-TO-RUN sección 9) |
+| **Commit anterior** | `81b0456` (feat(auth): permitir dualidad admin+student + dev login en production) |
+| **Mensaje actual** | `docs(how-to-run): seccion 9 - dev login en production para Mavis` |
 | **Build status** | ✅ READY + PROMOTED + aliasAssigned |
-| **Build duration** | ~16s (con cache del preview anterior) |
+| **Build duration** | ~50s (incluyendo el cambio de código + docs) |
 
 ### Deploys de producción (limpieza ✅ 2026-06-29 ~02:55)
 
@@ -43,6 +44,7 @@ de bugs viejos + redeploys). Limpiados vía `DELETE /v13/deployments/{id}`:
 | `SUPABASE_SECRET_KEY` | sensitive | (server-only) | Service role para admin |
 | `SUPABASE_PROJECT_REF` | sensitive | `ugpejblymtbwtsoiykyj` | Para CLI/MCP |
 | `ADMIN_EMAIL_ALLOWLIST` | sensitive | `david17891@gmail.com` | **Agregado esta sesión** — antes vacío, por eso 404s en admin server-rendered |
+| `DEV_ADMIN_SECRET` | sensitive | (64-char hex) | **Agregado esta sesión** — gating único del endpoint `/api/dev/login` que ahora funciona en production para Mavis testing |
 
 **Env vars que NO están seteadas** (y por eso funcionan en modo demo):
 - `RESEND_API_KEY`, `RESEND_FROM_ADDRESS`, `RESEND_REPLY_TO`, `ADMIN_NOTIFICATION_EMAILS` — emails no salen en prod (smoke test en dev con sandbox `onboarding@resend.dev` solo llega al owner)
@@ -85,15 +87,15 @@ Ver `docs/CRM_MODE_STATUS.md` para detalle. Resumen:
 
 ---
 
-## 🐛 Issues activos (descubiertos esta sesión 2026-06-29)
+## 🐛 Issues activos
 
-### 🔴 I-1 — Email dual admin/student
+### 🔴 I-1 — Email dual admin/student ✅ CERRADO 2026-06-29 (commit `81b0456`)
 
-**Síntoma:** `david17891@gmail.com` está en `ADMIN_EMAIL_ALLOWLIST`. Por diseño (D-018), una persona no puede ser admin Y alumno. `isAdminEmail()` → true → `isStudentEmail()` → false → `requireStudent()` → null → `/dashboard` redirige a `/login`.
+**Síntoma original:** `david17891@gmail.com` no podía entrar como student porque `isStudentEmail()` rechazaba emails en allowlist admin.
 
-**Impacto:** la cuenta principal de David no sirve para probar el flow de student. Tiene que usar otra dirección (ej. `layerzero3dprint@gmail.com` que NO esté en allowlist).
+**Decisión:** permitir dualidad. Un mismo email puede actuar en ambos roles según la ruta (`/admin` o `/dashboard`). RLS en Supabase previene que un admin vea datos de otros alumnos — solo los suyos propios.
 
-**Fix propuesto:** decidir si se permite dualidad (con UI que diferencie "actuando como admin" vs "actuando como alumno") o separar el email personal para student. **Bloqueado: decisión de producto.**
+**Implementación:** `isStudentEmail()` ya no chequea admin status. Doc actualizada en `src/lib/auth/student-auth.ts` y `docs/HOW-TO-RUN.md`.
 
 ### 🔴 I-2 — CRM en modo híbrido (algunas pestañas real, otras mock)
 

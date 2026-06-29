@@ -150,3 +150,40 @@
 
 *Próximas entradas: agregar cuando ocurra otro cambio puntual. NO
 agregar features planificadas (esas van en OPEN_ITEMS / ROADMAP).*
+
+---
+
+## 2026-06-29 ~03:05 · Dualidad admin+student + dev login en production
+
+- **Pregunta:** David quería poder entrar como admin Y como student con el
+  mismo email (`david17891@gmail.com`) para testear todo el flujo. Además,
+  Mavis necesitaba poder entrar a production como cualquiera de los 3 roles
+  (admin, student, visitante) sin browser interactivo.
+- **Decisión A — dualidad:** `isStudentEmail()` ya no rechaza emails en
+  `ADMIN_EMAIL_ALLOWLIST`. Cualquier email autenticado puede actuar como
+  student. La separación admin/student la decide la ruta (`/admin/*` requiere
+  allowlist; `/dashboard` requiere solo autenticación).
+- **Decisión B — dev login en production:** `/api/dev/login` ahora corre
+  en todos los envs (removido check de `NODE_ENV`). Acepta cualquier email
+  (removido check de `isAdminEmail`). Gating único: `DEV_ADMIN_SECRET` que
+  ahora está en Vercel además de `.env.local`.
+- **Razón:** testing en production sin browser. El modelo de seguridad se
+  mantiene porque (a) el secret es 64 chars hex = 256 bits de entropía, (b)
+  RLS en Supabase previene acceso cruzado de datos entre usuarios, (c) el
+  endpoint sigue siendo solo para testing — usuarios reales usan OAuth/magic
+  link.
+- **Impacto:** David puede entrar como alumno con `david17891@gmail.com` sin
+  loop. Mavis puede testear cualquier ruta con el secret. El endpoint
+  `auto-crea` usuarios en Supabase auth.users (útil para tests, no abusar en
+  producción real con emails de personas).
+- **Trigger:** pedido explícito de David en sesión nocturna: "Quiero
+  permitir dualidad para david17891@gmail.com para poder probar todo,
+  además también trabajar en tus credenciales para que puedas entrar
+  como usuario, como admin y como visitante".
+- **Lección:** "dev-only" en endpoints es un trade-off — útil para forzar
+  disciplina pero costoso para testing en producción cuando no hay CI. La
+  decisión correcta depende del costo de mantener el endpoint seguro vs.
+  el costo de no poder testear flujos reales en producción.
+- **Docs:** `docs/STATUS.md` actualizado con nuevo deploy, env var y cierre
+  del issue I-1. `docs/HOW-TO-RUN.md` sección 9 con ejemplos PowerShell
+  para los 3 roles.
