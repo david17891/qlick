@@ -11,6 +11,7 @@ import { Footer } from "@/components/layout/Footer";
 import { Container, Card, Button, Field, Input, Badge } from "@/components/ui";
 import { Logo } from "@/components/brand";
 import { requestMagicLinkClient } from "@/lib/auth/admin-auth-client";
+import { AdminGoogleLoginButton } from "./AdminGoogleLoginButton";
 
 /**
  * Login admin real (Supabase Auth magic link).
@@ -88,6 +89,24 @@ function AdminLoginPageInner() {
 
               <div className="mb-5">
                 <Badge tone="info">Acceso restringido · personal autorizado</Badge>
+              </div>
+
+              {/* Google OAuth — TEMPORAL 2026-06-29.
+                  Para entrar más rápido que esperar el magic link. Cuando se
+                  retire, eliminar este bloque + AdminGoogleLoginButton.tsx.
+                  El callback /auth/callback sigue validando ADMIN_EMAIL_ALLOWLIST,
+                  así que solo funciona para emails autorizados (david17891@gmail.com). */}
+              <div className="mb-5">
+                <AdminGoogleLoginButton />
+              </div>
+
+              <div className="relative my-5">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-brand-100" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase tracking-wide">
+                  <span className="bg-white px-3 text-ink-muted">o</span>
+                </div>
               </div>
 
               {!sent ? (
