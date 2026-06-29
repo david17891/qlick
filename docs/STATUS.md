@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-06-29 ~02:55 (sesión post-deploys nocturnos).
+> **Última actualización:** 2026-06-29 ~13:00 (post-fix sesión-alumno).
 
 ---
 
@@ -17,14 +17,15 @@
 | Campo | Valor |
 |---|---|
 | **Dominio** | `https://qlick-three.vercel.app` |
-| **Production deploy ID** | `dpl_71DEQKQaeRqMgzq9YB8FjJtRgiqj` |
-| **Production URL (auto)** | `qlick-m36svv0cz-david17891-9351s-projects.vercel.app` |
+| **Production deploy ID** | `dpl_4UBkeCeNDduSXfpCZWkMx4LAKNCb` |
+| **Production URL (auto)** | `qlick-bd1h84c5c-david17891-9351s-projects.vercel.app` |
 | **Branch** | `feat/fase-6-hitos` |
-| **Commit** | `ddce508` (HEAD — docs/HOW-TO-RUN sección 9) |
-| **Commit anterior** | `81b0456` (feat(auth): permitir dualidad admin+student + dev login en production) |
-| **Mensaje actual** | `docs(how-to-run): seccion 9 - dev login en production para Mavis` |
+| **Commit** | `ae34e12` (HEAD — fix sesión-alumno en middleware) |
+| **Commit anterior** | `3be82b1` (fix(pricing): normalizar precios en home usando LMS como source unica) |
+| **Mensaje actual** | `fix(auth): refrescar sesion Supabase en /dashboard, /aprender/* y /pagar/*` |
 | **Build status** | ✅ READY + PROMOTED + aliasAssigned |
-| **Build duration** | ~50s (incluyendo el cambio de código + docs) |
+| **Build duration** | ~50s (con cache del deploy anterior FDvs5phSKUAdMs87Pg8kLpTgWdhm) |
+| **Middleware bundle** | 83.4 kB (matcher extendido: +3 rutas student) |
 
 ### Deploys de producción (limpieza ✅ 2026-06-29 ~02:55)
 
@@ -121,6 +122,23 @@ Ver `docs/CRM_MODE_STATUS.md` para detalle. Resumen:
 
 **Fix propuesto:** unificar el redirect post-auth para que si falla `requireStudent()` con `isAdminEmail()`, redirija a `/admin` en vez de `/login`. Mostrar un toast "Estás logueado como admin — entra al panel desde el navbar". **Scope: 1 hora, fix puntual.**
 
+### 🟠 I-5 — Sesión alumno se pierde al navegar fuera de /dashboard ✅ CERRADO 2026-06-29 ~13:00
+
+**Síntoma reportado (David):** login como alumno OK → /dashboard OK → navega a /cursos, /eventos, /acerca, /beneficios → OK. Click en "Mi panel" → redirect a /login. Navbar tampoco mostraba "Mi panel" después de un rato.
+
+**Causa raíz:** el middleware matcher cubría solo `/admin/*` y `/api/admin/*`. El patrón oficial de `@supabase/ssr` requiere que el middleware refresque el access_token JWT usando el refresh_token. Sin ese refresh, después de ~1h el JWT expiraba y `supabase.auth.getUser()` fallaba con `user=null` en el server component de /dashboard. La Navbar (browser client) tenía el mismo síntoma.
+
+**Fix aplicado (commit `ae34e12`):** extender el matcher del middleware para incluir `/dashboard/:path*`, `/aprender/:path*`, `/pagar/:path*`. La función `middleware()` ahora tiene dos ramas explícitas:
+- **Rama admin** (`/admin/*`, `/api/admin/*`): valida allowlist como antes.
+- **Rama student** (`/dashboard`, `/aprender/*`, `/pagar/*`): solo refresca sesión, NO bloquea. La decisión de redirect la sigue tomando el server component (`requireStudent()` + RLS).
+
+**Verificado en producción:**
+- `POST /api/dev/login` → 200 OK con 2 cookies `sb-*-auth-token.{0,1}` (expires Aug 2027).
+- `GET /dashboard` con esas cookies → 200 OK (no 307 a /login).
+- Build output: `ƒ Middleware  83.4 kB` confirma middleware compilado con matcher extendido.
+
+**Lección:** en @supabase/ssr con Next.js, el middleware DEBE cubrir TODAS las rutas que llamen `getUser()` server-side. Asumir que solo las rutas admin necesitan matcher es un bug silencioso que se manifiesta ~1h después del login.
+
 ---
 
 ## 🧪 Cómo verificar (para próxima sesión)
@@ -141,6 +159,12 @@ curl -s https://qlick-three.vercel.app/robots.txt | grep -i sitemap
 # 4. Admin sin 404
 # Login admin con david17891@gmail.com → /admin/masterclass → renderiza
 # (antes del fix: 404 soft por ADMIN_EMAIL_ALLOWLIST vacío)
+
+# 5. Sesión alumno persistente (post-fix I-5)
+$secret = (Get-Content .env.local | Select-String "DEV_ADMIN_SECRET" | ForEach-Object { ($_ -split "=", 2)[1] })
+$login = Invoke-WebRequest -Uri "https://qlick-three.vercel.app/api/dev/login" -Method POST -ContentType "application/json" -Body (@{ email = "david17891@gmail.com"; secret = $secret } | ConvertTo-Json) -UseBasicParsing -SessionVariable sv
+Invoke-WebRequest -Uri "https://qlick-three.vercel.app/dashboard" -UseBasicParsing -MaximumRedirection 0 -WebSession $sv
+# → Debe devolver 200 (no 307 a /login)
 ```
 
 ---

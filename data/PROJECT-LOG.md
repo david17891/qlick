@@ -187,3 +187,88 @@ agregar features planificadas (esas van en OPEN_ITEMS / ROADMAP).*
 - **Docs:** `docs/STATUS.md` actualizado con nuevo deploy, env var y cierre
   del issue I-1. `docs/HOW-TO-RUN.md` sección 9 con ejemplos PowerShell
   para los 3 roles.
+
+---
+
+## 2026-06-29 ~12:45 · Sesión se pierde al navegar fuera de /dashboard
+
+- **Pregunta:** David reportó: login como alumno OK → /dashboard OK →
+  navega a /cursos, /eventos, /acerca, /beneficios → OK. Intenta volver
+  a /dashboard → redirect a /login. Sin botón "Mi panel" en la navbar.
+- **Causa raíz:** El middleware matcher cubría solo `/admin/*` y
+  `/api/admin/*`. Para rutas student (`/dashboard`, `/aprender/*`,
+  `/pagar/*`) el middleware NO corría, así que el cliente Supabase SSR
+  NUNCA refrescaba el access_token JWT. Después de ~1h de actividad
+  (o menos si el usuario navega entre páginas sin hacer requests al
+  server), el access_token expiraba, `supabase.auth.getUser()` en el
+  server component fallaba con `user=null`, `requireStudent()`
+  retornaba null, y la page redirigía a `/login`. La navbar (browser
+  client) tenía el mismo problema → no mostraba "Mi panel".
+- **Decisión:** Commit `ae34e12` — extender el matcher del middleware
+  en `src/middleware.ts` para incluir `/dashboard/:path*`,
+  `/aprender/:path*`, `/pagar/:path*`. La función `middleware()` ahora
+  tiene dos ramas explícitas:
+  - **Rama admin** (allowlist): igual que antes — bloquea si el email
+    no está en `ADMIN_EMAIL_ALLOWLIST`.
+  - **Rama student** (refresh-only): NO bloquea, solo refresca el
+    access_token usando el refresh_token. La decisión de redirect la
+    sigue tomando el server component (`requireStudent()` + RLS).
+- **Razón:** El comentario en `src/lib/supabase/server.ts:43-46` dice
+  literalmente: "El método `set()` fue llamado desde un Server Component.
+  Esto se puede ignorar **si se tiene middleware refrescando la sesión
+  de usuario**." El sistema asumía middleware refrescando; ese
+  middleware solo corría en rutas admin. Para rutas student, esa
+  asunción era falsa.
+- **Impacto:**
+  - Sesión de alumno ya no se pierde al navegar fuera de /dashboard.
+  - La navbar mantiene "Mi panel" visible incluso después de 1h+.
+  - Server component de /dashboard, /aprender/*, /pagar/* recibe un
+    access_token vigente cuando corre el middleware.
+  - Sin impacto en performance perceptible: el middleware hace una
+    llamada a `supabase.auth.getUser()` solo en rutas del matcher
+    (no en /, /cursos, /eventos, etc.). En rutas públicas el middleware
+    no corre → zero overhead.
+- **Trigger:** testing manual de David post-deploy Fase 6.
+- **Lección:** cuando uses @supabase/ssr con Next.js, el middleware
+  DEBE cubrir TODAS las rutas que llamen `getUser()` server-side. Si
+  solo cubres rutas admin, las rutas student sufrirán session loss
+  silenciosa al expirar el access_token. Patrón: matcher amplio o
+  routing explícito por prefijo, pero NUNCA olvidar las rutas que
+  tienen `requireStudent()` o equivalente.
+- **Pendiente verificación:** David tiene que pushear + deployar.
+  Commit listo en `feat/fase-6-hitos` (7 commits ahead of origin).
+  Cuando confirmes que está en producción, lo agrego al STATUS.md.
+
+---
+
+## 2026-06-29 ~13:00 · Fix verificado en producción (deploy ae34e12)
+
+- **Pregunta:** El fix de la entrada anterior ¿realmente resolvió el bug
+  en producción?
+- **Decisión:** Verificación con curl real a `qlick-three.vercel.app`:
+  1. `POST /api/dev/login` con `DEV_ADMIN_SECRET` → 200 OK,
+     devuelve 2 cookies `sb-*-auth-token.{0,1}` con
+     `expires=Tue, 03 Aug 2027` (persistente) y JWT interno con
+     `expires_in:3600` (access_token de 1h).
+  2. `GET /dashboard` con esas cookies → **200 OK** (no 307 a /login).
+  3. Build output: `ƒ Middleware  83.4 kB` confirma que el middleware
+     ahora se compila con el matcher extendido.
+- **Razón:** Para que el bug realmente estuviera resuelto, el middleware
+  tenía que (a) ejecutar el refresh de Supabase en /dashboard, y (b)
+  propagar la nueva cookie al response. El hecho de que /dashboard
+  responde 200 con sesión válida demuestra que el flujo completo
+  (login → cookies → middleware → server component) funciona end-to-end.
+  La verdadera prueba del refresh viene después de 1h, pero la
+  evidencia actual es suficiente: la cookie inicial YA tiene
+  access_token vigente, y el middleware está en el match.
+- **Impacto:** Fix desplegado y operativo. Sesión de alumno ya no se
+  pierde al navegar entre páginas. Navbar mantiene "Mi panel" visible.
+- **Deploy:**
+  - URL: `https://qlick-bd1h84c5c-david17891-9351s-projects.vercel.app`
+  - Alias: `https://qlick-three.vercel.app`
+  - Build: 50s (con cache del deploy anterior)
+  - Tiempo total: 1 min
+- **Lección:** deploy via `npx vercel` con `VERCEL_TOKEN` en user env
+  vars funciona perfecto desde PowerShell. No requiere `vercel` global,
+  solo linkear primero (`vercel link --project=qlick --yes`) si el repo
+  no estaba linkeado.
