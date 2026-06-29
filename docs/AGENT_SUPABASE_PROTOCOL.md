@@ -1,5 +1,12 @@
 # Protocolo del Agente — Supabase
 
+> **Fuente canónica.** Este doc es la fuente de verdad para operar
+> Supabase en Qlick (DDL, migraciones, advisors, secretos, RLS, datos
+> reales). El índice cross-cutting para AI agents vive en
+> `.harness/docs/project-standards.md` (§6 Supabase gate), y el scope del
+> rein que opera Supabase en `.harness/reins/supabase-expert/agent.md`.
+> Si hay conflicto, gana este doc.
+
 **Fecha:** 2026-06-23
 **Audiencia:** cualquier agente (humano o IA) que opere Supabase en este repo.
 

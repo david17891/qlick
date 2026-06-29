@@ -314,4 +314,57 @@ agregar features planificadas (esas van en OPEN_ITEMS / ROADMAP).*
 - **Lección:** cuando uses un client component que necesita state que
   depende de la sesión del usuario, considera calcularlo SSR y
   pasarlo como `initialX` prop. Si hidrata con default + useEffect,
-  SIEMPRE habrá un flash visible.
+  SIEMPRE habrá un flash visible.---
+
+## 2026-06-29 ~14:25 — Bootstrap Mavis multi-agent team + sync de docs canónicos
+
+- **Pregunta:** El repo tenía `AGENTS.md`-equivalente disperso en 5+ docs
+  (HOW-TO-RUN, GITHUB_WORKFLOW, AGENT_SUPABASE_PROTOCOL, AI_AGENT_GUARDRAILS,
+  PRIVACY_AND_DEPLOY_CHECKLIST) sin un índice unificado. AI agents nuevos
+  (OpenCode, Codex, Cursor, Devin) y el propio Mavis tenían que abrir todos
+  para inferir reglas. Además: no había un orchestrator que ruteara por
+  dominio en sesiones largas.
+- **Decisión:** Crear `AGENTS.md` (raíz) + `.harness/` con orchestrator +
+  6 reins + índice cross-cutting + memoria compartida. Adicionalmente,
+  sincronizar los 4 docs canónicos dispersos para que apunten al nuevo
+  índice y al rein que los opera. Documentar como ADR D-022.
+- **Razón:** Consolidación de ground truth (un agente nuevo llega en 1
+  lectura en lugar de 5), routing por dominio (saber a qué rein delegar
+  sin re-descubrir el dominio cada turno), y scope boundaries explícitas
+  entre reins para team plans paralelos. Sin doc sync hacia atrás, el
+  nuevo bootstrap quedaba huérfano y los docs viejos contradecían en
+  lexical precedence al nuevo índice.
+- **Impacto:** Estructural solamente. Cero cambios a código de producto
+  (`src/`, `supabase/`, `tests/`, `scripts/` intactos), cero commits,
+  cero pushes, cero installs, cero builds. `git status` muestra solo
+  archivos nuevos y headers editados en 4 docs viejos. Reversible con
+  `git revert` + borrar `.harness/` y `AGENTS.md`.
+- **Trigger:** Plan Mavis `plan_863dc1aa` ejecutado por el orchestrator.
+  El usuario (David) preguntó explícitamente si los docs viejos se
+  habían sincronizado y pidió un plan para que "quede de la mejor manera".
+- **Archivos creados:**
+  - `AGENTS.md` (159 líneas, 7.9 KB)
+  - `.harness/agent.md` (orchestrator)
+  - `.harness/docs/project-standards.md` (índice cross-cutting)
+  - `.harness/memory/MEMORY.md` (memoria compartida)
+  - `.harness/reins/{developer,tester,code-reviewer,crm-expert,lms-payments-expert,supabase-expert}/agent.md`
+  - `.harness/docs/routing-cheatsheet.md` (1-pager con tabla
+    dominio → rein → doc canónica)
+- **Archivos modificados (sync headers + lexical precedence):**
+  - `.harness/docs/project-standards.md` — lexical precedence flipeada
+    (docs/* ahora es mayor autoridad que project-standards).
+  - `docs/GITHUB_WORKFLOW.md` — header note apuntando a project-standards §5
+    y `developer/agent.md`.
+  - `docs/AGENT_SUPABASE_PROTOCOL.md` — header note apuntando a
+    project-standards §6 y `supabase-expert/agent.md`.
+  - `docs/AI_AGENT_GUARDRAILS.md` — header note apuntando a
+    project-standards §10 y `crm-expert/agent.md`.
+  - `docs/PRIVACY_AND_DEPLOY_CHECKLIST.md` — header note apuntando a
+    project-standards §3/§4 y `supabase-expert/agent.md`.
+  - `docs/DECISIONS.md` — nuevo ADR D-022 documentando esta decisión.
+- **Próximo paso:** Commit `chore(harness): bootstrap Mavis multi-agent
+  team + doc sync` desde la terminal de David. Push opcional después.
+- **Lección:** Antes de presentar un bootstrap como "listo", verificar
+  si el repo ya tenía documentación que el nuevo layer contradice o
+  duplica. La duplicación silenciosa es drift garantizado. Sincronizar
+  hacia atrás (header notes) es más barato que reescribir.

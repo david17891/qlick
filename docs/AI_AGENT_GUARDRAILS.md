@@ -1,5 +1,13 @@
 # Guardrails del Agente IA — Qlick Marketing Integral
 
+> **Fuente canónica.** Este doc es la fuente de verdad para los guardrails
+> del agente IA de CRM en Qlick (qué hace, qué NO hace, escalamiento,
+> anti-alucinación, modo sugerencia). El índice cross-cutting para AI
+> agents vive en `.harness/docs/project-standards.md` (§10 IA agent en
+> CRM: modo sugerencia), y el scope del rein que opera el CRM y el
+> agente en `.harness/reins/crm-expert/agent.md`. Si hay conflicto, gana
+> este doc.
+
 **Fecha:** 2026-06-23
 **Estado:** Reglas implementadas en `src/lib/ai/guardrails.ts`. El agente opera en
 **modo sugerencia** (`needsReview: true`) siempre.

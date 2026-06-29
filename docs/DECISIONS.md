@@ -505,3 +505,61 @@ decidió, por qué, qué alternativas se consideraron, el riesgo y cómo reverti
   seguidos (la segunda devuelve `23505`).
 - **Cómo revertir:** ver D-020.
 
+## D-022 · Adopción de Mavis multi-agent team para Qlick LMS
+
+- **Fecha:** 2026-06-29
+- **Decisión:** Adoptar la estructura Mavis multi-agent team en este
+  repo: `AGENTS.md` (raíz, contrato global OpenCode/agents.md) +
+  `.harness/agent.md` (orchestrator) + 6 reins en `.harness/reins/`
+  (`developer`, `tester`, `code-reviewer`, `crm-expert`,
+  `lms-payments-expert`, `supabase-expert`) + `.harness/docs/project-standards.md`
+  (índice cross-cutting) + `.harness/memory/MEMORY.md` (memoria compartida).
+- **Motivo:** tres razones concretas.
+  1. **Consolidación de ground truth.** Las reglas operativas estaban
+     dispersas en 5+ docs (`HOW-TO-RUN.md`, `GITHUB_WORKFLOW.md`,
+     `AGENT_SUPABASE_PROTOCOL.md`, `AI_AGENT_GUARDRAILS.md`,
+     `PRIVACY_AND_DEPLOY_CHECKLIST.md`) sin un índice unificado. Un agente
+     nuevo (OpenCode, Codex, Cursor, Devin, Mavis) tenía que abrirlos todos.
+     `AGENTS.md` + `project-standards.md` resuelven eso.
+  2. **Routing por dominio.** Cuando David pide "agregale Stripe al
+     checkout", el orchestrator sabe que va a `lms-payments-expert` y a
+     `docs/PAYMENTS_MEXICO_STRATEGY.md` sin re-descubrir el dominio en
+     cada turno.
+  3. **Scope boundaries.** Cada rein declara qué NO toca (DDL destructivo,
+     secrets, push a main), evitando que workers se pisen entre sí en
+     team plans paralelos.
+- **Lo que NO hace esta decisión:**
+  - **No** agrega trazabilidad por sí sola. La trazabilidad real del
+    proyecto sigue siendo `data/PROJECT-LOG.md` (log append-only),
+    `docs/DECISIONS.md` (este archivo), `docs/STATUS.md` (snapshot) y
+    `docs/HANDOFF_*.md` (cierre de fase).
+  - **No** reemplaza los docs canónicos. `docs/GITHUB_WORKFLOW.md`,
+    `docs/AGENT_SUPABASE_PROTOCOL.md`, `docs/AI_AGENT_GUARDRAILS.md` y
+    `docs/PRIVACY_AND_DEPLOY_CHECKLIST.md` siguen siendo la fuente de
+    verdad; `project-standards.md` los resume y enlaza. Cada uno recibió
+    un header note el 2026-06-29 apuntando a su contraparte en `.harness/`.
+- **Lexical precedence** (definida en `project-standards.md`, de mayor a
+  menor autoridad): `docs/*` → `AGENTS.md` → `project-standards.md` →
+  `agent.md` del rein.
+- **Reins definidos y dominios:**
+  - `developer` — `src/app/**`, `src/components/**`, `src/lib/**` (genérico).
+  - `tester` — `tests/*.test.mjs`, TDD bug reproduction.
+  - `code-reviewer` — gate pre-merge: RLS + PII + types + a11y + commits.
+  - `crm-expert` — eventos, CRM (kanban, leads, conversaciones), WhatsApp,
+    masterclass, contacto, agente IA modo sugerencia.
+  - `lms-payments-expert` — `src/app/cursos/**`, `/aprender/**`,
+    `/dashboard/**`, `/pagar/**`, `src/lib/lms/**`, `payments/**`,
+    `video/**`, `qr/**`.
+  - `supabase-expert` — `supabase/migrations/**`, `src/lib/supabase/**`
+    (client + admin), `src/lib/audit/**`, `src/lib/email/**`, seeds,
+    env vars.
+- **Reversibilidad:** alta. `.harness/` se puede borrar sin tocar código
+  de producto. Los docs canónicos en `docs/` siguen funcionando sin
+  `.harness/`. El commit se puede revertir con `git revert` sin
+  consecuencia operacional.
+- **Próximo paso:** commit `chore(harness): bootstrap Mavis multi-agent
+  team + doc sync` desde la terminal de David. Push después.
+- **Cómo revertir:** borrar `.harness/` y `AGENTS.md`, revertir el commit
+  de sync de headers en los 4 docs canónicos. No tocar código de producto.
+
+---
