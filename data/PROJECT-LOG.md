@@ -272,3 +272,46 @@ agregar features planificadas (esas van en OPEN_ITEMS / ROADMAP).*
   vars funciona perfecto desde PowerShell. No requiere `vercel` global,
   solo linkear primero (`vercel link --project=qlick --yes`) si el repo
   no estaba linkeado.
+
+---
+
+## 2026-06-29 ~13:35 · Flash visual navbar (cuarta iteración fix I-5)
+
+- **Pregunta:** David reportó: cuando estás como alumno y navegas,
+  visualmente primero aparece "Acceso alumnos" + "Empezar ahora" y
+  luego cambia a "Mi panel" + "Salir". Mismo bug que los "efectos
+  visuales" que notó en la sesión nocturna.
+- **Causa:** `Navbar.tsx` es `"use client"`. En SSR renderiza con
+  `identity={kind:"none"}` (useEffect no corre en servidor). Al hidratar
+  en cliente, useEffect corre, llama `supabase.auth.getUser()` y
+  actualiza la identity. Ese delta entre SSR (botones no-authed) y
+  post-hidratación (botones authed) es el flash.
+- **Decisión:** Commit `7671843` — convertir Navbar en wrapper server
+  (`NavbarServer.tsx`) que calcula la identidad SSR via
+  `getCurrentStudent` / `getCurrentAdmin` y la pasa al Navbar client
+  como `initialIdentity` prop. HTML servido ya tiene los botones
+  correctos desde el primer byte.
+- **Razón:** Next.js App Router permite server components async, así
+  que calcular la identidad en SSR es la solución idiomática. La
+  alternativa (skeleton/loading) sería peor UX.
+- **Impacto:**
+  - Sin flash visual al mostrar auth state en la navbar
+  - HTML servido ya tiene "Mi panel" + "Salir" para usuarios authed
+- **Problemas colaterales encontrados:**
+  - Next.js 14 regla: `error.tsx` y `"use client"` pages no pueden
+    importar server components que lean `next/headers`
+  - 6 archivos `error.tsx` + 2 client pages (`admin/login`, `aprender`)
+    importaban Navbar via `layout/index.ts` (que arrastra NavbarServer)
+  - Fix: en esos archivos, importar `NavbarClient` directo desde
+    `./Navbar` y `./Footer` en vez de desde `./layout` (bypass index.ts)
+  - `layout/index.ts` ahora exporta `Navbar` (server) Y `NavbarClient`
+    (alias del client, para casos donde se necesita explícitamente)
+- **Verificación Playwright:**
+  - `document.querySelector("nav").innerText` después de navegar a
+    `/dashboard` con sesión: `"Cursos Eventos Acerca de Beneficios
+    Preguntas Contacto Mi panel Salir"` (sin "Acceso alumnos")
+  - Sesión sigue persistente (cookies 2 a través de múltiples navs)
+- **Lección:** cuando uses un client component que necesita state que
+  depende de la sesión del usuario, considera calcularlo SSR y
+  pasarlo como `initialX` prop. Si hidrata con default + useEffect,
+  SIEMPRE habrá un flash visible.

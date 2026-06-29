@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-06-29 ~13:00 (post-fix sesión-alumno).
+> **Última actualización:** 2026-06-29 ~13:35 (post-fix navbar flash + sesión persistente).
 
 ---
 
@@ -17,15 +17,14 @@
 | Campo | Valor |
 |---|---|
 | **Dominio** | `https://qlick-three.vercel.app` |
-| **Production deploy ID** | `dpl_4UBkeCeNDduSXfpCZWkMx4LAKNCb` |
-| **Production URL (auto)** | `qlick-bd1h84c5c-david17891-9351s-projects.vercel.app` |
+| **Production deploy ID** | `dpl_qo40c17el…` |
+| **Production URL (auto)** | `qlick-qo40c17el-david17891-9351s-projects.vercel.app` |
 | **Branch** | `feat/fase-6-hitos` |
-| **Commit** | `ae34e12` (HEAD — fix sesión-alumno en middleware) |
-| **Commit anterior** | `3be82b1` (fix(pricing): normalizar precios en home usando LMS como source unica) |
-| **Mensaje actual** | `fix(auth): refrescar sesion Supabase en /dashboard, /aprender/* y /pagar/*` |
+| **Commit** | `6826b41` (HEAD — chore untrack tmp scripts) |
+| **Commit anterior** | `7671843` (fix(navbar): wrapper SSR + client components separados) |
+| **Mensaje actual** | `chore: untrack tmp scripts from feat/fase-6-hitos` |
 | **Build status** | ✅ READY + PROMOTED + aliasAssigned |
-| **Build duration** | ~50s (con cache del deploy anterior FDvs5phSKUAdMs87Pg8kLpTgWdhm) |
-| **Middleware bundle** | 83.4 kB (matcher extendido: +3 rutas student) |
+| **Build duration** | ~51s (con cache del deploy anterior) |
 
 ### Deploys de producción (limpieza ✅ 2026-06-29 ~02:55)
 
