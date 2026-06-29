@@ -1,10 +1,16 @@
 /**
- * Login de ALUMNOS vía Google OAuth (Supabase Auth).
+ * Login de ALUMNOS vía Google OAuth (Supabase Auth) — Fase 6 Hito B.
  *
- * Server Component: renderiza el botón de Google (Client Component
- * OAuthLoginForm) que dispara `signInWithOAuth` en el navegador. La
- * verificación de membresía es server-side en `/auth/callback-student`
- * (intercambia el `code` por sesión y redirige a /dashboard si todo OK).
+ * Server Component: renderiza el contenedor visual y delega la lógica de
+ * auth al componente cliente `StudentLoginCard`. La verificación de
+ * membresía es server-side en `/auth/callback-student` (intercambia el
+ * `code` por sesión y redirige a /dashboard si todo OK).
+ *
+ * Cambios vs v0.8.0:
+ * - Google OAuth sigue siendo el método principal (1 click).
+ * - Magic link reactivado como fallback visible: el usuario puede elegir
+ *   entrar con correo si no quiere usar Google.
+ * - Microcopy más orientado a "volver a aprender" que a "login".
  *
  * Diferencias con /admin/login:
  * - NO usamos ADMIN_EMAIL_ALLOWLIST para alumnos. Cualquier cuenta Google
@@ -13,18 +19,15 @@
  * - El callback es otra ruta (`/auth/callback-student`) para no colisionar
  *   con el callback de admin (`/auth/callback`).
  *
- * Magic link quedó deprecated en v0.8.0. Ver `MagicLinkForm.tsx` (sin
- * importar) si se necesita volver atrás.
- *
- * UX: minimalista, copy enfocado en el alumno ("Continúa aprendiendo").
+ * UX: minimalista, copy enfocado en el alumno. Trust signals sutiles
+ * (badge de seguridad + nota de privacidad).
  */
 
 import type { Metadata } from "next";
-import Link from "next/link";
 import { Navbar, Footer } from "@/components/layout";
 import { Container, Card, Badge } from "@/components/ui";
 import { Logo } from "@/components/brand";
-import { OAuthLoginForm } from "./OAuthLoginForm";
+import { StudentLoginCard } from "./StudentLoginCard";
 
 export const metadata: Metadata = {
   title: "Acceso alumnos",
@@ -43,40 +46,27 @@ export default function StudentLoginPage() {
               <div className="flex items-center gap-3 mb-6">
                 <Logo lockup="icon" height={36} />
                 <div>
-                  <h1 className="text-2xl font-bold text-ink">Acceso alumnos</h1>
+                  <h1 className="text-2xl font-bold text-ink">Bienvenido de vuelta</h1>
                   <p className="text-sm text-ink-muted">
-                    Continúa aprendiendo donde lo dejaste.
+                    Continúa donde lo dejaste.
                   </p>
                 </div>
               </div>
 
               <div className="mb-5">
                 <Badge tone="info">
-                  Acceso con tu cuenta Google · un toque y adentro
+                  🔒 Acceso seguro · sin contraseñas
                 </Badge>
               </div>
 
-              <OAuthLoginForm />
-
-              <p className="mt-6 text-sm text-ink-muted text-center">
-                ¿Eres administrador?{" "}
-                <Link
-                  href="/admin/login"
-                  className="font-semibold text-brand-600 hover:underline"
-                >
-                  Acceso admin
-                </Link>
-              </p>
-              <p className="mt-2 text-xs text-ink-muted text-center">
-                ¿Aún no tienes cuenta?{" "}
-                <Link
-                  href="/cursos"
-                  className="font-semibold text-brand-600 hover:underline"
-                >
-                  Explora los cursos
-                </Link>
-              </p>
+              <StudentLoginCard />
             </Card>
+
+            {/* Trust strip: refuerza credibilidad sin saturar */}
+            <p className="mt-6 text-center text-xs text-ink-muted leading-relaxed">
+              Tus datos están protegidos. Nunca compartimos tu correo ni tu
+              actividad con terceros.
+            </p>
           </div>
         </Container>
       </section>

@@ -12,7 +12,10 @@
     "test": "node --experimental-strip-types --test \"tests/*.test.mjs\"",
     "audit:links": "node scripts/audit-links.mjs",
     "check:supabase": "node scripts/check-supabase-env.mjs",
-    "seed:courses": "node scripts/seed-courses.mjs"
+    "seed:courses": "node scripts/seed-courses.mjs",
+    "seed:demo": "node scripts/seed-demo.mjs",
+    "seed:demo:reset": "node scripts/seed-demo.mjs --reset",
+    "seed:demo:cleanup": "node scripts/seed-demo.mjs --cleanup"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",
