@@ -21,7 +21,7 @@
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
-import { isAdminEmail } from "./admin-auth";
+import { isAdminEmail, isAuthEnabled } from "./admin-auth";
 import { isStudentEmail } from "./student-auth";
 
 /** Identidad mínima del admin autenticado (sin datos sensibles). */
