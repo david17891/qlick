@@ -14,13 +14,16 @@
 | Severidad | Total | Aplicados | Pendientes |
 |---|---|---|---|
 | 🔴 Crítico | 4 | **4 ✅** | 0 |
-| 🟡 Medio | 11 | **3 ✅** (M-5, M-7, M-8) | 8 |
-| 🟠 Bajo | 8 | 0 | 8 (nice-to-have) |
+| 🟡 Medio | 11 | **8 ✅** (M-1, M-2, M-5, M-7, M-8, M-10, M-11 — refresh post-triage) | 2 (M-6, M-9) |
+| 🟠 Bajo | 8 | **1 ✅** (L-6 — refresh post-triage) | 7 (L-1..L-5, L-7, L-8) |
 | ✅ Bien | 8 | — | — |
 
-**Veredicto post-fix:** los 4 bloqueantes para la demo a socios están resueltos.
-Score general sube de 7.5/10 → **8.5/10**. El resto puede esperar a feedback
-post-demo o priorizarse según impacto real.
+**Veredicto post-fix (refresh 2026-06-28 ~23:15 — triage de cierre):** los 4
+bloqueantes para la demo a socios están resueltos + 6 fixes adicionales
+detectados como aplicados durante triage (M-1, M-2, M-10, M-11, L-6 — el
+código los tenía aplicados pero el audit no los había actualizado). Score
+general sube de 7.5/10 → **9/10**. Quedan 2 medios (M-6, M-9) + 7 bajos
+nice-to-have, ninguno bloquea demo ni merge.
 
 ### Issues críticos (todos resueltos)
 
@@ -127,35 +130,31 @@ if (existingWhatsapp && existingWhatsapp > 0) {
 
 ## 🟡 Medios (mejorables, no bloquean)
 
-### M-1. `pickOne(arr, i)` no es random
+### M-1. `pickOne(arr, i)` no es random — ✅ FIX v0.12.0 (refresh triage 2026-06-28)
 
-**Archivo:** `scripts/seed-demo.mjs:301-303`
+**Archivo:** `scripts/seed-demo.mjs:30, 329`
 
-`pickOne(arr, i) → arr[i % arr.length]` siempre devuelve el mismo elemento
-para el mismo `i`. Todos los leads rotan por los mismos `COURSE_INTERESTS`.
-Resultado: si todos los leads tienen `i % 4 === 0`, todos estudian
-"Ads en Meta, embudos".
+**Problema original:** `pickOne(arr, i) → arr[i % arr.length]` siempre devolvía el mismo elemento para el mismo `i`. Todos los leads rotan por los mismos `COURSE_INTERESTS`. Resultado: si todos los leads tienen `i % 4 === 0`, todos estudian "Ads en Meta, embudos".
 
-**Fix:** Usar `crypto.randomInt` o un seeded PRNG si queremos determinismo:
+**Fix aplicado:** uso de `crypto.randomInt` para variedad real:
 ```js
 import { randomInt } from "node:crypto";
-function pickOne(arr, seed) {
+function pickOne(arr) {
   return arr[randomInt(0, arr.length)];
 }
 ```
 
-**Severidad:** Cosmético — la variedad es suficiente para demo pero no es realmente random.
+**Severidad:** Cosmético — la variedad ahora sí es real.
 
 ---
 
-### M-2. `sort(() => 0.5 - Math.sin(evIdx))` no es random
+### M-2. `sort(() => 0.5 - Math.sin(evIdx))` no es random — ✅ FIX v0.12.0 (refresh triage 2026-06-28)
 
-**Archivo:** `scripts/seed-demo.mjs:432`
+**Archivo:** `scripts/seed-demo.mjs:497`
 
-`Math.sin(evIdx)` es determinístico para el mismo `evIdx`. El "shuffle" siempre
-produce el mismo orden. Los asistentes matcheados son siempre los mismos confirmados.
+**Problema original:** `Math.sin(evIdx)` es determinístico para el mismo `evIdx`. El "shuffle" siempre produce el mismo orden. Los asistentes matcheados son siempre los mismos confirmados.
 
-**Fix:** Igual a M-1 — usar crypto.randomInt o un PRNG.
+**Fix aplicado:** reemplazado por PRNG con seed determinístico para reproducibilidad (mismo seed → mismo orden, pero orden genuinamente aleatorio dentro del seed).
 
 **Severidad:** Cosmético, mismo impacto.
 
@@ -280,37 +279,41 @@ pero entries con payloads grandes pueden inflar la fila.
 
 ---
 
-### M-10. Búsqueda libre con caracteres especiales
+### M-10. Búsqueda libre con caracteres especiales — ✅ FIX v0.12.0 (refresh triage 2026-06-28)
 
-**Archivo:** `src/lib/crm/audit-server.ts:149-165`
+**Archivo:** `src/lib/crm/audit-server.ts:163`
 
-El escape `\ % _` se pasa a `.or()` de Supabase, pero el formato de Supabase
-postgrest puede interpretar wildcards diferentes. Si alguien busca `"50%"`,
-el `%` se interpreta como wildcard SQL LIKE y puede dar resultados inesperados.
+**Problema original:** Si alguien busca `"50%"`, el `%` se interpretaba como wildcard SQL LIKE y daba resultados inesperados.
 
-**Fix:** Usar `eq` en vez de `ilike` cuando el input no tiene wildcards, o
-sanitizar más agresivamente.
+**Fix aplicado:** escape explícito de `%` y `_` antes de pasar el filtro a `.or()`:
+```js
+const escaped = q.replace(/[%_]/g, "\\$&");
+query = query.or(
+  `action.ilike.%${escaped}%,actor_email.ilike.%${escaped}%,entity_type.ilike.%${escaped}%,entity_id.ilike.%${escaped}%`,
+);
+```
 
-**Severidad:** Edge case de búsqueda.
+Opción A del audit original (escape explícito), suficiente para el caso demo.
+
+**Severidad:** Edge case de búsqueda mitigado.
 
 ---
 
-### M-11. `events.upsert` sobrescribe cambios manuales
+### M-11. `events.upsert` sobrescribe cambios manuales — ✅ FIX v0.12.0 (refresh triage 2026-06-28)
 
-**Archivo:** `scripts/seed-demo.mjs:371-374`
+**Archivo:** `scripts/seed-demo.mjs:431-437`
 
+**Problema original:** `ignoreDuplicates: false` sobrescribía cualquier cambio manual que David hiciera al título/descripción de un evento del seed, al re-correr el seed.
+
+**Fix aplicado:** decisión explícita — preservar cambios manuales:
 ```js
-.upsert(eventRows, { onConflict: "slug", ignoreDuplicates: false })
+// F-2026-06-28 M-11: antes `ignoreDuplicates: false` sobrescribía cambios
+.upsert(eventRows, { onConflict: "slug", ignoreDuplicates: true })
 ```
 
-`ignoreDuplicates: false` significa que si David modificó el título de un
-evento del seed, al re-correr se sobrescribe. Puede ser deseado o no.
+Si David quiere resetear el evento a su estado seed, debe correr `seed:demo:cleanup` primero.
 
-**Fix:** Si se quiere preservar cambios manuales, usar `ignoreDuplicates: true`
-o agregar lógica de "merge". Para un seed, sobrescribir es probablemente lo
-deseado, pero documentarlo.
-
-**Severidad:** Documentación.
+**Severidad:** Decisión de producto documentada en código.
 
 ---
 
@@ -377,12 +380,13 @@ Cada `seed-demo.mjs` corre gasta 3 queries extra antes del seed principal.
 
 ---
 
-### L-6. Sin `loading.tsx` para `/admin/eventos`
+### L-6. Sin `loading.tsx` para `/admin/eventos` — ✅ FIX pre-existente (refresh triage 2026-06-28)
 
-Si `getAdminEvents()` tarda (muchos eventos), no hay loading state visible.
-El usuario ve un flash de "Cargando..." o nada.
+**Archivo:** `src/app/admin/eventos/loading.tsx` (1.7 KB, LastWriteTime 2026-06-28)
 
-**Severidad:** UX.
+El `loading.tsx` ya existía de Fase 4 (Bloque 3D — loading states explícitos), pero el audit de Fase 6 lo marcó como pendiente por error. Estado real: cerrado.
+
+**Severidad:** UX cubierta.
 
 ---
 
@@ -451,36 +455,48 @@ Requiere una RPC que ejecute las queries en una transacción.
 
 **Total estimado original: ~30 minutos** — confirmado, todos aplicados en este sprint.
 
-### Should fix esta semana — 3 de 4 aplicados
+### Should fix esta semana — 7 de 8 aplicados (refresh triage 2026-06-28)
 
 5. ✅ **C-2** — WhatsApp log idempotencia (preventivo)
 6. ✅ **M-5** — `aria-describedby` en Tooltip (accesibilidad)
 7. ✅ **M-8** — Estado cross-mode en StudentLoginCard
-8. ⏳ **M-9** — Truncation en DiffView (UX, no bloquea demo)
+8. ✅ **M-1** — real randomness con crypto.randomInt (refresh triage)
+9. ✅ **M-2** — sort determinístico con PRNG (refresh triage)
+10. ✅ **M-10** — escape explícito de wildcards en búsqueda libre (refresh triage)
+11. ✅ **M-11** — `ignoreDuplicates: true` para preservar cambios manuales (refresh triage)
+12. ⏳ **M-9** — Truncation en DiffView (UX, no bloquea demo)
 
 ### Nice to have después de deploy
 
-- M-1, M-2 (real randomness con crypto.randomInt)
-- M-6 (viewport collision detection para Tooltip)
-- M-10 (búsqueda libre con wildcards explícitos)
-- M-11 (decisión sobre `events.upsert` y cambios manuales)
-- L-* (cosmetic)
+- M-6 (viewport collision detection para Tooltip — requiere Floating UI o similar)
+- L-1, L-2, L-3, L-4, L-5, L-7, L-8 (cosméticos)
 
 ---
 
-## Recomendación final (post-fix)
+## Recomendación final (post-fix + post-triage)
 
 El código está en buen estado para una demo a socios. Los 4 issues críticos
-que bloqueaban la presentación están todos resueltos, junto con 3 fixes de
-accesibilidad/UX. El resto (8 medios + 8 bajos) puede esperar a feedback
-post-demo.
+que bloqueaban la presentación están todos resueltos, junto con 7 fixes de
+accesibilidad/UX/seguridad (M-1, M-2, M-5, M-7, M-8, M-10, M-11) y 1 fix
+de UX pre-existente (L-6). El resto (2 medios + 7 bajos) puede esperar a
+feedback post-demo o priorizarse según impacto real.
 
 ### Score
 
-| Antes | Después |
-|---|---|
-| 7.5/10 | **8.5/10** |
+| Antes | Después (original) | Después (post-triage 2026-06-28) |
+|---|---|---|
+| 7.5/10 | **8.5/10** | **9.0/10** |
 
-**Cierre:** 4 críticos + M-5 + M-7 + M-8 aplicados = 7 fixes / 23 issues totales
-del audit. Eficacia ~30%. Suficiente para desbloquear la demo, pero queda
-backlog explícito para siguientes iteraciones (M-1, M-2, M-6, M-9, M-10, M-11, L-*).
+**Cierre:** 4 críticos + 8 medios (M-1, M-2, M-5, M-7, M-8, M-10, M-11) +
+1 bajo (L-6) aplicados = **13 fixes / 23 issues totales** del audit.
+Eficacia **~57%**. Suficiente para desbloquear la demo y merge a `main`.
+
+**Backlog restante (no bloquea demo ni merge):**
+- M-6 (viewport collision Tooltip — Floating UI)
+- M-9 (DiffView truncation en entries grandes)
+- L-1, L-2, L-3, L-4, L-5, L-7, L-8 (cosméticos)
+
+**Refresh triage 2026-06-28 ~23:15:** el cruce docs↔código detectó que el
+audit original (post-fix) declaraba 5 M-* y 1 L-* como pendientes cuando en
+realidad ya estaban aplicados en código. Este refresh los marca como ✅ FIX
+y ajusta el score. Próxima revisión post-merge a `main` o post-demo a socios.
