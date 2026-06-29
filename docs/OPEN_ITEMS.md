@@ -115,6 +115,72 @@ header, audit log, Tooltip). Inventario: 23 issues.
 
 ---
 
+### ✅ Sesión 2026-06-28 (domingo, noche) — Hito D Resend cerrado
+
+**Branch:** `feat/fase-6-hitos` (mismo; este milestone es paperwork + infra,
+no feature nueva).
+**Working tree:** `feat/fase-6-hitos` clean + 2 archivos nuevos en `scripts/`.
+
+### Setup de Resend
+
+- **Cuenta Resend creada** por David (signup con GitHub, sin tarjeta).
+- **API key** (scope `Sending access`, NO Full access) agregada a
+  `.env.local` (gitignored). Mask de referencia en este doc: `re_6r...EkVx`.
+- **`RESEND_FROM_ADDRESS`** = `onboarding@resend.dev` (sandbox de Resend; el
+  dominio `qlick.marketing` está en espera — ver Hito E al final).
+- **`RESEND_REPLY_TO`** = `david17891@gmail.com` (legacy desde Fase 5).
+- **`ADMIN_NOTIFICATION_EMAILS`** = `david17891@gmail.com`.
+
+### Utilities nuevas — smoke test reusable
+
+- **`scripts/smoke-resend.mjs`** — llama `sendEmail()` con el template HTML
+  inline brand-colors, devuelve JSON `{ok, mode, id, error?}`. Override de
+  destinatario vía `$env:SMOKE_RESEND_TO="otro@email.com"`.
+- **`scripts/smoke-resend.ps1`** — launcher nativo Windows. Lee `.env.local`
+  con `Select-String`, setea env vars con
+  `[Environment]::SetEnvironmentVariable(KEY, VAL, "Process")`, corre
+  `node --experimental-strip-types smoke-resend.mjs`. **Bypassea**
+  `npx + dotenv-cli + --eval` (hostil en PowerShell; patrón documentado
+  en `memory/windows-powershell.md`).
+
+### Validación end-to-end
+
+- `powershell -ExecutionPolicy Bypass -File scripts/smoke-resend.ps1`
+  → `{ "ok": true, "mode": "prod", "id": "1ca50ab0-7ca7-4cea-be25-f155c06a9f80" }`.
+- Email real recibido por David con:
+  - **Remitente:** `onboarding@resend.dev`
+  - **Subject:** `Qlick · Resend smoke test (dev mode)`
+  - **Body:** HTML morado "Resend está vivo" + timestamp `2026-06-29T04:16:01Z`.
+- Resend dashboard → Logs → status `delivered` (no bounced, no spam).
+
+### Limitación del sandbox (documentada)
+
+`onboarding@resend.dev` SOLO entrega al email del owner de la cuenta Resend.
+Para que el trigger `promoteSurveyToLead → sendEmail` llegue a leads reales
+(no-David), **necesitamos el dominio verificado** (Hito E). Mientras tanto:
+- ✅ Pipelines internos testeables (David recibe los emails).
+- ❌ Leads reales no reciben nada hasta Hito E.
+
+### Files tocados en esta sesión
+
+- `scripts/smoke-resend.mjs` (nuevo, ~50 líneas, commiteable)
+- `scripts/smoke-resend.ps1` (nuevo, ~60 líneas, commiteable)
+- `.env.local` (modificado, gitignored, **NO se commitea**)
+- `pr-body.md` (temporal de la creación del PR, falta limpiar)
+
+### ⚪ Pendiente — Hito E (separar cuando David dispare)
+
+**Hito E — Dominio `qlick.marketing`** (cuando David lo compre):
+1. Agregar dominio en Resend dashboard → verificar DNS (3 records: SPF / DKIM / DMARC).
+2. Cambiar `RESEND_FROM_ADDRESS` a `notificaciones@qlick.marketing` en `.env.local`.
+3. Re-correr `smoke-resend.ps1` con `$env:SMOKE_RESEND_TO` apuntando a OTRO email
+   (no-David) → confirmar que sale del sandbox.
+4. Disparar el trigger real: `/admin/eventos/[id]` → tab Encuestas → "Promover a lead"
+   sobre una survey con `consent=true` → confirmar email al admin.
+5. Update de `docs/EVENTS_ADMIN_GUIDE.md` con el paso de "verificar deliverabilidad".
+
+---
+
 ### ✅ Sesión 2026-06-28 (domingo, tarde) — Fase 5 Paquete A+B+C+D+E cerrado
 
 **Branch:** `feat/fase-5-planning`. Working tree limpio. **12 commits** (11 previos + 1 docs):
