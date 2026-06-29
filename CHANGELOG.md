@@ -8,6 +8,100 @@
 
 ---
 
+## [Unreleased] — Fase 6 (Polish + auditoría + métricas globales)
+
+**Branch:** `feat/fase-6-hitos` (siguiente branch lógico tras `feat/fase-5-planning`)
+**Status:** 🟡 Funcional + tested (110/110), pendiente merge a `main` post-review de David.
+**Prereq:** Fase 5 mergeada a `main` primero.
+
+### Added
+
+#### Métricas globales en `/admin/eventos` (Hito C)
+
+- **Header con 6 stat cards agregadas** (Card con grid 2/3/6 responsive):
+  - Confirmados totales, Asistentes totales (% sobre confirmados),
+    Encuestas completadas, Leads promovidos desde encuestas,
+    Encuestas sin match (sin consent), Conversión global.
+- **Conversión global solo sobre eventos PASADOS** — excluye eventos próximos
+  que aún no tienen leads promovidos. Si no hay eventos pasados, muestra `—`
+  en vez de `0%`.
+- **Tooltips explicativos en cada stat** — ícono `?` con texto que aclara qué
+  mide la métrica y de dónde sale el número (%). Hover/focus accessible.
+- **`Tooltip` component reutilizable** (`src/components/ui/Tooltip.tsx`) —
+  aria-describedby + title fallback + soporte `align="end"` para tooltips
+  cerca del borde derecho del viewport.
+
+#### Búsqueda libre en audit log (Hito C)
+
+- **Input `Búsqueda libre`** en `/admin/system/audit-log` — placeholder
+  `"lead, david@, event_clone…"`, persiste en URL como `?q=...`.
+- **Server lib `listAuditLogs`** extendido con filtro `q` — OR sobre
+  `action`, `actor_email`, `entity_type`, `entity_id` (columnas indexadas).
+- **Escape de wildcards** — `%` y `_` se escapan antes de pasarlos a `ilike`
+  para evitar resultados inesperados.
+
+#### Login alumno con magic link como fallback (Hito B)
+
+- **`StudentLoginCard`** (`src/app/login/StudentLoginCard.tsx`) — Google OAuth
+  sigue siendo el método principal (1 click), magic link reactivado como
+  fallback visible con divider "o usa otro método".
+- **State preservation** — el `MagicLinkForm` se mantiene siempre montado (solo
+  cambia `hidden`), preservando `email` + `sent` cuando el usuario alterna entre
+  modos.
+- **Microcopy renovada** — "Bienvenido de vuelta · Continúa donde lo dejaste"
+  + badge "🔒 Acceso seguro · sin contraseñas" + trust strip "Nunca compartimos
+  tu correo ni tu actividad con terceros".
+
+#### Seed demo realista (Hito C — soporte demos)
+
+- **`scripts/seed-demo.mjs`** — seed sintético de eventos + confirmados +
+  asistentes + encuestas + leads + WhatsApp log + audit log. Idempotente.
+- **NPM scripts** — `npm run seed:demo`, `seed:demo:reset`, `seed:demo:cleanup`.
+- **Doc `SEED-DEV.md`** — qué crea, privacidad, cómo usar, cómo funciona la
+  idempotencia.
+
+### Fixed
+
+- **C-1** — Audit log del seed ya NO acumula entries por corrida. Check
+  `existingAuditEntries` antes del INSERT usando `seed_tag` en metadata.
+- **C-2** — Lead WhatsApp log del seed idempotente (preventivo, mismo patrón).
+- **C-3** — Docstring de `q` honesto: ya NO afirma buscar en `metadata`.
+  Doc dice explícitamente que solo busca en columnas indexadas y cómo
+  buscar en metadata si se necesita.
+- **C-4** — `entry.entityId.slice(0, 8)` ya NO rompe con null. Render
+  defensivo con `entry.entityId ? ... : "—"`.
+- **M-7** — Conversion global solo sobre eventos pasados (no distorsionaba
+  la métrica incluyendo eventos próximos).
+
+### Security / Privacy
+
+- **Audit seed entries** usan `seed_tag` en metadata que permite cleanup
+  selectivo. La página del audit log distingue seed entries de reales
+  mediante el filtro `q` o `actorEmail` (admin real = `david@qlick.mx`).
+
+### Internal
+
+- **`src/components/ui/index.ts`** — exporta `Tooltip` + `TooltipProps`.
+- **`src/lib/crm/audit-server.ts`** — interface `ListAuditLogsInput` extendida
+  con `q`, lógica de escape de wildcards.
+- **`src/app/admin/system/audit-log/page.tsx`** — filtros URL-driven ampliados
+  con `q`, render defensivo para `entityId` null.
+
+### Docs
+
+- **`docs/FASE-6-AUDIT.md`** — auditoría completa (23 issues: 4 críticos,
+  11 medios, 8 bajos) + status post-fix (4 críticos + 3 medios aplicados).
+- **`docs/SEED-DEV.md`** — guía del seed.
+- **`docs/TECHNICAL-REVIEW.md`** — snapshot técnico del repo a 2026-06-28.
+- **`docs/ESTADO-ACTUAL.html`** — vista 1-pager del estado actual.
+
+### Tests
+
+- 110/110 pasando (sin cambios — los fixes no agregan lógica que rompa tests).
+- Type-check ✅. Lint ✅. Build ✅.
+
+---
+
 ## [Unreleased] — Fase 5 (Admin notificaciones + audit log + clone/undo)
 
 **Branch:** `feat/fase-5-planning` (11 commits desde 2026-06-28).
