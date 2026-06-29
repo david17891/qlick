@@ -106,10 +106,18 @@ export async function middleware(req: NextRequest) {
   // Construir el cliente Supabase sobre las cookies de la request.
   // El `getUser()` de @supabase/ssr refresca automáticamente el access_token
   // si está expirado (usa el refresh_token) y propaga la nueva cookie via
-  // `setAll()`. Este refresh aplica a TODAS las rutas del matcher — admin
-  // y student. Sin esto, las rutas student pierden la sesión cuando el JWT
-  // expira (~1h). Ver PROJECT-LOG.md (2026-06-29).
-  const res = NextResponse.next({
+  // `setAll()`.
+  //
+  // CRÍTICO: las cookies refrescadas deben quedar disponibles TANTO en
+  // `req.cookies` (para que los server components que corren DESPUÉS del
+  // middleware las vean via `cookies()` de Next.js) COMO en `res.cookies`
+  // (para que el browser las reciba en el Set-Cookie response). Si solo
+  // las seteamos en `res`, el server component lee las cookies VIEJAS del
+  // request original → `getUser()` falla con access_token expirado →
+  // `requireStudent()` retorna null → redirect a /login.
+  // Patrón oficial: https://supabase.com/docs/guides/auth/server-side/nextjs
+  // Ver PROJECT-LOG.md (2026-06-29) — bug I-5 segunda iteración.
+  let res = NextResponse.next({
     request: { headers: req.headers },
   });
 
@@ -122,7 +130,19 @@ export async function middleware(req: NextRequest) {
           return req.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          // Middleware: aplicamos los cookies al response para refrescar sesión.
+          // 1) Actualizar req.cookies para que el server component que corre
+          //    después del middleware vea la sesión refrescada al llamar
+          //    `cookies()` desde next/headers.
+          cookiesToSet.forEach(({ name, value }) => {
+            req.cookies.set(name, value);
+          });
+          // 2) Reconstruir `res` con los headers del request ya actualizados
+          //    para que las nuevas cookies viajen también al browser.
+          res = NextResponse.next({
+            request: { headers: req.headers },
+          });
+          // 3) Adjuntar las cookies refrescadas al response para que el
+          //    browser las reciba en el Set-Cookie.
           cookiesToSet.forEach(({ name, value, options }) => {
             res.cookies.set(name, value, options);
           });
