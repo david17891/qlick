@@ -86,6 +86,18 @@ export interface ListAuditLogsInput {
   entityType?: string;
   entityId?: string;
   action?: string;
+  /**
+   * Búsqueda libre (Fase 6 Hito C). Case-insensitive match sobre las columnas
+   * indexadas: action, actor_email, entity_type, entity_id.
+   *
+   * **No busca en `metadata`** (jsonb) — eso requeriría una RPC o un cast
+   * `metadata::text ilike`. Por ahora, si necesitás buscar en metadata, usá
+   * el filtro `actorEmail` + `entityType` + scroll manual.
+   *
+   * Caracteres especiales `%` y `_` se escapan para evitar wildcards
+   * no intencionados en SQL LIKE.
+   */
+  q?: string;
   /** ISO date string. Filtra `created_at >= from`. */
   from?: string;
   /** ISO date string. Filtra `created_at <= to`. */
@@ -136,6 +148,23 @@ export async function listAuditLogs(
   }
   if (filters.action) {
     query = query.eq("action", filters.action);
+  }
+  if (filters.q) {
+    // Búsqueda libre: OR sobre action, actor_email, entity_type,
+    // entity_id, y metadata serializado a text.
+    // NOTA: si Supabase filtra por columna calculada (metadata::text),
+    // necesitamos una RPC o un SELECT all + filter en memoria. Por
+    // simplicidad, acá usamos OR sobre las columnas indexadas (action,
+    // actor_email, entity_type, entity_id) y dejamos el cast jsonb para
+    // una iteración futura.
+    const q = filters.q.trim();
+    if (q) {
+      // Escapamos % y _ para ilike (LIKE wildcards).
+      const escaped = q.replace(/[%_]/g, "\\$&");
+      query = query.or(
+        `action.ilike.%${escaped}%,actor_email.ilike.%${escaped}%,entity_type.ilike.%${escaped}%,entity_id.ilike.%${escaped}%`,
+      );
+    }
   }
   if (filters.from) {
     query = query.gte("created_at", filters.from);

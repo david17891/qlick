@@ -45,6 +45,8 @@ interface SearchParams {
   actorEmail?: string;
   entityType?: string;
   action?: string;
+  /** Búsqueda libre (Fase 6 Hito C). */
+  q?: string;
   from?: string;
   to?: string;
   page?: string;
@@ -67,6 +69,7 @@ export default async function AdminAuditLogPage({
     actorEmail: params.actorEmail?.trim() || undefined,
     entityType: params.entityType?.trim() || undefined,
     action: params.action?.trim() || undefined,
+    q: params.q?.trim() || undefined,
     from: params.from?.trim() || undefined,
     to: params.to?.trim() || undefined,
     limit: PAGE_SIZE,
@@ -106,7 +109,7 @@ export default async function AdminAuditLogPage({
             <h1 className="text-3xl font-bold text-ink">Audit log</h1>
             <p className="text-ink-muted text-sm mt-1">
               {result.total} {result.total === 1 ? "entry" : "entries"} registradas.
-              {params.actorEmail || params.entityType || params.action ? (
+              {params.actorEmail || params.entityType || params.action || params.q ? (
                 <> Filtrado.</>
               ) : null}
             </p>
@@ -119,6 +122,22 @@ export default async function AdminAuditLogPage({
               method="get"
               className="flex flex-wrap items-end gap-3"
             >
+              <div className="flex-1 min-w-[200px]">
+                <label
+                  htmlFor="q"
+                  className="block text-xs font-semibold text-ink-muted mb-1"
+                >
+                  Búsqueda libre
+                </label>
+                <input
+                  id="q"
+                  name="q"
+                  type="search"
+                  defaultValue={params.q ?? ""}
+                  placeholder="lead, david@, event_clone…"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm"
+                />
+              </div>
               <div>
                 <label
                   htmlFor="actorEmail"
@@ -206,7 +225,7 @@ export default async function AdminAuditLogPage({
               >
                 Filtrar
               </button>
-              {(params.actorEmail || params.entityType || params.action || params.from || params.to) && (
+              {(params.actorEmail || params.entityType || params.action || params.q || params.from || params.to) && (
                 <Link
                   href="/admin/system/audit-log"
                   className="text-sm text-ink-muted underline self-center"
@@ -268,7 +287,7 @@ export default async function AdminAuditLogPage({
                           {entry.entityType}
                           <br />
                           <code className="text-xs text-ink-muted">
-                            {entry.entityId.slice(0, 8)}…
+                            {entry.entityId ? `${entry.entityId.slice(0, 8)}…` : "—"}
                           </code>
                         </td>
                         <td className="px-4 py-3">
@@ -295,6 +314,7 @@ export default async function AdminAuditLogPage({
                       ...(params.actorEmail && { actorEmail: params.actorEmail }),
                       ...(params.entityType && { entityType: params.entityType }),
                       ...(params.action && { action: params.action }),
+                      ...(params.q && { q: params.q }),
                       ...(params.from && { from: params.from }),
                       ...(params.to && { to: params.to }),
                       page: String(page - 1),
@@ -310,6 +330,7 @@ export default async function AdminAuditLogPage({
                       ...(params.actorEmail && { actorEmail: params.actorEmail }),
                       ...(params.entityType && { entityType: params.entityType }),
                       ...(params.action && { action: params.action }),
+                      ...(params.q && { q: params.q }),
                       ...(params.from && { from: params.from }),
                       ...(params.to && { to: params.to }),
                       page: String(page + 1),

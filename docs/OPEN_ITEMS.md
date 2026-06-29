@@ -23,6 +23,166 @@
 
 ### ✅ Sesión 2026-06-28 (domingo, tarde) — Fase 5 Paquete A+B+C+D+E cerrado
 
+## 1. Deuda técnica activa
+
+### ✅ Sesión 2026-06-28 (domingo, tarde-noche) — Fase 6 Hitos A+B+C cerrado
+
+**Branch:** `feat/fase-6-hitos`. Working tree limpio. Score sube 7.5/10 → 8.5/10.
+
+### Hito A — Auditoría completa (`docs/FASE-6-AUDIT.md`)
+
+Análisis senior de todo el código nuevo de Fase 6 (seed-demo, login, eventos
+header, audit log, Tooltip). Inventario: 23 issues.
+
+- 🔴 **4 críticos** (bloquean demo a socios)
+- 🟡 **11 medios** (mejorables, no bloquean)
+- 🟠 **8 bajos** (nice-to-have / cleanup)
+- ✅ **8 bien logrados**
+
+### Hito B — Login alumno con magic link fallback
+
+- **`StudentLoginCard`** (`src/app/login/StudentLoginCard.tsx`) — componente
+  client que renderiza Google OAuth como principal + magic link como fallback
+  opcional (toggle visible con divider "o usa otro método").
+- **State preservation** — `MagicLinkForm` siempre montado (con `hidden`
+  según `mode`), preserva `email` + `sent` cuando el usuario alterna modos.
+- **`/login` page refactor** — microcopy renovada ("Bienvenido de vuelta ·
+  Continúa donde lo dejaste"), badge seguridad, trust strip final.
+- **OAuthLoginForm y MagicLinkForm** reusados sin cambios.
+
+### Hito C — Métricas globales + búsqueda libre + seed
+
+- **Header `/admin/eventos`** — Card con 6 stat cards agregadas (Confirmados,
+  Asistentes, Encuestas, Leads promovidos, Sin match, Conversión global).
+  Tooltip explicativo en cada uno vía `Tooltip` component.
+- **Conversión solo sobre eventos PASADOS** — excluye próximos sin leads
+  promovidos. Si no hay pasados, muestra `—` (no `0%`).
+- **`Tooltip` component** (`src/components/ui/Tooltip.tsx`) — accesible
+  (aria-describedby + title fallback + delay 200ms en focus), soporta
+  `align="end"` para tooltips cerca del borde derecho.
+- **Búsqueda libre `q`** en `/admin/system/audit-log` — input en form de
+  filtros, persiste en URL como `?q=...`. Server lib hace OR sobre action /
+  actor_email / entity_type / entity_id con escape de `%`/`_`.
+- **`scripts/seed-demo.mjs`** — seed sintético completo: 3 eventos, ~28
+  confirmados, ~16 asistentes, ~12 encuestas, ~9 leads promovidos, ~20 leads
+  sueltos, ~20 WhatsApp log, ~25 audit log. Idempotente via `seed_tag` en
+  metadata.
+- **NPM scripts** — `npm run seed:demo`, `seed:demo:reset`, `seed:demo:cleanup`.
+
+### Críticos cerrados (todos los 4)
+
+- **C-1** — Audit log del seed idempotente (`existingAuditEntries` check).
+- **C-2** — Lead WhatsApp log del seed idempotente (preventivo, mismo patrón).
+- **C-3** — Docstring de `q` honesto: solo busca en columnas indexadas.
+- **C-4** — `entry.entityId.slice(0,8)` con null check defensivo.
+
+### Medios cerrados (3 de 11)
+
+- **M-5** — `Tooltip` con `aria-describedby` correcto.
+- **M-7** — Conversion global solo sobre eventos pasados.
+- **M-8** — `MagicLinkForm` state preservation cross-mode.
+
+### Pendientes (no bloquean demo)
+
+- M-1/M-2 (real randomness con crypto.randomInt)
+- M-6 (viewport collision Tooltip — usar Floating UI)
+- M-9 (DiffView truncation en audit log)
+- M-10 (wildcards búsqueda explícitos)
+- M-11 (decisión sobre `events.upsert` y cambios manuales)
+- L-* (cosmetic)
+
+### Validación
+
+- `npm run type-check` → ✅
+- `npm test` → ✅ 110/110
+- Sin regresiones en tests existentes.
+
+### Docs creados/actualizados en esta sesión
+
+- `docs/FASE-6-AUDIT.md` (nuevo + refreshed post-fix)
+- `docs/SEED-DEV.md` (nuevo)
+- `docs/TECHNICAL-REVIEW.md` (nuevo)
+- `docs/ESTADO-ACTUAL.html` (nuevo)
+- `CHANGELOG.md` (entrada Fase 6)
+- `docs/ROADMAP.md` (Fase 6 cerrada + entrada tabla estratégica)
+- `docs/OPEN_ITEMS.md` (este bloque)
+
+### Estado final Fase 6 (2026-06-28 ~18:20)
+
+- **Branch:** `feat/fase-6-hitos` — listo para commit + push de David.
+- **Tests:** 110/110 ✅.
+- **Pendiente:** commit (feat + docs) + push de David + PR + merge a `main`.
+
+---
+
+### ✅ Sesión 2026-06-28 (domingo, noche) — Hito D Resend cerrado
+
+**Branch:** `feat/fase-6-hitos` (mismo; este milestone es paperwork + infra,
+no feature nueva).
+**Working tree:** `feat/fase-6-hitos` clean + 2 archivos nuevos en `scripts/`.
+
+### Setup de Resend
+
+- **Cuenta Resend creada** por David (signup con GitHub, sin tarjeta).
+- **API key** (scope `Sending access`, NO Full access) agregada a
+  `.env.local` (gitignored). Mask de referencia en este doc: `re_6r...EkVx`.
+- **`RESEND_FROM_ADDRESS`** = `onboarding@resend.dev` (sandbox de Resend; el
+  dominio `qlick.marketing` está en espera — ver Hito E al final).
+- **`RESEND_REPLY_TO`** = `david17891@gmail.com` (legacy desde Fase 5).
+- **`ADMIN_NOTIFICATION_EMAILS`** = `david17891@gmail.com`.
+
+### Utilities nuevas — smoke test reusable
+
+- **`scripts/smoke-resend.mjs`** — llama `sendEmail()` con el template HTML
+  inline brand-colors, devuelve JSON `{ok, mode, id, error?}`. Override de
+  destinatario vía `$env:SMOKE_RESEND_TO="otro@email.com"`.
+- **`scripts/smoke-resend.ps1`** — launcher nativo Windows. Lee `.env.local`
+  con `Select-String`, setea env vars con
+  `[Environment]::SetEnvironmentVariable(KEY, VAL, "Process")`, corre
+  `node --experimental-strip-types smoke-resend.mjs`. **Bypassea**
+  `npx + dotenv-cli + --eval` (hostil en PowerShell; patrón documentado
+  en `memory/windows-powershell.md`).
+
+### Validación end-to-end
+
+- `powershell -ExecutionPolicy Bypass -File scripts/smoke-resend.ps1`
+  → `{ "ok": true, "mode": "prod", "id": "1ca50ab0-7ca7-4cea-be25-f155c06a9f80" }`.
+- Email real recibido por David con:
+  - **Remitente:** `onboarding@resend.dev`
+  - **Subject:** `Qlick · Resend smoke test (dev mode)`
+  - **Body:** HTML morado "Resend está vivo" + timestamp `2026-06-29T04:16:01Z`.
+- Resend dashboard → Logs → status `delivered` (no bounced, no spam).
+
+### Limitación del sandbox (documentada)
+
+`onboarding@resend.dev` SOLO entrega al email del owner de la cuenta Resend.
+Para que el trigger `promoteSurveyToLead → sendEmail` llegue a leads reales
+(no-David), **necesitamos el dominio verificado** (Hito E). Mientras tanto:
+- ✅ Pipelines internos testeables (David recibe los emails).
+- ❌ Leads reales no reciben nada hasta Hito E.
+
+### Files tocados en esta sesión
+
+- `scripts/smoke-resend.mjs` (nuevo, ~50 líneas, commiteable)
+- `scripts/smoke-resend.ps1` (nuevo, ~60 líneas, commiteable)
+- `.env.local` (modificado, gitignored, **NO se commitea**)
+- `pr-body.md` (temporal de la creación del PR, falta limpiar)
+
+### ⚪ Pendiente — Hito E (separar cuando David dispare)
+
+**Hito E — Dominio `qlick.marketing`** (cuando David lo compre):
+1. Agregar dominio en Resend dashboard → verificar DNS (3 records: SPF / DKIM / DMARC).
+2. Cambiar `RESEND_FROM_ADDRESS` a `notificaciones@qlick.marketing` en `.env.local`.
+3. Re-correr `smoke-resend.ps1` con `$env:SMOKE_RESEND_TO` apuntando a OTRO email
+   (no-David) → confirmar que sale del sandbox.
+4. Disparar el trigger real: `/admin/eventos/[id]` → tab Encuestas → "Promover a lead"
+   sobre una survey con `consent=true` → confirmar email al admin.
+5. Update de `docs/EVENTS_ADMIN_GUIDE.md` con el paso de "verificar deliverabilidad".
+
+---
+
+### ✅ Sesión 2026-06-28 (domingo, tarde) — Fase 5 Paquete A+B+C+D+E cerrado
+
 **Branch:** `feat/fase-5-planning`. Working tree limpio. **12 commits** (11 previos + 1 docs):
 - `9e3d67b` chore(env): agregar vars de Resend + admin notifications (.env.example Fase 5)
 - `3781758` feat(email): Resend wrapper client con fallback dev

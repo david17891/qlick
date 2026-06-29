@@ -1,7 +1,7 @@
 # Qlick LMS — Roadmap
 
 > Fuente de verdad del plan del LMS. Cualquier desvío se conversa y se actualiza acá.
-> Última revisión: 2026-06-28 (sesión tarde) — **Fase 5 Paquete A+B+C+D+E cerradas**.
+> Última revisión: 2026-06-28 (sesión tarde-noche) — **Fase 6 Hitos A+B+C cerrados**.
 
 ---
 
@@ -65,6 +65,18 @@
   - ✅ **Paquete E**: polish (mobile 375px verified, EVENTS_ADMIN_GUIDE actualizado, OPEN_ITEMS cierre, ROADMAP, CHANGELOG v0.11.0, PRE_MERGE_CHECKLIST)
   - Tests: 110/110 ✅. Type-check ✅. Lint ✅. Build ✅.
   - Pendiente: push de David + PR + merge a `main` (después de merge de Fase 4).
+
+- **Fase 6: Polish + auditoría + métricas globales** — branch `feat/fase-6-hitos`, **siguiente sprint**. Cierre total:
+  - ✅ **Hito A**: auditoría completa de Fase 6 work (`docs/FASE-6-AUDIT.md`) — 4 críticos, 11 medios, 8 bajos.
+  - ✅ **Hito B**: login alumno con magic link reactivado como fallback (`StudentLoginCard`) — Google OAuth sigue siendo el principal. State preservation entre modos.
+  - ✅ **Hito C**: header de métricas globales en `/admin/eventos` (6 stat cards con tooltips) + búsqueda libre `q` en audit log + seed demo realista con idempotencia.
+  - ✅ **Críticos cerrados**: C-1 (audit log idempotente), C-2 (WhatsApp log idempotente), C-3 (docstring honesto de `q`), C-4 (entityId null check).
+  - ✅ **Medios cerrados**: M-1 (real randomness con crypto.randomInt), M-2 (PRNG determinístico para sort), M-5 (Tooltip aria-describedby), M-7 (conversion solo eventos pasados), M-8 (MagicLinkForm state preservation), M-10 (escape wildcards en búsqueda libre), M-11 (`ignoreDuplicates: true` para preservar cambios manuales).
+  - ✅ **Bajos cerrados**: L-6 (`loading.tsx` para `/admin/eventos`, pre-existente de Fase 4 Bloque 3D).
+  - ⏳ **Pendientes (no bloquean demo ni merge)**: M-6 (viewport collision Tooltip — requiere Floating UI), M-9 (DiffView truncation en entries grandes), L-1, L-2, L-3, L-4, L-5, L-7, L-8 (cosméticos).
+  - Score: 9/10 (refresh post-triage 2026-06-28).
+  - Tests: 110/110 ✅. Type-check ✅.
+  - Pendiente: push de David + PR + merge a `main` (después de merge de Fase 5).
 
 ## Pendientes — features
 
@@ -151,7 +163,8 @@ El cliente reposicionó Qlick: no es solo un LMS, es una **plataforma propia** q
 | 3 | **Módulo de eventos + importador seguro** | ✅ hecho (Fase 3) | 6 tablas + 5 server libs + importer CLI. Cierra H2 de Fase 2. |
 | 4 | **UI admin `/admin/eventos` + WhatsApp manual workflow** | ✅ hecho (Fase 4) | CRUD + tabs + Pipeline view + métricas + WhatsApp follow-up. Branch `feat/admin-eventos` cerrado. |
 | 5 | **Notificaciones + audit log + clone/undo** | ✅ hecho (Fase 5) | Resend wrapper + audit log con diff view + clone + undo archivar. Branch `feat/fase-5-planning` cerrado. |
-| 6 | **Pagos reales** (Stripe / MercadoPago / Conekta) | ⚪ futuro | reemplazar simulador |
+| 6 | **Polish + auditoría + métricas globales** | ✅ hecho (Fase 6) | métricas globales con tooltips + búsqueda libre `q` en audit log + login magic-link fallback + seed demo idempotente. Branch `feat/fase-6-hitos` cerrado. 4 críticos + 7 medios + 1 bajo cerrados. Score 9/10. |
+| 7 | **Pagos reales** (Stripe / MercadoPago / Conekta) | ⚪ futuro | reemplazar simulador |
 | 7 | **WhatsApp Business API** | ⚪ futuro | webhooks, plantillas, Meta Cloud API |
 
 **Lo que NO se hace todavía** (decisión explícita del cliente):

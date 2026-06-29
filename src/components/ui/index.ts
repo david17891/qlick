@@ -13,3 +13,5 @@ export {
   SectionHeading
 } from "./Feedback";
 export { SubmitButton } from "./SubmitButton";
+export { Tooltip } from "./Tooltip";
+export type { TooltipProps } from "./Tooltip";
