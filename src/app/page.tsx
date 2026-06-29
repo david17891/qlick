@@ -52,7 +52,7 @@ export default function HomePage() {
                 <div className="h-4 w-px bg-brand-200" />
                 <span>Cursos en español</span>
                 <div className="h-4 w-px bg-brand-200" />
-                <span>Acceso indefinido</span>
+                <span>Acceso de por vida</span>
               </div>
             </div>
 
@@ -149,7 +149,7 @@ export default function HomePage() {
               {
                 icon: "⚡",
                 title: "A tu ritmo, para siempre",
-                body: "Acceso indefinido. Mira las lecciones cuando quieras y repite las que necesites."
+                body: "Acceso de por vida. Mira las lecciones cuando quieras y repite las que necesites."
               },
               {
                 icon: "🎥",

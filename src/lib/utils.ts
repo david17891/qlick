@@ -45,13 +45,21 @@ export function slugify(input: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-/** Formatea una fecha ISO a formato legible en español. */
+/**
+ * Formatea una fecha ISO a formato legible en español.
+ *
+ * **Importante:** se fuerza `timeZone: 'UTC'` para evitar mismatches
+ * de hidratación entre server (Node en UTC por defecto en Vercel) y
+ * client (timezone del browser). Sin esto, fechas cerca de medianoche
+ * UTC se renderizan distinto en server vs client → React error #425.
+ */
 export function formatDate(iso: string): string {
   try {
     return new Date(iso).toLocaleDateString("es-MX", {
       day: "numeric",
       month: "long",
-      year: "numeric"
+      year: "numeric",
+      timeZone: "UTC",
     });
   } catch {
     return iso;
