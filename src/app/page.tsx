@@ -5,13 +5,74 @@ import { Container, Button, Card, Badge, SectionHeading } from "@/components/ui"
 import { CourseCard } from "@/components/course";
 import { Logo, Isotipo } from "@/components/brand";
 import { WhatsAppButton } from "@/components/contact/WhatsAppButton";
-import { getFeaturedCourses, getAllCourses } from "@/lib/data/courses";
+import { getPublishedCourses } from "@/lib/lms/courses-server";
+import { getCourseStats } from "@/lib/data/courses";
 import { testimonials } from "@/lib/data/content";
 import { getInstructorById } from "@/lib/data/instructors";
+import type { Course as LmsCourse } from "@/types/lms";
+import type { FilterableCourse } from "@/app/cursos/CursosClient";
 
-export default function HomePage() {
-  const featured = getFeaturedCourses(3);
-  const allCourses = getAllCourses();
+/**
+ * Adapta un `Course` del LMS al shape legacy que necesita `CourseCard`.
+ * Mismo adapter que `src/app/cursos/page.tsx`. Centralizado acá para
+ * mantener una sola fuente de verdad de precios (LMS / Supabase).
+ *
+ * Decisión 2026-06-29 (sesión nocturna): NORMALIZACIÓN de precios.
+ * Antes, home usaba mock data (`src/lib/data/courses.ts`) con
+ * `priceMXN: 1499, originalPriceMXN: 2499` mientras que `/cursos` y
+ * `/cursos/[slug]` usan LMS DB. Eso causaba inconsistencia visible:
+ * home mostraba "$1,499 $2,499 -40%" pero el detail mostraba "$499".
+ * Ahora home también usa LMS. Los precios definitivos aún no están
+ * fijados por David — esta normalización solo unifica el origen de
+ * datos, no cambia el valor (que viene del seed actual en DB).
+ */
+function lmsToLegacyAdapter(c: LmsCourse): FilterableCourse {
+  const levelMap: Record<string, "basico" | "intermedio" | "avanzado"> = {
+    beginner: "basico",
+    intermediate: "intermedio",
+    advanced: "avanzado",
+  };
+  const statusMap: Record<string, "gratis" | "pago" | "proximamente"> = {
+    free: "gratis",
+    paid: "pago",
+    freemium: "gratis",
+  };
+  return {
+    id: c.id,
+    slug: c.slug,
+    title: c.title,
+    shortDescription: c.description ?? c.subtitle ?? "",
+    longDescription: c.description ?? "",
+    thumbnailUrl: c.coverImageUrl ?? "",
+    estimatedHours: c.durationMinutes ? c.durationMinutes / 60 : 0,
+    level: levelMap[c.level] ?? "basico",
+    instructorId: c.instructorName ?? "",
+    category: c.category,
+    tags: [],
+    studentsCount: 0,
+    rating: 0,
+    priceMXN: c.priceMXN ?? 0,
+    originalPriceMXN: null,
+    isFeatured: c.isFeatured,
+    status: statusMap[c.accessType] ?? "gratis",
+    accessType: c.accessType,
+  } as unknown as FilterableCourse;
+}
+
+export default async function HomePage() {
+  // Decisión 2026-06-29: usar LMS como única fuente de precios (antes
+  // era mock data con $1,499/$2,499). Centraliza el origen y evita
+  // inconsistencias visuales entre home y /cursos.
+  const lmsCourses = await getPublishedCourses();
+  const featured: FilterableCourse[] = lmsCourses
+    .filter((c) => c.isFeatured)
+    .slice(0, 3)
+    .map((lmsCourse) => {
+      const adapted = lmsToLegacyAdapter(lmsCourse);
+      const stats = getCourseStats(adapted.id);
+      return { ...adapted, totalModules: stats.totalModules, totalLessons: stats.totalLessons } as FilterableCourse;
+    });
+  const allCourses = lmsCourses;
 
   return (
     <>
