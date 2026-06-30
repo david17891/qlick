@@ -419,3 +419,36 @@ agregar features planificadas (esas van en OPEN_ITEMS / ROADMAP).*
 - **Trigger:** Memoria del agente actualizada con el deseo + decisiones
   + que el doc canonico es docs/FASE2_FUNNEL_AUTOMATIZADO.md. Próxima
   sesion Mavis lee ese doc y arranca — no repregunta lo decidido.
+
+---
+
+## 2026-06-30 ~12:30 Â· Sincronizacion DB real + switch LLM Flash<->Pro
+
+- **Pregunta:** Antes de codear el switch LLM, validar que las tablas del
+  funnel WhatsApp existen en la DB real (riesgo de drift entre repo y
+  Supabase tras semanas de vida del proyecto).
+- **Decision:**
+  1. **Audit DB** via SQL Editor: confirmado drift -- 3 tablas del funnel
+     WhatsApp (event_qr_tokens, lead_whatsapp_conversations, lead_consent_log)
+     figuraban como pplied en el ledger del CLI pero NO existian en la
+     DB remota.
+  2. **Fix retroactivo**: supabase migration repair --status reverted
+     20260629223747 + supabase db push. La migration es 100% idempotente
+     (solo IF NOT EXISTS, sin CREATE POLICY). Resultado: las 3 tablas
+     creadas, cada una con 10 cols + RLS=true.
+  3. **Switch LLM Flash<->Pro** implementado en src/lib/ai/deepseek-provider.ts
+     con 3 env vars (modelos + threshold) y fallback heuristico. 11 tests
+     nuevos (140 -> 151 total).
+- **Razon:** el switch LLM no toca DB pero los cron jobs (Fase 2) usan las
+  3 tablas para mandar templates. Si faltaban, el 6 jul no funcionaba.
+- **Impacto:**
+  - DB schema real sincronizado con el repo (24 tablas en public).
+  - Rama nueva eat/fase-6-llm-switch con 3 commits: 9fd300 (audit),
+    1d5131f (switch LLM), doc update (STATUS + PROJECT-LOG + .gitignore).
+  - Pendiente de pushear la rama.
+  - .env.local tenia bytes no-ASCII en comentarios que rompian el parser
+    de dotenv del CLI. Limpiados con script clean_env_comments.py
+    (scratchpad Mavis) + backup .env.local.bak-20260630-120839.
+- **Trigger:** Pre-requisito para los 4 cron jobs del 6 jul. LecciÃ³n:
+  nunca usar epair --status applied sin verificar antes que el efecto
+  real esta en la DB.

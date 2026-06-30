@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-06-30 ~01:35 (post-cierre Fase 6 Hito C: WhatsApp funnel + check-in QR + Meta Campaigns + DeepSeek agent).
+> **Última actualización:** 2026-06-30 ~12:30 (rama nueva `feat/fase-6-llm-switch` con switch LLM Flash↔Pro + DB real sincronizada con migrations).
 
 ---
 
@@ -81,10 +81,51 @@ Ver `docs/CRM_MODE_STATUS.md` para detalle. Resumen:
 |---|---|---|
 | **Conversaciones** | 🟡 Demo | Lee `src/lib/data/crm-data.ts`. Mensajes ficticios. No hay WhatsApp Business API. |
 | **Calendario / Citas** | 🟡 Demo | Lee mock. No hay Google Calendar integration. |
-| **Agente IA** | 🟡 Demo | Lee mock. Stubs de OpenRouter. |
+| **Agente IA** | 🟢 Real (con switch) | **DeepSeek V4-Flash + V4-Pro con escalado automatico (commit `1d5131f`, rama `feat/fase-6-llm-switch`).** Default Flash; escala a Pro si Flash responde baja conf o falla. |
 | **WhatsApp providers** | 🟡 Parcial | `manual_wa` activo (click-to-chat real), `meta_cloud_api` + `bsp` son stubs. |
 | **Sales Owners** | 🟡 Demo | Asignación a leads es ficticia. |
 | **Broadcast WhatsApp** | 🟡 Demo | Genera lista de links `wa.me` pre-armados. Admin abre cada uno manual. NO envía automáticamente. |
+
+---
+
+## 🗄️ Database (Supabase `ugpejblymtbwtsoiykyj`)
+
+**Estado actual (audit 2026-06-30 12:23):** 24 tablas en `public`. Schema sincronizado con el repo via `db push`.
+
+- 21 tablas pre-existentes del conjunto Fase 1-5 (events, leads, payments, masterclasses, etc.).
+- 3 tablas aplicadas en esta sesion via `repair --status reverted` + `db push`:
+  `event_qr_tokens`, `lead_whatsapp_conversations`, `lead_consent_log`
+  (todas con RLS=true, default-deny, solo service role).
+
+**Pendientes de verificar en proximas sesiones** (marcadas `applied` en ledger
+pero su efecto real puede no estar — falta auditar una por una):
+- `lead_whatsapp_log` y columnas `leads.whatsapp_status`,
+  `leads.last_contacted_at`, `leads.phone_normalized`.
+- Constraint `lead_event_links_unique(link_type, link_id)`.
+
+Detalle completo en `docs/DB_AUDIT_2026-06-30.md`.
+
+---
+
+## 🧠 LLM Switch (Qlick Fase 2 · 2026-06-30)
+
+Implementado en `src/lib/ai/deepseek-provider.ts`:
+
+- **Flash** (`deepseek-chat`) — default para todas las tareas.
+- **Pro** (`deepseek-reasoner`) — se activa en 2 casos:
+  1. Tarea es `suggest_reply` (outbound sensible).
+  2. Flash responde `ok=false` o `confidence < DEEPSEEK_ESCALATE_THRESHOLD`.
+
+**Env vars (todas con defaults razonables):**
+- `DEEPSEEK_MODEL_FLASH` — default `deepseek-chat`.
+- `DEEPSEEK_MODEL_PRO` — default `deepseek-reasoner`.
+- `DEEPSEEK_ESCALATE_THRESHOLD` — default `0.7`.
+
+**Fallback final:** si Flash Y Pro fallan, devuelve mensaje generico
+("Disculpa, tengo un problema tecnico...") con `needsReview=true`. El bot
+engine sigue mostrando al admin antes de enviar al lead.
+
+**Tests:** 151/151 (140 baseline + 11 nuevos del switch).
 
 ---
 

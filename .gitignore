@@ -115,3 +115,8 @@ dev-*.log
 # --- Scripts temporales generados por sesiones Mavis (cookies, evals, etc.) ---
 # Patrón: archivos en scripts/ que arrancan con tmp- (cookies, login JSON, etc.).
 /scripts/tmp-*.json
+
+# --- Backups de .env.local creados durante cleanup de encoding (Mojibake fix) ---
+# Patron: cuando un script regenera .env.local, deja un `.bak-<timestamp>` junto.
+# Contiene secretos -> NUNCA debe commitear.
+/.env.local.bak-*
