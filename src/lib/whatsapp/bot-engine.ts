@@ -143,7 +143,15 @@ function appBaseUrl(): string {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const GREETING_RE = /^(hola|hi|buenos|buenas|informaci[oó]n|info|menu|men[uú])/i;
+// Registro corto (anclado al inicio) — palabras muy específicas del
+// usuario confirmando inscripción.
 const REGISTER_RE = /^(s[ií]|confirmo|inscribirme|registrarme|quiero|me interesa)/i;
+// Registro por frase completa (en cualquier posición del cuerpo) — para
+// casos tipo "Hola, quiero inscribirme" o "Me interesa, cómo me inscribo".
+// Sin ancla para detectar la intención aún si el mensaje arranca con un
+// saludo. RIESGO de falsos positivos mitigado porque las frases son
+// específicas del funnel (palabras únicas).
+const REGISTER_PHRASE_RE = /\b(quiero\s+inscribirme|me\s+interesa\s+(inscribirme|el\s+curso|el\s+evento|saber\s+m[aá]s)|inscribirme\s+al?\s+evento|c[oó]mo\s+me\s+inscribo)\b/i;
 const OPT_OUT_RE = /^(no|cancelar|baja|stop|unsubscribe)/i;
 
 /** Detecta el intent del mensaje (regex determinista).
@@ -168,6 +176,7 @@ export function detectIntent(
   // Señales fuertes: siempre ganan, incluso en primer mensaje.
   if (OPT_OUT_RE.test(text)) return "opt_out";
   if (REGISTER_RE.test(text)) return "register";
+  if (REGISTER_PHRASE_RE.test(text)) return "register";
   if (EMAIL_RE.test(text)) return "provide_email";
   // Greeting: primer mensaje → welcome; posteriores → greeting.
   if (GREETING_RE.test(text)) {
