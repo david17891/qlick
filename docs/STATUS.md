@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-06-29 ~13:35 (post-fix navbar flash + sesión persistente).
+> **Última actualización:** 2026-06-30 ~01:35 (post-cierre Fase 6 Hito C: WhatsApp funnel + check-in QR + Meta Campaigns + DeepSeek agent).
 
 ---
 
@@ -20,8 +20,8 @@
 | **Production deploy ID** | `dpl_qo40c17el…` |
 | **Production URL (auto)** | `qlick-qo40c17el-david17891-9351s-projects.vercel.app` |
 | **Branch** | `feat/fase-6-hitos` |
-| **Commit** | `6826b41` (HEAD — chore untrack tmp scripts) |
-| **Commit anterior** | `7671843` (fix(navbar): wrapper SSR + client components separados) |
+| **Commit** | `43320d2` (HEAD — docs(github-auth): setup persistente + reference doc) |
+| **Commits ahead of origin** | 0 (los 12 commits de la sesión 30-jun ya están pusheados) |
 | **Mensaje actual** | `chore: untrack tmp scripts from feat/fase-6-hitos` |
 | **Build status** | ✅ READY + PROMOTED + aliasAssigned |
 | **Build duration** | ~51s (con cache del deploy anterior) |
