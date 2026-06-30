@@ -91,9 +91,11 @@ Setup primerizo + operativa paso a paso: `docs/HOW-TO-RUN.md`.
 - PR con título descriptivo, descripción (qué/por qué/cómo probarlo), al menos 1 revisor,
   CI verde antes de merge.
 
-> **Push requiere la terminal de David.** La sesión Mavis no tiene auth de `gh`. David hace
-> el push y abre el PR desde su PowerShell local. Confirmar siempre antes de cualquier
-> commit destructivo (drop, reset --hard, push --force).
+> **Push lo hace la sesión Mavis.** Configurado el 2026-06-30 con fine-grained PAT
+> persistido en `HKCU\Environment\GH_TOKEN` + git credential helper. Verificación + cómo
+> recrear: `docs/SETUP_GITHUB_AUTH.md`. Si `git push` falla, NO asumir que la auth se
+> perdió — verificar las 3 condiciones del doc antes de pedirle a David que la renueve.
+> Confirmar siempre antes de cualquier commit destructivo (drop, reset --hard, push --force).
 
 ---
 

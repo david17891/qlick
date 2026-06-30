@@ -368,3 +368,28 @@ agregar features planificadas (esas van en OPEN_ITEMS / ROADMAP).*
   si el repo ya tenÃ­a documentaciÃ³n que el nuevo layer contradice o
   duplica. La duplicaciÃ³n silenciosa es drift garantizado. Sincronizar
   hacia atrÃ¡s (header notes) es mÃ¡s barato que reescribir.
+---
+
+### 2026-06-30 — GitHub auth persistente (fin del "lo configuramos" simulado)
+
+- **Pregunta:** Cada sesión Mavis nueva tenía que pedirle a David que configure
+  GitHub auth antes de hacer push. Eso era fricción + le mintieron antes
+  diciendo que estaba persistido cuando no.
+- **Decisión:** Configurar auth en 3 capas reales, persistentes y verificadas:
+  1. HKCU\Environment\GH_TOKEN (Windows User scope) — sobrevive reinicio de PC
+  2. git config --global credential.helper = store — funciona aunque la env var se borre
+  3. ~/.git-credentials — escrito con URL+token para github.com
+- **Razón:** Las 3 capas independientes garantizan que si una se rompe, las otras cubren.
+  El fine-grained PAT NO funciona con gh auth login --with-token (fallo silencioso
+  según doc oficial) — por eso se saltea gh y se va directo a las env vars.
+- **Impacto:** Sesiones Mavis futuras pueden hacer git push sin pedir token. Si falla,
+  PRIMERO verificar las 3 condiciones, NO pedirle a David que renueve.
+- **Archivos:**
+  - docs/SETUP_GITHUB_AUTH.md (nuevo, doc reproducible)
+  - AGENTS.md § PR & commit conventions (línea sobre push actualizada)
+  - ~/.mavis/agents/mavis/memory/MEMORY.md (entrada cross-project para futuras sesiones)
+  - C:\Users\User\.mavis\scratchpads\mvs_9831e64ee9d4477d8632f5b78d4bf951\gh-setup-persistent.ps1 (script reproducible)
+- **Trigger:** David pidió "vamos lento pero bien, de nuevo, ya tengo el token" — explícito
+  sobre no querer promesas que se rompan. Push validado: 12 commits ahead ? 0 ahead.
+- **Lección:** Para setups que prometen "persistir entre sesiones" hay que verificar
+  DESPUÉS del setup con una sesión nueva, no asumir que se guardó.
