@@ -393,3 +393,29 @@ agregar features planificadas (esas van en OPEN_ITEMS / ROADMAP).*
   sobre no querer promesas que se rompan. Push validado: 12 commits ahead ? 0 ahead.
 - **Lección:** Para setups que prometen "persistir entre sesiones" hay que verificar
   DESPUÉS del setup con una sesión nueva, no asumir que se guardó.
+
+---
+
+### 2026-06-30 (continuación ~03:25) — Fase 2 deseada + plan 5 días documentado
+
+- **Pregunta:** David verbaliza el deseo de Qlick consolidado: captar leads
+  (bots WhatsApp + DeepSeek Flash/Pro), CRM para decisiones, funnel
+  automático, acciones de bots por etapa, estadísticas para decisiones.
+- **Decisión:** MVP para la conferencia del 6 de julio. 5 pilares con
+  implementación priorizada — ver docs/FASE2_FUNNEL_AUTOMATIZADO.md
+  para el detalle completo.
+- **Razón:** 5 días es apretado. Hay que priorizar lo crítico (4 cron jobs
+  + switch LLM + QR check-in) sobre las mejoras de calidad (Kanban visual
+  completo + dashboard decision-support completo).
+- **Impacto:** Roadmap de los próximos 5 días:
+  - Mie 1 jul: switch LLM + cron #1 (bienvenida) + Kanban básico
+  - Jue 2 jul: cron #2-4 + dashboard v1
+  - Vie 3 jul: pulido, tests e2e
+  - Sab 4 jul: soft launch 5 amigos
+  - Dom 5 jul: ensayo general
+  - Lun 6 jul: CONFERENCIA
+- **Bloqueos:** (a) migración SQL aplicada en Supabase, (b) tokens
+  WhatsApp reales cuando socio verifique. Sin los dos, piloto solo mocks.
+- **Trigger:** Memoria del agente actualizada con el deseo + decisiones
+  + que el doc canonico es docs/FASE2_FUNNEL_AUTOMATIZADO.md. Próxima
+  sesion Mavis lee ese doc y arranca — no repregunta lo decidido.
