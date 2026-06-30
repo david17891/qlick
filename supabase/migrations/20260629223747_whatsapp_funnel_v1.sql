@@ -1,6 +1,25 @@
 -- ============================================================
 -- WhatsApp funnel v1 — QR check-in, conversation log & consent audit
 --
+-- IMPORTANTE — historial de aplicacion retroactivo (2026-06-30):
+-- Esta migration fue marcada como `applied` en el ledger via
+-- `supabase migration repair --status applied 20260629223747` durante
+-- el setup inicial del Hito C, ANTES de que el SQL se ejecutara
+-- realmente contra la DB remota. Cuando se intento aplicar el 2026-06-30
+-- (`db push`), fallo por CREATE POLICY no-idempotente en migrations
+-- anteriores y el efecto real de ESTA migration nunca corrio.
+--
+-- Fix aplicado el 2026-06-30:
+--   1. `supabase migration repair --status reverted 20260629223747`
+--      (la saco del ledger)
+--   2. `supabase db push` la volvio a correr desde cero con exito
+--      (Finished supabase db push, 3 tablas creadas con RLS activa)
+--
+-- Estado actual (verificado via SQL Editor 2026-06-30 12:23):
+--   event_qr_tokens              RLS=true, 10 cols
+--   lead_consent_log             RLS=true, 10 cols
+--   lead_whatsapp_conversations  RLS=true, 10 cols
+-- ============================================================
 -- Cierra el Sub-bloque D del WhatsApp manual workflow (Bloque 2 de Fase 4)
 -- y la pieza de conferencias presenciales del funnel.
 --
