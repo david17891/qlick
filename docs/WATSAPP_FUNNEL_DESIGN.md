@@ -1,5 +1,13 @@
 # WhatsApp Funnel Design — Bot Conversacional
 
+> **NOTA WABA (multi-cliente, 2026-06-30):** Cada cliente del portafolio
+> "Negocio de Paul Velasquez" opera sobre SU PROPIO WABA dedicado, atado a
+> su pagina de Facebook correspondiente. Para Qlick, el WABA vive atado a
+> la pagina "Qlick Marketing Digital", con lada 686 (Mexicali, BC). NO se
+> comparten tokens, numeros ni WABA IDs entre clientes. Configuracion
+> detallada en `docs/PARTNER_META_SETUP.md`.
+>
+
 > Documento canónico del flujo. Diseñado para la conferencia del 6 de julio de 2026
 > pero aplica a cualquier evento del pipeline.
 

@@ -1,180 +1,217 @@
-# Partner Meta Setup — Manual para el socio
+# Meta WhatsApp Setup — Qlick Marketing Digital (multi-cliente)
 
-> Audiencia: tu socio que opera Meta Business. NO necesita saber programar. Necesita hacer
-> clicks y mandarte lo que le pedís. Tiempo total: 3 minutos (si ya verificó) o 45-90 min
-> (incluyendo verificación).
+> Audience: David (developer) configurando Meta para el bot de Qlick, dentro del
+> portafolio multi-cliente **"Negocio de Paul Velasquez"** (Mexicali, BC).
+> Fecha de inicio: 2026-06-30. Horizonte: conferencia 6 de julio 2026.
 
-## Resumen ejecutivo
+## TL;DR
 
-El socio necesita hacer **una sola cosa**: agregarte como Admin en su Meta Business para
-que vos configures el WhatsApp Business + los ads + el bot. Después de eso, él sigue
-manejando las campañas como siempre desde su cuenta.
+El setup del bot de WhatsApp para Qlick vive **dentro** del portafolio comercial
+de Paul ("Negocio de Paul Velasquez"), pero **aislado** en su propio WhatsApp
+Business Account (WABA) dedicado, atado a la página de Facebook
+**"Qlick Marketing Digital"**. NO se comparte WABA, App, ni número con otros
+clientes del portafolio (Casa Geriátrica, Llantera, BAXA, etc.).
 
-## Lo que el socio tiene que hacer (3 minutos)
+## Patron multi-cliente (por que importa)
 
-```
-1. Abrí https://business.facebook.com/settings/people
-2. Click "Agregar persona"
-3. Poné mi correo: david17891@gmail.com
-4. Rol: Administrador (o "Desarrollador" si quiere limitarte)
-5. Tildá: Páginas de Facebook + Cuentas publicitarias
-6. Aprobar
-```
+El portafolio "Negocio de Paul Velasquez" tiene **varias paginas** registradas
+(clientes distintos):
 
-Si la cuenta publicitaria le pregunta nivel de acceso, elegí **"Ver insights"** (el más
-simple — solo lectura de métricas, no creación de campañas, no facturación).
-
-## Cómo lo convences si se resiste
-
-### Si dice "es muy complicado, te doy la clave"
-
-NO aceptar. Razones concretas:
-
-- Meta penaliza cuentas con clave de admin compartida. Si suspenden, perdés el número de
-  WhatsApp Y la cuenta de anuncios.
-- Sin roles no hay audit log de quién hizo qué.
-- Si te vas del proyecto, el socio tiene que cambiar TODAS las contraseñas; con roles,
-  te remueve en 30 segundos.
-
-Pitch concreto:
-
-> "Mirá, todo el setup técnico lo hago yo. Lo único que necesito es que me agregues
-> como 'Developer' en tu Meta Business para tener acceso yo. Es 3 minutos: entrás a
-> business.facebook.com, configuración, personas, agregar, mi email, y listo. Así vos
-> quedás como dueño de la cuenta publicitaria y yo solo opero. Si algo sale mal, Meta
-> tiene el log de quién hizo qué."
-
-### Si dice "no veo el link directo"
-
-Meta no da link mágico por seguridad. Pero tenés 3 opciones de menor a mayor control:
-
-| Opción | Esfuerzo del socio | Resultado |
+| Pagina de Facebook | Proposito | WABA actual |
 |---|---|---|
-| **A. Link + screenshots** | 5 min | Él solo con tu ayuda visual |
-| **B. Video de 30 seg** | 0 min | Vos grabás un screencast y se lo mandás |
-| **C. Llamada 5 min con compartir pantalla** | 0 min | Vos operás, él mira y dice "sí, siguiente" |
+| Casa Geriatrica de Mexicali | Cliente (geriatrico) | WABA propio (Ya Verificado) |
+| Llantera los Compadres | Cliente (llantera) | sin WABA |
+| Qlick Marketing Digital | **Nuestra pagina** | sin WABA (a crear) |
+| BAXA Eventos | Cliente (eventos) | sin WABA |
+| La Birria De Mi Tierra | Cliente (restaurante) | sin WABA |
+| No Usar Esta Pagina | placeholder | N/A |
 
-Recomendado: opción C. Pitch:
+**Regla inquebrantable:** para Qlick creamos un **WABA dedicado, atado a la
+pagina "Qlick Marketing Digital"**. NUNCA compramos numeros ni usamos tokens
+de WABAs de otros clientes. Razones:
+- Identidad de marca: los mensajes llegan firmados como "Qlick Marketing
+  Digital", no como "Casa Geriatrica" (craso para el lead).
+- Compliance LFPDPPP: cada cliente maneja su propio consentimiento, no se cruza.
+- Facturacion: cada WABA tiene su propio metodo de pago, factura separada.
+- Auditoria: si Meta suspende una cuenta, no cae el resto.
 
-> "Dame 5 minutos, te llamo por Meet/Zoom/WhatsApp video, compartís pantalla y yo te
-> hago los clicks. Vos solo decís 'sí, siguiente'. Después manejo todo yo, no te molesto más."
+## Estado actual del setup (2026-06-30 12:30)
 
-## Qué pasa DESPUÉS de que el socio te agrega
+| Paso | Quien | Status |
+|---|---|---|
+| David agregado como Admin al Negocio de Paul Velasquez | Hecho (socio lo autorizo) | Listo |
+| Empresa verificada en Meta | Verificado activo | Listo |
+| Pagina "Qlick Marketing Digital" accesible | Si (sin badge de revision) | Listo |
+| App de Meta for Developers creada | **En curso** (nombre tentativo "Qlick_wb" o "Qlick Bot") | Pendiente App ID |
+| WABA "Qlick Marketing Digital" dedicado creado | Pendiente | Pendiente |
+| Numero MX comprado (lada 686, Mexicali) | Pendiente | Pendiente |
+| Metodo de pago agregado al WABA | Pendiente (ver bloqueos abajo) | Bloqueado |
+| 7 plantillas de WhatsApp cargadas | Pendiente (post-numero) | Pendiente |
+| Access Token permanente generado | Pendiente | Pendiente |
+| Webhook configurado + verificado | Pendiente (requiere dominio production) | Pendiente |
 
-Vos hacés todo el setup técnico solo:
+## Bloqueos activos
 
-1. **Verificar empresa** (subir RFC, acta constitutiva) — 15 min, Meta tarda 24-48h
-2. **Crear App en Meta for Developers** — 10 min
-3. **Crear WABA + comprar número MX** — 15 min
-4. **Cargar las 7 plantillas de WhatsApp** — 30 min, Meta tarda 24h en aprobar
-5. **Generar Access Token** — 2 min
+### 1. Metodo de pago del WABA
 
-Si la cuenta del socio ya está verificada, todo lo anterior se hace en su Business Manager.
-Si NO está verificada, Meta rechaza la creación del App.
+El Business Manager del portafolio NO tiene tarjeta corporativa cargada para
+WhatsApp. Cuando lleguemos al paso "Configuracion de pago" del WABA nuevo,
+Meta va a pedir una tarjeta.
 
-## Qué necesitás mandarme vos (socio) cuando termine
+**Opciones:**
+- **A. Pedirle a Paul** que cargue su tarjeta corporativa (para facturacion
+  del lado de Paul).
+- **B. Cargar tarjeta personal/de la empresa de Qlick** independiente del
+  portafolio (David maneja).
+- **C. Comprar saldo prepago** via Meta Ads Manager si Paul prefiere no
+  poner tarjeta corporativa.
 
-```
-✅ PASO 1: Business Account ID (Settings → Info → ID)
-✅ PASO 2: Empresa verificada (screenshot del estado)
-✅ PASO 3: App ID (Settings → Básica → ID de la app)
-✅ PASO 4: WABA ID + Phone Number ID + número internacional (+52...)
-✅ PASO 5: Access Token (EAAxxxxx...)
-✅ PASO 6: Templates aprobados (screenshot del panel con IDs)
-```
+Sin metodo de pago, NO podemos comprar numero. Por eso bloqueamos aca hasta
+resolver.
 
-## Si se traba
+### 2. SMS de verificacion del numero
 
-Mandame screenshot + número de paso por WhatsApp. Te destrabo en 30 segundos.
+Al comprar el numero Meta manda un SMS con codigo de 6 digitos. Necesitamos
+celular a mano. Candidato esperado: **+52 1 686 ...** (personal de David)
+o el de Paul. Cualquiera sirve, el codigo se mete manual en el panel.
 
-Email: david17891@gmail.com
-Tel: el que ya tenés.
+## Lo que hace David (developer) en el setup
 
----
+### Paso 1: Crear App en Meta for Developers
 
-## Anexo A: Estructura del Meta Business (para entender qué hace cada cosa)
+URL: https://developers.facebook.com/apps/create/
 
-```
-Meta Business Manager
-├── Página de Facebook (identidad de la marca)
-├── Cuenta publicitaria (ad account) — donde corren los ads
-├── Catálogo (solo si venden productos online)
-├── Cuentas de Instagram (opcional)
-└── WhatsApp Business Account (WABA)
-    ├── Número de teléfono (donde llegan los mensajes)
-    ├── Plantillas de mensaje (Meta aprueba cada una, ~24h)
-    └── API access (token + webhook)
-```
+1. Tipo: **Negocios (Business)**
+2. Nombre de la app: **"Qlick_wb"** o **"Qlick Bot"** (NO incluir
+   "WhatsApp"/"Facebook"/"Meta"/"Instagram" en el nombre — Meta rechaza)
+3. Email de contacto: `david17891@gmail.com`
+4. Business Manager Portfolio: **"Negocio de Paul Velasquez"**
+5. Aceptar requisitos
+6. Crear
 
-## Anexo B: Setup técnico que YO hago cuando tengo los tokens del socio
+**Output esperado:** App ID (numero largo, arriba a la izquierda).
 
-### 1. Verificar empresa
+### Paso 2: Crear WhatsApp Business Account dedicado
 
-- Settings → Seguridad de la marca → Iniciar verificación
-- Subir: RFC, acta constitutiva o constancia de situación fiscal del SAT
-- Meta tarda minutos a 48h hábiles
+Desde la App creada:
 
-### 2. Crear App en Meta for Developers
+1. Sidebar izquierdo → **Agregar producto** → WhatsApp → **Configurar**
+2. Aceptar terminos del WABA
+3. Business Manager: **Negocio de Paul Velasquez**
+4. Crear nueva cuenta WhatsApp Business:
+   - WABA Name: **"Qlick Marketing Digital"**
+   - Pais: Mexico
+   - Moneda: MXN
+   - **Pagina de Facebook a vincular: "Qlick Marketing Digital"** (no Casa
+     Geriatrica, no Llantera, NO compartir con otros clientes)
 
-URL: `https://developers.facebook.com/apps/create/`
+**Output esperado:** WABA ID (string numerico largo).
 
-Tipo: **Negocios (Business)**
-Nombre: "Qlick WhatsApp Bot" (o como prefieras)
-Email: `david17891@gmail.com`
+### Paso 3: Comprar numero de telefono MX
 
-Una vez creada:
-- Configuración → Básica → completar URL de política de privacidad (`https://qlick.mx/privacidad`)
-- Agregar producto "WhatsApp" → "Configurar"
+En WABA → Configuracion de API → Numeros de telefono → **Add**:
 
-### 3. Crear WABA + comprar número MX
+1. Pais: **Mexico**
+2. Area / ciudad: **Mexicali, BC** (lada **686**, no 656)
+3. Meta lista numeros disponibles que arrancan con 686
+4. Elegir uno → **Comprar**
+5. Ingresar metodo de pago (si pide)
+6. Verificar via SMS (codigo llega al celular que pongas)
 
-En el App: WhatsApp → Configuración de la API:
+**Output esperado:** Phone Number ID (otro ID numerico) + numero en formato
+internacional `+52 1 686 XXX XXX`.
 
-- Crear cuenta de WhatsApp Business
-- Seleccionar Business Manager (el del socio)
-- Nombre: "Qlick Marketing"
-- Moneda: MXN
-- País/área: México / CDMX (o Monterrey/Guadalajara)
-- Comprar número (~$12-15 USD one-time + $3-6 USD/mes según país)
-- Verificar con código SMS
+### Paso 4: Generar Access Token permanente
 
-### 4. Cargar las 7 plantillas
+En la App → WhatsApp → **API Setup** → **Generar token**:
 
-URL: WhatsApp → Configuración de la API → Plantillas de mensajes
+1. Permisos requeridos:
+   - `whatsapp_business_management`
+   - `whatsapp_business_messaging`
+2. Copiar el token inmediatamente (Meta lo muestra UNA vez).
+3. Por default es temporal (24h). Para hacerlo permanente, generar como
+   **System User Token** desde Business Settings → System Users.
 
-Por cada una, llenar:
-- Nombre (ej: `conf_bienvenida`)
-- Categoría: **Utility** (todas)
-- Idioma: Español (México)
+**Output esperado:** Access Token tipo `EAAxxxxx...` o nuevo formato `sb_...`.
+
+### Paso 5: Cargar las 7 plantillas de WhatsApp
+
+WhatsApp → Configuracion de API → **Plantillas de mensajes**.
+
+Las 7 plantillas (con copy exacto, variables, idioma, categoria) estan en
+`docs/WHATSAPP_FUNNEL_DESIGN.md` seccion "Plantillas a aprobar". Por cada una:
+
+- Nombre: `conf_bienvenida`, `conf_recordatorio24h`, etc.
+- Categoria: **Utility**
+- Idioma: **Español (Mexico)**
 - Header: texto o sin header
-- Body: ver `docs/WHATSAPP_FUNNEL_DESIGN.md` (con variables `{{1}}`, `{{2}}` literales)
-- Footer: opcional
+- Body con variables `{{1}}`, `{{2}}` literales (Meta las valida)
+- Footer: opcional (recomendado "Qlick Marketing Digital")
+- Submit → Meta tarda hasta 24h en aprobar.
 
-Submit. Meta tarda hasta 24h en aprobar.
+**Output esperado:** screenshot del panel con las 7 plantillas + sus IDs.
 
-### 5. Generar Access Token permanente
+### Paso 6: Configurar webhook
 
-URL: WhatsApp → Configuración de la API → Token de acceso
+Una vez que el bot este corriendo en Vercel (rama `feat/fase-6-llm-switch` o
+master):
 
-- Generar token
-- Permisos: `whatsapp_business_management`, `whatsapp_business_messaging`
-- ⚠️ COPIAR INMEDIATAMENTE — Meta solo lo muestra una vez
-- Guardar en lugar seguro (1Password, Bitwarden, etc.) — NO email, NO Slack
+App → WhatsApp → **Configuracion** → **Webhook**:
 
-### 6. Configurar webhook
+- **Callback URL**: `https://qlick-three.vercel.app/api/whatsapp/webhook`
+- **Verify Token**: el valor de `WHATSAPP_WEBHOOK_VERIFY_TOKEN` en Vercel env vars
+- Suscribirse a los campos: **messages** + **message_status** (entregado/leido).
 
-URL del webhook: `https://qlick.mx/api/whatsapp/webhook`
-Verify token: (lo defines vos — un string random; lo guardás en Vercel env `WHATSAPP_WEBHOOK_VERIFY_TOKEN`)
+### Paso 7: Smoke test end-to-end
 
-Campos a suscribir: `messages`, `message_status` (entregado/leído).
+1. David manda "hola" desde su WhatsApp personal al numero +52 1 686 ...
+2. El bot (rama feat/fase-6-llm-switch) lo recibe via webhook
+3. El bot contesta con template `conf_bienvenida` o sugerencia heuristica
+4. David valida visualmente que el mensaje se ve correcto
 
-## Anexo C: Lo que el socio sigue manejando después del setup
+## Variables de entorno resultantes
 
-- Crear campañas en Meta Ads Manager (vos no tocas)
-- Pagar la cuenta publicitaria (vos no ves tarjeta)
-- Crear/borrar la cuenta del Business (admin only)
-- Ver reportes de ads (vos también ves)
-- Manejar el número de WhatsApp (vos también manejás)
-- Configurar el bot en Qlick (vos hacés — él no necesita)
-- Generar tokens técnicos (vos hacés — él no necesita)
-- **Removerte del Business** en 30 segundos si cambia la relación
+Una vez terminado todo, David setea en `.env.local` + Vercel:
+
+```bash
+# Nuevas (Fase 6 Hito D)
+WHATSAPP_CLOUD_APP_ID=...                    # App ID de Meta for Developers
+WHATSAPP_CLOUD_WABA_ID=...                   # WABA ID del paso 2
+WHATSAPP_CLOUD_PHONE_NUMBER_ID=...           # Phone Number ID del paso 3
+WHATSAPP_CLOUD_ACCESS_TOKEN=...              # Token permanente del paso 4
+```
+
+Las 3 que ya existian no cambian:
+- `WHATSAPP_CLOUD_API_VERSION` (default v20.0)
+- `WHATSAPP_WEBHOOK_VERIFY_TOKEN`
+- `WHATSAPP_WEBHOOK_SECRET`
+
+## Naming de la App: regla inquebrantable
+
+Meta for Developers BLOQUEA nombres de App que contengan:
+- "WhatsApp", "Facebook", "Meta", "Instagram", "Messenger", "Oculus", "Rift"
+- Abreviaciones tipo "FB", "Face", "Book", "Insta", "Gram"
+- Variantes que se "perciban o podrian percibirse como referencia" a esas marcas
+
+Mensaje literal del rechazo: "No se permiten algunos terminos, como 'whatsapp'.
+Por ejemplo, no puedes usar nuestras marcas comerciales o elementos de marca,
+como FB, Face, Book, Insta, Gram y Rift..."
+
+**Patron valido:** nombre generico sin canales. Para Qlick, nombres que funcionan:
+- "Qlick Bot" (minimalista, future-proof)
+- "Qlick_wb" (lo que intento David el 2026-06-30, fue aceptado por Meta)
+- "Qlick Marketing Bot" / "Qlick Funnel Bot"
+
+## Documentos relacionados
+
+- `docs/WHATSAPP_FUNNEL_DESIGN.md` — diseno completo del bot (plantillas, regex,
+  compliance LFPDPPP, edge cases).
+- `docs/STATUS.md` — snapshot vivo del estado del setup + DB + LLM switch.
+- `docs/DB_AUDIT_2026-06-30.md` — estado del schema de Supabase.
+- `docs/FASE2_FUNNEL_AUTOMATIZADO.md` — plan de los 4 cron jobs para la
+  conferencia del 6 jul.
+
+## Que hacer si se traba
+
+Mandame screenshot + el numero de paso por WhatsApp o en sesion Mavis. Te
+destrabo en 30 segundos.

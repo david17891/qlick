@@ -2,9 +2,16 @@
  * Proveedor WhatsApp Business Platform / Cloud API (Meta) — IMPLEMENTACIÓN REAL.
  *
  * Env vars requeridas (server-only, NUNCA NEXT_PUBLIC_*):
- *   - WHATSAPP_CLOUD_PHONE_NUMBER_ID  → ID del número en Meta
- *   - WHATSAPP_CLOUD_ACCESS_TOKEN     → token permanente (EAA… o nuevo sb_…)
- *   - WHATSAPP_CLOUD_API_VERSION      → default "v20.0"
+ *   - WHATSAPP_CLOUD_PHONE_NUMBER_ID  → ID del número en Meta (obligatorio)
+ *   - WHATSAPP_CLOUD_ACCESS_TOKEN     → token permanente (EAA… o nuevo sb_…) (obligatorio)
+ *   - WHATSAPP_CLOUD_API_VERSION      → default "v20.0" (obligatorio)
+ *   - WHATSAPP_CLOUD_WABA_ID          → WhatsApp Business Account ID (opcional, usado para diagnostic)
+ *   - WHATSAPP_CLOUD_APP_ID           → App ID de Meta for Developers (opcional, usado para diagnostic)
+ *
+ * WABA dedicado (Fase 6 Hito D): cada cliente del portafolio Paul
+ * (Qlick, Casa Geriatrica, etc.) opera sobre SU PROPIO WABA, no se comparten
+ * IDs ni numeros entre clientes. Ver docs/PARTNER_META_SETUP.md seccion
+ * "Patron multi-cliente".
  *
  * Modo demo:
  *   Si falta WHATSAPP_CLOUD_PHONE_NUMBER_ID o WHATSAPP_CLOUD_ACCESS_TOKEN,
@@ -135,6 +142,17 @@ export const metaCloudApiProvider: WhatsAppProvider = {
       };
     }
 
+    // Opcionales: enriquecen los mensajes de error para debugging.
+    // NO son requeridos para hacer requests — si faltan, el provider sigue
+    // funcionando pero los `note` de errores no los mencionan.
+    const wabaId = readEnv("WHATSAPP_CLOUD_WABA_ID");
+    const appId = readEnv("WHATSAPP_CLOUD_APP_ID");
+    /** Metadata compacta para anexar a los notes de error cuando aplica. */
+    const ctxSuffix =
+      wabaId || appId
+        ? ` [waba=${wabaId || "?"} app=${appId || "?"}]`
+        : "";
+
     const url = `${GRAPH_API_BASE}/${apiVersion}/${phoneNumberId}/messages`;
     const payload = buildMessagePayload({
       to: request.to,
@@ -182,7 +200,7 @@ export const metaCloudApiProvider: WhatsAppProvider = {
         lastResult = {
           ok: false,
           provider: "meta_cloud_api",
-          note: `Cloud API error: ${errMsg}`
+          note: `Cloud API error: ${errMsg}${ctxSuffix}`
         };
 
         if (!isRetryable || attempt === MAX_ATTEMPTS) {
