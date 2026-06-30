@@ -109,3 +109,9 @@ dev-*.log
 /encuesta_*.xlsx
 /leads_*.xlsx
 /evento_*.xlsx
+
+# --- Artefactos de presentaciones a socios (no van al repo) ---
+/junta-socios-*
+# --- Scripts temporales generados por sesiones Mavis (cookies, evals, etc.) ---
+# Patrón: archivos en scripts/ que arrancan con tmp- (cookies, login JSON, etc.).
+/scripts/tmp-*.json

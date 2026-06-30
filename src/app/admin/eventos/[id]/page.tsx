@@ -22,6 +22,8 @@ import { WHATSAPP_STATUSES, WHATSAPP_STATUS_LABEL, WHATSAPP_STATUS_TONE, type Wh
 import { buildEventBroadcast } from "@/lib/contact/whatsapp";
 import { buildDirectWhatsAppLink, buildLeadOutreachMessage } from "@/lib/contact/whatsapp";
 import { calculateEventMetrics } from "@/lib/events/event-metrics";
+import { CampaignsTab } from "./_components/CampaignsTab";
+import { CheckInTab } from "./_components/CheckInTab";
 
 interface Props {
   params: { id: string };
@@ -35,6 +37,8 @@ interface Props {
     view?: string;
     /** Broadcast de WhatsApp abierto: "1" muestra el panel en Confirmados. */
     broadcast?: string;
+    /** Período del dashboard de campañas Meta. */
+    campaign_period?: string;
   };
 }
 
@@ -58,12 +62,20 @@ export async function generateMetadata({ params }: Props) {
  * Mantener en sync con los condicionales `{activeTab === "..." && ...}`
  * más abajo y con el array `tabs` que renderiza los pills.
  */
-type EventDetailTab = "confirmations" | "attendees" | "surveys" | "leads";
+type EventDetailTab =
+  | "confirmations"
+  | "attendees"
+  | "surveys"
+  | "leads"
+  | "campaigns"
+  | "checkin";
 const VALID_TABS: readonly EventDetailTab[] = [
   "confirmations",
   "attendees",
   "surveys",
   "leads",
+  "campaigns",
+  "checkin",
 ] as const;
 const DEFAULT_TAB: EventDetailTab = "confirmations";
 
@@ -205,6 +217,8 @@ export default async function AdminEventoDetailPage({
     { id: "attendees", label: "Asistentes", icon: "✅", count: attendedCount },
     { id: "surveys", label: "Encuestas", icon: "📝", count: surveysCount },
     { id: "leads", label: "Leads promovidos", icon: "🧲", count: leadsPromoted },
+    { id: "campaigns", label: "Campañas", icon: "📣", count: 0 },
+    { id: "checkin", label: "Check-in", icon: "📲", count: 0 },
   ];
 
   return (
@@ -907,6 +921,19 @@ export default async function AdminEventoDetailPage({
               </ul>
             )}
           </Section>
+          )}
+
+          {/* Sección 5: Campañas Meta (Fase 6 Hito C — solo lectura) */}
+          {activeTab === "campaigns" && (
+            <CampaignsTab
+              eventId={event.id}
+              period={searchParams.campaign_period}
+            />
+          )}
+
+          {/* Sección 6: Check-in QR (Fase 6 Hito C) */}
+          {activeTab === "checkin" && (
+            <CheckInTab eventId={event.id} eventTitle={event.title} />
           )}
 
           {/* Vista Pipeline (Kanban 5 columnas). Solo se renderiza cuando

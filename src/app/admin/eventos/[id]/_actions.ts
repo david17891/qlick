@@ -16,6 +16,8 @@ import { requireAdmin } from "@/lib/auth/session";
 import { markSurveyReviewed } from "@/lib/events/surveys-server";
 import { linkAttendeeToConfirmation } from "@/lib/events/attendees-server";
 import { markWhatsAppStatus, isValidWhatsAppStatus, type WhatsAppStatus } from "@/lib/leads/whatsapp-status";
+import { generateEventQrTokens, getEventQrTokens } from "@/lib/qr/event-tokens";
+import { logAdminAction } from "@/lib/crm/audit-server";
 
 export interface FormState {
   ok: boolean;
@@ -164,4 +166,253 @@ export async function markWhatsAppStatusAction(
     revalidatePath(`/admin/eventos/${eventId}`);
   }
   return { ok: result.ok, note: result.note };
+}
+
+// ─────────────────────────────────────────────────────────────
+// QR tokens para check-in en puerta (Sub-bloque D / Fase 6 Hito C)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Genera (o reutiliza) tokens QR para todos los confirmados del evento.
+ *
+ * Devuelve un payload con la lista de tokens + QRs en data URL. La
+ * server action devuelve `{ok, note, csv}` — el `csv` se usa para que
+ * el admin descargue un CSV imprimible con las URLs (cada QR se imprime
+ * físicamente y se pega en la acreditación del asistente).
+ *
+ * FormData esperado:
+ *   - eventId: string (UUID)
+ *
+ * Re-llamar la action es idempotente: si ya hay tokens activos (no
+ * expirados, no checkeados) para el (event_id, phone), los reutiliza.
+ */
+export async function generateQrTokensAction(
+  _prev: FormState | null,
+  formData: FormData,
+): Promise<FormState & { csv?: string; count?: number; created?: number }> {
+  const admin = await requireAdmin();
+  if (!admin) {
+    return { ok: false, note: "No autenticado como admin." };
+  }
+  const eventId = formData.get("eventId");
+  if (typeof eventId !== "string" || !eventId) {
+    return { ok: false, note: "Falta eventId." };
+  }
+
+  const result = await generateEventQrTokens({ eventId });
+  if (!result.ok) {
+    return { ok: false, note: result.note };
+  }
+
+  // Audit log del admin action.
+  await logAdminAction({
+    actor_email: admin.email ?? "system@qlick",
+    action: "event_qr_tokens_generate",
+    entity_type: "event",
+    entity_id: eventId,
+    metadata: {
+      total: result.totalAttempted,
+      created: result.newlyCreated,
+      alreadyCheckedIn: result.alreadyCheckedIn,
+    },
+  });
+
+  // CSV descargable: nombre, telefono, email, url, qr_data_url.
+  const header = "name,phone,email,url,qr_data_url";
+  const rows = result.tokens.map((t) => {
+    const escapeCsv = (s: string): string => {
+      // CSV simple: si contiene coma, comilla o salto de línea, encerrar en comillas.
+      if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    };
+    return [
+      escapeCsv(t.attendeeName),
+      escapeCsv(t.attendeePhone ?? ""),
+      escapeCsv(t.attendeeEmail ?? ""),
+      escapeCsv(t.url),
+      escapeCsv(t.qrDataUrl),
+    ].join(",");
+  });
+  const csv = [header, ...rows].join("\n");
+
+  revalidatePath(`/admin/eventos/${eventId}`);
+  return {
+    ok: true,
+    note: result.note,
+    csv,
+    count: result.tokens.length,
+    created: result.newlyCreated,
+  };
+}
+
+/**
+ * Lista los tokens QR ya emitidos para el evento (sin generar nuevos).
+ * Útil para re-imprimir QRs después.
+ */
+export async function listEventQrTokensAction(
+  _prev: FormState | null,
+  formData: FormData,
+): Promise<FormState & { csv?: string; count?: number }> {
+  const admin = await requireAdmin();
+  if (!admin) {
+    return { ok: false, note: "No autenticado como admin." };
+  }
+  const eventId = formData.get("eventId");
+  if (typeof eventId !== "string" || !eventId) {
+    return { ok: false, note: "Falta eventId." };
+  }
+  const result = await getEventQrTokens(eventId);
+  if (!result.ok) {
+    return { ok: false, note: result.note };
+  }
+  const header = "name,phone,email,url,qr_data_url,checked_in_at";
+  const rows = result.tokens.map((t) => {
+    const escapeCsv = (s: string): string =>
+      /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    return [
+      escapeCsv(t.attendeeName),
+      escapeCsv(t.attendeePhone ?? ""),
+      escapeCsv(t.attendeeEmail ?? ""),
+      escapeCsv(t.url),
+      escapeCsv(t.qrDataUrl),
+      escapeCsv(t.checkedInAt ?? ""),
+    ].join(",");
+  });
+  const csv = [header, ...rows].join("\n");
+  return {
+    ok: true,
+    note: result.note,
+    csv,
+    count: result.tokens.length,
+  };
+}
+
+/**
+ * Check-in manual de un asistente (búsqueda por nombre/email/phone).
+ *
+ * Si el asistente ya existe en `event_attendees` para este evento,
+ * solo marcamos `checked_in_at`. Si NO existe, lo creamos al vuelo
+ * (walk-in).
+ *
+ * FormData esperado:
+ *   - eventId: string (UUID)
+ *   - q: string (nombre/email/phone a buscar)
+ *   - attendeeId?: string (opcional: si ya lo eligió del dropdown)
+ */
+export async function manualCheckInAction(
+  _prev: FormState | null,
+  formData: FormData,
+): Promise<FormState> {
+  const admin = await requireAdmin();
+  if (!admin) {
+    return { ok: false, note: "No autenticado como admin." };
+  }
+  const eventId = formData.get("eventId");
+  const query = formData.get("q");
+  const attendeeId = formData.get("attendeeId");
+  if (typeof eventId !== "string" || !eventId) {
+    return { ok: false, note: "Falta eventId." };
+  }
+
+  const { createSupabaseAdminClient } = await import("@/lib/supabase/admin");
+  const supabase = createSupabaseAdminClient();
+  const nowIso = new Date().toISOString();
+
+  // Caso 1: el admin ya eligió el attendeeId del dropdown.
+  if (typeof attendeeId === "string" && attendeeId) {
+    const { error } = await supabase
+      .from("event_attendees")
+      .update({
+        checked_in_at: nowIso,
+        checked_in_by: admin.email ?? null,
+      })
+      .eq("id", attendeeId);
+    if (error) {
+      return { ok: false, note: `No se pudo checkear (${error.code ?? "?"}).` };
+    }
+    await logAdminAction({
+      actor_email: admin.email ?? "system@qlick",
+      action: "check_in_manual",
+      entity_type: "event_attendee",
+      entity_id: attendeeId,
+      metadata: { eventId },
+    });
+    revalidatePath(`/admin/eventos/${eventId}`);
+    return { ok: true, note: "Check-in manual registrado." };
+  }
+
+  // Caso 2: el admin tipeó nombre/email/phone. Buscamos primero.
+  if (typeof query !== "string" || !query.trim()) {
+    return { ok: false, note: "Falta query de búsqueda." };
+  }
+  const q = query.trim();
+  const { findConfirmationByEmailOrPhone } = await import(
+    "@/lib/events/confirmations-server"
+  );
+  // 1. Buscar confirmation primero.
+  const confirmation = await findConfirmationByEmailOrPhone(eventId, q, q);
+  if (confirmation) {
+    // Upsert attendee con confirmationId + check-in.
+    const { createAttendee } = await import(
+      "@/lib/events/attendees-server"
+    );
+    const result = await createAttendee({
+      eventId,
+      confirmationId: confirmation.id,
+      name: confirmation.name,
+      email: confirmation.email ?? null,
+      phoneNormalized: confirmation.phoneNormalized ?? null,
+      source: "check_in",
+      checkedInBy: admin.email ?? null,
+    });
+    if (!result.ok && !result.persisted) {
+      return { ok: false, note: result.note };
+    }
+    // Si el upsert no creó (ya existía), forzamos el UPDATE de check-in.
+    if (!result.created && result.attendee) {
+      await supabase
+        .from("event_attendees")
+        .update({
+          checked_in_at: nowIso,
+          checked_in_by: admin.email ?? null,
+        })
+        .eq("id", result.attendee.id);
+    }
+    await logAdminAction({
+      actor_email: admin.email ?? "system@qlick",
+      action: "check_in_manual",
+      entity_type: "event_confirmation",
+      entity_id: confirmation.id,
+      metadata: { eventId, query: q },
+    });
+    revalidatePath(`/admin/eventos/${eventId}`);
+    return {
+      ok: true,
+      note: `Check-in de ${confirmation.name} registrado.`,
+    };
+  }
+
+  // 2. Walk-in: no hay confirmation. Creamos attendee crudo.
+  const { createAttendee } = await import("@/lib/events/attendees-server");
+  const result = await createAttendee({
+    eventId,
+    confirmationId: null,
+    name: q, // usamos el query como name (el admin lo corrige después si quiere)
+    email: null,
+    phoneNormalized: null,
+    source: "check_in",
+    checkedInBy: admin.email ?? null,
+  });
+  if (!result.ok && !result.persisted) {
+    return { ok: false, note: result.note };
+  }
+  await logAdminAction({
+    actor_email: admin.email ?? "system@qlick",
+    action: "check_in_manual",
+    entity_type: "event_attendee",
+    entity_id: result.attendee?.id ?? null,
+    metadata: { eventId, walkIn: true, query: q },
+  });
+  revalidatePath(`/admin/eventos/${eventId}`);
+  return { ok: true, note: `Walk-in "${q}" registrado como asistente.` };
 }

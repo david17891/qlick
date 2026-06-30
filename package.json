@@ -9,7 +9,7 @@
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test \"tests/*.test.mjs\"",
+    "test": "node --import ./tests/loader-register.mjs --experimental-strip-types --test \"tests/*.test.mjs\"",
     "audit:links": "node scripts/audit-links.mjs",
     "check:supabase": "node scripts/check-supabase-env.mjs",
     "seed:courses": "node scripts/seed-courses.mjs",

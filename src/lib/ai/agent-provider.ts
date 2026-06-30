@@ -19,7 +19,7 @@
 
 import type { AIAgentProfile, LeadIntent } from "@/types";
 
-export type AIAgentProviderName = "mock" | "openrouter";
+export type AIAgentProviderName = "mock" | "openrouter" | "deepseek";
 
 export interface AgentContext {
   /** Perfil del negocio (nombre, tono, reglas). */
