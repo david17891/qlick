@@ -37,7 +37,142 @@ header, audit log, Tooltip). Inventario: 23 issues.
 - 🔴 **4 críticos** (bloquean demo a socios)
 - 🟡 **11 medios** (mejorables, no bloquean)
 - 🟠 **8 bajos** (nice-to-have / cleanup)
-- ✅ **8 bien logrados**
+- ✅ **8 bien logrados
+
+---
+
+### 🟠 WhatsApp Fase 7 — Pendientes post-conferencia (actualizado 2026-07-01)
+
+**Sesión 2026-07-01 ~01:50** — Bot responde ✅ con texto libre. Provider de WhatsApp operativo (credenciales validadas en runtime). Pero Supabase cuelga en Vercel runtime → workaround con lead sintético. Templates no existen → texto libre.
+
+#### ✅ CERRADO 2026-07-01: Subir `WHATSAPP_CLOUD_ACCESS_TOKEN` a Vercel production
+
+- Las 4 vars operativas: `WHATSAPP_CLOUD_ACCESS_TOKEN`, `WHATSAPP_CLOUD_PHONE_NUMBER_ID`, `WHATSAPP_CLOUD_APP_ID`, `WHATSAPP_CLOUD_WABA_ID`.
+- Provider `meta_cloud_api` activo en runtime. Validado: `getActiveWhatsAppProvider { metaConfigured: true, hasPhoneId: true, hasToken: true, ... }`.
+
+#### 🔴 1. Supabase en runtime Vercel — PARCIALMENTE RESUELTO 2026-07-01
+
+- **Lo que se arregló esta sesión:**
+  - `findLeadByPhone` query optimizada con `.eq("phone_normalized", normalized).maybeSingle()` → usa índice UNIQUE → <100ms (antes table scan + sort colgaba >5s)
+  - `createLeadFromWhatsApp` sin `whatsapp_status` (defensive code, evita PGRST204)
+  - Fallback con `id=null` y `supabase=null` cuando Supabase falla (evita 22P02)
+  - `buildResponsePlan` usa `phoneNormalized` directo (no `lead.phone` que podía ser undefined)
+  - **Bot SÍ funciona end-to-end con persistencia real:** encuentra David en DB, crea lead con UUID, detecta intents, responde por WhatsApp
+- **Lo que falta:**
+  - Auditar schema tabla `leads` (confirmar si `whatsapp_status` y `last_contacted_at` existen; si no, aplicar migración)
+  - `findLeadByPhone` timeout intermitente (5s en algunos casos) — Supabase a veces lento
+  - `persistConversation` falla con 23505 unique violation (idempotencia funciona, log ruidoso)
+- **Severidad:** 🟠 Alto (de Crítico). Bot funciona PERO falta auditar schema y limpiar logs.
+
+#### 🟠 2. Limpiar console.error de debug agregados hoy
+
+- **Archivos modificados con debug logging temporal:**
+  - `src/lib/whatsapp/bot-engine.ts` (5+ console.error: processInboundMessage, normalizePhone, supabase result, findOrCreateLead, persistConversation, buildResponsePlan, fallback sintético)
+  - `src/lib/whatsapp/providers/meta-cloud-api-provider.ts` (console.error cuando Meta falla con detalle)
+  - `src/lib/whatsapp/index.ts` (console.error en getActiveWhatsAppProvider)
+  - `src/lib/crm/leads-server.ts` (AbortController removido pero console.error TIMEOUT puede quedar)
+  - `src/app/api/whatsapp/webhook/route.ts` (console.error en processInboundSafely START/END)
+- **Severidad:** 🟠 Alto. Es debug que ensucia logs. NO bloquea funcionalidad pero debería limpiarse antes de la conferencia del 6 jul.
+
+#### 🟠 3. Restaurar fire-and-forget en handler webhook
+
+- **Cambio temporal:** cambié `void processInboundSafely(msg)` por `await Promise.race([botPromise, botTimeout])` con timeout 10s. Esto bloquea el response de Meta hasta que el bot termine.
+- **Por qué:** Vercel mataba el container post-response con `void promise`, no se veían logs del Promise.race interno.
+- **Riesgo actual:** Meta puede reintentar si el response tarda >5s. La idempotencia del webhook (UNIQUE whatsapp_message_id) previene duplicados PERO es anti-pattern.
+- **Fix:** cuando se arregle el debug logging, restaurar `void processInboundSafely(msg)`.
+- **Severidad:** 🟠 Alto. Funciona pero es hack.
+
+#### 🟠 4. Contexto entre mensajes NO funciona
+
+- **Síntoma:** LLM responde igual a "Costo?" y "El costo" (sin contexto previo). Bot repite "Hola Por, gracias por escribir..." en cada mensaje `question`.
+- **Causa probable:** `loadConversationWindow` (en `src/lib/ai/`) está implementado pero no carga los mensajes previos correctamente. O el system prompt del LLM fuerza saludo inicial.
+- **Severidad:** 🟠 Alto. Funcionalidad core del bot conversacional.
+- **Fix sugerido:**
+  1. Verificar que `loadConversationWindow` retorna los últimos 8 mensajes de `lead_whatsapp_conversations`
+  2. Ajustar system prompt del agente IA para que NO repita saludo en mensajes que no son `greeting`
+  3. Considerar agregar info de precios del curso en el prompt (vía `loadActiveEventContext`)
+
+#### 🟠 5. Crear 3 templates en Meta Business Manager
+
+- **Bloquea:** outreach proactivo (mensajes sin que el usuario escriba primero), cron jobs del funnel Fase 2.
+- **Templates faltantes:** `conf_bienvenida`, `conf_info_evento`, `conf_confirmacion_registro`.
+- **Estado actual:** bot usa texto libre (funciona en ventana 24h, suficiente para responder).
+- **Severidad:** 🟠 Alto. Necesario para Fase 2 (cron jobs) pero no bloquea el 6 jul.
+
+#### 🟠 6. Auditar schema tabla `leads`
+
+- **Sospecha:** la migración `20260628000000_whatsapp_followup.sql` puede NO estar aplicada en producción.
+- **Síntoma:** `createLeadFromWhatsApp` falla con PGRST204 cuando incluye `whatsapp_status` (la columna no existe).
+- **Estado actual:** Defensive code (omitimos `whatsapp_status` del INSERT).
+- **Severidad:** 🟠 Alto. Si la migración falta, `lead_whatsapp_log` tampoco existe y `markWhatsAppStatus` falla.
+- **Fix sugerido:**
+  1. Verificar en Supabase dashboard: `\d leads` (psql) o Table Editor → leads → columnas
+  2. Si falta `whatsapp_status` y/o `last_contacted_at`, aplicar `20260628000000_whatsapp_followup.sql`
+  3. Una vez aplicada, restaurar `whatsapp_status: "no_contactado"` en `createLeadFromWhatsApp`
+
+#### 🟡 7. Re-sincronizar `WHATSAPP_WEBHOOK_SECRET` (validación firma)
+
+- **Bloquea:** webhook abierto a spoofing (cualquiera puede mandar POSTs falsificados).
+- **Estado:** Secret removido de Vercel (handler salta validación, log warning).
+- **Severidad:** 🟡 Medio. No prod-safe en estado actual.
+
+#### 🟡 8. Borrar app fantasma `2202427980234937` ("WA DevX Webhook Events 1P App")
+
+- **Bloquea:** Meta puede rutear mensajes a la app fantasma en lugar de Qlick_wb (sigue subscripta).
+- **Estado:** DELETE específico vía API devuelve `success: true` pero la app reaparece (es "1P" first-party de Meta).
+- **Severidad:** 🟡 Bajo. Meta prioriza Qlick_wb por ahora.
+
+#### 🟠 2. Crear 3 templates en Meta Business Manager
+
+- **Bloquea:** outreach proactivo (mensajes sin que el usuario escriba primero), cron jobs del funnel Fase 2.
+- **Templates faltantes:** `conf_bienvenida`, `conf_info_evento`, `conf_confirmacion_registro`.
+- **Estado actual:** bot usa texto libre (funciona en ventana 24h, suficiente para responder).
+- **Fix sugerido:**
+  1. Meta Business Manager → WhatsApp Manager → Message Templates
+  2. Crear los 3 templates con idioma `es_MX`, categoría `MARKETING` (welcome/info) y `UTILITY` (confirmación)
+  3. Esperar aprobación de Meta (puede tardar minutos-horas)
+  4. En código: revertir el cambio de texto libre en `bot-engine.ts` para usar templates otra vez
+- **Severidad:** 🟠 Alto. Necesario para Fase 2 (cron jobs) pero no bloquea el 6 jul.
+
+#### 🟠 3. Re-sincronizar `WHATSAPP_WEBHOOK_SECRET` (validación firma)
+
+- **Bloquea:** webhook abierto a spoofing (cualquiera puede mandar POSTs falsificados).
+- **Estado:** Secret removido de Vercel esta sesión (handler salta validación, log warning).
+- **Fix:**
+  1. Generar secret: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
+  2. `vercel env add WHATSAPP_WEBHOOK_SECRET production --cwd "C:\Users\User\Documents\Click"` → pegar mismo valor.
+  3. En panel Meta (WhatsApp > Configuration > Webhook), tildar "Adjuntar un certificado de cliente" o setear el secret en algún campo (depende de la UI actual).
+  4. Verificar que Meta firma POSTs con ese secret.
+- **Severidad:** 🟠 Alto. No prod-safe en estado actual.
+
+#### 🟡 4. Limpiar console.error de debug agregados hoy
+
+- **Archivos modificados con debug logging temporal:**
+  - `src/lib/whatsapp/bot-engine.ts` (4 console.error en processInboundMessage + fallback sintético)
+  - `src/lib/whatsapp/providers/meta-cloud-api-provider.ts` (console.error cuando Meta falla)
+  - `src/lib/whatsapp/index.ts` (console.error en getActiveWhatsAppProvider)
+  - `src/lib/crm/leads-server.ts` (AbortController con console.error TIMEOUT en findLeadByPhone)
+  - `src/app/api/whatsapp/webhook/route.ts` (console.error en processInboundSafely START/END + await Promise.race con timeout 10s bloqueando response)
+- **Severidad:** 🟡 Medio. Es debug que ensucia logs. NO bloquea funcionalidad pero debería limpiarse.
+
+#### 🟡 5. Restaurar fire-and-forget en handler webhook
+
+- **Cambio temporal:** cambié `void processInboundSafely(msg)` por `await Promise.race([botPromise, botTimeout])` con timeout 10s. Esto bloquea el response de Meta hasta que el bot termine.
+- **Por qué:** Vercel mataba el container post-response y los logs del Promise.race interno nunca aparecían.
+- **Riesgo actual:** Meta puede reintentar si el response tarda >5s. La idempotencia del webhook (UNIQUE whatsapp_message_id) previene duplicados PERO es un anti-pattern.
+- **Fix:** cuando se arregle Supabase y los logs del Promise.race interno aparezcan correctamente, restaurar `void processInboundSafely(msg)`.
+- **Severidad:** 🟡 Medio. Funciona pero es hack.
+
+#### 🟡 6. Borrar app fantasma `2202427980234937` ("WA DevX Webhook Events 1P App")
+
+- **Bloquea:** Meta puede rutear mensajes a la app fantasma en lugar de Qlick_wb (sigue subscripta).
+- **Estado:** DELETE específico vía API devuelve `success: true` pero la app reaparece (es "1P" first-party de Meta).
+- **Fix probable:**
+  1. Contactar Meta Support → solicitar des-suscripción de la app 1P.
+  2. O esperar a que Meta limpie automáticamente (sin ETA conocido).
+- **Severidad:** 🟡 Bajo. Meta prioriza Qlick_wb por ahora (webhook configurado), pero no garantizado.
+
+---**
 
 ### Hito B — Login alumno con magic link fallback
 

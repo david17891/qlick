@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-06-30 ~12:30 (rama nueva `feat/fase-6-llm-switch` con switch LLM Flash↔Pro + DB real sincronizada con migrations).
+> **Última actualización:** 2026-07-01 ~02:20 (Bot WhatsApp END-TO-END con persistencia real. Lead resolution funciona (David encontrado en DB). 5 mensajes probados: greeting→register→provide_email→question. Contexto entre mensajes NO funciona todavía (loadConversationWindow no carga ventana). 4 issues restantes + cleanup debug.)
 
 ---
 
@@ -126,6 +126,53 @@ Implementado en `src/lib/ai/deepseek-provider.ts`:
 engine sigue mostrando al admin antes de enviar al lead.
 
 **Tests:** 151/151 (140 baseline + 11 nuevos del switch).
+
+---
+
+## 📱 WhatsApp Cloud API — Estado actual (2026-07-01 ~02:20)
+
+**Inbound (WhatsApp → Qlick):** ✅ **FUNCIONA END-TO-END**
+- Webhook entrega a `/api/whatsapp/webhook` confirmado múltiples veces.
+- Bot engine procesa 5+ mensajes de David (greeting, register, provide_email, question).
+- Handler skip firma porque `WHATSAPP_WEBHOOK_SECRET` removido (workaround no prod-safe).
+
+**Outbound (Qlick → WhatsApp):** ✅ **FUNCIONA** (texto libre)
+- Las 4 vars (`WHATSAPP_CLOUD_ACCESS_TOKEN`, `PHONE_NUMBER_ID`, `APP_ID`, `WABA_ID`) operativas en Vercel production.
+- Provider `meta_cloud_api` activo (validado en log: `metaConfigured: true, hasToken: true`).
+- Bot responde con texto libre (templates no creados aún en Meta).
+- 5 mensajes probados: David → "Hola" → Bot responde bienvenida → David → "Si" → Bot info evento → David → email → Bot registra email + QR → David → "Costo?" → Bot LLM responde.
+
+**Persistencia real:** ✅ **FUNCIONA**
+- `findLeadByPhone` query optimizada usa `phone_normalized` (índice UNIQUE) → resuelve lead real en <100ms (a veces 5s timeout intermitente).
+- `createLeadFromWhatsApp` crea lead real con UUID (sin `whatsapp_status` para evitar PGRST204).
+- `buildResponsePlan` usa `phoneNormalized` directo (no `lead.phone` que podía venir undefined).
+- Confirmado en logs: `findLeadByPhone result { found: true, timedOut: false }` → `lead.phone: '+526532935492'`.
+
+**Contexto entre mensajes:** ⚠️ **NO FUNCIONA**
+- `loadConversationWindow` debería cargar últimos 8 mensajes pero no se observa uso.
+- LLM responde igual a "Costo?" y "El costo" (sin contexto previo).
+- Bot repite "Hola Por, gracias por escribir..." en cada `question` intent.
+- Issue: el system prompt del LLM probablemente fuerza saludo inicial.
+
+**IDs críticos (para próximas sesiones):**
+- WABA: `1670509767335938`
+- App Qlick_wb: `1532987041600498`
+- Phone sandbox: `+1 555 201 7643` (phone_number_id `1224238960768919`)
+- David phone: `+52 165 329 3549`
+
+**Pendientes Fase 7 (post 6 jul) — ACTUALIZADO:**
+1. 🟠 **limpiar console.error de debug** agregados en `bot-engine.ts`, `meta-cloud-api-provider.ts`, `index.ts`, `leads-server.ts`, `webhook/route.ts` (cambiar a `console.log` con flag dev o eliminar).
+2. 🟠 **restaurar `void processInboundSafely`** en handler webhook (actualmente `await Promise.race` con timeout 10s — funciona pero es hack).
+3. 🟠 **arreglar `loadConversationWindow`** — verificar por qué no carga los mensajes previos. El LLM no usa contexto entre turnos.
+4. 🟠 **ajustar system prompt del LLM** para que NO repita "Hola Por, gracias por escribir..." en cada mensaje (solo en primer mensaje).
+5. 🟠 **crear 3 templates en Meta Business Manager** (`conf_bienvenida`, `conf_info_evento`, `conf_confirmacion_registro`) → re-habilitar outreach proactivo.
+6. 🟠 **auditar schema tabla `leads`** — verificar si `whatsapp_status` y `last_contacted_at` existen (probable que falten, por eso hicimos defensive code).
+7. 🟡 **re-setear `WHATSAPP_WEBHOOK_SECRET`** con valor sincronizado entre Vercel y Meta → re-habilita validación de firma.
+8. 🟡 **borrar app fantasma `2202427980234937`** (probablemente requiere soporte Meta).
+9. 🟡 **`findLeadByPhone` timeout intermitente** (5s) — a veces Supabase se pone lento. Considerar timeout menor + retry, o investigar por qué tarda tanto en algunos casos.
+10. 🟡 **`persistConversation` falla con 23505 unique violation** — el row ya existe en DB de runs anteriores. Idempotencia funciona (bot sigue) pero el log es ruidoso.
+
+Detalle completo del debug en `data/PROJECT-LOG.md` entrada del 2026-07-01.
 
 ---
 
