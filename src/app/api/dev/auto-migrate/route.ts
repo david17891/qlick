@@ -201,17 +201,6 @@ export async function POST(_req: NextRequest) {
     query_timeout: 30_000
   });
 
-  const client = new Client({
-    host: chosenHost,
-    port: 6543,
-    user: `postgres.${ref}`,
-    password,
-    database: "postgres",
-    ssl: { rejectUnauthorized: false },
-    statement_timeout: 30_000,
-    query_timeout: 30_000
-  });
-
   const results: MigrationResult[] = [];
   try {
     await client.connect();
