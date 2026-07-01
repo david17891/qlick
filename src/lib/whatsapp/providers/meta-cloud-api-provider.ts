@@ -73,6 +73,42 @@ function buildMessagePayload(input: BuildPayloadInput): Record<string, unknown> 
   // Interactive (Reply Buttons / List Message) tiene prioridad — se ignora
   // `body` y `templateName`. Gratis dentro de la ventana 24h.
   if (interactive) {
+    // Safety gate (Fase 7a, 2026-07-01): Meta rechaza con 131009 si los
+    // campos exceden los límites. Validamos en dev/prod para no repetir
+    // el bug del título "Sí, info <evento>" de 28 chars.
+    if (interactive.type === "button") {
+      for (const btn of interactive.action.buttons) {
+        if (btn.reply.title.length > 20) {
+          throw new Error(
+            `Reply Button title too long (${btn.reply.title.length} chars, max 20): "${btn.reply.title}"`
+          );
+        }
+        if (btn.reply.id.length > 256) {
+          throw new Error(`Reply Button id too long (${btn.reply.id.length} chars, max 256)`);
+        }
+      }
+    } else if (interactive.type === "list") {
+      for (const section of interactive.action.sections) {
+        for (const row of section.rows) {
+          if (row.title.length > 24) {
+            throw new Error(
+              `List row title too long (${row.title.length} chars, max 24): "${row.title}"`
+            );
+          }
+          if (row.description && row.description.length > 72) {
+            throw new Error(
+              `List row description too long (${row.description.length} chars, max 72)`
+            );
+          }
+        }
+      }
+      if (interactive.action.button.length > 20) {
+        throw new Error(
+          `List action button label too long (${interactive.action.button.length} chars, max 20)`
+        );
+      }
+    }
+
     return {
       messaging_product: "whatsapp",
       to,
