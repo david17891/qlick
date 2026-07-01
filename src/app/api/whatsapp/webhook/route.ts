@@ -36,7 +36,7 @@ import type {
 } from "../../../../lib/whatsapp/webhooks/types";
 import { normalizePhone } from "../../../../lib/crm/phone-utils";
 import { processInboundMessage } from "../../../../lib/whatsapp/bot-engine";
-import { debugLog } from "../../../../lib/log";
+import { debugLog, infoLog } from "../../../../lib/log";
 
 // Next.js: este endpoint siempre corre en Node runtime (necesita crypto).
 export const runtime = "nodejs";
@@ -129,17 +129,21 @@ export async function POST(req: NextRequest) {
   for (const msg of parsed.messages) {
     const stored = await persistInboundIfPossible(supabase, msg);
     if (stored) queued.push(stored);
-    // Fire-and-forget: Meta espera response en <5s o reintenta.
-    // El bot corre async en background; Vercel mantiene el container vivo
-    // hasta que la Promise resuelva o el maxDuration expire.
+    // Bloqueamos la respuesta hasta 8s para que el bot termine de mandar
+    // el reply por la API de Meta antes de devolver 200. Margen < 10s
+    // (umbral de retry de Meta).
     //
-    // NOTA A3 del auditor 2026-07-01: ideal sería `waitUntil(promise)` pero
-    // ese helper solo está disponible en Next.js 15+. En 14.2 (la versión
-    // actual del repo) usamos `void`. Trade-off conocido: si el bot tarda
-    // más que maxDuration, Vercel mata el container antes de que termine.
-    // La idempotencia por `whatsapp_message_id UNIQUE` previene duplicados
-    // en re-entregas de Meta.
-    void processInboundSafely(msg);
+    // Trade-off: si el bot tarda >8s, Meta reintenta. La idempotencia por
+    // `whatsapp_message_id UNIQUE` evita persistencia duplicada del inbound;
+    // el bot corre de nuevo pero el outbound se deduplica por la unique key
+    // en la siguiente fase (cuando agreguemos tabla de outbound idempotency).
+    //
+    // Es preferible a `void` porque con `void` Vercel mata el container
+    // post-response y el usuario nunca recibe respuesta.
+    await Promise.race([
+      processInboundSafely(msg),
+      new Promise<unknown>((resolve) => setTimeout(resolve, 8000))
+    ]);
   }
 
   // 5. Persistir status updates (no gatillan bot).
@@ -317,12 +321,13 @@ function extractStatuses(payload: unknown): MetaStatus[] {
 async function processInboundSafely(
   msg: IncomingWhatsAppMessage
 ): Promise<void> {
-  debugLog("[whatsapp/webhook] processInboundSafely START", {
-    messageId: msg.messageId
+  infoLog("[whatsapp/webhook] processInboundSafely START", {
+    messageId: msg.messageId,
+    from: msg.from
   });
   try {
     await processInboundMessage(msg);
-    debugLog("[whatsapp/webhook] processInboundSafely END OK", {
+    infoLog("[whatsapp/webhook] processInboundSafely END OK", {
       messageId: msg.messageId
     });
   } catch (err) {
