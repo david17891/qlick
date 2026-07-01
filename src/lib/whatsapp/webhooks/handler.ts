@@ -36,6 +36,14 @@ export function handleWebhookPayload(payload: unknown): WebhookHandleResult {
               type?: string;
               timestamp?: string;
               text?: { body?: string };
+              // Reply Button click: { type: "button_reply", button: { id, title } }
+              button?: { payload?: string; text?: string };
+              // List Message selection: { type: "list_reply", list: { id, title, description } }
+              interactive?: {
+                type?: string;
+                button_reply?: { id?: string; title?: string };
+                list_reply?: { id?: string; title?: string; description?: string };
+              };
             }>;
             contacts?: Array<{
               wa_id?: string;
@@ -52,12 +60,31 @@ export function handleWebhookPayload(payload: unknown): WebhookHandleResult {
       for (const change of entry.changes ?? []) {
         const value = change.value;
         for (const msg of value?.messages ?? []) {
+          // Extraer buttonId de interactive button_reply o list_reply.
+          let buttonId: string | undefined;
+          let buttonTitle: string | undefined;
+          const interactiveType = msg.interactive?.type;
+          if (interactiveType === "button_reply") {
+            buttonId = msg.interactive?.button_reply?.id;
+            buttonTitle = msg.interactive?.button_reply?.title;
+          } else if (interactiveType === "list_reply") {
+            buttonId = msg.interactive?.list_reply?.id;
+            buttonTitle = msg.interactive?.list_reply?.title;
+          }
+          // El body es el título del botón/fila (lo que el usuario "dijo").
+          const text =
+            msg.text?.body ??
+            msg.interactive?.button_reply?.title ??
+            msg.interactive?.list_reply?.title;
+
           messages.push({
             messageId: msg.id ?? "unknown",
             from: msg.from ?? "unknown",
             timestamp: msg.timestamp,
             type: (msg.type as IncomingWhatsAppMessage["type"]) ?? "unknown",
-            text: msg.text?.body
+            text,
+            buttonId,
+            buttonTitle
           });
         }
       }

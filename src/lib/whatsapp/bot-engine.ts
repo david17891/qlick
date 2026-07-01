@@ -74,6 +74,9 @@ export type BotIntent =
   | "register"
   | "opt_out"
   | "provide_email"
+  | "interactive_event_yes"
+  | "interactive_show_courses"
+  | "interactive_talk_human"
   | "question";
 
 /** Resultado del procesamiento de un mensaje entrante. */
@@ -84,7 +87,7 @@ export interface BotProcessResult {
   conversationId?: string;
   outboundMessageId?: string;
   /** Si el bot respondió con template o con texto libre. */
-  responseKind: "template" | "text" | "none";
+  responseKind: "template" | "text" | "interactive" | "none";
   /** Mensaje que se le envió al lead (para logging / debug). */
   responsePreview?: string;
   /** Si fue demo (sin provider real configurado). */
@@ -518,11 +521,13 @@ interface OutboundPlan {
   /** Lo que se va a enviar al provider. */
   send: () => Promise<{ ok: boolean; externalId?: string; demo?: boolean }>;
   /** Tipo de respuesta (para la fila outbound). */
-  kind: "template" | "text";
+  kind: "template" | "text" | "interactive";
   /** Body que se persistirá en lead_whatsapp_conversations. */
   body: string;
   /** Nombre de template (si kind=template). */
   templateName?: string;
+  /** Mensaje interactivo (si kind=interactive). */
+  interactive?: import("../whatsapp/providers/whatsapp-provider").InteractiveMessage;
 }
 
 /**
@@ -561,18 +566,107 @@ async function buildResponsePlan(args: {
   switch (intent) {
     case "welcome":
     case "greeting": {
-      const bodyText = `Hola ${firstName}, bienvenido/a a Qlick. ¿Quieres info de "${getActiveEvent().name}"? Responde "sí" para más detalles.`;
+      // Fase 7a: Reply Buttons en welcome. Más conversión que texto abierto.
+      const evt = getActiveEvent();
+      const interactive = {
+        type: "button" as const,
+        body: {
+          text: `¡Hola ${firstName}! Soy Qlick, asistente de Qlick Marketing Integral. ¿Qué te interesa?`
+        },
+        action: {
+          buttons: [
+            {
+              type: "reply" as const,
+              reply: {
+                id: `evt_yes_${evt.name.replace(/\s+/g, "_").toLowerCase().slice(0, 20)}`,
+                title: `Sí, info ${evt.name.slice(0, 18)}`
+              }
+            },
+            {
+              type: "reply" as const,
+              reply: {
+                id: "show_courses",
+                title: "Ver cursos"
+              }
+            },
+            {
+              type: "reply" as const,
+              reply: {
+                id: "talk_human",
+                title: "Hablar con humano"
+              }
+            }
+          ]
+        },
+        footer: {
+          text: "Respondé con un botón o escribí tu pregunta"
+        }
+      };
+      const bodyText = interactive.body.text;
       return {
-        kind: "text",
+        kind: "interactive",
         body: bodyText,
+        interactive,
         send: () =>
           provider.send({
             to: phoneNormalized,
-            body: bodyText
+            body: bodyText,
+            interactive
           })
       };
     }
     case "register": {
+      // List Message: lista navegable de eventos disponibles.
+      const evt = getActiveEvent();
+      const interactive = {
+        type: "list" as const,
+        body: {
+          text: `Tenemos estos eventos próximos. Elegí el que te interesa para más info:`
+        },
+        action: {
+          button: "Ver eventos",
+          sections: [
+            {
+              title: "Próximos eventos",
+              rows: [
+                {
+                  id: `evt_${evt.name.replace(/\s+/g, "_").toLowerCase().slice(0, 30)}`,
+                  title: evt.name.slice(0, 24),
+                  description: `${evt.date} · ${evt.location} · ${evt.duration}`.slice(0, 72)
+                }
+              ]
+            }
+          ]
+        }
+      };
+      const bodyText = interactive.body.text;
+      return {
+        kind: "interactive",
+        body: bodyText,
+        interactive,
+        send: () =>
+          provider.send({
+            to: phoneNormalized,
+            body: bodyText,
+            interactive
+          })
+      };
+    }
+    case "opt_out": {
+      return {
+        kind: "text",
+        body: "Listo, no te contacto más. Si cambias de opinión, escribinos.",
+        send: () =>
+          provider.send({
+            to: phoneNormalized,
+            body:
+              "Listo, no te contacto más. Si cambias de opinión, escribinos."
+          })
+      };
+    }
+    case "interactive_event_yes": {
+      // El usuario clickeó "Sí, info evento" en el welcome → caemos al
+      // mismo flujo que `register` pero text (no necesita lista).
       const evt = getActiveEvent();
       const bodyText =
         `${evt.name} — ${evt.date}, ${evt.location}, ${evt.duration}. ` +
@@ -587,15 +681,67 @@ async function buildResponsePlan(args: {
           })
       };
     }
-    case "opt_out": {
+    case "interactive_show_courses": {
+      // List Message con cursos disponibles (mock por ahora — sale de `events`
+      // cuando integremos el loader a la DB).
+      const evt = getActiveEvent();
+      const interactive = {
+        type: "list" as const,
+        body: {
+          text: "Estos son los cursos de Qlick. Elegí uno para ver detalle:"
+        },
+        action: {
+          button: "Ver cursos",
+          sections: [
+            {
+              title: "Cursos vigentes",
+              rows: [
+                {
+                  id: "course_marketing_basico",
+                  title: "Marketing Básico",
+                  description: "Fundamentos de marketing para emprendedores".slice(0, 72)
+                },
+                {
+                  id: "course_ia_marketing",
+                  title: "IA para Marketing",
+                  description: "Cómo usar IA para automatizar tu marketing".slice(0, 72)
+                },
+                {
+                  id: "course_curso_personalizado",
+                  title: "Curso personalizado",
+                  description: "Hablemos de lo que necesitás".slice(0, 72)
+                }
+              ]
+            }
+          ]
+        },
+        footer: { text: `Próximo evento: ${evt.name} (${evt.date})`.slice(0, 60) }
+      };
+      const bodyText = interactive.body.text;
       return {
-        kind: "text",
-        body: "Listo, no te contacto más. Si cambias de opinión, escribinos.",
+        kind: "interactive",
+        body: bodyText,
+        interactive,
         send: () =>
           provider.send({
             to: phoneNormalized,
-            body:
-              "Listo, no te contacto más. Si cambias de opinión, escribinos."
+            body: bodyText,
+            interactive
+          })
+      };
+    }
+    case "interactive_talk_human": {
+      // Handoff a humano. Marcamos el lead para seguimiento.
+      const bodyText =
+        `Perfecto ${firstName}. Un humano del equipo Qlick te escribe a la brevedad ` +
+        `por acá mismo. Mientras tanto, ¿hay algo urgente que quieras contarme?`;
+      return {
+        kind: "text",
+        body: bodyText,
+        send: () =>
+          provider.send({
+            to: phoneNormalized,
+            body: bodyText
           })
       };
     }
@@ -797,8 +943,22 @@ export async function processInboundMessage(
     });
   }
 
-  // 3. Detectar intent.
-  const intent = detectIntent(body, isFirstMessage);
+  // 3. Detectar intent. Si el usuario clickeó un botón (Fase 7a), el
+  // intent se deriva del buttonId en vez de regex sobre el texto.
+  let intent: BotIntent;
+  if (message.buttonId) {
+    if (message.buttonId.startsWith("evt_yes_")) {
+      intent = "interactive_event_yes";
+    } else if (message.buttonId === "show_courses") {
+      intent = "interactive_show_courses";
+    } else if (message.buttonId === "talk_human") {
+      intent = "interactive_talk_human";
+    } else {
+      intent = "question";
+    }
+  } else {
+    intent = detectIntent(body, isFirstMessage);
+  }
 
   // 4. Actualizar whatsapp_status según intent (best-effort).
   if (supabase) {

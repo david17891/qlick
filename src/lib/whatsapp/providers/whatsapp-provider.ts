@@ -45,7 +45,59 @@ export interface WhatsAppSendRequest {
   templateName?: string;
   /** Idioma de la plantilla, ej. "es_MX". */
   templateLanguage?: string;
+  /**
+   * Mensaje interactivo (Reply Buttons o List Message). Si está presente,
+   * se envía como `type: "interactive"` y se ignora `body` / `templateName`.
+   * Gratis dentro de la ventana 24h (igual que text).
+   */
+  interactive?: InteractiveMessage;
 }
+
+/* ------------------------------------------------------------------ */
+/*  Interactive messages (Fase 7a)                                    */
+/* ------------------------------------------------------------------ */
+
+/** Botón individual en un Reply Button message. */
+export interface InteractiveReplyButtonItem {
+  type: "reply";
+  reply: { id: string; title: string };
+}
+
+/** Mensaje con hasta 3 Reply Buttons (respuesta rápida). */
+export interface InteractiveReplyButtons {
+  type: "button";
+  body: { text: string };
+  action: { buttons: InteractiveReplyButtonItem[] };
+  header?: { type: "text"; text: string };
+  footer?: { text: string };
+}
+
+/** Fila individual en un List Message. */
+export interface InteractiveListRow {
+  id: string;
+  title: string;
+  description?: string;
+}
+
+/** Sección de un List Message (las secciones agrupan filas). */
+export interface InteractiveListSection {
+  title?: string;
+  rows: InteractiveListRow[];
+}
+
+/** Mensaje con lista navegable (hasta 10 items, agrupados en secciones). */
+export interface InteractiveListMessage {
+  type: "list";
+  body: { text: string };
+  action: {
+    button: string;
+    sections: InteractiveListSection[];
+  };
+  header?: { type: "text"; text: string };
+  footer?: { text: string };
+}
+
+export type InteractiveMessage = InteractiveReplyButtons | InteractiveListMessage;
 
 /**
  * Interfaz que todo proveedor de WhatsApp implementa.

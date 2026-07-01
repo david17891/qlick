@@ -389,14 +389,17 @@ test("processInboundMessage: primer mensaje 'hola' (demo mode) → welcome", asy
     // provide_email de template a texto libre (templates conf_bienvenida etc.
     // no existen en Meta Business Manager todavia). Actualizado 2026-07-01
     // junto con el fix de /qr → /check-in/[token].
-    assert.equal(result.responseKind, "text");
+    //
+    // Fase 7a 2026-07-01: welcome ahora devuelve interactive (Reply
+    // Buttons) en vez de texto libre. Mayor conversion + claridad.
+    assert.equal(result.responseKind, "interactive");
     assert.ok(result.leadId);
   } finally {
     m.restore();
   }
 });
 
-test("processInboundMessage: register → texto info evento", async () => {
+test("processInboundMessage: register → list interactive con eventos", async () => {
   disableSupabase();
   const m = mockFetch();
   try {
@@ -407,8 +410,10 @@ test("processInboundMessage: register → texto info evento", async () => {
       type: "text"
     });
     assert.equal(result.intent, "register");
-    // FIX tests stale: ver comentario en test "primer mensaje 'hola'".
-    assert.equal(result.responseKind, "text");
+    // Fase 7a 2026-07-01: register devuelve List Message con los eventos
+    // disponibles como filas navegables. El usuario clickea el evento y
+    // vemos el detail. Mayor conversion que texto libre.
+    assert.equal(result.responseKind, "interactive");
   } finally {
     m.restore();
   }
@@ -462,6 +467,68 @@ test("processInboundMessage: provee email → provide_email + texto confirmacion
     });
     assert.equal(result.intent, "provide_email");
     // FIX tests stale: ver comentario en test "primer mensaje 'hola'".
+    assert.equal(result.responseKind, "text");
+  } finally {
+    m.restore();
+  }
+});
+
+// Fase 7a (2026-07-01): cuando el usuario clickea un Reply Button del welcome,
+// el intent se deriva del buttonId en vez de regex sobre el texto.
+test("processInboundMessage: buttonId evt_yes_* → interactive_event_yes", async () => {
+  disableSupabase();
+  const m = mockFetch();
+  try {
+    const result = await processInboundMessage({
+      messageId: "wamid_btn1",
+      from: "523312345678",
+      text: "Sí, info IA y Marketing Básico",
+      type: "interactive",
+      buttonId: "evt_yes_ia_y_marketing_b",
+      buttonTitle: "Sí, info IA y Marketing"
+    });
+    assert.equal(result.intent, "interactive_event_yes");
+    // Cae al mismo plan que register pero texto (no lista).
+    assert.equal(result.responseKind, "text");
+  } finally {
+    m.restore();
+  }
+});
+
+test("processInboundMessage: buttonId show_courses → interactive_show_courses", async () => {
+  disableSupabase();
+  const m = mockFetch();
+  try {
+    const result = await processInboundMessage({
+      messageId: "wamid_btn2",
+      from: "523312345678",
+      text: "Ver cursos",
+      type: "interactive",
+      buttonId: "show_courses",
+      buttonTitle: "Ver cursos"
+    });
+    assert.equal(result.intent, "interactive_show_courses");
+    // Devuelve List Message con cursos.
+    assert.equal(result.responseKind, "interactive");
+  } finally {
+    m.restore();
+  }
+});
+
+test("processInboundMessage: buttonId talk_human → interactive_talk_human", async () => {
+  disableSupabase();
+  const m = mockFetch();
+  try {
+    const result = await processInboundMessage({
+      messageId: "wamid_btn3",
+      from: "523312345678",
+      text: "Hablar con humano",
+      type: "interactive",
+      buttonId: "talk_human",
+      buttonTitle: "Hablar con humano"
+    });
+    assert.equal(result.intent, "interactive_talk_human");
+    // Devuelve texto (handoff message).
     assert.equal(result.responseKind, "text");
   } finally {
     m.restore();

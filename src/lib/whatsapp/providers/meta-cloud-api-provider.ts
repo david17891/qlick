@@ -32,7 +32,8 @@
 import type {
   WhatsAppProvider,
   WhatsAppSendRequest,
-  WhatsAppSendResult
+  WhatsAppSendResult,
+  InteractiveMessage
 } from "./whatsapp-provider";
 
 const GRAPH_API_BASE = "https://graph.facebook.com";
@@ -42,6 +43,7 @@ interface BuildPayloadInput {
   body: string;
   templateName?: string;
   templateLanguage?: string;
+  interactive?: InteractiveMessage;
 }
 
 interface CloudApiResponse {
@@ -66,7 +68,18 @@ interface CloudApiResponse {
  * en variables adicionales (corte simple por `\n`).
  */
 function buildMessagePayload(input: BuildPayloadInput): Record<string, unknown> {
-  const { to, body, templateName, templateLanguage } = input;
+  const { to, body, templateName, templateLanguage, interactive } = input;
+
+  // Interactive (Reply Buttons / List Message) tiene prioridad — se ignora
+  // `body` y `templateName`. Gratis dentro de la ventana 24h.
+  if (interactive) {
+    return {
+      messaging_product: "whatsapp",
+      to,
+      type: "interactive",
+      interactive
+    };
+  }
 
   if (templateName) {
     const variables = body
@@ -158,7 +171,8 @@ export const metaCloudApiProvider: WhatsAppProvider = {
       to: request.to,
       body: request.body,
       templateName: request.templateName,
-      templateLanguage: request.templateLanguage
+      templateLanguage: request.templateLanguage,
+      interactive: request.interactive
     });
 
     // 1 retry en 5xx / errores de red. 4xx no se reintenta.
@@ -206,7 +220,8 @@ const errMsg =
           message: errMsg,
           url,
           to: request.to,
-          templateName: request.templateName
+          templateName: request.templateName,
+          interactiveType: request.interactive?.type
         });
 
         lastResult = {

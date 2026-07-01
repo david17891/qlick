@@ -35,12 +35,16 @@ export interface IncomingWhatsAppMessage {
   from: string;
   /** Nombre del contacto (profile name), si viene. */
   contactName?: string;
-  /** Texto del mensaje (solo tipo text por ahora). */
+  /** Texto del mensaje (solo tipo text). Para interactive, usar `buttonId` o `selectedRowId`. */
   text?: string;
   /** Timestamp de Meta (segundos). */
   timestamp?: string;
   /** Tipo de mensaje. */
   type: "text" | "button" | "interactive" | "image" | "unknown";
+  /** ID del botón clickeado (Reply Button) o fila seleccionada (List). Solo si type=interactive. */
+  buttonId?: string;
+  /** Título legible del botón/fila (para logging y fallback). */
+  buttonTitle?: string;
 }
 
 /** Resultado de procesar un POST del webhook. */
