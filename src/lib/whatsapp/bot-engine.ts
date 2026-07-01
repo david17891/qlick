@@ -567,11 +567,13 @@ async function buildResponsePlan(args: {
     case "welcome":
     case "greeting": {
       // Fase 7a: Reply Buttons en welcome. Más conversión que texto abierto.
+      // Títulos de botones tienen límite de 20 chars en Meta — usar
+      // mensajes genéricos + poner el nombre del evento en el body.
       const evt = getActiveEvent();
       const interactive = {
         type: "button" as const,
         body: {
-          text: `¡Hola ${firstName}! Soy Qlick, asistente de Qlick Marketing Integral. ¿Qué te interesa?`
+          text: `¡Hola ${firstName}! Soy Qlick, asistente de Qlick Marketing Integral. ¿Qué te interesa?\n\nEvento activo: ${evt.name} (${evt.date})`
         },
         action: {
           buttons: [
@@ -579,7 +581,7 @@ async function buildResponsePlan(args: {
               type: "reply" as const,
               reply: {
                 id: `evt_yes_${evt.name.replace(/\s+/g, "_").toLowerCase().slice(0, 20)}`,
-                title: `Sí, info ${evt.name.slice(0, 18)}`
+                title: "Info evento"
               }
             },
             {
