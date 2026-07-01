@@ -118,12 +118,12 @@ export interface LeadUpsertResult {
  * IMPORTANTE: estos nombres deben matchear los aprobados en Meta Business
  * Manager. Si Meta rechaza el template, el provider devuelve error y el bot
  * cae a texto libre (cuando hay ventana 24h) o no responde (cuando no la hay).
+ *
+ * TEMPLATES fueron removidos en 2026-07-01 (M2 del auditor): el bot usa
+ * texto libre en todos los casos. Cuando se creen los templates en Meta
+ * Business Manager (Fase 7), restaurar esta const y reintroducir los `case`
+ * que la referencian.
  */
-const TEMPLATES = {
-  bienvenida: "conf_bienvenida",
-  infoEvento: "conf_info_evento",
-  confirmacion: "conf_confirmacion_registro"
-} as const;
 
 /** Disclosure exacto que se loggea en `lead_consent_log` (LFPDPPP). */
 const CONSENT_DISCLOSURE =
@@ -173,7 +173,20 @@ const REGISTER_RE = /^(s[ií]|confirmo|inscribirme|registrarme|quiero|me interes
 // saludo. RIESGO de falsos positivos mitigado porque las frases son
 // específicas del funnel (palabras únicas).
 const REGISTER_PHRASE_RE = /\b(quiero\s+inscribirme|me\s+interesa\s+(inscribirme|el\s+curso|el\s+evento|saber\s+m[aá]s)|inscribirme\s+al?\s+evento|c[oó]mo\s+me\s+inscribo)\b/i;
-const OPT_OUT_RE = /^(no|cancelar|baja|stop|unsubscribe)/i;
+/**
+ * Detecta opt-out del usuario.
+ *
+ * PELIGRO ANTERIOR (M5 del auditor 2026-07-01): `/^(no|cancelar|baja|stop|unsubscribe)/i`
+ * matcheaba "no" suelto → "No tengo dinero ahora" se clasificaba como opt_out
+ * y el bot descartaba el lead del CRM. Persona interesada en info de precios
+ * quedaba fuera del pipeline.
+ *
+ * FIX: requiere contexto negativo más explícito:
+ * - "no" / "no," debe ir seguido de algo (gracias, interesa, quiero, contact, etc.)
+ * - O palabras explícitas (cancelar, baja, sacar, stop, unsubscribe)
+ * - Frases compuestas (no me interesa, no quiero saber más, etc.)
+ */
+const OPT_OUT_RE = /^(?:no,?\s+(?:gracias|interesa|quiero|quiero\s+saber|saber\s+m[aá]s|me\s+interesa|cuentes|avises?|contact(?:ar|ame|es)|molestes?)|cancelar|baja|sacarme|sacar(?:me)?|stop|unsubscribe|no\s+gracias|no\s+por\s+favor)/i;
 
 /** Detecta el intent del mensaje (regex determinista).
  *
@@ -399,15 +412,25 @@ async function createLeadFromWhatsApp(
       // responde "sí" y loggeamos en lead_consent_log. Mientras tanto,
       // usamos false para no exponer datos sin base legal.
       consent_to_contact: false,
-      // NOTA: `whatsapp_status` y `last_contacted_at` vienen de la migración
-      // 20260628000000_whatsapp_followup.sql que puede no estar aplicada
-      // en production. NO las seteamos en el INSERT hasta confirmar que la
-      // migración corrió. El default es `no_contactado` para whatsapp_status
-      // y NULL para last_contacted_at (definidos en la migración).
+      // 2026-07-01: schema confirmado (whatsapp_status + last_contacted_at existen).
+      // Seteamos whatsapp_status explícitamente para que el CHECK constraint
+      // aplique desde el primer insert (no depender del default).
+      whatsapp_status: "no_contactado",
       tags: ["source:whatsapp_bot"]
     } as never)
     .select("*")
     .maybeSingle();
+
+  if (error && (error as { code?: string }).code === "23505") {
+    // Race condition: Meta reentregó el webhook y otro request creó el lead
+    // entre nuestro findLeadByPhone (retornó null) y este insert. Buscamos
+    // el existente y lo retornamos. Fix A2 del auditor 2026-07-01.
+    const { findLeadByPhone } = await import("../crm/leads-server");
+    const existing = await findLeadByPhone(phoneNormalized);
+    if (existing) return existing;
+    // Si tampoco lo encontramos, retornamos null (caso raro pero posible).
+    return null;
+  }
 
   if (error || !data) {
     // eslint-disable-next-line no-console

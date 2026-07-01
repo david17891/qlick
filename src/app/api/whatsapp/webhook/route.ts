@@ -128,18 +128,17 @@ export async function POST(req: NextRequest) {
   for (const msg of parsed.messages) {
     const stored = await persistInboundIfPossible(supabase, msg);
     if (stored) queued.push(stored);
-    // Workaround: NO usar `void` (Vercel mata el container post-response).
-    // En su lugar, esperamos a que el bot termine (con timeout).
-    // Meta reintenta si >5s, así que bloqueamos el response hasta que el bot termine.
-    const botPromise = processInboundSafely(msg);
-    const botTimeout = new Promise<void>((resolve) =>
-      setTimeout(() => {
-        // eslint-disable-next-line no-console
-        console.warn("[whatsapp/webhook] bot timeout (10s) - respond anyway");
-        resolve();
-      }, 10000)
-    );
-    await Promise.race([botPromise, botTimeout]);
+    // Fire-and-forget: Meta espera response en <5s o reintenta.
+    // El bot corre async en background; Vercel mantiene el container vivo
+    // hasta que la Promise resuelva o el maxDuration expire.
+    //
+    // NOTA A3 del auditor 2026-07-01: ideal sería `waitUntil(promise)` pero
+    // ese helper solo está disponible en Next.js 15+. En 14.2 (la versión
+    // actual del repo) usamos `void`. Trade-off conocido: si el bot tarda
+    // más que maxDuration, Vercel mata el container antes de que termine.
+    // La idempotencia por `whatsapp_message_id UNIQUE` previene duplicados
+    // en re-entregas de Meta.
+    void processInboundSafely(msg);
   }
 
   // 5. Persistir status updates (no gatillan bot).
