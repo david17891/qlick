@@ -385,14 +385,18 @@ test("processInboundMessage: primer mensaje 'hola' (demo mode) → welcome", asy
     });
     assert.equal(result.ok, true);
     assert.equal(result.intent, "welcome");
-    assert.equal(result.responseKind, "template");
+    // FIX tests stale: commit 1cb8e9d switcheo welcome/greeting/register/
+    // provide_email de template a texto libre (templates conf_bienvenida etc.
+    // no existen en Meta Business Manager todavia). Actualizado 2026-07-01
+    // junto con el fix de /qr → /check-in/[token].
+    assert.equal(result.responseKind, "text");
     assert.ok(result.leadId);
   } finally {
     m.restore();
   }
 });
 
-test("processInboundMessage: register → template infoEvento", async () => {
+test("processInboundMessage: register → texto info evento", async () => {
   disableSupabase();
   const m = mockFetch();
   try {
@@ -403,7 +407,8 @@ test("processInboundMessage: register → template infoEvento", async () => {
       type: "text"
     });
     assert.equal(result.intent, "register");
-    assert.equal(result.responseKind, "template");
+    // FIX tests stale: ver comentario en test "primer mensaje 'hola'".
+    assert.equal(result.responseKind, "text");
   } finally {
     m.restore();
   }
@@ -445,7 +450,7 @@ test("processInboundMessage: phone inválido → ok=false", async () => {
   }
 });
 
-test("processInboundMessage: provee email → provide_email + template confirmacion", async () => {
+test("processInboundMessage: provee email → provide_email + texto confirmacion", async () => {
   disableSupabase();
   const m = mockFetch();
   try {
@@ -456,7 +461,8 @@ test("processInboundMessage: provee email → provide_email + template confirmac
       type: "text"
     });
     assert.equal(result.intent, "provide_email");
-    assert.equal(result.responseKind, "template");
+    // FIX tests stale: ver comentario en test "primer mensaje 'hola'".
+    assert.equal(result.responseKind, "text");
   } finally {
     m.restore();
   }

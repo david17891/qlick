@@ -61,6 +61,20 @@ import { getActiveWhatsAppProvider } from ".";
 /*  Tipos                                                              */
 /* ------------------------------------------------------------------ */
 
+/** Debug logger — solo loggea en dev, no contamina logs de producción. */
+function debugLog(msg: string, data?: Record<string, unknown>): void {
+  if (process.env.NODE_ENV !== "production") {
+    // eslint-disable-next-line no-console
+    console.log(msg, data ?? "");
+  }
+}
+
+/** Error logger — siempre loggea (errores reales). */
+function errorLog(msg: string, data?: Record<string, unknown>): void {
+  // eslint-disable-next-line no-console
+  console.error(msg, data ?? "");
+}
+
 /** Intents que detecta el bot. */
 export type BotIntent =
   | "welcome"
@@ -454,18 +468,18 @@ async function findOrCreateLead(
     };
   }
   // eslint-disable-next-line no-console
-  console.error("[whatsapp/bot] findOrCreateLead: querying findLeadByPhone");
+  debugLog("[whatsapp/bot] findOrCreateLead: querying findLeadByPhone");
   const findPromise = findLeadByPhone(phoneNormalized);
   const findTimeout = new Promise<null>((resolve) =>
     setTimeout(() => {
       // eslint-disable-next-line no-console
-      console.error("[whatsapp/bot] findLeadByPhone TIMEOUT (5s) - forzando fallback");
+      debugLog("[whatsapp/bot] findLeadByPhone TIMEOUT (5s) - forzando fallback");
       resolve(null);
     }, 5000)
   );
   const existing = await Promise.race([findPromise, findTimeout]);
   // eslint-disable-next-line no-console
-  console.error("[whatsapp/bot] findLeadByPhone result", {
+  debugLog("[whatsapp/bot] findLeadByPhone result", {
     found: Boolean(existing),
     timedOut: existing === null
   });
@@ -506,12 +520,17 @@ async function buildResponsePlan(args: {
   /** E.164 normalizado. Se usa directamente como `to` del provider para no
    * depender de `lead.phone` (puede venir null/undefined de DB o del fallback). */
   phoneNormalized: string;
+  /** URL del QR token ya generado por el caller (processInboundMessage).
+   * Solo aplica cuando intent === "provide_email" y Supabase estaba
+   * disponible. Si es null, el bot responde sin link al QR (evita mandar
+   * una URL rota como /qr). */
+  qrUrl?: string | null;
 }): Promise<OutboundPlan> {
   const { intent, lead, body, phoneNormalized } = args;
   const provider = getActiveWhatsAppProvider();
   const firstName = lead.name?.split(" ")[0] || "hola";
   // eslint-disable-next-line no-console
-  console.error("[whatsapp/bot] buildResponsePlan", {
+  debugLog("[whatsapp/bot] buildResponsePlan", {
     intent,
     hasLeadPhone: Boolean(lead.phone),
     leadPhone: lead.phone ?? "(empty)",
@@ -561,8 +580,14 @@ async function buildResponsePlan(args: {
     }
     case "provide_email": {
       const email = body.trim();
-      const url = `${appBaseUrl()}/qr`;
-      const bodyText = `Listo ${firstName}, registramos tu email ${email}. Tu pase: ${url}. Te esperamos el ${getActiveEvent().date} en ${getActiveEvent().location}.`;
+      // FIX A5: usar el QR token real generado por processInboundMessage.
+      // Antes mandaba `${appBaseUrl()}/qr` que NO existe en el routing.
+      // Si Supabase cayó y no se pudo generar el token, respondemos sin
+      // link (mejor que mandar una URL rota).
+      const qrUrl = args.qrUrl ?? null;
+      const bodyText = qrUrl
+        ? `Listo ${firstName}, registramos tu email ${email}. Tu pase: ${qrUrl}. Te esperamos el ${getActiveEvent().date} en ${getActiveEvent().location}.`
+        : `Listo ${firstName}, registramos tu email ${email}. Te esperamos el ${getActiveEvent().date} en ${getActiveEvent().location}.`;
       return {
         kind: "text",
         body: bodyText,
@@ -642,14 +667,14 @@ export async function processInboundMessage(
   message: IncomingWhatsAppMessage
 ): Promise<BotProcessResult> {
   // eslint-disable-next-line no-console
-  console.error("[whatsapp/bot] processInboundMessage START", {
+  debugLog("[whatsapp/bot] processInboundMessage START", {
     messageId: message.messageId,
     from: message.from
   });
 
   const phoneNormalized = normalizePhone(message.from);
   // eslint-disable-next-line no-console
-  console.error("[whatsapp/bot] after normalizePhone", {
+  debugLog("[whatsapp/bot] after normalizePhone", {
     phoneNormalized
   });
   if (!phoneNormalized) {
@@ -671,14 +696,14 @@ export async function processInboundMessage(
   );
   let supabase = await Promise.race([supabasePromise, supabaseTimeout]);
   // eslint-disable-next-line no-console
-  console.error("[whatsapp/bot] supabase result", {
+  debugLog("[whatsapp/bot] supabase result", {
     ok: Boolean(supabase),
     timedOut: supabase === null
   });
 
   // 1. Buscar o crear lead.
   // eslint-disable-next-line no-console
-  console.error("[whatsapp/bot] before findOrCreateLead", {
+  debugLog("[whatsapp/bot] before findOrCreateLead", {
     hasSupabase: Boolean(supabase)
   });
   let upsert = await findOrCreateLead(
@@ -687,7 +712,7 @@ export async function processInboundMessage(
     message.contactName
   );
   // eslint-disable-next-line no-console
-  console.error("[whatsapp/bot] after findOrCreateLead", {
+  debugLog("[whatsapp/bot] after findOrCreateLead", {
     ok: Boolean(upsert)
   });
   if (!upsert) {
@@ -701,7 +726,7 @@ export async function processInboundMessage(
     // markWhatsAppStatus, touchLead) NO intente escribir en Supabase con id
     // inválido. El bot solo manda respuesta.
     // eslint-disable-next-line no-console
-    console.error("[whatsapp/bot] FALLBACK: lead con id=null (Supabase caída)");
+    errorLog("[whatsapp/bot] FALLBACK: lead con id=null (Supabase caída)");
     supabase = null;
     upsert = {
       lead: {
@@ -797,7 +822,8 @@ export async function processInboundMessage(
     lead,
     body,
     isFirstMessage,
-    phoneNormalized
+    phoneNormalized,
+    qrUrl
   });
 
   let sendResult: { ok: boolean; externalId?: string; demo?: boolean } = {

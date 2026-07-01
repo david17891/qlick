@@ -135,7 +135,7 @@ export async function POST(req: NextRequest) {
     const botTimeout = new Promise<void>((resolve) =>
       setTimeout(() => {
         // eslint-disable-next-line no-console
-        console.error("[whatsapp/webhook] bot timeout (10s) - respond anyway");
+        console.warn("[whatsapp/webhook] bot timeout (10s) - respond anyway");
         resolve();
       }, 10000)
     );
@@ -317,18 +317,20 @@ function extractStatuses(payload: unknown): MetaStatus[] {
 async function processInboundSafely(
   msg: IncomingWhatsAppMessage
 ): Promise<void> {
-  // eslint-disable-next-line no-console
+  if (process.env.NODE_ENV !== "production") {
+// eslint-disable-next-line no-console
   console.error("[whatsapp/webhook] processInboundSafely START", {
-    messageId: msg.messageId,
-    from: msg.from,
-    textPreview: (msg.text ?? "").slice(0, 50)
+    messageId: msg.messageId
   });
+  }
   try {
     await processInboundMessage(msg);
-    // eslint-disable-next-line no-console
-    console.error("[whatsapp/webhook] processInboundSafely END OK", {
-      messageId: msg.messageId
-    });
+    if (process.env.NODE_ENV !== "production") {
+      // eslint-disable-next-line no-console
+      console.log("[whatsapp/webhook] processInboundSafely END OK", {
+        messageId: msg.messageId
+      });
+    }
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("[whatsapp/webhook] processInboundMessage lanzó excepción", {
