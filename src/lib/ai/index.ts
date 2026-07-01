@@ -21,6 +21,17 @@ export { openrouterAgentProvider } from "./openrouter-provider";
 export { deepseekAgentProvider } from "./deepseek-provider";
 export * from "./guardrails";
 export * from "./agent-prompts";
+export {
+  loadActiveEventContext,
+  formatHumanDate,
+  formatHumanDuration,
+  type ActiveEventContext
+} from "./event-context-loader";
+export {
+  loadConversationWindow,
+  type ConversationWindow,
+  type ConversationMessage
+} from "./conversation-window";
 
 import type { AIAgentProvider, AIAgentProviderName } from "./agent-provider";
 import { mockAgentProvider } from "./mock-agent-provider";

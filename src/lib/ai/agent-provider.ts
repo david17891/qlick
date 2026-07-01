@@ -32,6 +32,10 @@ export interface AgentContext {
   lastIncomingMessage?: string;
   /** Resumen o transcripción reciente de la conversación. */
   conversationSummary?: string;
+  /** Evento activo cargado desde DB (contexto dinámico por evento). */
+  activeEvent?: import("./event-context-loader").ActiveEventContext;
+  /** Ventana de últimos N mensajes del lead (memoria corta del bot). */
+  conversationWindow?: import("./conversation-window").ConversationWindow;
 }
 
 export type AgentTask =

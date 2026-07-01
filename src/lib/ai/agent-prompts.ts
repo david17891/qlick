@@ -1,30 +1,54 @@
 /**
  * Prompts del Agente IA de Qlick.
  *
- * Hoy se usan para documentar cómo se le hablará a un LLM cuando se active el
- * proveedor OpenRouter. El mock provider NO los consume (tiene respuestas
- * pre-escritas), pero mantenerlos aquí garantiza que la migración al LLM real
- * sea directa y que las reglas estén centralizadas.
- *
  * Cada prompt inyecta:
  *  - El perfil del negocio (tono, reglas, cursos).
+ *  - El contexto del evento activo (nombre, fecha, lugar, agenda).
+ *  - La ventana de conversación (últimos N mensajes del lead).
  *  - Las restricciones de guardrails (qué NO hacer).
- *  - El contexto del lead (nombre, curso, último mensaje).
  *
- * Ver docs/AI_AGENT_GUARDRAILS.md.
+ * Ver docs/BOT_CONTEXT_DESIGN.md y docs/AI_AGENT_GUARDRAILS.md.
  */
 
 import type { AIAgentProfile } from "@/types";
+
+import type { ActiveEventContext } from "./event-context-loader";
+import type { ConversationWindow } from "./conversation-window";
 import type { AgentContext, AgentTask } from "./agent-provider";
 
-/** System prompt base: identidad, alcance y límites del agente. */
-export function buildSystemPrompt(profile: AIAgentProfile): string {
-  return [
+/* ------------------------------------------------------------------ */
+/*  Tipos                                                              */
+/* ------------------------------------------------------------------ */
+
+export interface ExtendedAgentContext extends AgentContext {
+  /** Evento activo cargado desde DB (o fallback env). */
+  activeEvent?: ActiveEventContext;
+  /** Ventana de últimos mensajes del lead. */
+  conversationWindow?: ConversationWindow;
+}
+
+/* ------------------------------------------------------------------ */
+/*  System prompt                                                      */
+/* ------------------------------------------------------------------ */
+
+/** System prompt base: identidad, alcance, límites y contexto del evento. */
+export function buildSystemPrompt(
+  profile: AIAgentProfile,
+  activeEvent?: ActiveEventContext
+): string {
+  const lines: string[] = [
     `Eres ${profile.name}, asistente conversacional de ${profile.businessName}.`,
     `${profile.businessDescription}`,
     ``,
     `Atiendes en horario: ${profile.businessHours}.`,
-    `Tono: ${profile.tone}. Idioma: español de México.`,
+    `Tono: ${profile.tone}, MUY amable, cálido y cercano. Idioma: español de México.`,
+    ``,
+    `Personalidad:`,
+    `- Saludas con calidez, usas el nombre del lead si lo sabes.`,
+    `- Eres paciente, nunca apuras al usuario.`,
+    `- Si no entiendes algo, preguntas con amabilidad en vez de inventar.`,
+    `- Nunca discutes; si el usuario está molesto, lo escuchas y ofreces solución.`,
+    `- Usas "tú" (no "usted"). Usas expresiones naturales de México.`,
     ``,
     `Conoces estos cursos/servicios:`,
     ...profile.servicesOrCourses.map((c) => `- ${c}`),
@@ -40,30 +64,87 @@ export function buildSystemPrompt(profile: AIAgentProfile): string {
     ``,
     `Si no estás seguro o falta información, responde:`,
     `"${profile.fallbackMessage}"`
-  ].join("\n");
+  ];
+
+  // Inyectar contexto del evento activo (si hay uno cargado).
+  if (activeEvent) {
+    lines.push(``, activeEvent.promptBlock);
+    lines.push(
+      ``,
+      `CUANDO EL LEAD PREGUNTE POR EL EVENTO:`,
+      `- Usa la información del bloque "EVENTO ACTIVO" de arriba.`,
+      `- NO inventes fechas, lugares ni horarios. Si no está en el bloque, di "aún no tengo ese detalle, pero te lo confirmo".`,
+      `- Si el lead quiere inscribirse, dile que necesitas su nombre completo y correo para registrarlo.`,
+      `- Si el lead pregunta algo técnico fuera de tu alcance, escala con amabilidad.`
+    );
+  }
+
+  return lines.join("\n");
 }
 
-/** Prompt de usuario por tarea, inyectando el contexto del lead. */
-export function buildTaskPrompt(task: AgentTask, context: AgentContext): string {
-  const { leadName, courseOfInterest, lastIncomingMessage, conversationSummary } =
-    context;
+/* ------------------------------------------------------------------ */
+/*  Task prompt                                                        */
+/* ------------------------------------------------------------------ */
 
-  const ctx = [
-    leadName ? `Lead: ${leadName}` : "Lead: (sin nombre)",
-    courseOfInterest ? `Curso de interés: ${courseOfInterest}` : "Curso de interés: (no definido)",
-    lastIncomingMessage ? `Último mensaje del lead: "${lastIncomingMessage}"` : "Último mensaje: (vacío)",
-    conversationSummary ? `Resumen de la conversación: ${conversationSummary}` : ""
-  ]
-    .filter(Boolean)
-    .join("\n");
+/**
+ * Prompt de usuario por tarea, inyectando el contexto del lead + ventana
+ * de conversación.
+ */
+export function buildTaskPrompt(
+  task: AgentTask,
+  context: ExtendedAgentContext
+): string {
+  const {
+    leadName,
+    courseOfInterest,
+    lastIncomingMessage,
+    conversationSummary,
+    activeEvent,
+    conversationWindow
+  } = context;
 
+  const ctxBlocks: string[] = [];
+
+  // Bloque 1: Identidad del lead.
+  ctxBlocks.push(
+    [
+      leadName ? `Lead: ${leadName}` : "Lead: (sin nombre)",
+      courseOfInterest
+        ? `Curso de interés: ${courseOfInterest}`
+        : "Curso de interés: (no definido)",
+      conversationSummary
+        ? `Resumen previo: ${conversationSummary}`
+        : ""
+    ]
+      .filter(Boolean)
+      .join("\n")
+  );
+
+  // Bloque 2: ventana de conversación (cronológica).
+  if (conversationWindow && conversationWindow.messages.length > 0) {
+    ctxBlocks.push(conversationWindow.promptBlock);
+  }
+
+  // Bloque 3: último mensaje (con highlight).
+  if (lastIncomingMessage) {
+    ctxBlocks.push(
+      `>>> ÚLTIMO MENSAJE DEL LEAD (al que tienes que responder): "${lastIncomingMessage}"`
+    );
+  }
+
+  // Bloque 4: instrucciones de la tarea.
   const instructions: Record<AgentTask, string> = {
     classify_intent:
       "Clasifica la intención del lead en una sola etiqueta. Responde solo con la etiqueta.",
     suggest_reply:
-      'Redacta una respuesta corta (máx 2 párrafos) para que un humano la revise. No confirmes pagos, accesos ni descuentos.',
+      "Redacta una respuesta corta (máx 2 párrafos, ≤500 chars) para enviar al lead.\n" +
+      "- Tono amable, cálido, mexicano.\n" +
+      "- Si hay EVENTO ACTIVO en el contexto y el mensaje del lead es sobre ese evento, ÚSALO.\n" +
+      "- Si el lead pregunta por el evento, incluye nombre, fecha y lugar en tu respuesta.\n" +
+      "- NO confirmes pagos, accesos, ni descuentos.\n" +
+      "- NO uses frases vagas tipo 'te contactaremos pronto' si tienes info concreta.",
     summarize_conversation:
-      "Resume la conversación en 1-2 frases, destacando el siguiente paso.",
+      "Resume la conversación en 1-2 frases, destacando el siguiente paso concreto.",
     detect_urgency:
       "Indica si el mensaje tiene urgencia y por qué. Sé conservador.",
     detect_payment_pending:
@@ -71,8 +152,17 @@ export function buildTaskPrompt(task: AgentTask, context: AgentContext): string 
     recommend_course:
       "Recomienda UN curso de la lista conocida. Si no hay suficiente info, di que falta contexto.",
     escalate_to_human:
-      "Decide si este caso debe escalar a humano y por qué."
+      "Decide si este caso debe escalar a humano y por qué. Sugiere a quién escalar."
   };
 
-  return `${ctx}\n\nTarea: ${instructions[task]}`;
+  ctxBlocks.push(`Tarea: ${instructions[task]}`);
+
+  // Si hay evento activo, agregar recordatorio final.
+  if (activeEvent) {
+    ctxBlocks.push(
+      `\nRecordatorio: el evento activo es "${activeEvent.title}" el ${activeEvent.humanStartsAt}. Úsalo cuando sea relevante.`
+    );
+  }
+
+  return ctxBlocks.join("\n\n");
 }

@@ -130,7 +130,7 @@ export const metaCloudApiProvider: WhatsAppProvider = {
 
     if (!phoneNumberId || !token) {
       // eslint-disable-next-line no-console
-      console.error(
+      console.warn(
         "[whatsapp/meta] Cloud API no configurada (faltan WHATSAPP_CLOUD_PHONE_NUMBER_ID o WHATSAPP_CLOUD_ACCESS_TOKEN). Devolviendo demo.",
       );
       return {
