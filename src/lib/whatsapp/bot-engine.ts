@@ -551,7 +551,7 @@ async function buildResponsePlan(args: {
 }): Promise<OutboundPlan> {
   const { intent, lead, body, phoneNormalized } = args;
   const provider = getActiveWhatsAppProvider();
-  const firstName = lead.name?.split(" ")[0] || "hola";
+  const firstName = lead.name?.split(" ")[0] || "";
   // eslint-disable-next-line no-console
   debugLog("[whatsapp/bot] buildResponsePlan", {
     intent,
