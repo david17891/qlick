@@ -157,34 +157,45 @@ export async function POST(_req: NextRequest) {
     `aws-0-sa-east-1.pooler.supabase.com`
   ];
 
-  // Test connectivity: try each region with a quick connect.
-  let chosenHost: string | null = null;
-  for (const host of candidateHosts) {
-    const test = new Client({
-      host,
-      port: 6543,
-      user: `postgres.${ref}`,
-      password,
-      database: "postgres",
-      ssl: { rejectUnauthorized: false },
-      connectionTimeoutMillis: 5_000
-    });
-    try {
-      await test.connect();
-      await test.end();
-      chosenHost = host;
-      break;
-    } catch {
-      await test.end().catch(() => undefined);
-    }
-  }
-
+  // Test connectivity: try each region in parallel with short timeout.
+  // Vercel Hobby tiene timeout 10s, así que paralelo y timeout 1.5s.
+  errorLog("[auto-migrate] probing poolers", { ref, regions: candidateHosts.length });
+  const probeResults = await Promise.all(
+    candidateHosts.map(async (host) => {
+      const test = new Client({
+        host,
+        port: 6543,
+        user: `postgres.${ref}`,
+        password,
+        database: "postgres",
+        ssl: { rejectUnauthorized: false },
+        connectionTimeoutMillis: 1_500
+      });
+      try {
+        await test.connect();
+        await test.end();
+        return { host, ok: true };
+      } catch (err) {
+        await test.end().catch(() => undefined);
+        return {
+          host,
+          ok: false,
+          err: err instanceof Error ? err.message : String(err)
+        };
+      }
+    })
+  );
+  errorLog("[auto-migrate] probe results", {
+    results: probeResults.map((r) => ({ host: r.host, ok: r.ok, err: r.ok ? undefined : r.err }))
+  });
+  const chosenHost = probeResults.find((r) => r.ok)?.host;
   if (!chosenHost) {
     return NextResponse.json(
       {
         ok: false,
         message:
-          "No se pudo conectar a ningún pooler de Supabase. El proyecto podría estar pausado o en una región no probada."
+          "No se pudo conectar a ningún pooler de Supabase. Probe falló en todas las regiones.",
+        details: probeResults.map((r) => ({ host: r.host, err: r.err }))
       },
       { status: 500 }
     );
