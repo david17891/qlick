@@ -5,26 +5,23 @@ import { Container, Card, Badge, SectionHeading } from "@/components/ui";
 export const metadata: Metadata = {
   title: "Aviso de Privacidad | Qlick",
   description:
-    "Aviso de privacidad inicial de Qlick Marketing Integral: cómo tratamos los datos del formulario de contacto, la gestión de leads y tus derechos ARCO.",
+    "Aviso de privacidad de Qlick Marketing Integral: cómo tratamos los datos del formulario de contacto, la gestión de leads, WhatsApp Business API y tus derechos ARCO.",
   alternates: { canonical: "/privacidad" }
 };
 
 /**
- * ⚠️ AVISO LEGAL — versión inicial, no es asesoría legal definitiva.
+ * Aviso de Privacidad de Qlick Marketing Integral.
  *
- * Este texto es una base para que el responsable lo revise con asesor legal
- * antes de operación formal. Mientras no se valide, los placeholders marcados
- * con TODO deben tratarse como NO confirmados:
- *   - Correo del responsable: privacidad@qlick.mx (placeholder).
- *   - Domicilio físico: omitido a propósito hasta confirmarlo.
- *   - Fecha de entrada en vigor: se actualiza al validar.
- *
- * No inventar datos de contacto ni domicilios: si falta información, se
- * documenta como pendiente en lugar de rellenar con datos falsos.
+ * Editado 2026-06-30:
+ *  - Email de contacto actualizado a david17891@gmail.com (gmail personal).
+ *  - Sección 5 (proveedores) ahora describe correctamente el uso de
+ *    WhatsApp Business API (Meta) y DeepSeek como proveedor de IA.
+ *  - Nueva sección 8 sobre Eliminación de Datos / Data Deletion Request
+ *    (requerida por Meta App Review).
  */
 const RESPONSABLE = "Qlick Marketing Integral";
-const CONTACTO_PRIVACIDAD = "privacidad@qlick.mx"; // TODO: confirmar correo oficial
-const ULTIMA_ACTUALIZACION = "Versión inicial — pendiente de validación legal";
+const CONTACTO_PRIVACIDAD = "david17891@gmail.com";
+const ULTIMA_ACTUALIZACION = "Última actualización: 30 de junio de 2026";
 
 type Seccion = {
   id: string;
@@ -48,14 +45,15 @@ const secciones: Seccion[] = [
     id: "datos",
     titulo: "2. Datos que recabamos",
     parrafos: [
-      "A través del formulario de contacto y la solicitud de información de cursos recabamos los siguientes datos personales:"
+      "A través del formulario de contacto, la solicitud de información de cursos y la conversación por WhatsApp recabamos los siguientes datos personales:"
     ],
     lista: [
       "Nombre completo",
       "Correo electrónico",
-      "Número de teléfono / WhatsApp (opcional)",
-      "Curso o tema de interés y el mensaje que nos envíes",
-      "Marca de consentimiento para ser contactado"
+      "Número de teléfono / WhatsApp",
+      "Curso, evento o tema de interés y los mensajes que nos envíes",
+      "Marca de consentimiento para ser contactado",
+      "Metadatos de la conversación (fecha/hora, identificador del mensaje)"
     ]
   },
   {
@@ -65,10 +63,11 @@ const secciones: Seccion[] = [
       "Tus datos se utilizan exclusivamente para:"
     ],
     lista: [
-      "Atender tu solicitud de información sobre cursos y servicios.",
+      "Atender tu solicitud de información sobre cursos, eventos y servicios.",
       "Darte seguimiento comercial como lead (gestión de prospectos).",
-      "Comunicarnos contigo por WhatsApp, correo electrónico o teléfono.",
-      "Clasificar tu interés y mejorar la respuesta que te damos.",
+      "Comunicarnos contigo por WhatsApp Business, correo electrónico o teléfono.",
+      "Confirmar tu asistencia a eventos y enviarte tu pase de entrada (QR).",
+      "Clasificar tu interés y mejorar la respuesta que te damos con ayuda de IA.",
       "Cumplir con obligaciones derivadas de la relación que generemos contigo."
     ]
   },
@@ -76,7 +75,8 @@ const secciones: Seccion[] = [
     id: "consentimiento",
     titulo: "4. Consentimiento y registro",
     parrafos: [
-      "Al enviar el formulario de contacto marcas una casilla con la que das tu consentimiento para que tratemos tus datos con las finalidades descritas. Guardamos registro de ese consentimiento asociado a tu solicitud.",
+      "Al enviar el formulario de contacto o escribirnos por WhatsApp marcando una casilla con tu consentimiento, nos autorizas a tratar tus datos con las finalidades descritas. En WhatsApp, el consentimiento se registra explícitamente cuando aceptas recibir información comercial.",
+      "Guardamos registro de ese consentimiento asociado a tu solicitud en nuestra base de datos interna.",
       "Negarte a proporcionar los datos de contacto impide que podamos responder tu solicitud o darte seguimiento."
     ]
   },
@@ -84,12 +84,13 @@ const secciones: Seccion[] = [
     id: "proveedores",
     titulo: "5. Proveedores tecnológicos y transferencias",
     parrafos: [
-      "Para operar la plataforma y almacenar la información de leads utilizamos proveedores que pueden tratar datos por cuenta nuestra:"
+      "Para operar la plataforma, gestionar leads y atenderte por WhatsApp utilizamos proveedores que pueden tratar datos por cuenta nuestra:"
     ],
     lista: [
-      "Supabase: base de datos y almacenamiento de la información de leads.",
-      "Vercel: hosting y despliegue de la aplicación web.",
-      "WhatsApp (click-to-chat): comunicación contigo; no usamos la WhatsApp Business API para mensajería outbound automatizada en esta fase."
+      "Supabase: base de datos principal (Postgres) y autenticación. Almacena leads, conversaciones y eventos.",
+      "Vercel: hosting y despliegue de la aplicación web (https://qlick-three.vercel.app).",
+      "Meta WhatsApp Business Platform (Cloud API): canal de mensajería WhatsApp. Los mensajes que nos envías se procesan a través de Meta. Ver política de privacidad de Meta en https://www.facebook.com/policy.php.",
+      "DeepSeek (IA): modelo de lenguaje que utiliza el contenido de tu mensaje (sin tu nombre ni datos sensibles como PII identificable separada) para generar respuestas automáticas. El contenido se envía a los servidores de DeepSeek únicamente para producir la respuesta y no se almacena para entrenamiento."
     ],
     parrafos_end: [
       "Estos proveedores tratan los datos bajo sus propias políticas y únicamente para prestarnos el servicio. No vendemos ni rentamos tus datos."
@@ -100,21 +101,36 @@ const secciones: Seccion[] = [
     titulo: "6. Tus derechos (ARCO)",
     parrafos: [
       "Puedes ejercer en cualquier momento tus derechos de Acceso, Rectificación, Cancelación y Oposición, así como limitar el uso o divulgación de tus datos y revocar tu consentimiento. Para ello escríbenos a:",
-      `${CONTACTO_PRIVACIDAD}`
+      `${CONTACTO_PRIVACIDAD}`,
+      "Responderemos a tu solicitud en un plazo máximo de 20 días hábiles contados a partir de su recepción, y en caso de resultar procedente, se hará efectiva dentro de los 15 días hábiles siguientes a la fecha de comunicación."
     ]
   },
   {
     id: "seguridad",
     titulo: "7. Medidas de seguridad",
     parrafos: [
-      "Mantendremos medidas técnicas y administrativas razonables para proteger tus datos. La información de leads se almacena con control de acceso basado en roles (RLS) en la base de datos, de forma que el acceso público está restringido."
+      "Mantendremos medidas técnicas y administrativas razonables para proteger tus datos. La información de leads y conversaciones se almacena con control de acceso basado en roles (RLS) en la base de datos, de forma que el acceso público está restringido. Las contraseñas, tokens y claves API se almacenan cifradas y nunca se exponen en el código del cliente."
+    ]
+  },
+  {
+    id: "eliminacion",
+    titulo: "8. Eliminación de datos (Data Deletion Request)",
+    parrafos: [
+      "Conforme a las políticas de Meta (Facebook) y a la legislación aplicable, cualquier usuario puede solicitar la eliminación completa de sus datos personales de nuestros sistemas.",
+      "Para ejercer este derecho, escríbenos a:",
+      `${CONTACTO_PRIVACIDAD}`,
+      "Incluye en tu mensaje: (1) tu nombre completo, (2) el correo electrónico o número de teléfono asociado a tus datos, y (3) una breve descripción de lo que solicitas.",
+      "Procesamos tu solicitud en un plazo máximo de 30 días naturales. Una vez completada la eliminación, te enviaremos una confirmación por correo.",
+      "Datos que se eliminan: tu registro como lead, todas las conversaciones de WhatsApp almacenadas, los códigos QR generados para eventos, las notas internas y cualquier referencia a tu persona en el sistema.",
+      "Datos que NO podemos eliminar por obligación legal: facturas pagadas (si las hubo), registros de consentimiento (los conservamos para demostrar que diste tu consentimiento en su momento), y cualquier dato requerido por las autoridades fiscales mexicanas."
     ]
   },
   {
     id: "cambios",
-    titulo: "8. Cambios a este aviso",
+    titulo: "9. Cambios a este aviso",
     parrafos: [
-      "Podemos actualizar este aviso. Cualquier cambio relevante se publicará en esta misma página con la fecha de actualización correspondiente."
+      "Podemos actualizar este aviso para reflejar cambios en nuestras prácticas, en la legislación aplicable o en los proveedores que utilizamos. Cualquier cambio relevante se publicará en esta misma página con la fecha de actualización correspondiente.",
+      "Te recomendamos revisar periódicamente este aviso."
     ]
   }
 ];
@@ -131,28 +147,14 @@ export default function PrivacidadPage() {
           </Badge>
           <h1 className="display-1 text-ink">Aviso de Privacidad</h1>
           <p className="mt-5 text-lg text-ink-soft max-w-2xl">
-            Cómo tratamos los datos que nos compartes al contactarnos o
-            solicitar información de cursos.
+            Cómo tratamos los datos que nos compartes al contactarnos,
+            solicitar información de cursos o escribirnos por WhatsApp.
           </p>
         </Container>
       </section>
 
       <section className="py-16">
         <Container size="narrow">
-          {/* Nota legal destacada */}
-          <Card className="p-6 mb-10 border-amber-200 bg-amber-50/60">
-            <h2 className="text-sm font-bold text-amber-900 mb-2 flex items-center gap-2">
-              ⚠️ Documento inicial — pendiente de validación legal
-            </h2>
-            <p className="text-sm text-amber-900/90 leading-relaxed">
-              Este aviso es una versión inicial para Qlick Marketing Integral y{" "}
-              <strong>no constituye asesoría legal definitiva</strong>. Debe ser
-              revisado por asesor legal antes de la operación formal. El correo
-              de contacto de privacidad y otros datos marcados como pendientes
-              deben confirmarse antes de su uso oficial.
-            </p>
-          </Card>
-
           <div className="space-y-10">
             {secciones.map((s) => (
               <section key={s.id} id={s.id} className="scroll-mt-24">
@@ -179,14 +181,16 @@ export default function PrivacidadPage() {
           {/* Resumen de contacto */}
           <Card className="mt-12 p-8 bg-brand-50/50">
             <h3 className="text-lg font-bold text-ink mb-2">
-              Contacto para privacidad
+              Contacto para privacidad y eliminación de datos
             </h3>
             <p className="text-ink-muted text-sm">
               Para ejercer tus derechos ARCO, revocar el consentimiento o
-              cualquier duda sobre el tratamiento de datos:
+              solicitar la eliminación de tus datos personales:
             </p>
             <p className="mt-3 font-semibold text-brand-700">
-              {CONTACTO_PRIVACIDAD}
+              <a href={`mailto:${CONTACTO_PRIVACIDAD}`} className="underline">
+                {CONTACTO_PRIVACIDAD}
+              </a>
             </p>
             <p className="mt-3 text-xs text-ink-muted">
               {ULTIMA_ACTUALIZACION}
