@@ -76,6 +76,7 @@ export type BotIntent =
   | "opt_out"
   | "provide_email"
   | "interactive_event_yes"
+  | "interactive_event_inscribir"
   | "interactive_show_courses"
   | "interactive_talk_human"
   | "question";
@@ -668,12 +669,59 @@ async function buildResponsePlan(args: {
       };
     }
     case "interactive_event_yes": {
-      // El usuario clickeó "Sí, info evento" en el welcome → caemos al
-      // mismo flujo que `register` pero text (no necesita lista).
+      // Fase 7a.5: el usuario clickeó "Info evento" en el welcome.
+      // Devolvemos los detalles del evento + un botón "Inscribirme" para
+      // que el siguiente paso sea explícito (en vez de texto abierto
+      // "mandame tu email").
+      const evt = getActiveEvent();
+      const interactive = {
+        type: "button" as const,
+        body: {
+          text: `📅 ${evt.name}\n🗓 ${evt.date} · 📍 ${evt.location} · ⏱ ${evt.duration}\n\n¿Listo para inscribirte?`
+        },
+        action: {
+          buttons: [
+            {
+              type: "reply" as const,
+              reply: {
+                id: `evt_inscribir_${evt.name.replace(/\s+/g, "_").toLowerCase().slice(0, 20)}`,
+                title: "Inscribirme"
+              }
+            },
+            {
+              type: "reply" as const,
+              reply: {
+                id: "talk_human",
+                title: "Hablar con humano"
+              }
+            }
+          ]
+        },
+        footer: {
+          text: "Inscribirme te pide email por acá"
+        }
+      };
+      const bodyText = interactive.body.text;
+      return {
+        kind: "interactive",
+        body: bodyText,
+        interactive,
+        send: () =>
+          provider.send({
+            to: phoneNormalized,
+            body: bodyText,
+            interactive
+          })
+      };
+    }
+    case "interactive_event_inscribir": {
+      // Fase 7a.5: el usuario clickeó "Inscribirme" después de ver info
+      // del evento. Le pedimos el email explícitamente. Si responde con
+      // un email válido, el intent `provide_email` se encarga.
       const evt = getActiveEvent();
       const bodyText =
-        `${evt.name} — ${evt.date}, ${evt.location}, ${evt.duration}. ` +
-        `Si querés inscribirte mandá tu email y te paso el link de pago.`;
+        `¡Excelente ${firstName || ""}! Para inscribirte a "${evt.name}" el ${evt.date}, ` +
+        `mandame tu email por acá y te paso tu QR de entrada.`;
       return {
         kind: "text",
         body: bodyText,
@@ -977,6 +1025,8 @@ export async function processInboundMessage(
   if (message.buttonId) {
     if (message.buttonId.startsWith("evt_yes_")) {
       intent = "interactive_event_yes";
+    } else if (message.buttonId.startsWith("evt_inscribir_")) {
+      intent = "interactive_event_inscribir";
     } else if (message.buttonId === "show_courses") {
       intent = "interactive_show_courses";
     } else if (message.buttonId === "talk_human") {

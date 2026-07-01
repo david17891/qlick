@@ -475,7 +475,7 @@ test("processInboundMessage: provee email → provide_email + texto confirmacion
 
 // Fase 7a (2026-07-01): cuando el usuario clickea un Reply Button del welcome,
 // el intent se deriva del buttonId en vez de regex sobre el texto.
-test("processInboundMessage: buttonId evt_yes_* → interactive_event_yes", async () => {
+test("processInboundMessage: buttonId evt_yes_* → interactive_event_yes (con botones)", async () => {
   disableSupabase();
   const m = mockFetch();
   try {
@@ -488,7 +488,29 @@ test("processInboundMessage: buttonId evt_yes_* → interactive_event_yes", asyn
       buttonTitle: "Sí, info IA y Marketing"
     });
     assert.equal(result.intent, "interactive_event_yes");
-    // Cae al mismo plan que register pero texto (no lista).
+    // Fase 7a.5: ahora devolvemos un button message con detalles del
+    // evento + botones "Inscribirme" y "Hablar con humano". No más texto
+    // abierto "mandame tu email".
+    assert.equal(result.responseKind, "interactive");
+  } finally {
+    m.restore();
+  }
+});
+
+test("processInboundMessage: buttonId evt_inscribir_* → interactive_event_inscribir (pide email)", async () => {
+  disableSupabase();
+  const m = mockFetch();
+  try {
+    const result = await processInboundMessage({
+      messageId: "wamid_btn_ins",
+      from: "523312345678",
+      text: "Inscribirme",
+      type: "interactive",
+      buttonId: "evt_inscribir_ia_y_marketing_b",
+      buttonTitle: "Inscribirme"
+    });
+    assert.equal(result.intent, "interactive_event_inscribir");
+    // Devuelve texto pidiendo el email.
     assert.equal(result.responseKind, "text");
   } finally {
     m.restore();
