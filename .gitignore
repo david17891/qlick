@@ -120,3 +120,21 @@ dev-*.log
 # Patron: cuando un script regenera .env.local, deja un `.bak-<timestamp>` junto.
 # Contiene secretos -> NUNCA debe commitear.
 /.env.local.bak-*
+
+# --- Variantes de .env (cualquier archivo que arranque con .env) ---
+# Cubre `.env`, `.env.local`, `.env.development`, `.env.production`, etc.
+# Excepcion explicita: `.env.example` SI va al repo (es la plantilla publica).
+/.env
+/.env.*
+!.env.example
+
+# --- Artefactos de `vercel env pull` mal parseado por PowerShell ---
+# PowerShell a veces interpreta `vercel env pull <archivo>` como crear un archivo
+# literal con el nombre del environment. Ejemplo: `vercel env pull production`
+# termino creando `/production` (contenido: VERCEL_OIDC_TOKEN) en vez de `.env.production`.
+# Patron defensivo: ignorar cualquier archivo en raiz sin extension que parezca
+# residuo de CLI, hasta que se documente de donde vienen.
+/production
+/5s
+/development
+/preview
