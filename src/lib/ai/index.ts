@@ -32,6 +32,14 @@ export {
   type ConversationWindow,
   type ConversationMessage
 } from "./conversation-window";
+export {
+  loadLeadProfile,
+  incrementMessageCount,
+  regenerateSummary,
+  formatLeadProfileBlock,
+  SUMMARY_EVERY,
+  type LeadProfile
+} from "./lead-profile";
 
 import type { AIAgentProvider, AIAgentProviderName } from "./agent-provider";
 import { mockAgentProvider } from "./mock-agent-provider";

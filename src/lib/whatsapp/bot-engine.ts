@@ -47,7 +47,11 @@ import {
   getActiveAgentProvider,
   validateAgentReply,
   loadActiveEventContext,
-  loadConversationWindow
+  loadConversationWindow,
+  loadLeadProfile,
+  incrementMessageCount,
+  regenerateSummary,
+  SUMMARY_EVERY
 } from "../ai";
 import { getAIAgentProfile } from "../crm/agent-utils";
 import {
@@ -538,6 +542,10 @@ async function buildResponsePlan(args: {
    * disponible. Si es null, el bot responde sin link al QR (evita mandar
    * una URL rota como /qr). */
   qrUrl?: string | null;
+  /** Perfil persistente del lead (memoria larga). Se inyecta en el system
+   * prompt del agente LLM para que recuerde contexto entre sesiones.
+   * Opcional: si no hay DB / no hay profile todavía, el agente opera sin él. */
+  leadProfile?: import("../ai").LeadProfile | null;
 }): Promise<OutboundPlan> {
   const { intent, lead, body, phoneNormalized } = args;
   const provider = getActiveWhatsAppProvider();
@@ -639,6 +647,8 @@ async function buildResponsePlan(args: {
         lastIncomingMessage: body,
         activeEvent,
         conversationWindow,
+        // Memoria larga persistente entre sesiones (lead_profile.summary).
+        leadProfile: args.leadProfile ?? undefined,
         // El provider usa `conversationSummary` para inyectar info extra
         // al prompt. Le pasamos el bloque manual para que el LLM lo vea.
         conversationSummary: manualContext?.promptBlock || undefined
@@ -762,6 +772,14 @@ export async function processInboundMessage(
   const { lead, created } = upsert;
   const isFirstMessage = created;
 
+  // 1.5 Cargar perfil persistente del lead (memoria larga entre sesiones).
+  // Best-effort: si falla o no hay profile todavía, seguimos sin él.
+  // Solo cargamos si el lead tiene id real (no en fallback con id=null).
+  let leadProfile: import("../ai").LeadProfile | null = null;
+  if (supabase && lead.id) {
+    leadProfile = await loadLeadProfile(supabase, lead.id);
+  }
+
   // 2. Persistir inbound.
   let inboundConvId: string | null = null;
   if (supabase) {
@@ -836,7 +854,8 @@ export async function processInboundMessage(
     body,
     isFirstMessage,
     phoneNormalized,
-    qrUrl
+    qrUrl,
+    leadProfile
   });
 
   let sendResult: { ok: boolean; externalId?: string; demo?: boolean } = {
@@ -883,6 +902,50 @@ export async function processInboundMessage(
         ? lead.summary
         : `Bot: intent=${intent}${qrUrl ? ` | qr=${qrUrl}` : ""}`
     });
+  }
+
+  // 9. Memoria larga persistente: bump counter y, si toca, regenerar summary.
+  // Best-effort: si falla, no rompe el flow. El counter se bumpea ANTES
+  // de la regeneración para que el próximo turno dispare si esta corrida falla.
+  if (supabase && lead.id) {
+    const newCount = await incrementMessageCount(supabase, lead.id);
+    if (newCount !== null && newCount >= SUMMARY_EVERY && leadProfile) {
+      // Cargar últimos mensajes para alimentar al LLM summarizer.
+      const recent = await loadConversationWindow(phoneNormalized, 8).catch(
+        () => null
+      );
+      const recentTexts =
+        recent?.messages
+          .map((m) => `${m.direction === "inbound" ? "Lead" : "Bot"}: ${m.body ?? ""}`)
+          .filter((t) => t.length > 0) ?? [];
+      if (recentTexts.length > 0) {
+        // Orquestar LLM summarization. lead-profile.ts es LIBRE de LLM
+        // (evita ciclos con src/lib/ai/index.ts). El bot-engine decide
+        // qué provider usar. Aquí usamos el mismo flujo que suggest_reply.
+        const summaryAgent = getActiveAgentProvider();
+        const summaryProfile = getAIAgentProfile();
+        try {
+          const sumResult = await summaryAgent.run("summarize_conversation", {
+            profile: summaryProfile,
+            leadName: lead.name,
+            lastIncomingMessage: recentTexts.join("\n"),
+            conversationSummary: leadProfile.summary || undefined
+          } as never);
+          if (sumResult.ok && sumResult.content?.trim()) {
+            await regenerateSummary(
+              supabase,
+              lead.id,
+              sumResult.content.trim()
+            );
+          }
+        } catch (err) {
+          errorLog("[whatsapp/bot] regenerate summary falló", {
+            leadId: lead.id,
+            error: err instanceof Error ? err.message : String(err)
+          });
+        }
+      }
+    }
   }
 
   return {

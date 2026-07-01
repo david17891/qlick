@@ -36,6 +36,8 @@ export interface AgentContext {
   activeEvent?: import("./event-context-loader").ActiveEventContext;
   /** Ventana de últimos N mensajes del lead (memoria corta del bot). */
   conversationWindow?: import("./conversation-window").ConversationWindow;
+  /** Perfil persistente del lead (memoria larga entre sesiones). */
+  leadProfile?: import("./lead-profile").LeadProfile;
 }
 
 export type AgentTask =

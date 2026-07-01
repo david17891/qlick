@@ -100,10 +100,18 @@ export function buildTaskPrompt(
     lastIncomingMessage,
     conversationSummary,
     activeEvent,
-    conversationWindow
+    conversationWindow,
+    leadProfile
   } = context;
 
   const ctxBlocks: string[] = [];
+
+  // Bloque 0: contexto persistente entre sesiones (memoria larga).
+  if (leadProfile?.summary) {
+    ctxBlocks.push(
+      `CONTEXTO PREVIO DEL LEAD (memoria persistente entre sesiones):\n${leadProfile.summary}`
+    );
+  }
 
   // Bloque 1: Identidad del lead.
   ctxBlocks.push(
