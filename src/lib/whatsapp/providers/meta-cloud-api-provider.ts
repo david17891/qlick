@@ -130,7 +130,7 @@ export const metaCloudApiProvider: WhatsAppProvider = {
 
     if (!phoneNumberId || !token) {
       // eslint-disable-next-line no-console
-      console.warn(
+      console.error(
         "[whatsapp/meta] Cloud API no configurada (faltan WHATSAPP_CLOUD_PHONE_NUMBER_ID o WHATSAPP_CLOUD_ACCESS_TOKEN). Devolviendo demo.",
       );
       return {
@@ -193,9 +193,21 @@ export const metaCloudApiProvider: WhatsAppProvider = {
           };
         }
 
-        const errMsg =
+const errMsg =
           data.error?.message ?? `HTTP ${res.status} ${res.statusText}`;
-        const isRetryable = res.status >= 500;
+          const isRetryable = res.status >= 500;
+
+        // eslint-disable-next-line no-console
+        console.error("[whatsapp/meta] Cloud API error", {
+          status: res.status,
+          errorCode: data.error?.code,
+          errorSubcode: data.error?.error_subcode,
+          errorType: data.error?.type,
+          message: errMsg,
+          url,
+          to: request.to,
+          templateName: request.templateName
+        });
 
         lastResult = {
           ok: false,

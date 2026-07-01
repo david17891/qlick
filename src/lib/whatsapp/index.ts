@@ -46,11 +46,25 @@ export function getActiveWhatsAppProvider(): WhatsAppProvider {
     | WhatsAppProviderName
     | undefined;
   if (fromEnv && REGISTRY[fromEnv]) {
+    // eslint-disable-next-line no-console
+    console.error("[whatsapp] getActiveWhatsAppProvider: fromEnv", { fromEnv });
     return REGISTRY[fromEnv];
   }
   const metaConfigured =
     Boolean(process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID) &&
     Boolean(process.env.WHATSAPP_CLOUD_ACCESS_TOKEN);
+  // eslint-disable-next-line no-console
+  console.error("[whatsapp] getActiveWhatsAppProvider", {
+    metaConfigured,
+    hasPhoneId: Boolean(process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID),
+    hasToken: Boolean(process.env.WHATSAPP_CLOUD_ACCESS_TOKEN),
+    phoneIdValue: process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID
+      ? `set (${process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID.slice(0, 6)}...)`
+      : "EMPTY",
+    tokenValue: process.env.WHATSAPP_CLOUD_ACCESS_TOKEN
+      ? `set (${process.env.WHATSAPP_CLOUD_ACCESS_TOKEN.length} chars)`
+      : "EMPTY"
+  });
   if (metaConfigured) {
     return metaCloudApiProvider;
   }

@@ -128,8 +128,18 @@ export async function POST(req: NextRequest) {
   for (const msg of parsed.messages) {
     const stored = await persistInboundIfPossible(supabase, msg);
     if (stored) queued.push(stored);
-    // Fire-and-forget: NO esperar a que termine. Meta reintenta si >5s.
-    void processInboundSafely(msg);
+    // Workaround: NO usar `void` (Vercel mata el container post-response).
+    // En su lugar, esperamos a que el bot termine (con timeout).
+    // Meta reintenta si >5s, así que bloqueamos el response hasta que el bot termine.
+    const botPromise = processInboundSafely(msg);
+    const botTimeout = new Promise<void>((resolve) =>
+      setTimeout(() => {
+        // eslint-disable-next-line no-console
+        console.error("[whatsapp/webhook] bot timeout (10s) - respond anyway");
+        resolve();
+      }, 10000)
+    );
+    await Promise.race([botPromise, botTimeout]);
   }
 
   // 5. Persistir status updates (no gatillan bot).
@@ -307,8 +317,18 @@ function extractStatuses(payload: unknown): MetaStatus[] {
 async function processInboundSafely(
   msg: IncomingWhatsAppMessage
 ): Promise<void> {
+  // eslint-disable-next-line no-console
+  console.error("[whatsapp/webhook] processInboundSafely START", {
+    messageId: msg.messageId,
+    from: msg.from,
+    textPreview: (msg.text ?? "").slice(0, 50)
+  });
   try {
     await processInboundMessage(msg);
+    // eslint-disable-next-line no-console
+    console.error("[whatsapp/webhook] processInboundSafely END OK", {
+      messageId: msg.messageId
+    });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("[whatsapp/webhook] processInboundMessage lanzó excepción", {

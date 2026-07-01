@@ -43,9 +43,16 @@ import { normalizePhone } from "../crm/phone-utils";
 import { markWhatsAppStatus } from "../leads/whatsapp-status";
 import {
   getActiveAgentProvider,
-  validateAgentReply
+  validateAgentReply,
+  loadActiveEventContext,
+  loadConversationWindow
 } from "../ai";
 import { getAIAgentProfile } from "../crm/agent-utils";
+import {
+  loadManualContext,
+  applyEventOverrides,
+  type ManualContextBundle
+} from "../bot/manual-context";
 
 import type { IncomingWhatsAppMessage } from "./webhooks/types";
 import { getActiveWhatsAppProvider } from ".";
@@ -378,7 +385,11 @@ async function createLeadFromWhatsApp(
       // responde "sí" y loggeamos en lead_consent_log. Mientras tanto,
       // usamos false para no exponer datos sin base legal.
       consent_to_contact: false,
-      whatsapp_status: "no_contactado",
+      // NOTA: `whatsapp_status` y `last_contacted_at` vienen de la migración
+      // 20260628000000_whatsapp_followup.sql que puede no estar aplicada
+      // en production. NO las seteamos en el INSERT hasta confirmar que la
+      // migración corrió. El default es `no_contactado` para whatsapp_status
+      // y NULL para last_contacted_at (definidos en la migración).
       tags: ["source:whatsapp_bot"]
     } as never)
     .select("*")
@@ -442,7 +453,22 @@ async function findOrCreateLead(
       created: isFirst
     };
   }
-  const existing = await findLeadByPhone(phoneNormalized);
+  // eslint-disable-next-line no-console
+  console.error("[whatsapp/bot] findOrCreateLead: querying findLeadByPhone");
+  const findPromise = findLeadByPhone(phoneNormalized);
+  const findTimeout = new Promise<null>((resolve) =>
+    setTimeout(() => {
+      // eslint-disable-next-line no-console
+      console.error("[whatsapp/bot] findLeadByPhone TIMEOUT (5s) - forzando fallback");
+      resolve(null);
+    }, 5000)
+  );
+  const existing = await Promise.race([findPromise, findTimeout]);
+  // eslint-disable-next-line no-console
+  console.error("[whatsapp/bot] findLeadByPhone result", {
+    found: Boolean(existing),
+    timedOut: existing === null
+  });
   if (existing) return { lead: existing, created: false };
   const created = await createLeadFromWhatsApp(
     supabase,
@@ -477,41 +503,47 @@ async function buildResponsePlan(args: {
   lead: Lead;
   body: string;
   isFirstMessage: boolean;
+  /** E.164 normalizado. Se usa directamente como `to` del provider para no
+   * depender de `lead.phone` (puede venir null/undefined de DB o del fallback). */
+  phoneNormalized: string;
 }): Promise<OutboundPlan> {
-  const { intent, lead, body } = args;
+  const { intent, lead, body, phoneNormalized } = args;
   const provider = getActiveWhatsAppProvider();
   const firstName = lead.name?.split(" ")[0] || "hola";
+  // eslint-disable-next-line no-console
+  console.error("[whatsapp/bot] buildResponsePlan", {
+    intent,
+    hasLeadPhone: Boolean(lead.phone),
+    leadPhone: lead.phone ?? "(empty)",
+    phoneNormalized
+  });
 
   switch (intent) {
     case "welcome":
     case "greeting": {
+      const bodyText = `Hola ${firstName}, bienvenido/a a Qlick. ¿Quieres info de "${getActiveEvent().name}"? Responde "sí" para más detalles.`;
       return {
-        kind: "template",
-        templateName: TEMPLATES.bienvenida,
-        body: `Hola ${firstName}, bienvenido/a a Qlick. ¿Quieres info de "${getActiveEvent().name}"? Responde "sí" para más detalles.`,
+        kind: "text",
+        body: bodyText,
         send: () =>
           provider.send({
-            to: lead.phone ?? "",
-            body: firstName,
-            templateName: TEMPLATES.bienvenida,
-            templateLanguage: "es_MX"
+            to: phoneNormalized,
+            body: bodyText
           })
       };
     }
     case "register": {
       const evt = getActiveEvent();
-      const evtText =
-        `${evt.name} | ${evt.date} | ${evt.location} | ${evt.duration}`;
+      const bodyText =
+        `${evt.name} — ${evt.date}, ${evt.location}, ${evt.duration}. ` +
+        `Si querés inscribirte mandá tu email y te paso el link de pago.`;
       return {
-        kind: "template",
-        templateName: TEMPLATES.infoEvento,
-        body: evtText,
+        kind: "text",
+        body: bodyText,
         send: () =>
           provider.send({
-            to: lead.phone ?? "",
-            body: evtText,
-            templateName: TEMPLATES.infoEvento,
-            templateLanguage: "es_MX"
+            to: phoneNormalized,
+            body: bodyText
           })
       };
     }
@@ -521,7 +553,7 @@ async function buildResponsePlan(args: {
         body: "Listo, no te contacto más. Si cambias de opinión, escribinos.",
         send: () =>
           provider.send({
-            to: lead.phone ?? "",
+            to: phoneNormalized,
             body:
               "Listo, no te contacto más. Si cambias de opinión, escribinos."
           })
@@ -530,17 +562,14 @@ async function buildResponsePlan(args: {
     case "provide_email": {
       const email = body.trim();
       const url = `${appBaseUrl()}/qr`;
-      const qrLine = `Tu pase: ${url}`;
+      const bodyText = `Listo ${firstName}, registramos tu email ${email}. Tu pase: ${url}. Te esperamos el ${getActiveEvent().date} en ${getActiveEvent().location}.`;
       return {
-        kind: "template",
-        templateName: TEMPLATES.confirmacion,
-        body: `${firstName} | ${email} | ${qrLine}`,
+        kind: "text",
+        body: bodyText,
         send: () =>
           provider.send({
-            to: lead.phone ?? "",
-            body: `${firstName} | ${email} | ${qrLine}`,
-            templateName: TEMPLATES.confirmacion,
-            templateLanguage: "es_MX"
+            to: phoneNormalized,
+            body: bodyText
           })
       };
     }
@@ -550,11 +579,31 @@ async function buildResponsePlan(args: {
       // y mandamos texto libre (ventana 24h).
       const profile = getAIAgentProfile();
       const agent = getActiveAgentProvider();
+      // Cargar contexto del evento activo + ventana de conversación
+      // (memoria corta del bot) + contexto manual del operador
+      // en paralelo. Fallan independientes.
+      const [eventRaw, conversationWindow, manualContext] = await Promise.all([
+        loadActiveEventContext().catch(() => undefined),
+        loadConversationWindow(lead.phone ?? "", 8).catch(() => undefined),
+        loadManualContext("qlick-bot").catch(
+          () => null
+        )
+      ]);
+      // Aplicar overrides manuales al evento (fecha/lugar cambiados por operador).
+      const activeEvent =
+        eventRaw && manualContext
+          ? applyEventOverrides(eventRaw, manualContext)
+          : eventRaw;
       const result = await agent.run("suggest_reply", {
         profile,
         leadName: lead.name,
         courseOfInterest: lead.courseOfInterest,
-        lastIncomingMessage: body
+        lastIncomingMessage: body,
+        activeEvent,
+        conversationWindow,
+        // El provider usa `conversationSummary` para inyectar info extra
+        // al prompt. Le pasamos el bloque manual para que el LLM lo vea.
+        conversationSummary: manualContext?.promptBlock || undefined
       });
       let content = result.content?.trim();
       if (!content) {
@@ -575,7 +624,7 @@ async function buildResponsePlan(args: {
         kind: "text",
         body: content,
         send: () =>
-          provider.send({ to: lead.phone ?? "", body: content ?? "" })
+          provider.send({ to: phoneNormalized, body: content ?? "" })
       };
     }
   }
@@ -592,7 +641,17 @@ async function buildResponsePlan(args: {
 export async function processInboundMessage(
   message: IncomingWhatsAppMessage
 ): Promise<BotProcessResult> {
+  // eslint-disable-next-line no-console
+  console.error("[whatsapp/bot] processInboundMessage START", {
+    messageId: message.messageId,
+    from: message.from
+  });
+
   const phoneNormalized = normalizePhone(message.from);
+  // eslint-disable-next-line no-console
+  console.error("[whatsapp/bot] after normalizePhone", {
+    phoneNormalized
+  });
   if (!phoneNormalized) {
     return {
       ok: false,
@@ -604,21 +663,62 @@ export async function processInboundMessage(
   }
 
   const body = (message.text ?? "").trim();
-  const supabase = await getSupabase();
+  // Timeout 5s para evitar que Supabase cuelgue la ejecución del bot.
+  // Si no responde, caemos a modo demo (sin persistencia).
+  const supabasePromise = getSupabase();
+  const supabaseTimeout = new Promise<null>((resolve) =>
+    setTimeout(() => resolve(null), 5000)
+  );
+  let supabase = await Promise.race([supabasePromise, supabaseTimeout]);
+  // eslint-disable-next-line no-console
+  console.error("[whatsapp/bot] supabase result", {
+    ok: Boolean(supabase),
+    timedOut: supabase === null
+  });
 
   // 1. Buscar o crear lead.
-  const upsert = await findOrCreateLead(
+  // eslint-disable-next-line no-console
+  console.error("[whatsapp/bot] before findOrCreateLead", {
+    hasSupabase: Boolean(supabase)
+  });
+  let upsert = await findOrCreateLead(
     supabase,
     phoneNormalized,
     message.contactName
   );
+  // eslint-disable-next-line no-console
+  console.error("[whatsapp/bot] after findOrCreateLead", {
+    ok: Boolean(upsert)
+  });
   if (!upsert) {
-    return {
-      ok: false,
-      intent: "question",
-      leadId: null,
-      responseKind: "none",
-      note: "No se pudo resolver el lead (findOrCreateLead null)."
+    // Fallback: Supabase no responde o falla. Usamos un lead con id=null
+    // (NO string sintético) para que las queries a Supabase con FK a leads
+    // (lead_whatsapp_conversations.lead_id) no fallen con 22P02.
+    // El bot sigue y manda respuesta. El lead se reconcilia cuando Supabase
+    // vuelva a responder (re-findOrCreate con phone_normalized nuevo).
+    //
+    // Forzamos supabase = null para que el resto del flujo (persistConversation,
+    // markWhatsAppStatus, touchLead) NO intente escribir en Supabase con id
+    // inválido. El bot solo manda respuesta.
+    // eslint-disable-next-line no-console
+    console.error("[whatsapp/bot] FALLBACK: lead con id=null (Supabase caída)");
+    supabase = null;
+    upsert = {
+      lead: {
+        // Cast a `Lead` con `id: null` es válido solo en fallback; el resto
+        // del flujo verifica `supabase` antes de usar `lead.id`.
+        id: null as unknown as string,
+        name: message.contactName?.trim() || "Por confirmar",
+        email: `${phoneNormalized.slice(-6)}@placeholder.local`,
+        phone: phoneNormalized,
+        status: "new",
+        source: "whatsapp",
+        intent: "course_information",
+        consentToContact: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      },
+      created: true
     };
   }
   const { lead, created } = upsert;
@@ -696,7 +796,8 @@ export async function processInboundMessage(
     intent,
     lead,
     body,
-    isFirstMessage
+    isFirstMessage,
+    phoneNormalized
   });
 
   let sendResult: { ok: boolean; externalId?: string; demo?: boolean } = {
