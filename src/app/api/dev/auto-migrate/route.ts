@@ -12,6 +12,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { Client } from "pg";
+import { errorLog } from "@/lib/log";
 
 const MIGRATION_BOT_CONTEXT = `-- bot_context_overrides table
 create table if not exists public.bot_context_overrides (
@@ -169,6 +170,10 @@ export async function POST(_req: NextRequest) {
           duration_ms: Date.now() - start
         });
       } catch (err) {
+        errorLog("[auto-migrate] migration failed", {
+          label: mig.label,
+          error: err instanceof Error ? err.message : String(err)
+        });
         results.push({
           label: mig.label,
           ok: false,
@@ -183,6 +188,9 @@ export async function POST(_req: NextRequest) {
     const allOk = results.every((r) => r.ok);
     return NextResponse.json({ ok: allOk, ref, results });
   } catch (err) {
+    errorLog("[auto-migrate] connection/setup failed", {
+      error: err instanceof Error ? err.message : String(err)
+    });
     return NextResponse.json(
       {
         ok: false,
