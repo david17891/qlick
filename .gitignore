@@ -19,7 +19,7 @@
 *.pem
 Thumbs.db
 
-# Mavis (mavis) runtime state ‚Äî planes, scratchpads, hooks. Local al agente,
+# Mavis (mavis) runtime state G«ˆ planes, scratchpads, hooks. Local al agente,
 # nunca debe entrar al repo.
 .mavis/
 
@@ -62,45 +62,45 @@ next-env.d.ts
 # interpretadas (ej. `2>nul`). Lo ignoramos para que nunca entre al repo.
 /nul
 
-# artefactos ef√≠meros del MCP de Playwright (`mavis mcp call playwright ...`).
-# Cada sesi√≥n del MCP regenera configs y screenshots intermedios aqu√≠. No son
-# parte del producto ‚Äî son ruido local del agente.
+# artefactos ef+°meros del MCP de Playwright (`mavis mcp call playwright ...`).
+# Cada sesi+¶n del MCP regenera configs y screenshots intermedios aqu+°. No son
+# parte del producto G«ˆ son ruido local del agente.
 .playwright-mcp/
 
 # scripts de debug/auth de admin (no son parte del producto, son herramientas
 # locales de desarrollo: kill-dev.ps1 mata listeners 3000/3001;
 # generate-magic-link.mjs genera magic links via Admin API para debug PKCE).
-# Si los necesitas en otro equipo, regenera desde el handoff hist√≥rico:
+# Si los necesitas en otro equipo, regenera desde el handoff hist+¶rico:
 # docs/HANDOFF_v0.5.0_ADMIN_AUTH_LEADS.md
 /scripts/generate-magic-link.mjs
 /scripts/kill-dev.ps1
 
-# body temporal de PR (se borra despu√©s de crear el PR con `gh pr create`)
+# body temporal de PR (se borra despu+¨s de crear el PR con `gh pr create`)
 /PR_BODY.md
 
-# Logs ef√≠meros del dev server local (rotan entre sesiones del agente).
-# Patr√≥n cubre tanto los nombres viejos (`dev-server.log`,
+# Logs ef+°meros del dev server local (rotan entre sesiones del agente).
+# Patr+¶n cubre tanto los nombres viejos (`dev-server.log`,
 # `dev-server.err.log`) como los nuevos (`dev-out.log`, `dev-err.log`).
 dev-*.log
 
 # ============================================================================
-# Pol√≠tica de datos ‚Äî NUNCA commitear datos personales / PII
+# Pol+°tica de datos G«ˆ NUNCA commitear datos personales / PII
 # ============================================================================
 # Los Excels de eventos/conferencias/clientes y cualquier archivo con datos
-# personales (nombres, tel√©fonos, emails reales) NUNCA deben entrar al repo.
+# personales (nombres, tel+¨fonos, emails reales) NUNCA deben entrar al repo.
 #
 # Patrones cubiertos:
-#  - /private-data/  ‚Üí carpeta de uso local del socio/equipo, fuera del repo
-#  - /datos-privados/ ‚Üí equivalente en espa√±ol
-#  - lista_*.xlsx, asistencia_*.xlsx, clientes_*.xlsx, encuesta_*.xlsx ‚Üí Excels t√≠picos
-#  - *.csv con datos de leads/eventos ‚Üí si los hay, deben ir a private-data/
+#  - /private-data/  GÂ∆ carpeta de uso local del socio/equipo, fuera del repo
+#  - /datos-privados/ GÂ∆ equivalente en espa+¶ol
+#  - lista_*.xlsx, asistencia_*.xlsx, clientes_*.xlsx, encuesta_*.xlsx GÂ∆ Excels t+°picos
+#  - *.csv con datos de leads/eventos GÂ∆ si los hay, deben ir a private-data/
 #
-# Los datos reales S√ç se usan para operaci√≥n local (Supabase, admin privado,
+# Los datos reales S+Ï se usan para operaci+¶n local (Supabase, admin privado,
 # demo privada del socio). NO se usan en: tests, fixtures, screenshots
-# p√∫blicas, logs, ni commits. Para tests usar siempre datos sint√©ticos
-# (nombres falsos, tel√©fonos +52XXXXXXXXXX, emails @example.com).
+# p+¶blicas, logs, ni commits. Para tests usar siempre datos sint+¨ticos
+# (nombres falsos, tel+¨fonos +52XXXXXXXXXX, emails @example.com).
 #
-# Ver docs/ROADMAP.md ‚Üí "Pol√≠tica de datos" para el detalle completo.
+# Ver docs/ROADMAP.md GÂ∆ "Pol+°tica de datos" para el detalle completo.
 /private-data/
 /datos-privados/
 /lista_*.xlsx
@@ -113,7 +113,7 @@ dev-*.log
 # --- Artefactos de presentaciones a socios (no van al repo) ---
 /junta-socios-*
 # --- Scripts temporales generados por sesiones Mavis (cookies, evals, etc.) ---
-# Patr√≥n: archivos en scripts/ que arrancan con tmp- (cookies, login JSON, etc.).
+# Patr+¶n: archivos en scripts/ que arrancan con tmp- (cookies, login JSON, etc.).
 /scripts/tmp-*.json
 
 # --- Backups de .env.local creados durante cleanup de encoding (Mojibake fix) ---
