@@ -53,7 +53,7 @@ import {
   regenerateSummary,
   SUMMARY_EVERY
 } from "../ai";
-import { sendHumanHandoffEmail } from "./human-handoff";
+import { sendHumanHandoff } from "./human-handoff";
 import { getAIAgentProfile } from "../crm/agent-utils";
 import {
   loadManualContext,
@@ -734,9 +734,9 @@ async function buildResponsePlan(args: {
       };
     }
     case "interactive_talk_human": {
-      // Handoff a humano (Fase 7a.3). Mandamos email a David con el
-      // contexto del lead + link wa.me. Best-effort: si falla el email,
-      // igual respondemos al lead (no bloqueamos el flow).
+      // Handoff a humano (Fase 7a.3). Persistimos a Supabase y mandamos
+      // email a David si está configurado. Best-effort: si falla, igual
+      // respondemos al lead (no bloqueamos el flow).
       const recentConv = await loadConversationWindow(phoneNormalized, 8).catch(
         () => null
       );
@@ -746,7 +746,8 @@ async function buildResponsePlan(args: {
           body: m.body ?? "",
           timestamp: m.timestamp
         })) ?? [];
-      await sendHumanHandoffEmail({
+      await sendHumanHandoff({
+        leadId: lead.id,
         leadName: firstName || "Lead",
         leadPhone: phoneNormalized,
         leadEmail: lead.email ?? undefined,
@@ -755,7 +756,7 @@ async function buildResponsePlan(args: {
         // No propagamos: el lead ya fue notificado por WhatsApp.
         // eslint-disable-next-line no-console
         console.warn(
-          "[whatsapp/bot] human handoff email failed",
+          "[whatsapp/bot] human handoff failed",
           err instanceof Error ? err.message : String(err)
         );
       });

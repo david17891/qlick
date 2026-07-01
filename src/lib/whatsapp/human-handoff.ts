@@ -1,109 +1,117 @@
 /**
- * Handoff a humano vía email (Fase 7a.3).
+ * Handoff a humano via Supabase (Fase 7a.3).
  *
- * Cuando un lead clickea el botón "Hablar con humano" en el welcome, mandamos
- * email a David con: nombre, teléfono, último mensaje, link wa.me para abrir
- * el chat directamente desde WhatsApp Web / app móvil. Así David puede
- * responder en segundos sin tener que abrir la DB.
+ * Cuando un lead clickea "Hablar con humano" en el welcome del bot,
+ * persistimos un row en `handoff_requests` con: nombre, teléfono, email,
+ * contexto (últimos 5 mensajes). David lo ve en el dashboard o via SQL.
  *
- * Best-effort: si falla el email, el bot ya respondió al lead con "Te paso
- * con un humano". El email es solo la notificación, no bloquea el flow.
+ * Best-effort: si falla el INSERT, el bot ya respondió al lead. El handoff
+ * es solo la notificación, no bloquea el flow.
  *
  * Server-only.
  *
  * @server
  */
 
+import { createSupabaseAdminClient } from "../supabase/admin";
 import { sendEmail } from "../email/resend-client";
 
 export interface HumanHandoffArgs {
+  leadId?: string | null;
   leadName: string;
   leadPhone: string; // E.164 (e.g. +5216532935492)
   leadEmail?: string;
   lastMessages: Array<{ direction: "inbound" | "outbound"; body: string; timestamp?: string }>;
-  /** Email destino (David). Default: `david17891@gmail.com`. */
-  to?: string;
+}
+
+interface HandoffInsertResult {
+  ok: boolean;
+  id?: string;
+  error?: string;
 }
 
 /**
- * Envía el email de handoff. Devuelve `true` si el email se envió (o se
- * loggeó en dev), `false` si falló. Nunca lanza.
+ * Persiste el handoff a Supabase. Best-effort: si falla, no lanza.
  */
-export async function sendHumanHandoffEmail(args: HumanHandoffArgs): Promise<boolean> {
-  const recipient = args.to ?? "david17891@gmail.com";
-  const phoneClean = args.leadPhone.replace(/^\+/, "");
-  const waMeLink = `https://wa.me/${phoneClean}`;
-  const subject = `[Qlick Bot] ${args.leadName} quiere hablar contigo`;
+async function persistHandoffToDb(args: HumanHandoffArgs): Promise<HandoffInsertResult> {
+  try {
+    const supabase = createSupabaseAdminClient();
+    // Solo guardamos los últimos 5 mensajes para no inflar la fila.
+    const lastMessages = args.lastMessages.slice(-5);
+    const { data, error } = await supabase
+      .from("handoff_requests" as never)
+      .insert({
+        lead_id: args.leadId ?? null,
+        lead_name: args.leadName,
+        lead_phone: args.leadPhone,
+        lead_email: args.leadEmail ?? null,
+        last_messages: lastMessages,
+        status: "pending"
+      } as never)
+      .select("id")
+      .single();
+    if (error) {
+      return {
+        ok: false,
+        error: (error as { message?: string }).message ?? "unknown"
+      };
+    }
+    return { ok: true, id: (data as { id?: string } | null)?.id };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : String(err)
+    };
+  }
+}
 
-  const messagesHtml = args.lastMessages
-    .slice(-5)
-    .map((m) => {
-      const dir = m.direction === "inbound" ? "👤 Lead" : "🤖 Bot";
-      const time = m.timestamp
-        ? new Date(m.timestamp).toLocaleString("es-MX", {
-            hour: "2-digit",
-            minute: "2-digit",
-            day: "2-digit",
-            month: "short"
-          })
-        : "";
-      return `<div style="margin:6px 0;padding:8px 12px;background:${m.direction === "inbound" ? "#e3f2fd" : "#f5f5f5"};border-radius:8px">
-        <div style="font-size:11px;color:#666;margin-bottom:2px">${dir} · ${time}</div>
-        <div>${escapeHtml(m.body)}</div>
-      </div>`;
-    })
-    .join("");
+/**
+ * Email opcional: si está configurado Resend, manda el handoff también
+ * por email. Si falla, no es bloqueante.
+ */
+async function sendHandoffEmailIfPossible(args: HumanHandoffArgs): Promise<boolean> {
+  // Skip si no hay API key (evitamos ruido en dev)
+  if (!process.env.RESEND_API_KEY) return false;
+  try {
+    const phoneClean = args.leadPhone.replace(/^\+/, "");
+    const waMeLink = `https://wa.me/${phoneClean}`;
+    const subject = `[Qlick Bot] ${args.leadName} quiere hablar contigo`;
+    const messagesHtml = args.lastMessages
+      .slice(-5)
+      .map((m) => {
+        const dir = m.direction === "inbound" ? "👤 Lead" : "🤖 Bot";
+        return `<div style="margin:6px 0;padding:8px 12px;background:${m.direction === "inbound" ? "#e3f2fd" : "#f5f5f5"};border-radius:8px"><div style="font-size:11px;color:#666;margin-bottom:2px">${dir}</div><div>${escapeHtml(m.body)}</div></div>`;
+      })
+      .join("");
+    const html = `<div style="font-family:sans-serif;max-width:600px"><h2>📞 ${escapeHtml(args.leadName)} quiere hablar contigo</h2><p>Tel: <a href="${waMeLink}">${escapeHtml(args.leadPhone)}</a></p>${args.leadEmail ? `<p>Email: <a href="mailto:${args.leadEmail}">${escapeHtml(args.leadEmail)}</a></p>` : ""}<h3>Última conversación</h3>${messagesHtml || "<em>Sin mensajes</em>"}<p><a href="${waMeLink}" style="display:inline-block;background:#25D366;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold">Abrir chat en WhatsApp</a></p></div>`;
+    const result = await sendEmail({
+      to: process.env.ADMIN_NOTIFICATION_EMAILS?.split(",")[0]?.trim() ?? "david17891@gmail.com",
+      subject,
+      html
+    });
+    return result.ok;
+  } catch {
+    return false;
+  }
+}
 
-  const html = `
-    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:600px;margin:0 auto">
-      <h2 style="color:#1a1a1a">📞 ${escapeHtml(args.leadName)} quiere hablar contigo</h2>
-      <p style="color:#444">El lead clickeó <strong>"Hablar con humano"</strong> en el bot. Acá tenés el contexto:</p>
-
-      <table style="margin:20px 0;width:100%;border-collapse:collapse">
-        <tr>
-          <td style="padding:8px;background:#f9f9f9;width:120px"><strong>Nombre</strong></td>
-          <td style="padding:8px;background:#f9f9f9">${escapeHtml(args.leadName)}</td>
-        </tr>
-        <tr>
-          <td style="padding:8px;width:120px"><strong>Teléfono</strong></td>
-          <td style="padding:8px"><a href="${waMeLink}">${escapeHtml(args.leadPhone)}</a></td>
-        </tr>
-        ${
-          args.leadEmail
-            ? `<tr>
-                <td style="padding:8px;background:#f9f9f9;width:120px"><strong>Email</strong></td>
-                <td style="padding:8px;background:#f9f9f9"><a href="mailto:${args.leadEmail}">${escapeHtml(args.leadEmail)}</a></td>
-              </tr>`
-            : ""
-        }
-      </table>
-
-      <h3>Última conversación</h3>
-      <div style="margin:10px 0">${messagesHtml || "<em>Sin mensajes</em>"}</div>
-
-      <p style="margin-top:30px">
-        <a href="${waMeLink}"
-           style="display:inline-block;background:#25D366;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold">
-          Abrir chat en WhatsApp
-        </a>
-      </p>
-      <p style="font-size:12px;color:#888;margin-top:8px">
-        Si el botón no abre, copiá este link: ${waMeLink}
-      </p>
-
-      <hr style="margin-top:30px;border:none;border-top:1px solid #eee">
-      <p style="font-size:11px;color:#999">
-        Email automático del bot de Qlick (Fase 7a.3). El lead está esperando tu respuesta.
-      </p>
-    </div>
-  `;
-
-  const result = await sendEmail({
-    to: recipient,
-    subject,
-    html
-  });
-  return result.ok;
+/**
+ * Punto de entrada principal. Persiste a DB y, si está configurado, manda
+ * email también. Nunca lanza. Devuelve `true` si al menos uno de los dos
+ * se procesó OK.
+ */
+export async function sendHumanHandoff(args: HumanHandoffArgs): Promise<boolean> {
+  const dbResult = await persistHandoffToDb(args);
+  const emailResult = await sendHandoffEmailIfPossible(args);
+  // Log para debugging en prod
+  if (!dbResult.ok) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[human-handoff] persist failed",
+      dbResult.error
+    );
+  }
+  return dbResult.ok || emailResult;
 }
 
 function escapeHtml(s: string): string {
