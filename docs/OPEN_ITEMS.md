@@ -103,12 +103,86 @@ header, audit log, Tooltip). Inventario: 23 issues.
 
 - **Sospecha:** la migración `20260628000000_whatsapp_followup.sql` puede NO estar aplicada en producción.
 - **Síntoma:** `createLeadFromWhatsApp` falla con PGRST204 cuando incluye `whatsapp_status` (la columna no existe).
-- **Estado actual:** Defensive code (omitimos `whatsapp_status` del INSERT).
-- **Severidad:** 🟠 Alto. Si la migración falta, `lead_whatsapp_log` tampoco existe y `markWhatsAppStatus` falla.
-- **Fix sugerido:**
-  1. Verificar en Supabase dashboard: `\d leads` (psql) o Table Editor → leads → columnas
-  2. Si falta `whatsapp_status` y/o `last_contacted_at`, aplicar `20260628000000_whatsapp_followup.sql`
-  3. Una vez aplicada, restaurar `whatsapp_status: "no_contactado"` en `createLeadFromWhatsApp`
+- **Estado actual:** ✅ **RESUELTO 2026-07-01.** Ambas columnas (`whatsapp_status` + `last_contacted_at`) aplicadas via SQL manual desde Supabase dashboard. Restaurado `whatsapp_status: "no_contactado"` en INSERT de `createLeadFromWhatsApp`.
+- **Verificación:** endpoint `/api/dev/check-schema` confirma que las 3 columnas de `leads` existen. `lead_whatsapp_log` y `lead_whatsapp_conversations` también están aplicadas.
+
+#### 🔴 C1. Webhook sin validación de firma (CRÍTICO seguridad)
+
+- **Síntoma:** `WHATSAPP_WEBHOOK_SECRET` removido de Vercel. Handler salta validación HMAC. Cualquiera con la URL puede POST y:
+  - Consumir tokens DeepSeek ($$$)
+  - Crear leads basura
+  - Spamear a terceros vía bot
+- **Estado:** Pendiente de David. Auditor externo lo marcó como CRÍTICO en primera pasada (2026-07-01).
+- **Severidad:** 🔴 Crítico. No prod-safe en estado actual.
+- **Fix (5 pasos):**
+  1. Generar secret de 32+ chars hex en PowerShell: `(New-Object Random).NextBytes($bytes)` × 32
+  2. Guardar en `.env.local` Y password manager
+  3. Subir a Vercel: `vercel env add WHATSAPP_WEBHOOK_SECRET production --value $env:WHATSAPP_WEBHOOK_SECRET --force --yes --cwd "C:\Users\User\Documents\Click"`
+  4. Sincronizar el MISMO valor como `hub.verify_token` en Meta for Developers (whatsapp-business/wa-settings del app Qlick_wb)
+  5. Redeploy
+
+#### 🟠 M1. OPT_OUT_RE falso positivo (bug peligroso)
+
+- **Síntoma:** `/^(no|cancelar|baja|stop|unsubscribe)/i` matcheaba "no" suelto → "No tengo dinero ahora" se clasificaba como opt_out → bot descartaba lead del CRM.
+- **Estado:** ✅ **RESUELTO 2026-07-01** (commit `e642602`). Regex endurecido para requerir contexto negativo explícito (`no gracias`, `no me interesa`, `cancelar`, `baja`, `stop`, etc.).
+
+#### 🟠 M2. TEMPLATES dead code
+
+- **Síntoma:** `const TEMPLATES` ya no se referenciaba desde el switch (migrado a texto libre en commit `1cb8e9d`).
+- **Estado:** ✅ **RESUELTO 2026-07-01** (commit `e642602`). Comentario explicativo de dónde restaurar cuando se creen templates en Meta.
+
+#### 🟠 A3. Promise.race con timeout 10s
+
+- **Síntoma:** `await Promise.race([botPromise, botTimeout])` bloquea response de Meta hasta 10s. Si bot tarda >5s, Meta reintenta → doble procesamiento.
+- **Estado:** ✅ **RESUELTO 2026-07-01** (commit `e642602`). Restaurado `void processInboundSafely(msg)`. Auditor sugirió `waitUntil` pero SOLO está en Next.js 15+; repo usa Next 14.2.35.
+- **Trade-off conocido:** Vercel puede matar container post-response. Idempotencia por UNIQUE `whatsapp_message_id` previene duplicados.
+
+#### 🟠 A2. createLeadFromWhatsApp no maneja 23505
+
+- **Síntoma:** Race Meta-retry (>5s sin 200) creaba duplicado silencioso, fallback a `id=null`, respuesta sin persistir.
+- **Estado:** ✅ **RESUELTO 2026-07-01** (commit `e642602`). Ahora si `error.code === '23505'`, busca lead existente por phone y lo retorna.
+
+#### 🟠 A1. 16+ console.error de debug ensuciando logs
+
+- **Estado:** ✅ **PARCIALMENTE RESUELTO 2026-07-01** (commit `4faae1c`). Helpers `debugLog` (gate `NODE_ENV !== "production"`) y `errorLog` (siempre) implementados en `bot-engine.ts`. Debug puros migrados. Errores reales se quedan.
+- **Pendiente:** considerar logger estructurado (pino/winston) — ver B2.
+
+#### 🟡 M3. loadConversationWindow hace 2 queries
+
+- **Estado:** ✅ **RESUELTO 2026-07-01** (commit `4faae1c`). 1 sola query con relación embebida PostgREST (`leads!lead_id(phone_normalized)`) + filtro OR que cubre pre-lead y post-lead.
+
+#### 🟡 B3. firstName fallback "hola" → "Hola hola"
+
+- **Estado:** ✅ **RESUELTO 2026-07-01** (commit `4faae1c`). Fallback a `""` (string vacío).
+
+#### 🟡 M1. Regenerar typegen Supabase (quitar 12 casts `as never`)
+
+- **Síntoma:** Typegen desincronizado. Tablas `lead_whatsapp_conversations`, `lead_consent_log`, `event_qr_tokens` no están en `src/types/supabase.ts`.
+- **Estado:** Pendiente. Requiere supabase CLI + login (no automático).
+- **Severidad:** 🟡 Medio. No bloquea funcionalidad pero oculta bugs.
+- **Fix:**
+  1. `npx supabase login`
+  2. `npx supabase gen types typescript --project-id ugpejblymtbwtsoiykyj > src/types/supabase.ts`
+  3. Reemplazar `as never` con tipos correctos
+  4. Para el cast de línea 710 (`id: null as unknown as string` en fallback): tipar `lead.id` como `string | null` solo en el camino de fallback, o crear tipo `PartialLead` separado.
+
+#### 🟢 Pendientes Fase 7+
+
+- B1: persistConversation silencia errores no-23505 (mejor devolver enum)
+- B2: Logger no estructurado → pino/winston con `LOG_LEVEL` configurable
+- B4: Doble INSERT en persistConversation no es atómico (UPDATE por wamid sería mejor)
+
+#### 🟡 7. Re-sincronizar `WHATSAPP_WEBHOOK_SECRET` (validación firma)
+
+- **Bloquea:** webhook abierto a spoofing (cualquiera puede mandar POSTs falsificados).
+- **Estado:** Secret removido de Vercel (handler salta validación, log warning).
+- **Severidad:** 🟡 Medio. No prod-safe en estado actual.
+
+#### 🟡 8. Borrar app fantasma `2202427980234937` ("WA DevX Webhook Events 1P App")
+
+- **Bloquea:** Meta puede rutear mensajes a la app fantasma en lugar de Qlick_wb (sigue subscripta).
+- **Estado:** DELETE específico vía API devuelve `success: true` pero la app reaparece (es "1P" first-party de Meta).
+- **Severidad:** 🟡 Bajo. Meta prioriza Qlick_wb por ahora.
 
 #### 🟡 7. Re-sincronizar `WHATSAPP_WEBHOOK_SECRET` (validación firma)
 

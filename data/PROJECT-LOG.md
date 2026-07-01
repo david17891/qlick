@@ -625,3 +625,79 @@ Archivos modificados en esta sesión, **sin commitear**:
 6. `src/app/api/whatsapp/webhook/route.ts` — Promise.race con timeout 10s (reemplaza `void`), console.error en processInboundSafely
 
 **Total: 5 archivos modificados, ~80 líneas de cambio neto.**
+
+---
+
+## 2026-07-01 ~03:20 · Aplicación de findings del auditor externo (4 críticos + 3 menores)
+
+### Sesión continuación — David durmió, agente (Mavis root mvs_9831e64ee9d4477d8632f5b78d4bf951) continúa solo.
+
+#### Pregunta
+
+El auditor externo (sesión Mavis separada `mvs_32924e74454541b494a071ca30955d64`) terminó primera pasada con 17 findings (1 crítico, 7 altos, 5 medios, 4 bajos). David aprobó plan priorizado: M5 (peligroso) → C1 (crítico seguridad) → A3 (async correcto) → A2 → A1 → M2 → M1.
+
+#### Decisiones tomadas (aplicadas mientras David duerme)
+
+1. **M5 — Endurecer OPT_OUT_RE regex** (commit `e642602`):
+   - Antes: `/^(no|cancelar|baja|stop|unsubscribe)/i` matcheaba "no" suelto → "No tengo dinero ahora" se clasificaba como opt_out → bot descartaba lead.
+   - Ahora: regex que requiere contexto negativo explícito (no gracias, no me interesa, cancelar, baja, stop, etc.).
+   - **Bug peligroso resuelto.**
+
+2. **M2 — Eliminar TEMPLATES dead code** (commit `e642602`):
+   - `const TEMPLATES` ya no se referenciaba desde ningún `case` (welcome/greeting/etc migraron a texto libre en commit `1cb8e9d`).
+   - Comentario explicativo de dónde restaurar cuando se creen templates en Meta (Fase 7).
+
+3. **A3 — Restaurar `void processInboundSafely`** (commit `e642602`):
+   - Auditor sugirió `waitUntil(promise)` (disponible en Next.js 15+) pero el repo usa Next 14.2.35 que NO lo tiene como export top-level.
+   - Restaurado `void` original con comentario explicando el trade-off (Vercel mata container si tarda más que maxDuration, idempotencia por UNIQUE whatsapp_message_id previene duplicados).
+
+4. **A2 — Manejar 23505 en createLeadFromWhatsApp** (commit `e642602`):
+   - Antes: race Meta-retry (>5s sin 200) → INSERT 23505 → fallback a id=null → respuesta sin persistir.
+   - Ahora: si error.code === '23505', buscar lead existente por phone y retornarlo (mismo patrón que leads-server.ts:579-609).
+
+5. **A1 — console.error restantes** (commit `4faae1c`):
+   - Helpers `debugLog` (solo en dev) y `errorLog` (siempre) implementados en `bot-engine.ts`.
+   - Debug puros (`findOrCreateLead: querying`, `after normalizePhone`, `buildResponsePlan`, etc.) ahora pasan por `debugLog` con gate `NODE_ENV !== "production"`.
+   - Errores reales (`persistConversation falló`, `send() lanzó excepción`, `Cloud API error`) se quedan como `errorLog`.
+
+6. **M3 — JOIN en loadConversationWindow** (commit `4faae1c`):
+   - Antes: 2 queries (lead_id lookup + messages lookup). 2 round-trips a Supabase por mensaje.
+   - Ahora: 1 query con relación embebida PostgREST (`leads!lead_id(phone_normalized)`) + filtro OR que cubre pre-lead y post-lead.
+
+7. **B3 — Fix firstName fallback** (commit `4faae1c`):
+   - Antes: `lead.name?.split(" ")[0] || "hola"` → "Hola hola" cuando lead.name era undefined.
+   - Ahora: `""` (string vacío) → mejor que "Hola hola".
+
+#### Razón
+
+- **M5 prioritario por bug peligroso**: descartaba leads reales. Cualquier persona que respondía "no" a una pregunta de seguimiento quedaba fuera del pipeline.
+- **A3 no se pudo implementar como auditor sugirió**: `waitUntil` solo en Next.js 15+. Adapté con comentario claro sobre el trade-off.
+- **A2 + M3 son performance + correctness**: race conditions que causaban bugs sutiles. JOIN es 1 round-trip menos por mensaje.
+- **Persisto solo lo que SÍ pude resolver**: C1 (webhook secret) y M1 (typegen regen) requieren acción humana de David o setup adicional que no tenía. Quedan en reporte.
+
+#### Impacto
+
+✅ **Bot WhatsApp más robusto** — 7 fixes del auditor aplicados y pusheados.
+
+| Commit | Findings aplicados |
+|---|---|
+| `e15d164` (auditor) | A4 PII removed, A5 /qr URL fix |
+| `e642602` (yo) | M5 OPT_OUT_RE, M2 TEMPLATES, A3 void, A2 23505 |
+| `4faae1c` (yo) | A1 console.error, M3 JOIN, B3 firstName |
+
+**Total commits hoy:** 5 (incluyendo los 2 de David míos: `1cb8e9d` fix + `e152740` docs)
+
+#### Pendientes para próxima sesión
+
+1. 🔴 **C1 (David)**: `vercel env add WHATSAPP_WEBHOOK_SECRET production` + sincronizar en Meta. Crítico seguridad (webhook abierto a spoofing).
+2. 🟠 **Segunda pasada del auditor** sobre `4faae1c` (en proceso, esperando resultado).
+3. 🟡 **M1 (David o sesión con supabase CLI)**: Regenerar typegen para quitar 12 casts `as never`. Requiere supabase CLI + login.
+4. 🟢 **B1, B2, B4**: nits (logger estructurado, persistConversation enum). Pendientes para Fase 7.
+
+#### Triggers / Lecciones
+
+- **`waitUntil` no es Next.js 14 friendly** — patrón actual es `void` + idempotencia por UNIQUE constraint.
+- **False positives en regex pueden ser fatales** — un regex "más simple" en `detectIntent` puede descartar leads reales. M5 fue un bug latente que llevaba descartando personas desde el inicio del bot.
+- **Defensive code para migraciones dudosas funciona bien** — omitir `whatsapp_status` del INSERT permitió al bot funcionar end-to-end antes de aplicar la migration. Hoy aplicamos la migration completa y restauramos el campo explícito en el INSERT.
+- **Auditor externo es invaluable** — ojos frescos encontraron M5 (peligroso), M3 (perf), A4 PII que yo no había visto.
+- **Cross-session communication via mavis**: la separación de Mavis root + worker (auditor) funcionó bien después del setup inicial. El auditor dejó el reporte en archivo por la regla de "no inline >8KB blobs".

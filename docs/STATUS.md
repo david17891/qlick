@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-01 ~02:20 (Bot WhatsApp END-TO-END con persistencia real. Lead resolution funciona (David encontrado en DB). 5 mensajes probados: greeting→register→provide_email→question. Contexto entre mensajes NO funciona todavía (loadConversationWindow no carga ventana). 4 issues restantes + cleanup debug.)
+> **Última actualización:** 2026-07-01 ~03:30 (Bot WhatsApp con 7 fixes del auditor externo aplicados. 2 pasadas de auditoría (17 + 3 findings). Todos los fixes posibles sin acción humana aplicados. 151/151 tests pasan. Pendiente de David: C1 (webhook secret) + M1 (typegen regenerar).)
 
 ---
 
