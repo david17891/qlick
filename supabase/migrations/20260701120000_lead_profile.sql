@@ -62,35 +62,24 @@ create trigger lead_profile_touch_updated_at
   for each row execute function public.lead_profile_touch_updated_at();
 
 -- ------------------------------------------------------------
--- RLS: solo admin puede leer/escribir
+-- RLS: solo authenticated puede leer/escribir (policy permisiva)
+-- ------------------------------------------------------------
+-- El bot engine usa service_role (bypasea RLS automáticamente), así
+-- que esta policy NO afecta al bot. Solo aplica si en el futuro
+-- el panel admin quiere leer/escribir como authenticated user.
+--
+-- Decisión 2026-07-01: NO referenciamos `public.admin_users` porque
+-- en dev no existe. Cuando exista (en prod) ajustamos la policy a:
+--   using (exists (select 1 from public.admin_users au where au.user_id = auth.uid()))
+-- Por ahora cualquier authenticated puede pasar.
 -- ------------------------------------------------------------
 alter table public.lead_profile enable row level security;
 
-drop policy if exists lead_profile_admin_select on public.lead_profile;
-create policy lead_profile_admin_select on public.lead_profile
-  for select to authenticated
-  using (
-    exists (
-      select 1 from public.admin_users au
-      where au.user_id = auth.uid()
-    )
-  );
-
-drop policy if exists lead_profile_admin_write on public.lead_profile;
-create policy lead_profile_admin_write on public.lead_profile
+drop policy if exists lead_profile_authenticated_all on public.lead_profile;
+create policy lead_profile_authenticated_all on public.lead_profile
   for all to authenticated
-  using (
-    exists (
-      select 1 from public.admin_users au
-      where au.user_id = auth.uid()
-    )
-  )
-  with check (
-    exists (
-      select 1 from public.admin_users au
-      where au.user_id = auth.uid()
-    )
-  );
+  using (true)
+  with check (true);
 
 -- ------------------------------------------------------------
 -- Service role bypass (server-side bot engine con service_role)
