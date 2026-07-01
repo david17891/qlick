@@ -27,6 +27,8 @@ import { manualWaProvider } from "./providers/manual-wa-provider";
 import { metaCloudApiProvider } from "./providers/meta-cloud-api-provider";
 import { bspProvider } from "./providers/bsp-provider";
 
+import { debugLog } from "../log";
+
 const REGISTRY: Record<WhatsAppProviderName, WhatsAppProvider> = {
   manual_wa: manualWaProvider,
   meta_cloud_api: metaCloudApiProvider,
@@ -46,23 +48,17 @@ export function getActiveWhatsAppProvider(): WhatsAppProvider {
     | WhatsAppProviderName
     | undefined;
   if (fromEnv && REGISTRY[fromEnv]) {
-    if (process.env.NODE_ENV !== "production") {
-      // eslint-disable-next-line no-console
-      console.log("[whatsapp] getActiveWhatsAppProvider: fromEnv", { fromEnv });
-    }
+    debugLog("[whatsapp] getActiveWhatsAppProvider: fromEnv", { fromEnv });
     return REGISTRY[fromEnv];
   }
   const metaConfigured =
     Boolean(process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID) &&
     Boolean(process.env.WHATSAPP_CLOUD_ACCESS_TOKEN);
-  if (process.env.NODE_ENV !== "production") {
-// eslint-disable-next-line no-console
-  console.error("[whatsapp] getActiveWhatsAppProvider", {
+  debugLog("[whatsapp] getActiveWhatsAppProvider", {
     metaConfigured,
     hasPhoneId: Boolean(process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID),
     hasToken: Boolean(process.env.WHATSAPP_CLOUD_ACCESS_TOKEN)
   });
-  }
   if (metaConfigured) {
     return metaCloudApiProvider;
   }

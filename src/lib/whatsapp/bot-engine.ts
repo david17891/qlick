@@ -35,6 +35,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { debugLog, errorLog } from "../log";
+
 import type { Lead } from "@/types";
 import type { Database } from "@/types/supabase";
 
@@ -60,20 +62,6 @@ import { getActiveWhatsAppProvider } from ".";
 /* ------------------------------------------------------------------ */
 /*  Tipos                                                              */
 /* ------------------------------------------------------------------ */
-
-/** Debug logger — solo loggea en dev, no contamina logs de producción. */
-function debugLog(msg: string, data?: Record<string, unknown>): void {
-  if (process.env.NODE_ENV !== "production") {
-    // eslint-disable-next-line no-console
-    console.log(msg, data ?? "");
-  }
-}
-
-/** Error logger — siempre loggea (errores reales). */
-function errorLog(msg: string, data?: Record<string, unknown>): void {
-  // eslint-disable-next-line no-console
-  console.error(msg, data ?? "");
-}
 
 /** Intents que detecta el bot. */
 export type BotIntent =
@@ -176,17 +164,23 @@ const REGISTER_PHRASE_RE = /\b(quiero\s+inscribirme|me\s+interesa\s+(inscribirme
 /**
  * Detecta opt-out del usuario.
  *
- * PELIGRO ANTERIOR (M5 del auditor 2026-07-01): `/^(no|cancelar|baja|stop|unsubscribe)/i`
- * matcheaba "no" suelto → "No tengo dinero ahora" se clasificaba como opt_out
- * y el bot descartaba el lead del CRM. Persona interesada en info de precios
- * quedaba fuera del pipeline.
+ * Casos que SÍ son opt_out:
+ * - "no" suelto (respuesta corta a "¿quieres info?")
+ * - "no.", "no!", "no," (con puntuación final)
+ * - "no gracias" / "no, gracias"
+ * - "no me interesa" / "no quiero" / "no me interesa saber más"
+ * - "cancelar" / "baja" / "stop" / "unsubscribe" / "sacarme"
  *
- * FIX: requiere contexto negativo más explícito:
- * - "no" / "no," debe ir seguido de algo (gracias, interesa, quiero, contact, etc.)
- * - O palabras explícitas (cancelar, baja, sacar, stop, unsubscribe)
- * - Frases compuestas (no me interesa, no quiero saber más, etc.)
+ * Casos que NO son opt_out (siguen como `question` para que el bot responda):
+ * - "No tengo dinero ahora" (después de "no" hay texto significativo)
+ * - "No, hoy no puedo" (después de la coma hay contenido)
+ *
+ * FIX M5 del auditor 2026-07-01 (segunda pasada): la regex original
+ * `/^(no|cancelar|baja|stop|unsubscribe)/i` matcheaba "No tengo dinero" como
+ * opt_out → bot descartaba leads reales. La regex nueva requiere contexto
+ * negativo explícito O un final de mensaje claro.
  */
-const OPT_OUT_RE = /^(?:no,?\s+(?:gracias|interesa|quiero|quiero\s+saber|saber\s+m[aá]s|me\s+interesa|cuentes|avises?|contact(?:ar|ame|es)|molestes?)|cancelar|baja|sacarme|sacar(?:me)?|stop|unsubscribe|no\s+gracias|no\s+por\s+favor)/i;
+const OPT_OUT_RE = /^(?:cancelar|baja|sacarme|sacar(?:me)?|stop|unsubscribe)(?:[,.!?]|\s|$)|^(?:no|ni|nah)(?:[,.!?]|\s+(?:gracias|interesa|me\s+interesa|quiero|saber|m[aá]s|contact(?:ar|ame|es)|molestes?|avises?|cuentes|tengo\s+inter[eé]s)|$)/i;
 
 /** Detecta el intent del mensaje (regex determinista).
  *
@@ -267,8 +261,7 @@ async function persistConversation(
     .select("id")
     .maybeSingle();
   if (error) {
-    // eslint-disable-next-line no-console
-    console.error("[whatsapp/bot] persistConversation falló", {
+    errorLog("[whatsapp/bot] persistConversation falló", {
       code: (error as { code?: string }).code,
       direction: row.direction
     });
@@ -298,8 +291,7 @@ async function persistConsent(
     .from("lead_consent_log" as never)
     .insert(row as never);
   if (error) {
-    // eslint-disable-next-line no-console
-    console.error("[whatsapp/bot] persistConsent falló", {
+    errorLog("[whatsapp/bot] persistConsent falló", {
       code: (error as { code?: string }).code
     });
     return false;
@@ -348,8 +340,7 @@ async function generateQrToken(
       expires_at: expiresAt.toISOString()
     } as never);
   if (error) {
-    // eslint-disable-next-line no-console
-    console.error("[whatsapp/bot] generateQrToken falló", {
+    errorLog("[whatsapp/bot] generateQrToken falló", {
       code: (error as { code?: string }).code
     });
     return null;
@@ -432,9 +423,8 @@ async function createLeadFromWhatsApp(
     return null;
   }
 
-  if (error || !data) {
-    // eslint-disable-next-line no-console
-    console.error("[whatsapp/bot] createLeadFromWhatsApp falló", {
+  if (error && (error as { code?: string }).code !== "23505") {
+    errorLog("[whatsapp/bot] createLeadFromWhatsApp falló", {
       code: (error as { code?: string }).code
     });
     return null;
@@ -860,8 +850,7 @@ export async function processInboundMessage(
       demo: r.demo
     };
   } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error("[whatsapp/bot] send() lanzó excepción", {
+    errorLog("[whatsapp/bot] send() lanzó excepción", {
       intent,
       leadId: lead.id,
       error: err instanceof Error ? err.message : String(err)

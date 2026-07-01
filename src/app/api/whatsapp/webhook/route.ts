@@ -36,6 +36,7 @@ import type {
 } from "../../../../lib/whatsapp/webhooks/types";
 import { normalizePhone } from "../../../../lib/crm/phone-utils";
 import { processInboundMessage } from "../../../../lib/whatsapp/bot-engine";
+import { debugLog } from "../../../../lib/log";
 
 // Next.js: este endpoint siempre corre en Node runtime (necesita crypto).
 export const runtime = "nodejs";
@@ -316,20 +317,14 @@ function extractStatuses(payload: unknown): MetaStatus[] {
 async function processInboundSafely(
   msg: IncomingWhatsAppMessage
 ): Promise<void> {
-  if (process.env.NODE_ENV !== "production") {
-// eslint-disable-next-line no-console
-  console.error("[whatsapp/webhook] processInboundSafely START", {
+  debugLog("[whatsapp/webhook] processInboundSafely START", {
     messageId: msg.messageId
   });
-  }
   try {
     await processInboundMessage(msg);
-    if (process.env.NODE_ENV !== "production") {
-      // eslint-disable-next-line no-console
-      console.log("[whatsapp/webhook] processInboundSafely END OK", {
-        messageId: msg.messageId
-      });
-    }
+    debugLog("[whatsapp/webhook] processInboundSafely END OK", {
+      messageId: msg.messageId
+    });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("[whatsapp/webhook] processInboundMessage lanzó excepción", {
