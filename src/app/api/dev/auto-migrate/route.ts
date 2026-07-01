@@ -144,12 +144,67 @@ export async function POST(_req: NextRequest) {
     );
   }
   const ref = m[1];
-  const host = `db.${ref}.supabase.co`;
+  // Vercel's network can't resolve db.<ref>.supabase.co. Use the pooler
+  // (transaction mode) which is on a different DNS zone reachable from
+  // Vercel. We try several common regions; first success wins.
+  const candidateHosts = [
+    `aws-0-us-east-1.pooler.supabase.com`,
+    `aws-0-us-west-1.pooler.supabase.com`,
+    `aws-0-eu-west-1.pooler.supabase.com`,
+    `aws-0-eu-central-1.pooler.supabase.com`,
+    `aws-0-ap-southeast-1.pooler.supabase.com`,
+    `aws-0-ap-northeast-1.pooler.supabase.com`,
+    `aws-0-sa-east-1.pooler.supabase.com`
+  ];
+
+  // Test connectivity: try each region with a quick connect.
+  let chosenHost: string | null = null;
+  for (const host of candidateHosts) {
+    const test = new Client({
+      host,
+      port: 6543,
+      user: `postgres.${ref}`,
+      password,
+      database: "postgres",
+      ssl: { rejectUnauthorized: false },
+      connectionTimeoutMillis: 5_000
+    });
+    try {
+      await test.connect();
+      await test.end();
+      chosenHost = host;
+      break;
+    } catch {
+      await test.end().catch(() => undefined);
+    }
+  }
+
+  if (!chosenHost) {
+    return NextResponse.json(
+      {
+        ok: false,
+        message:
+          "No se pudo conectar a ningún pooler de Supabase. El proyecto podría estar pausado o en una región no probada."
+      },
+      { status: 500 }
+    );
+  }
 
   const client = new Client({
-    host,
-    port: 5432,
-    user: "postgres",
+    host: chosenHost,
+    port: 6543,
+    user: `postgres.${ref}`,
+    password,
+    database: "postgres",
+    ssl: { rejectUnauthorized: false },
+    statement_timeout: 30_000,
+    query_timeout: 30_000
+  });
+
+  const client = new Client({
+    host: chosenHost,
+    port: 6543,
+    user: `postgres.${ref}`,
     password,
     database: "postgres",
     ssl: { rejectUnauthorized: false },
