@@ -1095,10 +1095,25 @@ async function buildResponsePlan(args: {
       // el mensaje. Si no, usar el fallback (getActiveEvent = env vars).
       // NOTA: la fuente de verdad del evento del QR es el que se paso
       // a generateQrToken en processInboundMessage. Lo reflejamos aca.
+      // FIX 2026-07-02 (sesion David): filtrar firstName de placeholders.
+      // El "Por" del lead legacy causaba "Listo Por..." en este mensaje.
+      const PLACEHOLDER_NAMES_PE = new Set([
+        "por",
+        "por confirmar",
+        "confirmar",
+        "test",
+        "test number",
+        "(empty)"
+      ]);
+      const cleanFirstName = PLACEHOLDER_NAMES_PE.has(
+        (firstName ?? "").toLowerCase().trim()
+      )
+        ? ""
+        : firstName ?? "";
       const eventLine = `\n\nTambien te enviamos el pase con el QR a tu correo. Es el link de check-in para que lo presentes el dia del evento.`;
       const bodyText = qrUrl
-        ? `Listo ${firstName}, te registramos para el evento. Tu pase (link de check-in): ${qrUrl}${eventLine}`
-        : `Listo ${firstName}, registramos tu email ${email}. Te esperamos el ${evt.date} en ${evt.location}.`;
+        ? `Listo${cleanFirstName ? " " + cleanFirstName : ""}, te registramos para el evento. Tu pase (link de check-in): ${qrUrl}${eventLine}`
+        : `Listo${cleanFirstName ? " " + cleanFirstName : ""}, registramos tu email ${email}. Te esperamos el ${evt.date} en ${evt.location}.`;
       return {
         kind: "text",
         body: bodyText,
