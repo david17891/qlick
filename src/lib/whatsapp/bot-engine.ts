@@ -47,6 +47,8 @@ import {
   getActiveAgentProvider,
   validateAgentReply,
   loadActiveEventContext,
+  loadAllActiveEvents,
+  formatEventsListBlock,
   loadConversationWindow,
   loadLeadProfile,
   incrementMessageCount,
@@ -887,27 +889,38 @@ async function buildResponsePlan(args: {
       // y mandamos texto libre (ventana 24h).
       const profile = getAIAgentProfile();
       const agent = getActiveAgentProvider();
-      // Cargar contexto del evento activo + ventana de conversación
-      // (memoria corta del bot) + contexto manual del operador
-      // en paralelo. Fallan independientes.
-      const [eventRaw, conversationWindow, manualContext] = await Promise.all([
-        loadActiveEventContext().catch(() => undefined),
-        loadConversationWindow(lead.phone ?? "", 8).catch(() => undefined),
-        loadManualContext("qlick-bot").catch(
-          () => null
-        )
-      ]);
+      // FIX 2026-07-02 (sesion David): bot multi-evento.
+      // Cargamos TODOS los eventos publicados + el activeEvent (single) +
+      // ventana de conversacion + contexto manual. En paralelo.
+      const [eventRaw, allEvents, conversationWindow, manualContext] =
+        await Promise.all([
+          loadActiveEventContext().catch(() => undefined),
+          loadAllActiveEvents().catch(() => [] as Awaited<
+            ReturnType<typeof loadAllActiveEvents>
+          >),
+          loadConversationWindow(lead.phone ?? "", 8).catch(() => undefined),
+          loadManualContext("qlick-bot").catch(() => null)
+        ]);
       // Aplicar overrides manuales al evento (fecha/lugar cambiados por operador).
       const activeEvent =
         eventRaw && manualContext
           ? applyEventOverrides(eventRaw, manualContext)
           : eventRaw;
+      // FIX 2026-07-02 (sesion David): si hay varios eventos publicados,
+      // pasamos el CATALOGO al LLM para que pueda identificar sobre cual
+      // le preguntan. Si hay 1 solo, dejamos el flujo viejo (promptBlock
+      // de activeEvent).
+      const eventsListBlock =
+        allEvents.length > 1
+          ? formatEventsListBlock(allEvents)
+          : undefined;
       const result = await agent.run("suggest_reply", {
         profile,
         leadName: lead.name,
         courseOfInterest: lead.courseOfInterest,
         lastIncomingMessage: body,
         activeEvent,
+        eventsListBlock,
         conversationWindow,
         // Memoria larga persistente entre sesiones (lead_profile.summary).
         leadProfile: args.leadProfile ?? undefined,

@@ -70,7 +70,8 @@ function fallbackFromEnv(): ActiveEventContext {
       title,
       humanStartsAt: date,
       humanDuration: duration,
-      location
+      location,
+      description: null
     }),
     source: process.env.EVENT_NAME ? "env" : "placeholder"
   };
@@ -127,21 +128,65 @@ export function formatHumanDuration(
 /**
  * Construye el bloque de contexto del evento para inyectar en el system prompt.
  * Es texto listo para pegar en un prompt de LLM.
+ *
+ * FIX 2026-07-02 (sesion David): ahora incluye `description` (donde van precio,
+ * modalidad, cupo, etc., porque el schema no tiene columnas dedicadas). Asi
+ * el LLM tiene el precio/costo disponible y no tiene que inventar.
  */
 function formatPromptBlock(args: {
   title: string;
   humanStartsAt: string;
   humanDuration: string;
   location: string;
+  description: string | null;
 }): string {
-  return [
+  const lines: string[] = [
     "=== EVENTO ACTIVO ===",
     `Nombre: ${args.title}`,
     `Fecha y hora: ${args.humanStartsAt}`,
     `Duración: ${args.humanDuration}`,
-    `Lugar: ${args.location}`,
-    "======================"
-  ].join("\n");
+    `Lugar: ${args.location}`
+  ];
+  if (args.description) {
+    lines.push("", "Detalles:", args.description);
+  }
+  lines.push("======================");
+  return lines.join("\n");
+}
+
+/**
+ * Formatea un bloque para LISTAR varios eventos (no solo uno).
+ * Usado cuando el lead pregunta "que eventos tienen?" o cuando el LLM
+ * necesita ver el catalogo completo para identificar sobre cual le preguntan.
+ */
+export function formatEventsListBlock(events: ActiveEventContext[]): string {
+  if (events.length === 0) return "";
+  const lines: string[] = [
+    "=== CATALOGO DE EVENTOS PUBLICADOS ===",
+    `Hay ${events.length} evento${events.length === 1 ? "" : "s"} activo${
+      events.length === 1 ? "" : "s"
+    }.`
+  ];
+  events.forEach((evt, idx) => {
+    lines.push(
+      "",
+      `[${idx + 1}] ${evt.title}`,
+      `    Slug: ${evt.slug}`,
+      `    Fecha: ${evt.humanStartsAt} · ${evt.humanDuration}`,
+      `    Lugar: ${evt.location}`,
+      evt.description ? `    Detalles: ${evt.description}` : ""
+    );
+  });
+  lines.push(
+    "",
+    "INSTRUCCIONES PARA TI (LLM):",
+    "- Cuando el lead pregunte 'que eventos tienen?' o algo generico, lista los [1], [2], [3] con nombre, fecha, lugar, duracion, precio (si esta en Detalles).",
+    "- Cuando el lead pregunte sobre UNO especifico ('el de CDMX', 'el del 12 de julio', 'el segundo'), identifica cual es por su numero, fecha, lugar, titulo, etc. y responde SOLO sobre ese.",
+    "- Si el lead nombra varios a la vez, responde sobre cada uno por separado.",
+    "- Si no puedes identificar a cual se refiere (pregunta ambigua), pregunta 'Cual te interesa: [1], [2] o [3]?'.",
+    "==================================="
+  );
+  return lines.join("\n");
 }
 
 /* ------------------------------------------------------------------ */
@@ -152,8 +197,14 @@ function formatPromptBlock(args: {
  * Carga el evento activo (status='published') más próximo a hoy.
  * Si hay varios publicados, toma el que empieza antes.
  * Si no hay publicados, devuelve fallback de env vars.
+ *
+ * FIX 2026-07-02 (sesion David): acepta `slug` opcional. Si se pasa,
+ * carga ESE evento especifico (en vez del primero). Usado por el bot
+ * multi-evento para cargar el evento que el lead esta preguntando.
  */
-export async function loadActiveEventContext(): Promise<ActiveEventContext> {
+export async function loadActiveEventContext(
+  slug?: string
+): Promise<ActiveEventContext> {
   let supabase: SupabaseAdmin | null = null;
   try {
     const { checkSupabaseConfig } = await import("../supabase/health");
@@ -170,15 +221,27 @@ export async function loadActiveEventContext(): Promise<ActiveEventContext> {
   }
 
   try {
-    const { data, error } = await supabase
-      .from("events" as never)
-      .select(
-        "id, slug, title, description, starts_at, ends_at, location, status"
-      )
-      .eq("status", "published")
-      .order("starts_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
+    // FIX 2026-07-02: dos branches separados para evitar lios con el
+    // tipo de retorno de la query (PostgrestBuilder vs PostgrestFilterBuilder).
+    const { data, error } = slug
+      ? await supabase
+          .from("events" as never)
+          .select(
+            "id, slug, title, description, starts_at, ends_at, location, status"
+          )
+          .eq("status", "published")
+          .eq("slug", slug)
+          .limit(1)
+          .maybeSingle()
+      : await supabase
+          .from("events" as never)
+          .select(
+            "id, slug, title, description, starts_at, ends_at, location, status"
+          )
+          .eq("status", "published")
+          .order("starts_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
 
     if (error || !data) {
       return fallbackFromEnv();
@@ -201,7 +264,8 @@ export async function loadActiveEventContext(): Promise<ActiveEventContext> {
       title: evt.title,
       humanStartsAt,
       humanDuration,
-      location
+      location,
+      description: evt.description
     });
 
     return {
@@ -219,5 +283,81 @@ export async function loadActiveEventContext(): Promise<ActiveEventContext> {
     };
   } catch {
     return fallbackFromEnv();
+  }
+}
+
+/**
+ * Carga TODOS los eventos publicados (status='published'), ordenados
+ * por fecha ascendente. Usado por el bot multi-evento para que el LLM
+ * vea el catalogo completo cuando el lead pregunta algo generico o
+ * hay que identificar sobre cual evento le preguntan.
+ *
+ * Si Supabase no responde, devuelve array vacio (no fallback — el bot
+ * mostrara el placeholder, no inventara eventos).
+ */
+export async function loadAllActiveEvents(): Promise<ActiveEventContext[]> {
+  let supabase: SupabaseAdmin | null = null;
+  try {
+    const { checkSupabaseConfig } = await import("../supabase/health");
+    const { createSupabaseAdminClient } = await import("../supabase/admin");
+    if (checkSupabaseConfig().configured) {
+      supabase = createSupabaseAdminClient();
+    }
+  } catch {
+    supabase = null;
+  }
+
+  if (!supabase) {
+    return [];
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("events" as never)
+      .select(
+        "id, slug, title, description, starts_at, ends_at, location, status"
+      )
+      .eq("status", "published")
+      .order("starts_at", { ascending: true });
+
+    if (error || !data || data.length === 0) {
+      return [];
+    }
+
+    return (data as Array<{
+      id: string;
+      slug: string;
+      title: string;
+      description: string | null;
+      starts_at: string;
+      ends_at: string | null;
+      location: string | null;
+    }>).map((evt) => {
+      const humanStartsAt = formatHumanDate(evt.starts_at);
+      const humanDuration = formatHumanDuration(evt.starts_at, evt.ends_at);
+      const location = evt.location?.trim() || "Por confirmar";
+      const promptBlock = formatPromptBlock({
+        title: evt.title,
+        humanStartsAt,
+        humanDuration,
+        location,
+        description: evt.description
+      });
+      return {
+        id: evt.id,
+        slug: evt.slug,
+        title: evt.title,
+        description: evt.description,
+        startsAt: new Date(evt.starts_at),
+        endsAt: evt.ends_at ? new Date(evt.ends_at) : null,
+        location,
+        humanStartsAt,
+        humanDuration,
+        promptBlock,
+        source: "db" as const
+      };
+    });
+  } catch {
+    return [];
   }
 }

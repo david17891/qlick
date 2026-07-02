@@ -23,6 +23,12 @@ import type { AgentContext, AgentTask } from "./agent-provider";
 export interface ExtendedAgentContext extends AgentContext {
   /** Evento activo cargado desde DB (o fallback env). */
   activeEvent?: ActiveEventContext;
+  /**
+   * Bloque de catalogo completo de eventos publicados. Si esta presente
+   * y tiene mas de 1 evento, se usa en vez de `activeEvent.promptBlock`.
+   * FIX 2026-07-02 (sesion David): bot multi-evento.
+   */
+  eventsListBlock?: string;
   /** Ventana de últimos mensajes del lead. */
   conversationWindow?: ConversationWindow;
 }
@@ -35,7 +41,8 @@ export interface ExtendedAgentContext extends AgentContext {
 export function buildSystemPrompt(
   profile: AIAgentProfile,
   activeEvent?: ActiveEventContext,
-  isFirstMessage: boolean = true
+  isFirstMessage: boolean = true,
+  eventsListBlock?: string
 ): string {
   const lines: string[] = [
     `Eres ${profile.name}, asistente conversacional de ${profile.businessName}.`,
@@ -69,14 +76,55 @@ export function buildSystemPrompt(
     `"${profile.fallbackMessage}"`
   ];
 
-  // Inyectar contexto del evento activo (si hay uno cargado).
-  // FIX 2026-07-02 (sesion David): el LLM estaba inventando precios
-  // y otros datos que no estan en el bloque. Reforzamos con:
-  //   1. Listado explicito de QUE tienes disponible (no solo "el bloque de arriba")
-  //   2. Listado explicito de QUE NO tienes (no inventes)
-  //   3. Plantilla exacta de respuesta cuando falta info
-  //   4. Tono: humano, conciso, real (max 2-3 oraciones)
-  if (activeEvent) {
+  // Inyectar contexto del evento(s) activo(s) (si hay).
+  // FIX 2026-07-02 (sesion David):
+  //   - Si hay CATALOGO (varios eventos), inyecta el listado para que el LLM
+  //     pueda identificar sobre cual le preguntan.
+  //   - Si hay 1 solo evento, inyecta su promptBlock.
+  //   - El LLM estaba inventando precios y otros datos que no estan en el
+  //     bloque. Reforzamos con:
+  //     1. Listado explicito de QUE tienes disponible (no solo "el bloque de arriba")
+  //     2. Listado explicito de QUE NO tienes (no inventes)
+  //     3. Plantilla exacta de respuesta cuando falta info
+  //     4. Tono: humano, conciso, real (max 2-3 oraciones)
+  const hasCatalog = eventsListBlock && eventsListBlock.trim().length > 0;
+  if (hasCatalog) {
+    lines.push(``, eventsListBlock!);
+    lines.push(
+      ``,
+      `=== COMPORTAMIENTO CON EL CATALOGO DE EVENTOS ===`,
+      ``,
+      `Cuando el lead pregunta sobre un evento:`,
+      `- Si el mensaje es GENERICO ('que eventos tienen?', 'que hay?', 'cuentame'): lista los [1], [2], [3] con nombre, fecha, lugar, duracion, precio (si esta en Detalles).`,
+      `- Si pregunta sobre UNO especifico ('el de CDMX', 'el del 12 de julio', 'el de ads', 'el segundo'): identifica cual es y responde SOLO sobre ese.`,
+      `- Si pregunta sobre VARIOS ('el de CDMX y el online'): responde sobre cada uno por separado.`,
+      `- Si la referencia es AMBIGUA: 'Cual te interesa: [1], [2] o [3]?'`,
+      ``,
+      `Datos que SI tienes POR CADA EVENTO (de 'Detalles' en el bloque de arriba):`,
+      `- Modalidad (presencial/online)`,
+      `- Precio (si esta escrito en Detalles)`,
+      `- Cupo (si esta escrito en Detalles)`,
+      `- Materiales (si esta escrito en Detalles)`,
+      `SOLO lo que este escrito en 'Detalles'. Todo lo demas NO lo tienes.`,
+      ``,
+      `LO QUE NUNCA DEBES INVENTAR (regla dura):`,
+      `- PRECIO / COSTO. Si el lead pregunta costo y no hay precio en Detalles, responde EXACTAMENTE: "Aun no tengo el precio confirmado, lo reviso con el equipo y te paso. ?Te interesa apartar tu lugar?"`,
+      `- Temario detallado / temas especificos (mas alla de lo que diga Detalles)`,
+      `- Nombre del expositor / ponente`,
+      `- Direccion exacta del lugar (solo tienes el nombre del venue, no la calle)`,
+      `- Cupo disponible / lugares restantes`,
+      `- Cualquier numero, fecha, hora o dato que NO este escrito en el bloque`,
+      ``,
+      `SI TE FALTA INFO, usa esta plantilla:`,
+      `"[Lo que SI sabes] + 'Aun no tengo [el dato que falta] confirmado, lo reviso y te paso. ?Te interesa que te avise cuando lo tenga?'"`,
+      ``,
+      `TONO DE LA RESPUESTA:`,
+      `- Humano, conciso, real. Max 2-3 oraciones en WhatsApp.`,
+      `- Sin emojis excesivos (max 1 por mensaje).`,
+      `- Empieza DIRECTO con la info del evento, sin saludo ni presentacion.`,
+      `- NO uses frases vagas tipo 'te contactaremos pronto' si tienes dato concreto.`
+    );
+  } else if (activeEvent) {
     lines.push(``, activeEvent.promptBlock);
     lines.push(
       ``,
@@ -205,7 +253,15 @@ export function buildTaskPrompt(
   // Si hay evento activo, agregar recordatorio final.
   // FIX 2026-07-02: reforzar que NO invente datos, y que use la
   // plantilla de "no tengo el dato" si falta info.
-  if (activeEvent) {
+  // FIX 2026-07-02 (v2): si hay eventsListBlock, usarlo en vez del activeEvent.
+  if (context.eventsListBlock) {
+    ctxBlocks.push(
+      `\nRecordatorio final: hay VARIOS eventos publicados. ` +
+      `Identifica sobre cual te preguntan (por numero, fecha, lugar o titulo) y responde SOLO sobre ese. ` +
+      `NO inventes datos que no esten en 'Detalles' del bloque de arriba. ` +
+      `Si falta info, di "aun no tengo [dato] confirmado, lo reviso y te paso" y pregunta si le interesa que le avises.`
+    );
+  } else if (activeEvent) {
     ctxBlocks.push(
       `\nRecordatorio final: el evento activo es "${activeEvent.title}" el ${activeEvent.humanStartsAt}. ` +
       `Datos disponibles: nombre, fecha, duracion, lugar. ` +

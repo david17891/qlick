@@ -34,6 +34,12 @@ export interface AgentContext {
   conversationSummary?: string;
   /** Evento activo cargado desde DB (contexto dinámico por evento). */
   activeEvent?: import("./event-context-loader").ActiveEventContext;
+  /**
+   * Bloque de catalogo completo de eventos publicados. FIX 2026-07-02
+   * (sesion David): bot multi-evento. Si esta presente y tiene mas de
+   * 1 evento, el system prompt lo usa en vez de `activeEvent.promptBlock`.
+   */
+  eventsListBlock?: string;
   /** Ventana de últimos N mensajes del lead (memoria corta del bot). */
   conversationWindow?: import("./conversation-window").ConversationWindow;
   /** Perfil persistente del lead (memoria larga entre sesiones). */

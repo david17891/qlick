@@ -291,7 +291,12 @@ export const deepseekAgentProvider: AIAgentProvider = {
     // "EVENTO ACTIVO" con info del evento del 6 jul. El LLM respondia con
     // texto generico sin contexto. Ahora pasamos el del context (que el
     // bot-engine cargo de DB/env vars/placeholder).
-    const systemPrompt = buildSystemPrompt(context.profile, context.activeEvent, isFirstMessage);
+    const systemPrompt = buildSystemPrompt(
+      context.profile,
+      context.activeEvent,
+      isFirstMessage,
+      context.eventsListBlock
+    );
     const userPrompt = buildTaskPrompt(task, context);
 
     let currentTier: DeepSeekTier = initialTier;

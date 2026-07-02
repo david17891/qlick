@@ -23,6 +23,8 @@ export * from "./guardrails";
 export * from "./agent-prompts";
 export {
   loadActiveEventContext,
+  loadAllActiveEvents,
+  formatEventsListBlock,
   formatHumanDate,
   formatHumanDuration,
   type ActiveEventContext
