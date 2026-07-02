@@ -70,16 +70,16 @@ function formatEventTime(iso: string): string {
   });
 }
 
-/**
- * Render del email de pase digital.
- *
- * El QR está embebido inline (`<img src="data:image/png;base64,...">`)
- * porque adjuntar imágenes vía Resend requiere subir el asset a un CDN
- * primero (más fricción). Para un QR de 512px (~10KB) inline es la
- * opción más simple.
- *
- * Si `eventLocation` es null, esa fila se omite (no se muestra línea vacía).
- */
+  /**
+   * Render del email de pase digital.
+   *
+   * El QR está embebido inline (`<img src="data:image/png;base64,...">`)
+   * porque adjuntar imágenes vía email requiere subir el asset a un CDN
+   * primero (más fricción). Para un QR de 512px (~10KB) inline es la
+   * opción más simple.
+   *
+   * Si `eventLocation` es null, esa fila se omite (no se muestra línea vacía).
+   */
 export function renderEventQrPassEmail(
   input: EventQrPassInput,
 ): RenderedEmail {

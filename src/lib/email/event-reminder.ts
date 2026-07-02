@@ -1,7 +1,7 @@
 /**
  * Helper para enviar recordatorios automáticos por email (Fase 7a, Bloque 3).
  *
- * Encadena `renderEventReminderEmail` + `sendEmail` (Resend). Best-effort.
+ * Encadena `renderEventReminderEmail` + `sendEmail` (Brevo). Best-effort.
  *
  * Server-only.
  */
@@ -17,7 +17,7 @@ export type { EventReminderInput };
 export type ReminderKind = EventReminderInput["reminderKind"];
 
 export interface SendEventReminderResult extends SendEmailResult {
-  /** ID del mensaje en Resend. */
+  /** ID del mensaje en Brevo. */
   messageId?: string;
 }
 

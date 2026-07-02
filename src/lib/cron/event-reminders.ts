@@ -300,7 +300,7 @@ export async function runEventRemindersJob(
             reminder_kind: window.kind,
             attendee_email: t.attendeeEmail,
             attendee_name: t.attendeeName,
-            resend_message_id: result.messageId ?? null,
+            brevo_message_id: result.messageId ?? null,
             error: result.ok ? null : (result.error ?? "unknown"),
           } as never,
         );

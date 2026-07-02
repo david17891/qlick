@@ -1,7 +1,7 @@
 /**
  * Helper para enviar el email de "pase digital" al asistente (Fase 7a).
  *
- * Encadena `renderEventQrPassEmail` + `sendEmail` (Resend). Best-effort:
+ * Encadena `renderEventQrPassEmail` + `sendEmail` (Brevo). Best-effort:
  * si falla, loggea y devuelve `{ ok: false }` — NO rompe el flow principal
  * (el link del pase por WhatsApp sigue funcionando).
  *
@@ -17,7 +17,7 @@ import {
 export type { EventQrPassInput };
 
 export interface SendEventQrPassResult extends SendEmailResult {
-  /** ID del mensaje en Resend, o `dev` si se loggeó solo. */
+  /** ID del mensaje en Brevo, o `dev` si se loggeó solo. */
   messageId?: string;
 }
 

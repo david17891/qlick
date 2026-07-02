@@ -66,12 +66,12 @@ async function persistHandoffToDb(args: HumanHandoffArgs): Promise<HandoffInsert
 }
 
 /**
- * Email opcional: si está configurado Resend, manda el handoff también
+ * Email opcional: si está configurado Brevo, manda el handoff también
  * por email. Si falla, no es bloqueante.
  */
 async function sendHandoffEmailIfPossible(args: HumanHandoffArgs): Promise<boolean> {
   // Skip si no hay API key (evitamos ruido en dev)
-  if (!process.env.RESEND_API_KEY) return false;
+  if (!process.env.BREVO_API_KEY) return false;
   try {
     const phoneClean = args.leadPhone.replace(/^\+/, "");
     const waMeLink = `https://wa.me/${phoneClean}`;
