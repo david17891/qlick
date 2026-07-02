@@ -1059,3 +1059,15 @@ oreply@email.cloudflare.net ("Are you missing an email sent from david17891@gmai
 - **Trigger:** Sesión 2026-07-02 04:25, después de que David dijera "estas seguro que no miente, revísalo 10 veces".
 
 ---
+---
+
+## 2026-07-02 ~12:57 � Bot sugiri\u00f3 respuesta gen\u00e9rica tras fix parcial
+
+- **Pregunta:** Tras commit efd9f85 (pasar context.activeEvent al system prompt), el bot sigue respondiendo con texto gen\u00e9rico ("a Qlick Marketing Integral. Sobre los cursos de Qlick, \u00bfquieres que te comparta el temario o agendamos una llamada corta?") en vez de usar el activeEvent. El fix anterior no alcanz\u00f3.
+- **Causa ra\u00edz:** Hab\u00eda un SEGUNDO fix en working dir que NUNCA se commite\u00f3: la inversi\u00f3n Flash\u2192Pro. Sin \u00e9l, el bot arranca en Flash (deepseek-chat), que es muy d\u00e9bil: ignora el system prompt aunque tenga el bloque EVENTO ACTIVO inyectado. El safety net (ot-engine.ts) strip'p "Por, gracias por escribir" y dej\u00f3 el resto cortado.
+- **Decisi\u00f3n:** Commit  8f0bb8 activa la ruta suggest_reply \u2192 Pro directo. Pro (deepseek-reasoner) obedece el system prompt. Flash queda solo para tareas no-priority (summarize_conversation, detect_urgency, etc.).
+- **Bonus del commit:** arregla currentTier que no se actualizaba tras escalado Flash\u2192Pro (regresi\u00f3n menor detectada en code review, evita que la auditor\u00eda meta [tier=flash] en respuestas de Pro).
+- **Raz\u00f3n:** David quiere descartar si el problema es el LLM en s\u00ed. Si Pro responde bien, el bug era Flash. Si Pro tambi\u00e9n falla, el problema es cableado (system prompt / event loader / safety net) y vamos a Opci\u00f3n B (matar LLM para preguntas estructuradas).
+- **Costo:** ~30x por outbound (deepseek-reasoner vs deepseek-chat). En demo 10-50 msgs/d\u00eda = centavos. Para producci\u00f3n masiva re-evaluar.
+- **Pr\u00f3ximo paso:** David pushea  8f0bb8 desde su terminal, espera deploy de Vercel, y prueba con +1 555 201 7643 preguntando "Costo?" / "Lugar?" / "Cu\u00e1ndo?". Si la respuesta del LLM menciona "IA y Marketing B\u00e1sico", "6 de julio" o "Ciudad de M\u00e9xico" \u2192 Pro obedece, problema resuelto. Si sigue gen\u00e9rica \u2192 cableado, Opci\u00f3n B.
+- **Trigger:** Sesi\u00f3n 2026-07-02 12:55, despu\u00e9s de que David dijera "y sigue diciendo Por" al probar el bot.
