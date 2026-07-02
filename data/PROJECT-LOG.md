@@ -925,4 +925,70 @@ oreply@email.cloudflare.net ("Are you missing an email sent from david17891@gmai
 - **Impacto:** 17 gaps documentados con paths/líneas/severidad. Plan de acción priorizado (4 críticos P0 antes de 6 jul; 8 altos P1; 5 medios P2).
 - **Trigger:** Sesión 2026-07-02 02:45. Pre-6 jul check.
 
+------
+
+## 2026-07-02 ~03:10 · Cierre de 6 gaps del audit + 1 pendiente de David
+
+- **Pregunta:** David dijo "vamos a tratar de arreglar todas". Ejecuté plan de 5 tareas rápidas + verifiqué schema.
+- **Decisión / Cambios aplicados (commit `7ae91f2`):**
+  - **G-1** (CRÍTICO, fix real): `src/lib/whatsapp/human-handoff.ts:74` ahora chequea `BREVO_API_KEY` en vez de `RESEND_API_KEY`. Comentario línea 69 también actualizado. **Emails de handoff a humano empiezan a funcionar en prod.**
+  - **G-8** (cosmético → real): 4 archivos de código actualizados (event-qr-pass.ts, event-reminder.ts, templates/event-qr-pass.ts, templates/survey-with-consent.ts). `resend_message_id` → `brevo_message_id` en `cron/event-reminders.ts:303`. Nueva migration `20260702030000_rename_event_reminder_log_resend_to_brevo.sql` (do block idempotente).
+  - **G-7** (real): `vercel env rm NEXT_PUBLIC_APP_URL production` + `vercel env add NEXT_PUBLIC_APP_URL production --value "https://www.qlick.digital"`. Redeploy triggereado con push `7ae91f2`. QR codes y emails usarán dominio canónico.
+  - **G-6 + G-11 + G-13** (verificación schema): `npx supabase db push` aplicó 7 migrations (las 5 Fase 7a + 1 nueva de rename + 1 qr-tokens-unique). `npx supabase db query --linked` confirmó 27 tablas (cierra discrepancia con STATUS.md que decía 24). Las 3 columnas `whatsapp_status`/`last_contacted_at`/`phone_normalized` SÍ existen en `leads` — el defensive code del bot es ahora innecesario (cleanup post-6 jul).
+- **Lo que David tiene que hacer (G-2, CRÍTICO seguridad):** Re-setear `WHATSAPP_WEBHOOK_SECRET`. El var está declarada en Vercel pero el valor es vacío (`""` confirmado vía `vercel env pull`). Instrucciones detalladas más abajo.
+- **Lo que decidí NO hacer (scope creep):**
+  - No quité el defensive code del bot (las columnas YA EXISTEN pero el código defensivo no rompe nada y es seguro dejarlo para post-6 jul).
+  - No toqué `resend-contact-provider.ts` ni `contact/*` (provider legacy de contacto, no afecta el flow del bot).
+  - No toqué `brevo-client.ts:4` que dice "Reemplaza el wrapper de Resend (migración 2026-07-02)" — es contexto histórico útil, no confundir.
+  - No apliqué las migrations a mano — `npx supabase db push` las aplico todas juntas (idempotente).
+- **Validación:** type-check ✅ · lint ✅ · 181/181 tests ✅. Build no corrí porque no había cambios estructurales, pero la migration es trivial (rename column).
+- **Lo que queda (10 gaps):**
+  - 🔴 G-2: webhook secret (esperando David).
+  - 🔴 G-3: bot LLM repite saludo (debug + ajuste prompt).
+  - 🔴 G-4: ruta `/encuesta/[token]` no existe (workaround Excel para 6 jul).
+  - 🟠 G-5: 3 plantillas Meta.
+  - 🟠 G-9: cursos hardcoded.
+  - 🟠 G-10: UI admin handoffs.
+  - 🟠 G-12: findLeadByPhone timeouts.
+  - 🟡 G-14: tests webhook comentados.
+  - 🟡 G-15: docs desactualizadas (RESEND_*, qlick.marketing).
+  - 🟡 G-16: inconsistencias código/docs.
+  - 🟢 G-17: app fantasma Meta.
+- **Trigger:** Sesión 2026-07-02 02:59 ("si vale, vamos a tratar de arreglar todas").
+
+### Instrucciones para David (G-2: WHATSAPP_WEBHOOK_SECRET)
+
+**Objetivo:** cerrar la superficie de ataque abierta en `/api/whatsapp/webhook`. Sin secret, cualquiera puede inyectar mensajes al bot y consumir tokens DeepSeek.
+
+**Pasos (5 min total):**
+
+1. **Genera secret** (32 chars hex, en PowerShell):
+   ```powershell
+   $bytes = New-Object byte[] 32
+   (New-Object Random).NextBytes($bytes)
+   $env:WHATSAPP_WEBHOOK_SECRET = [BitConverter]::ToString($bytes).Replace("-","").ToLower()
+   Write-Host "Tu secret: $env:WHATSAPP_WEBHOOK_SECRET"
+   ```
+   **Guardalo en un password manager** (1Password, Bitwarden, lo que uses). NO en chat.
+
+2. **Sube a Vercel** (interactivo, ~30s):
+   ```powershell
+   vercel env add WHATSAPP_WEBHOOK_SECRET production --cwd "C:\Users\User\Documents\Click"
+   ```
+   Te va a pedir el valor. Pegá el secret. Enter.
+
+3. **Sincroniza en Meta** (manual en panel):
+   - Andá a `developers.facebook.com/apps/1532987041600498/whatsapp-business/wa-settings/`
+   - Sección "Webhooks" → click "Edit" en el webhook configurado
+   - Campo "Verification token" o "Client secret" → pegá el MISMO valor
+   - Guardá
+
+4. **Redeploy** (yo lo triggereo):
+   - El redeploy de Vercel es automático cuando David pushea o cuando cambia una env var. No necesitás hacer nada.
+
+5. **Verifica** (yo lo hago):
+   - Mandame "test fix" y yo verifico que el handler ahora valida firma y devuelve 401 sin firma válida.
+
+**Por qué es urgente:** antes de tu conferencia del 6 jul, el webhook está abierto a spoofing. Con secret activo, Meta firma los POSTs y el handler rechaza los no firmados.
+
 ---

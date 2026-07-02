@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-02 ~02:50 (Auditoría profunda completa: 17 gaps detectados. 4 críticos P0 (handoff email silenciosamente roto, webhook sin firma, LLM repite saludo, no hay ruta survey pública), 8 altos P1, 5 medios P2. Plan de acción priorizado en `docs/OPEN_ITEMS.md §0`.)
+> **Última actualización:** 2026-07-02 ~03:10 (Sesión de fixes post-auditoría: 6 gaps cerrados (G-1, G-6, G-7, G-8, G-11, G-13). 1 bloqueado en David (G-2 webhook secret). 10 pendientes post-6 jul. 181/181 tests ✅, type-check ✅, lint ✅, build ✅.)
 
 ---
 

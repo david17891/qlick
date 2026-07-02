@@ -23,6 +23,30 @@
 
 **Sesión:** 2026-07-02 ~02:45. **Método:** 3 sub-agents en paralelo (bot / funnel / infra) + lectura directa de docs + memoria. **Output:** 17 gaps priorizados.
 
+### Estado de gaps al cierre de la sesión 2026-07-02 ~03:10
+
+| Gap | Severidad | Estado | Cierre |
+|---|---|---|---|
+| **G-1** | 🔴 | ✅ **CERRADO** | Commit `7ae91f2`. `human-handoff.ts:74` ahora chequea `BREVO_API_KEY`. Emails de handoff empiezan a salir. |
+| **G-2** | 🔴 | ⚠️ **PENDIENTE David** | `WHATSAPP_WEBHOOK_SECRET` sigue vacío en Vercel. Instrucciones abajo. |
+| **G-3** | 🔴 | ⚠️ Pendiente | Bot LLM repite saludo en cada turno. |
+| **G-4** | 🔴 | ⚠️ Pendiente | No existe `/encuesta/[token]`. |
+| **G-5** | 🟠 | ⚠️ Pendiente | 3 plantillas Meta no creadas. |
+| **G-6** | 🟠 | ✅ **CERRADO** | `npx supabase db push` aplicó las 5 migrations pendientes. |
+| **G-7** | 🟠 | ✅ **CERRADO** | `NEXT_PUBLIC_APP_URL` actualizado a `https://www.qlick.digital` en Vercel production. Redeploy triggereado con push `7ae91f2`. |
+| **G-8** | 🟠 | ✅ **CERRADO** | 4 archivos de comentarios + columna `resend_message_id` → `brevo_message_id` (migration `20260702030000`). |
+| **G-9** | 🟠 | ⚠️ Pendiente | Cursos hardcoded en `interactive_show_courses`. |
+| **G-10** | 🟠 | ⚠️ Pendiente | No hay UI admin para `handoff_requests`. |
+| **G-11** | 🟠 | ✅ **CERRADO** | `npx supabase db query --linked`: 27 tablas en `public` (STATUS.md decía 24). |
+| **G-12** | 🟠 | ⚠️ Pendiente | `findLeadByPhone` timeouts intermitentes. |
+| **G-13** | 🟡 | ✅ **CERRADO** | `whatsapp_status`, `last_contacted_at`, `phone_normalized` existen en `leads`. Defensive code del bot es ahora innecesario (cleanup post-6 jul). |
+| **G-14** | 🟡 | ⚠️ Pendiente | Tests webhook HTTP comentados. |
+| **G-15** | 🟡 | ⚠️ Pendiente | Docs desactualizadas con `RESEND_*` y `qlick.marketing`. |
+| **G-16** | 🟡 | ⚠️ Pendiente | Inconsistencias código/docs. |
+| **G-17** | 🟢 | ⚠️ Pendiente | App fantasma Meta no se puede borrar. |
+
+**Resumen:** 6 gaps cerrados (G-1, G-6, G-7, G-8, G-11, G-13). 1 bloqueado en David (G-2). 10 pendientes (3 críticos: G-3, G-4; 3 altos: G-5, G-9, G-10, G-12; 4 medios/bajos: G-14, G-15, G-16, G-17).
+
 ### 🔴 P0 — Bloquean producción o tienen riesgo legal/seguridad
 
 #### G-1 · `human-handoff.ts:74` chequea `RESEND_API_KEY` (ya no existe)
@@ -38,6 +62,7 @@
 - **Fix:** David genera secret de 32+ chars hex, sube a Vercel como `WHATSAPP_WEBHOOK_SECRET` production, sincroniza en Meta (WhatsApp > Configuration > Webhook). Validación ya implementada en `route.ts:90` (solo falta secret).
 - **Archivo:** `src/app/api/whatsapp/webhook/route.ts:90`.
 - **Severidad:** 🔴 Crítica — superficie de ataque abierta en producción.
+- **Estado al 2026-07-02 ~03:10:** ⚠️ PENDIENTE David. Verificado vía `vercel env pull` que `WHATSAPP_WEBHOOK_SECRET=""` en Vercel production. **Instrucciones exactas abajo.**
 
 #### G-3 · Bot LLM repite "Hola Por, gracias por escribir..." en cada turno
 
