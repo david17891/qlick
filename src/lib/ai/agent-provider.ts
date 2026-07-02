@@ -19,7 +19,7 @@
 
 import type { AIAgentProfile, LeadIntent } from "@/types";
 
-export type AIAgentProviderName = "mock" | "openrouter";
+export type AIAgentProviderName = "mock" | "openrouter" | "deepseek";
 
 export interface AgentContext {
   /** Perfil del negocio (nombre, tono, reglas). */
@@ -32,6 +32,19 @@ export interface AgentContext {
   lastIncomingMessage?: string;
   /** Resumen o transcripción reciente de la conversación. */
   conversationSummary?: string;
+  /** Evento activo cargado desde DB (contexto dinámico por evento). */
+  activeEvent?: import("./event-context-loader").ActiveEventContext;
+  /** Ventana de últimos N mensajes del lead (memoria corta del bot). */
+  conversationWindow?: import("./conversation-window").ConversationWindow;
+  /** Perfil persistente del lead (memoria larga entre sesiones). */
+  leadProfile?: import("./lead-profile").LeadProfile;
+  /**
+   * true si este es el primer mensaje del lead (acaba de ser creado en DB).
+   * Más confiable que `conversationWindow?.messages.length === 0` porque el
+   * window loader puede fallar silenciosamente con .catch(() => undefined).
+   * Calculado por `bot-engine` via `findOrCreateLead().created`.
+   */
+  isFirstMessage?: boolean;
 }
 
 export type AgentTask =

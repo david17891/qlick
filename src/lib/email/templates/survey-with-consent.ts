@@ -2,7 +2,7 @@
  * Templates de emails transaccionales (Fase 5).
  *
  * Convención: cada template exporta una función que toma datos tipados y
- * devuelve `{ subject, html }`. El wrapper (`resend-client.ts`) los usa
+ * devuelve `{ subject, html }`. El wrapper (`brevo-client.ts`) los usa
  * directamente — el template NO manda el email, solo produce el contenido.
  *
  * **Por qué HTML inline (no React Email):** simplicidad. React Email

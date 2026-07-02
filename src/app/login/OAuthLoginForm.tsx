@@ -63,13 +63,14 @@ export function OAuthLoginForm() {
       const supabase = createSupabaseBrowserClient();
       const redirectTo = `${window.location.origin}/auth/callback-student`;
 
-      const { error } = await supabase.auth.signInWithOAuth({
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: { redirectTo },
       });
 
-      // En éxito, Supabase redirige la página (no llegamos a esta línea).
-      // Si llegamos acá, fue porque falló el inicio del flujo.
+      // @supabase/ssr v0.12 NO auto-navega: tenemos que ir manualmente a
+      // data.url. Si llegamos acá sin error y con url, navegamos; si no,
+      // mostramos el mensaje amable.
       if (error) {
         // eslint-disable-next-line no-console
         console.error("[student-auth] signInWithOAuth error", {
@@ -79,7 +80,19 @@ export function OAuthLoginForm() {
           "No pudimos iniciar el acceso con Google. Intenta de nuevo en un momento.",
         );
         setLoading(false);
+        return;
       }
+
+      if (data?.url) {
+        window.location.href = data.url;
+        return;
+      }
+
+      // Sin error y sin url: estado inesperado. Defendamos.
+      setErrorNote(
+        "No pudimos iniciar el acceso con Google. Intenta de nuevo en un momento.",
+      );
+      setLoading(false);
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("[student-auth] signInWithOAuth throw", err);

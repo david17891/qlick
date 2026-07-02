@@ -1,19 +1,20 @@
-"use client";
+﻿"use client";
 
 /**
  * Error boundary para `/admin/eventos`.
  *
  * Captura excepciones no manejadas en el render de la lista (p.ej. si
- * Supabase está caído o RLS bloquea la query).
+ * Supabase estÃ¡ caÃ­do o RLS bloquea la query).
  *
- * Mismo patrón que `/aprender/[courseSlug]/[lessonSlug]/error.tsx`.
- * En dev muestra el mensaje real. En prod, fallback genérico con
+ * Mismo patrÃ³n que `/aprender/[courseSlug]/[lessonSlug]/error.tsx`.
+ * En dev muestra el mensaje real. En prod, fallback genÃ©rico con
  * "Reintentar" + volver al dashboard admin.
  */
 
 import { useEffect } from "react";
 import { Container, Card, Button, Badge } from "@/components/ui";
-import { Navbar, Footer } from "@/components/layout";
+import { Navbar as NavbarClient } from "@/components/layout/Navbar";
+import { Footer } from "@/components/layout/Footer";
 
 export default function AdminEventosError({
   error,
@@ -24,12 +25,12 @@ export default function AdminEventosError({
 }) {
   useEffect(() => {
     // eslint-disable-next-line no-console
-    console.error("[/admin/eventos] error boundary capturó:", error);
+    console.error("[/admin/eventos] error boundary capturÃ³:", error);
   }, [error]);
 
   return (
     <>
-      <Navbar />
+      <NavbarClient />
       <main className="min-h-screen bg-brand-50/30 py-10">
         <Container size="wide">
           <div className="max-w-2xl mx-auto">
@@ -39,15 +40,15 @@ export default function AdminEventosError({
                 No pudimos cargar la lista de eventos
               </h1>
               <p className="text-ink-muted mt-3">
-                Ocurrió un problema al consultar Supabase. Esto puede ser
-                un bug pasajero o un problema de configuración. Probá
-                recargar o volvé al dashboard.
+                OcurriÃ³ un problema al consultar Supabase. Esto puede ser
+                un bug pasajero o un problema de configuraciÃ³n. ProbÃ¡
+                recargar o volvÃ© al dashboard.
               </p>
 
               {process.env.NODE_ENV !== "production" && error.message && (
                 <details className="mt-6 text-left">
                   <summary className="cursor-pointer text-xs font-mono text-ink-muted hover:text-ink">
-                    Detalle técnico (solo dev)
+                    Detalle tÃ©cnico (solo dev)
                   </summary>
                   <pre className="mt-2 p-3 bg-brand-50 rounded-lg text-xs text-ink-soft overflow-x-auto whitespace-pre-wrap">
                     {error.message}
@@ -72,3 +73,4 @@ export default function AdminEventosError({
     </>
   );
 }
+

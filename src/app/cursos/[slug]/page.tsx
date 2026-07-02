@@ -239,7 +239,7 @@ export default async function CourseDetailPage({
 
                   <ul className="mt-6 space-y-2 text-sm text-ink-soft">
                     <li className="flex gap-2">
-                      <span className="text-brand-600">✓</span> Acceso indefinido
+                      <span className="text-brand-600">✓</span> Acceso de por vida
                     </li>
                     <li className="flex gap-2">
                       <span className="text-brand-600">✓</span> Video on-demand

@@ -1,5 +1,11 @@
 # Git & GitHub Workflow — Qlick Marketing Integral
 
+> **Fuente canónica.** Este doc es la fuente de verdad para branching,
+> commits y PRs en Qlick. El índice cross-cutting para AI agents vive en
+> `.harness/docs/project-standards.md` (§5 Branching + commits + PRs), y
+> el scope del rein que opera código de producto en `.harness/reins/developer/agent.md`.
+> Si hay conflicto, gana este doc.
+
 Convenciones para trabajar con Git y GitHub de forma ordenada y colaborativa.
 
 ## Configuración inicial

@@ -20,6 +20,7 @@
  */
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { isAdminEmail, isAuthEnabled } from "./admin-auth";
 import { isStudentEmail } from "./student-auth";
 
@@ -96,8 +97,10 @@ export interface StudentSession {
  * (auth.uid() = user_id en enrollments / lesson_progress).
  */
 export async function getCurrentStudent(): Promise<StudentSession | null> {
-  // Modo demo: no hay auth real que validar.
-  if (!isAuthEnabled()) return null;
+  // Auth real solo si Supabase está configurado. NO dependemos del
+  // ADMIN_EMAIL_ALLOWLIST (ese gate es solo para admin auth — student
+  // y admin son roles independientes, ver D-018 / student-auth.ts).
+  if (!checkSupabaseConfig().configured) return null;
 
   let supabase;
   try {

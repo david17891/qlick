@@ -12,6 +12,13 @@
  *     progreso local con animación. La persistencia real se hace cuando
  *     el LMS server lib esté conectado (track 2 + RLS).
  *   - El progreso del curso se recalcula en cliente y se anima al cambiar.
+ *   - "Cerrar sesión" llama a `supabase.auth.signOut()` del browser client
+ *     y luego redirige. NO usa `<a href="/logout">` porque Next.js
+ *     pre-carga el RSC de los links visibles (GET a /logout) y eso ejecuta
+ *     `signOut()` server-side ANTES que el usuario haga clic, borrando la
+ *     sesión. Bug crítico I-5 (2026-06-29): si el DashboardView tenía
+ *     un link a /logout, el primer RSC prefetch mataba la sesión. Fix:
+ *     signOut client-side + redirect manual.
  *
  * Compatibilidad con el flujo anterior:
  *   - El DashboardView legacy (`components/dashboard/DashboardView.tsx`)
@@ -21,6 +28,7 @@
  */
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Container,
@@ -31,6 +39,8 @@ import {
   Badge,
 } from "@/components/ui";
 import { initials } from "@/lib/utils";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { isValidSupabaseUrl } from "@/lib/supabase/config";
 
 /** Forma enriquecida del enrollment que pasa el Server Component. */
 export interface DashboardEnrollmentView {
@@ -60,6 +70,40 @@ export function DashboardView({
   userEmail,
   enrollments,
 }: DashboardViewProps) {
+  const router = useRouter();
+  const [signingOut, setSigningOut] = useState(false);
+
+  /**
+   * Cierra sesión Supabase desde el browser client y redirige al home.
+   *
+   * ¿Por qué no usar `<a href="/logout">`? Porque Next.js pre-carga el RSC
+   * de los links visibles en pantalla (incluido `/logout`), y como ese
+   * endpoint ejecuta `signOut()` server-side, la sesión se mata antes de
+   * que el usuario siquiera clique. Bug I-5 (2026-06-29): la 2ª navegación
+   * a /dashboard veía redirect a /login porque el primer RSC prefetch de
+   * /logout ya había borrado las cookies. Por eso usamos signOut client-side
+   * aquí: el signOut solo corre cuando el usuario hace clic real.
+   */
+  async function handleSignOut() {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+      const publishableKey =
+        process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
+        "";
+      if (isValidSupabaseUrl(url) && publishableKey) {
+        const supabase = createSupabaseBrowserClient();
+        await supabase.auth.signOut();
+      }
+    } catch {
+      // Ignorar: lo importante es redirigir.
+    }
+    router.push("/");
+    router.refresh();
+  }
+
   // Estado local: mapa lessonId -> completed. Inicia con el progreso que
   // vino del server (si quisiéramos cargar el detalle por lección, lo
   // haríamos aquí). Por ahora, cada curso sabe su progressPercent global.
@@ -248,8 +292,13 @@ export function DashboardView({
           <p className="text-sm text-ink-muted mb-3">
             Sal de tu cuenta en este dispositivo.
           </p>
-          <Button href="/logout" variant="outline" size="sm">
-            Cerrar sesión
+          <Button
+            onClick={handleSignOut}
+            disabled={signingOut}
+            variant="outline"
+            size="sm"
+          >
+            {signingOut ? "Saliendo…" : "Cerrar sesión"}
           </Button>
         </Card>
         <Card className="p-5">

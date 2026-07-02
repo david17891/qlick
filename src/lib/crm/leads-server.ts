@@ -170,34 +170,36 @@ export async function findLeadByPhone(
   }
 
   const supabase = createSupabaseAdminClient();
-  // Primero, una query amplia que traiga candidatos con `phone` no nulo.
-  // Como la columna no está normalizada en DB, comparamos post-query.
-  // Límite alto pero acotado: si llega a más de 200 leads con phone,
-  // la query es lenta, pero para MVP está bien. Optimizar después con
-  // un índice en phone_normalized cuando se agregue la columna.
+  // Query optimizada: usa el índice único `leads_phone_normalized_unique`
+  // (creado en 20260627010000_funnel_hardening.sql). Antes traía hasta 200
+  // leads con `phone IS NOT NULL` + orden + limit, lo cual hacía table scan
+  // y colgaba en runtime de Vercel con 10k+ rows. Ahora `.eq()` sobre
+  // phone_normalized usa el índice directamente → <100ms.
+  //
+  // NOTA: NO seleccionamos `whatsapp_status` ni `last_contacted_at` aún —
+  // esas columnas vienen de la migración `20260628000000_whatsapp_followup.sql`
+  // que puede no estar aplicada en production. Las agregamos al SELECT
+  // después de confirmar que la migración corrió (ver docs/OPEN_ITEMS.md).
   const { data, error } = await supabase
     .from("leads")
-    .select("*")
-    .not("phone", "is", null)
-    .order("created_at", { ascending: false })
-    .limit(200);
+    .select(
+      "id, name, email, phone, phone_normalized, status, source, intent, consent_to_contact, summary, course_of_interest, created_at, updated_at"
+    )
+    .eq("phone_normalized", normalized)
+    .maybeSingle();
 
   if (error) {
     // eslint-disable-next-line no-console
     console.error("[leads-server] findLeadByPhone falló", {
       code: error.code,
+      message: error.message,
+      details: error.details,
     });
     return null;
   }
-  if (!data || data.length === 0) return null;
+  if (!data) return null;
 
-  for (const row of data) {
-    const rowPhone = (row as { phone: string | null }).phone;
-    if (phonesMatch(rowPhone, normalized)) {
-      return mapLeadRowToLead(row as Parameters<typeof mapLeadRowToLead>[0]);
-    }
-  }
-  return null;
+  return mapLeadRowToLead(data as Parameters<typeof mapLeadRowToLead>[0]);
 }
 
 /* --------------------------- Escritura --------------------------- */

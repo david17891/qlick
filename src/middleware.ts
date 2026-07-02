@@ -1,14 +1,25 @@
 /**
- * Middleware de protección de rutas admin.
+ * Middleware de protección y refresh de sesión.
  *
- * Protege:
+ * Rutas admin (protegidas, requieren allowlist):
  *   - /admin/*            → requiere sesión admin (Supabase Auth + allowlist)
  *   - /api/admin/*        → igual, pero responde JSON 401/403
  *
- * Exclusiones intencionales:
+ * Rutas student (refresh de sesión, sin bloqueo):
+ *   - /dashboard          → alumno autenticado (requireStudent() en page.tsx)
+ *   - /aprender/*         → lecciones (requieren sesión)
+ *   - /pagar/*            → checkout (requiere sesión)
+ *
+ * El refresh de sesión es OBLIGATORIO para rutas student porque el server
+ * component usa `supabase.auth.getUser()` que verifica el access_token contra
+ * Supabase. Si el JWT expira (~1h), `getUser()` falla y la page redirige a
+ * /login, aunque el refresh_token siga vivo. El patrón oficial de
+ * @supabase/ssr es que el middleware refresque el access_token automáticamente
+ * y propague la nueva cookie al response. Ver bug "sesión se pierde al
+ * navegar fuera de /dashboard" en PROJECT-LOG.md (2026-06-29).
+ *
+ * Exclusiones intencionales (admin):
  *   - /admin/login        → debe ser accesible sin sesión (es el login).
- *   - /api/admin/leads    → NO se excluye; queda protegido aquí. El propio
- *                           route handler vuelve a validar (defensa en profundidad).
  *   - /admin/system/supabase → diagnóstico; se deja público como hoy (no expone
  *                           datos sensibles, solo estados de configuración).
  *
@@ -32,9 +43,19 @@ import { supabaseConfig, isValidSupabaseUrl } from "@/lib/supabase/config";
 /**
  * Rutas que el matcher inspecciona. Next.js `matcher` ejecuta el middleware
  * solo en estas rutas (eficiencia: no corre en /_next, imágenes, etc.).
+ *
+ * IMPORTANTE: las rutas student (`/dashboard`, `/aprender/*`, `/pagar/*`)
+ * están acá para que el middleware refresque la sesión. NO se valida
+ * allowlist en esas rutas — la autorización fina la hace el server component.
  */
 export const config = {
-  matcher: ["/admin/:path*", "/api/admin/:path*"],
+  matcher: [
+    "/admin/:path*",
+    "/api/admin/:path*",
+    "/dashboard/:path*",
+    "/aprender/:path*",
+    "/pagar/:path*",
+  ],
 };
 
 /** Rutas de admin que deben quedar accesibles SIN sesión. */
@@ -79,10 +100,24 @@ export async function middleware(req: NextRequest) {
 
   const { pathname } = req.nextUrl;
   const isApi = pathname.startsWith("/api/admin/");
+  const isAdminPath = pathname.startsWith("/admin/") || isApi;
   const allowlist = getAdminAllowlist();
 
   // Construir el cliente Supabase sobre las cookies de la request.
-  const res = NextResponse.next({
+  // El `getUser()` de @supabase/ssr refresca automáticamente el access_token
+  // si está expirado (usa el refresh_token) y propaga la nueva cookie via
+  // `setAll()`.
+  //
+  // CRÍTICO: las cookies refrescadas deben quedar disponibles TANTO en
+  // `req.cookies` (para que los server components que corren DESPUÉS del
+  // middleware las vean via `cookies()` de Next.js) COMO en `res.cookies`
+  // (para que el browser las reciba en el Set-Cookie response). Si solo
+  // las seteamos en `res`, el server component lee las cookies VIEJAS del
+  // request original → `getUser()` falla con access_token expirado →
+  // `requireStudent()` retorna null → redirect a /login.
+  // Patrón oficial: https://supabase.com/docs/guides/auth/server-side/nextjs
+  // Ver PROJECT-LOG.md (2026-06-29) — bug I-5 segunda iteración.
+  let res = NextResponse.next({
     request: { headers: req.headers },
   });
 
@@ -95,7 +130,19 @@ export async function middleware(req: NextRequest) {
           return req.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          // Middleware: aplicamos los cookies al response para refrescar sesión.
+          // 1) Actualizar req.cookies para que el server component que corre
+          //    después del middleware vea la sesión refrescada al llamar
+          //    `cookies()` desde next/headers.
+          cookiesToSet.forEach(({ name, value }) => {
+            req.cookies.set(name, value);
+          });
+          // 2) Reconstruir `res` con los headers del request ya actualizados
+          //    para que las nuevas cookies viajen también al browser.
+          res = NextResponse.next({
+            request: { headers: req.headers },
+          });
+          // 3) Adjuntar las cookies refrescadas al response para que el
+          //    browser las reciba en el Set-Cookie.
           cookiesToSet.forEach(({ name, value, options }) => {
             res.cookies.set(name, value, options);
           });
@@ -111,48 +158,57 @@ export async function middleware(req: NextRequest) {
   const email = user?.email?.trim().toLowerCase() ?? "";
   const isAllowed = Boolean(email) && allowlist.has(email);
 
-  // --- Rutas /admin/login públicas: si ya hay sesión admin válida, enviar al panel.
-  if (pathname === "/admin/login") {
-    if (isAllowed) {
+  // --- Rama ADMIN: validar allowlist ---
+  if (isAdminPath) {
+    // Rutas /admin/login públicas: si ya hay sesión admin válida, enviar al panel.
+    if (pathname === "/admin/login") {
+      if (isAllowed) {
+        const url = req.nextUrl.clone();
+        url.pathname = "/admin";
+        return NextResponse.redirect(url);
+      }
+      return res; // sin sesión: mostrar el login.
+    }
+
+    // Rutas públicas de diagnóstico: dejar pasar.
+    if (PUBLIC_ADMIN_PATHS.has(pathname)) {
+      return res;
+    }
+
+    // Resto de rutas admin: bloquear si no hay sesión o allowlist.
+    if (!user) {
+      if (isApi) {
+        return NextResponse.json(
+          { ok: false, error: "No autenticado." },
+          { status: 401 },
+        );
+      }
       const url = req.nextUrl.clone();
-      url.pathname = "/admin";
+      url.pathname = "/admin/login";
       return NextResponse.redirect(url);
     }
-    return res; // sin sesión: mostrar el login.
-  }
 
-  // --- Rutas públicas de diagnóstico: dejar pasar.
-  if (PUBLIC_ADMIN_PATHS.has(pathname)) {
+    if (!isAllowed) {
+      if (isApi) {
+        return NextResponse.json(
+          { ok: false, error: "No autorizado como admin." },
+          { status: 403 },
+        );
+      }
+      const url = req.nextUrl.clone();
+      url.pathname = "/admin/login";
+      url.searchParams.set("error", "forbidden");
+      return NextResponse.redirect(url);
+    }
+
     return res;
   }
 
-  // --- Resto de rutas protegidas.
-  if (!user) {
-    // Sin sesión.
-    if (isApi) {
-      return NextResponse.json(
-        { ok: false, error: "No autenticado." },
-        { status: 401 },
-      );
-    }
-    const url = req.nextUrl.clone();
-    url.pathname = "/admin/login";
-    return NextResponse.redirect(url);
-  }
-
-  if (!isAllowed) {
-    // Autenticado pero no autorizado (email fuera del allowlist).
-    if (isApi) {
-      return NextResponse.json(
-        { ok: false, error: "No autorizado como admin." },
-        { status: 403 },
-      );
-    }
-    const url = req.nextUrl.clone();
-    url.pathname = "/admin/login";
-    url.searchParams.set("error", "forbidden");
-    return NextResponse.redirect(url);
-  }
-
+  // --- Rama STUDENT: solo refrescar sesión, NO bloquear.
+  // La autorización fina (¿es alumno? ¿qué cursos ve?) la hace el server
+  // component de cada ruta (`requireStudent()` + RLS). Aquí solo nos
+  // aseguramos de que el access_token esté vigente antes de que el server
+  // component llame `getUser()`. Si NO hay sesión, dejamos pasar — el
+  // server component redirigirá a /login.
   return res;
 }

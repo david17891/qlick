@@ -24,7 +24,8 @@ const links = [
 /**
  * Identidad efectiva del usuario para la Navbar.
  *
- * - `kind === "mock"`: usuario demo desde localStorage (modo demo).
+ * - `kind === "mock"`: usuario demo desde localStorage (modo demo). Solo
+ *   detectable client-side — en SSR siempre devolverá `kind === "none"`.
  * - `kind === "supabase-student"`: sesión Supabase real, NO admin.
  * - `kind === "supabase-admin"`: sesión Supabase real, SÍ admin.
  *
@@ -32,16 +33,27 @@ const links = [
  *   - ¿Hay alguien autenticado?
  *   - ¿Es admin (mostrar botón Admin)?
  *   - ¿Es alumno (mostrar Mi panel)?
+ *
+ * **SSR-aware:** `initialIdentity` se calcula server-side en
+ * `NavbarServer.tsx` (vía `getCurrentStudent` / `getCurrentAdmin`) y se
+ * pasa como prop. Esto elimina el flash visual de "Acceso alumnos" →
+ * "Mi panel" que ocurría cuando el componente hidrataba con
+ * `{kind: "none"}` y luego actualizaba en `useEffect`.
+ * Ver bug "flash visual navbar" 2026-06-29.
  */
-type NavbarIdentity =
+export type NavbarIdentity =
   | { kind: "none" }
   | { kind: "mock"; user: User }
   | { kind: "supabase-student"; email: string }
   | { kind: "supabase-admin"; email: string };
 
-export function Navbar() {
+export function Navbar({ initialIdentity }: { initialIdentity?: NavbarIdentity } = {}) {
   const pathname = usePathname();
-  const [identity, setIdentity] = useState<NavbarIdentity>({ kind: "none" });
+  // Si el server component padre calculó la identidad, úsala como estado
+  // inicial para evitar el flash de "no authed" antes de hidratar.
+  const [identity, setIdentity] = useState<NavbarIdentity>(
+    initialIdentity ?? { kind: "none" },
+  );
 
   useEffect(() => {
     let cancelled = false;

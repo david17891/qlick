@@ -45,13 +45,34 @@ export function slugify(input: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-/** Formatea una fecha ISO a formato legible en español. */
+/**
+ * URL base pública de la app (sin trailing slash).
+ *
+ * Usada para construir links absolutos (QR check-in, email CTAs, etc.).
+ * Prioridad: `NEXT_PUBLIC_APP_URL` env > fallback a qlick.mx.
+ *
+ * Server-only seguro: el fallback es prod-correcto. En dev local con
+ * `npm run dev` la env se setea a `http://localhost:3000`.
+ */
+export function appBaseUrl(): string {
+  return process.env.NEXT_PUBLIC_APP_URL?.trim() || "https://qlick.mx";
+}
+
+/**
+ * Formatea una fecha ISO a formato legible en español.
+ *
+ * **Importante:** se fuerza `timeZone: 'UTC'` para evitar mismatches
+ * de hidratación entre server (Node en UTC por defecto en Vercel) y
+ * client (timezone del browser). Sin esto, fechas cerca de medianoche
+ * UTC se renderizan distinto en server vs client → React error #425.
+ */
 export function formatDate(iso: string): string {
   try {
     return new Date(iso).toLocaleDateString("es-MX", {
       day: "numeric",
       month: "long",
-      year: "numeric"
+      year: "numeric",
+      timeZone: "UTC",
     });
   } catch {
     return iso;

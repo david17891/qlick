@@ -1,5 +1,12 @@
 # Checklist — Aviso de Privacidad y Deploy Productivo (fase leads)
 
+> **Fuente canónica.** Este doc es el gate de captura de datos reales
+> (RLS + aviso de privacidad + consentimiento + deploy). El índice
+> cross-cutting para AI agents vive en `.harness/docs/project-standards.md`
+> (§3 Datos sintéticos/reales y §4 Env vars / secretos), y el scope del
+> rein que opera RLS y migraciones en `.harness/reins/supabase-expert/agent.md`.
+> Si hay conflicto, gana este doc.
+
 **Fecha:** 2026-06-23
 **Fase:** `feature/privacy-and-production-deploy` (post `v0.4.0-leads-foundation`)
 **Audiencia:** operador humano que valida y lanza el deploy productivo del

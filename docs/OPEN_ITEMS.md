@@ -19,6 +19,151 @@
 
 ---
 
+## 0. Auditoría profunda 2026-07-02 (pre-6 jul)
+
+**Sesión:** 2026-07-02 ~02:45. **Método:** 3 sub-agents en paralelo (bot / funnel / infra) + lectura directa de docs + memoria. **Output:** 17 gaps priorizados.
+
+### Estado de gaps al cierre de la sesión 2026-07-02 ~03:10
+
+| Gap | Severidad | Estado | Cierre |
+|---|---|---|---|
+| **G-1** | 🔴 | ✅ **CERRADO** | Commit `7ae91f2`. `human-handoff.ts:74` ahora chequea `BREVO_API_KEY`. Emails de handoff empiezan a salir. |
+| **G-2** | 🔴 | ⚠️ **PENDIENTE David** | `WHATSAPP_WEBHOOK_SECRET` sigue vacío en Vercel. Instrucciones abajo. |
+| **G-3** | 🔴 | ⚠️ Pendiente | Bot LLM repite saludo en cada turno. |
+| **G-4** | 🔴 | ⚠️ Pendiente | No existe `/encuesta/[token]`. |
+| **G-5** | 🟠 | ⚠️ Pendiente | 3 plantillas Meta no creadas. |
+| **G-6** | 🟠 | ✅ **CERRADO** | `npx supabase db push` aplicó las 5 migrations pendientes. |
+| **G-7** | 🟠 | ✅ **CERRADO** | `NEXT_PUBLIC_APP_URL` actualizado a `https://www.qlick.digital` en Vercel production. Redeploy triggereado con push `7ae91f2`. |
+| **G-8** | 🟠 | ✅ **CERRADO** | 4 archivos de comentarios + columna `resend_message_id` → `brevo_message_id` (migration `20260702030000`). |
+| **G-9** | 🟠 | ⚠️ Pendiente | Cursos hardcoded en `interactive_show_courses`. |
+| **G-10** | 🟠 | ⚠️ Pendiente | No hay UI admin para `handoff_requests`. |
+| **G-11** | 🟠 | ✅ **CERRADO** | `npx supabase db query --linked`: 27 tablas en `public` (STATUS.md decía 24). |
+| **G-12** | 🟠 | ⚠️ Pendiente | `findLeadByPhone` timeouts intermitentes. |
+| **G-13** | 🟡 | ✅ **CERRADO** | `whatsapp_status`, `last_contacted_at`, `phone_normalized` existen en `leads`. Defensive code del bot es ahora innecesario (cleanup post-6 jul). |
+| **G-14** | 🟡 | ⚠️ Pendiente | Tests webhook HTTP comentados. |
+| **G-15** | 🟡 | ⚠️ Pendiente | Docs desactualizadas con `RESEND_*` y `qlick.marketing`. |
+| **G-16** | 🟡 | ⚠️ Pendiente | Inconsistencias código/docs. |
+| **G-17** | 🟢 | ⚠️ Pendiente | App fantasma Meta no se puede borrar. |
+
+**Resumen:** 6 gaps cerrados (G-1, G-6, G-7, G-8, G-11, G-13). 1 bloqueado en David (G-2). 10 pendientes (3 críticos: G-3, G-4; 3 altos: G-5, G-9, G-10, G-12; 4 medios/bajos: G-14, G-15, G-16, G-17).
+
+### 🔴 P0 — Bloquean producción o tienen riesgo legal/seguridad
+
+#### G-1 · `human-handoff.ts:74` chequea `RESEND_API_KEY` (ya no existe)
+
+- **Síntoma:** cuando un lead clickea "Hablar con humano" en el bot, la notificación por email NUNCA sale. El check `if (!process.env.RESEND_API_KEY) return false;` siempre devuelve false porque Resend fue migrado a Brevo (commit `7b0e271`).
+- **Fix:** cambiar a `if (!process.env.BREVO_API_KEY) return false;` (1 línea).
+- **Archivo:** `src/lib/whatsapp/human-handoff.ts:74`.
+- **Severidad:** 🔴 Crítica — feature documentada como funcional pero silenciosamente rota.
+
+#### G-2 · `WHATSAPP_WEBHOOK_SECRET` removido de Vercel → webhook abierto a spoofing
+
+- **Síntoma:** el handler del webhook salta validación HMAC. Cualquier actor puede POST mensajes falsos al bot, ejecutar intents, manipular DB, consumir tokens DeepSeek ($$$).
+- **Fix:** David genera secret de 32+ chars hex, sube a Vercel como `WHATSAPP_WEBHOOK_SECRET` production, sincroniza en Meta (WhatsApp > Configuration > Webhook). Validación ya implementada en `route.ts:90` (solo falta secret).
+- **Archivo:** `src/app/api/whatsapp/webhook/route.ts:90`.
+- **Severidad:** 🔴 Crítica — superficie de ataque abierta en producción.
+- **Estado al 2026-07-02 ~03:10:** ⚠️ PENDIENTE David. Verificado vía `vercel env pull` que `WHATSAPP_WEBHOOK_SECRET=""` en Vercel production. **Instrucciones exactas abajo.**
+
+#### G-3 · Bot LLM repite "Hola Por, gracias por escribir..." en cada turno
+
+- **Síntoma:** el bot contesta igual a "Costo?" y "El costo" (sin contexto). `loadConversationWindow` (en `src/lib/ai/conversation-window.ts:97-194`) sí carga los últimos 8 mensajes pero el LLM no los usa. El system prompt fuerza saludo inicial aunque haya historial.
+- **Fix:** debuggear por qué `loadConversationWindow` no llega al system prompt; ajustar prompt para NO saludar si `messages.length > 0`; agregar test de regresión.
+- **Archivos:** `src/lib/whatsapp/bot-engine.ts:884-940` (intent `question`), `src/lib/ai/agent-prompts.ts:35-84` (system prompt).
+- **Severidad:** 🔴 Crítica — UX rota, parece bot tonto en conversaciones largas.
+
+#### G-4 · No existe ruta `/encuesta/[token]` ni `/api/submit-survey`
+
+- **Síntoma:** walks-in del 6 jul pueden hacer check-in (si tienen QR) pero no pueden dejar survey público. `promoteSurveyToLead` solo se dispara desde `runEventImport.ts:340` (Excel admin). Encuestas entran solo vía import Excel, no por form público.
+- **Bloquea:** conversión walks-in → lead cualificado CRM. El funnel termina en `event_attended` y se queda ahí (sin tags de commercial_interest).
+- **Mitigación posible para 6 jul (workaround manual):** admin abre detail del evento y carga encuestas vía Excel post-evento. Requiere llenar Excel a mano.
+- **Fix definitivo (scope ~medio día):** crear `/encuesta/[token]` con token por email/phone + `POST /api/submit-survey` que llame `createSurvey + promoteSurveyToLead`.
+- **Severidad:** 🔴 Crítica — cierre del funnel bloqueado para walks-in.
+
+### 🟠 P1 — Dañarán UX o conversión del evento
+
+#### G-5 · Plantillas Meta NO creadas (3)
+
+- **Bloquea:** outreach proactivo (mensajes sin que el usuario escriba primero) + cron jobs de reminders Fase 2.
+- **Templates faltantes:** `conf_bienvenida`, `conf_info_evento`, `conf_confirmacion_registro`.
+- **Estado:** bot usa texto libre (funciona en ventana 24h). Si Meta rechaza text por >24h, bot no responde.
+- **Fix:** Meta Business Manager → WhatsApp Manager → Message Templates → crear 3 con idioma `es_MX` (categorías MARKETING + UTILITY). Esperar aprobación Meta (24-48h).
+- **Severidad:** 🟠 Alta — no bloquea 6 jul estrictamente pero limita reliability.
+
+#### G-6 · 5 migrations Fase 7a no confirmadas aplicadas en Supabase
+
+- **Migrations:** `20260630164900_bot_manual_context.sql`, `20260701120000_lead_profile.sql`, `20260701160000_handoff_requests.sql`, `20260701170000_lead_event_attended_status.sql`, `20260701180000_event_reminder_log.sql`.
+- **Síntoma:** código en prod asume que estas tablas existen. Si falta alguna, falla silenciosamente o crashea.
+- **Verificación:** correr `npx supabase migration list` o SQL Editor → `SELECT table_name FROM information_schema.tables WHERE table_schema='public'`.
+- **Severidad:** 🟠 Alta — código asume schema no verificado.
+
+#### G-7 · `NEXT_PUBLIC_APP_URL` apunta a `qlick-three.vercel.app` (no `qlick.digital`)
+
+- **Síntoma:** `event-tokens.ts:217` usa `process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"`. En Vercel production está en `qlick-three.vercel.app` (legacy). QR codes y emails embebidos apuntan al dominio viejo.
+- **Impacto:** funciona (Vercel legacy sigue activo) pero URLs embebidas en QR/email son inconsistentes con dominio canónico.
+- **Fix:** `vercel env rm NEXT_PUBLIC_APP_URL production` + `vercel env add NEXT_PUBLIC_APP_URL production --value "https://www.qlick.digital"` + redeploy.
+- **Severidad:** 🟠 Media-Alta — branding inconsistente.
+
+#### G-8 · `findLeadByPhone` timeout intermitente (5s)
+
+- **Síntoma:** a veces Supabase se pone lento. Riesgo de que Vercel mate el container antes de que el bot responda.
+- **Estado:** parcialmente resuelto con `phone_normalized` índice UNIQUE (<100ms típico). El 5s es el peor caso.
+- **Fix:** considerar timeout explícito 3s + retry; investigar región de Supabase (afecta latencia Vercel ↔ Supabase).
+- **Severidad:** 🟠 Media — afecta reliability pero no bloquea.
+
+#### G-9 · 3 archivos siguen diciendo "Resend" en logs/comentarios
+
+- **Archivos:** `src/lib/email/event-qr-pass.ts:6,11`; `src/lib/email/event-reminder.ts:6,11`; `event_reminder_log.resend_message_id` (column name).
+- **Impacto:** cero funcional. El envío real va por Brevo. Pero debugging cuesta más (grep "Resend" da falsos positivos).
+- **Fix:** 4-6 cambios de string (5 min).
+- **Severidad:** 🟠 Media — ruido operacional.
+
+#### G-10 · Carga de cursos hardcoded en `interactive_show_courses`
+
+- **Síntoma:** `bot-engine.ts:791-803` lista 3 cursos hardcoded ("Marketing Básico", "IA para Marketing", "Curso personalizado"). NO lee de DB. Si David agrega un curso al LMS, no aparece en el bot.
+- **Severidad:** 🟠 Media — aceptable para 6 jul (evento corto) pero reporta.
+
+#### G-11 · No hay UI admin para `handoff_requests`
+
+- **Síntoma:** leads que clickean "Hablar con humano" se insertan en `handoff_requests` (status pending/contacted/closed) pero no hay página en `/admin/handoffs` ni query en panel. David no ve quién pidió hablar.
+- **Fix mínimo:** agregar `/admin/handoffs` con tabla paginada (1-2h).
+- **Severidad:** 🟠 Media — leads se pierden si David no mira DB.
+
+#### G-12 · Discrepancia 24 vs 27 tablas en STATUS.md
+
+- **Síntoma:** STATUS.md L107 dice "24 tablas en public" pero las migraciones suman 27 (incluye `event_qr_tokens`, `lead_whatsapp_conversations`, `lead_consent_log` aplicados retroactivamente).
+- **Fix:** `SELECT count(*) FROM information_schema.tables WHERE table_schema='public'` en Supabase.
+- **Severidad:** 🟠 Media — desconfianza en el snapshot.
+
+### 🟡 P2 — Deuda técnica / futuro
+
+#### G-13 · `whatsapp_status`/`last_contacted_at` en `leads` marcado "pendiente de verificar"
+
+- **Síntoma:** STATUS.md L116 dice "efecto real puede no estar". Bot hace defensive code (omite columnas en INSERT) — confirmación que la columna no existe.
+- **Fix:** SQL Editor → `SELECT column_name FROM information_schema.columns WHERE table_name='leads' AND column_name IN ('whatsapp_status','last_contacted_at','phone_normalized');`. Si falta, aplicar `20260628000000_whatsapp_followup.sql`.
+- **Severidad:** 🟡 Media — enmascara schema drift.
+
+#### G-14 · Tests del webhook HTTP comentados
+
+- **Síntoma:** `tests/whatsapp-bot.test.mjs:587-752` tiene 10+ tests comentados ("SKIP: route.ts importa next/server que solo está disponible dentro del runtime de Next.js").
+- **Severidad:** 🟡 Media — cobertura de regresión cero para HMAC, idempotencia 23505, JSON malformado.
+
+#### G-15 · Docs desactualizadas mencionando `RESEND_*` y `qlick.marketing`
+
+- **Archivos:** `docs/HANDOFF_v0.7.1_FASE_7A_REMINDERS.md`, `docs/SMTP_SETUP.md`, `docs/STATUS.md` L323, `docs/OPEN_ITEMS.md` L1073.
+- **Severidad:** 🟡 Media — confusión documental.
+
+#### G-16 · Inconsistencias entre código y docs
+
+- **Casos:** `webhooks/handler.ts:1-13` dice "PLACEHOLDER SEGURO" pero el route handler SÍ persiste y dispara bot. `whatsapp-provider.ts:7-13` dice "manual_wa es único activo" cuando `meta_cloud_api` está activo. `agent-provider.ts:7-9` dice "modo sugerencia" cuando el bot responde automático.
+- **Severidad:** 🟡 Media — confunde a quien lee por primera vez.
+
+#### G-17 · `app fantasma 2202427980234937` no se puede borrar
+
+- **Síntoma:** Meta prioriza Qlick_wb por ahora pero la app sigue subscripta. DELETE vía API devuelve `success: true` pero la app reaparece (es "1P" first-party de Meta).
+- **Severidad:** 🟢 Baja — workaround funciona.
+
+---
+
 ## 1. Deuda técnica activa
 
 ### ✅ Sesión 2026-06-28 (domingo, tarde) — Fase 5 Paquete A+B+C+D+E cerrado
@@ -37,7 +182,216 @@ header, audit log, Tooltip). Inventario: 23 issues.
 - 🔴 **4 críticos** (bloquean demo a socios)
 - 🟡 **11 medios** (mejorables, no bloquean)
 - 🟠 **8 bajos** (nice-to-have / cleanup)
-- ✅ **8 bien logrados**
+- ✅ **8 bien logrados
+
+---
+
+### 🟠 WhatsApp Fase 7 — Pendientes post-conferencia (actualizado 2026-07-01)
+
+**Sesión 2026-07-01 ~01:50** — Bot responde ✅ con texto libre. Provider de WhatsApp operativo (credenciales validadas en runtime). Pero Supabase cuelga en Vercel runtime → workaround con lead sintético. Templates no existen → texto libre.
+
+#### ✅ CERRADO 2026-07-01: Subir `WHATSAPP_CLOUD_ACCESS_TOKEN` a Vercel production
+
+- Las 4 vars operativas: `WHATSAPP_CLOUD_ACCESS_TOKEN`, `WHATSAPP_CLOUD_PHONE_NUMBER_ID`, `WHATSAPP_CLOUD_APP_ID`, `WHATSAPP_CLOUD_WABA_ID`.
+- Provider `meta_cloud_api` activo en runtime. Validado: `getActiveWhatsAppProvider { metaConfigured: true, hasPhoneId: true, hasToken: true, ... }`.
+
+#### 🔴 1. Supabase en runtime Vercel — PARCIALMENTE RESUELTO 2026-07-01
+
+- **Lo que se arregló esta sesión:**
+  - `findLeadByPhone` query optimizada con `.eq("phone_normalized", normalized).maybeSingle()` → usa índice UNIQUE → <100ms (antes table scan + sort colgaba >5s)
+  - `createLeadFromWhatsApp` sin `whatsapp_status` (defensive code, evita PGRST204)
+  - Fallback con `id=null` y `supabase=null` cuando Supabase falla (evita 22P02)
+  - `buildResponsePlan` usa `phoneNormalized` directo (no `lead.phone` que podía ser undefined)
+  - **Bot SÍ funciona end-to-end con persistencia real:** encuentra David en DB, crea lead con UUID, detecta intents, responde por WhatsApp
+- **Lo que falta:**
+  - Auditar schema tabla `leads` (confirmar si `whatsapp_status` y `last_contacted_at` existen; si no, aplicar migración)
+  - `findLeadByPhone` timeout intermitente (5s en algunos casos) — Supabase a veces lento
+  - `persistConversation` falla con 23505 unique violation (idempotencia funciona, log ruidoso)
+- **Severidad:** 🟠 Alto (de Crítico). Bot funciona PERO falta auditar schema y limpiar logs.
+
+#### 🟠 2. Limpiar console.error de debug agregados hoy
+
+- **Archivos modificados con debug logging temporal:**
+  - `src/lib/whatsapp/bot-engine.ts` (5+ console.error: processInboundMessage, normalizePhone, supabase result, findOrCreateLead, persistConversation, buildResponsePlan, fallback sintético)
+  - `src/lib/whatsapp/providers/meta-cloud-api-provider.ts` (console.error cuando Meta falla con detalle)
+  - `src/lib/whatsapp/index.ts` (console.error en getActiveWhatsAppProvider)
+  - `src/lib/crm/leads-server.ts` (AbortController removido pero console.error TIMEOUT puede quedar)
+  - `src/app/api/whatsapp/webhook/route.ts` (console.error en processInboundSafely START/END)
+- **Severidad:** 🟠 Alto. Es debug que ensucia logs. NO bloquea funcionalidad pero debería limpiarse antes de la conferencia del 6 jul.
+
+#### 🟠 3. Restaurar fire-and-forget en handler webhook
+
+- **Cambio temporal:** cambié `void processInboundSafely(msg)` por `await Promise.race([botPromise, botTimeout])` con timeout 10s. Esto bloquea el response de Meta hasta que el bot termine.
+- **Por qué:** Vercel mataba el container post-response con `void promise`, no se veían logs del Promise.race interno.
+- **Riesgo actual:** Meta puede reintentar si el response tarda >5s. La idempotencia del webhook (UNIQUE whatsapp_message_id) previene duplicados PERO es anti-pattern.
+- **Fix:** cuando se arregle el debug logging, restaurar `void processInboundSafely(msg)`.
+- **Severidad:** 🟠 Alto. Funciona pero es hack.
+
+#### 🟠 4. Contexto entre mensajes NO funciona
+
+- **Síntoma:** LLM responde igual a "Costo?" y "El costo" (sin contexto previo). Bot repite "Hola Por, gracias por escribir..." en cada mensaje `question`.
+- **Causa probable:** `loadConversationWindow` (en `src/lib/ai/`) está implementado pero no carga los mensajes previos correctamente. O el system prompt del LLM fuerza saludo inicial.
+- **Severidad:** 🟠 Alto. Funcionalidad core del bot conversacional.
+- **Fix sugerido:**
+  1. Verificar que `loadConversationWindow` retorna los últimos 8 mensajes de `lead_whatsapp_conversations`
+  2. Ajustar system prompt del agente IA para que NO repita saludo en mensajes que no son `greeting`
+  3. Considerar agregar info de precios del curso en el prompt (vía `loadActiveEventContext`)
+
+#### 🟠 5. Crear 3 templates en Meta Business Manager
+
+- **Bloquea:** outreach proactivo (mensajes sin que el usuario escriba primero), cron jobs del funnel Fase 2.
+- **Templates faltantes:** `conf_bienvenida`, `conf_info_evento`, `conf_confirmacion_registro`.
+- **Estado actual:** bot usa texto libre (funciona en ventana 24h, suficiente para responder).
+- **Severidad:** 🟠 Alto. Necesario para Fase 2 (cron jobs) pero no bloquea el 6 jul.
+
+#### 🟠 6. Auditar schema tabla `leads`
+
+- **Sospecha:** la migración `20260628000000_whatsapp_followup.sql` puede NO estar aplicada en producción.
+- **Síntoma:** `createLeadFromWhatsApp` falla con PGRST204 cuando incluye `whatsapp_status` (la columna no existe).
+- **Estado actual:** ✅ **RESUELTO 2026-07-01.** Ambas columnas (`whatsapp_status` + `last_contacted_at`) aplicadas via SQL manual desde Supabase dashboard. Restaurado `whatsapp_status: "no_contactado"` en INSERT de `createLeadFromWhatsApp`.
+- **Verificación:** endpoint `/api/dev/check-schema` confirma que las 3 columnas de `leads` existen. `lead_whatsapp_log` y `lead_whatsapp_conversations` también están aplicadas.
+
+#### 🔴 C1. Webhook sin validación de firma (CRÍTICO seguridad)
+
+- **Síntoma:** `WHATSAPP_WEBHOOK_SECRET` removido de Vercel. Handler salta validación HMAC. Cualquiera con la URL puede POST y:
+  - Consumir tokens DeepSeek ($$$)
+  - Crear leads basura
+  - Spamear a terceros vía bot
+- **Estado:** Pendiente de David. Auditor externo lo marcó como CRÍTICO en primera pasada (2026-07-01).
+- **Severidad:** 🔴 Crítico. No prod-safe en estado actual.
+- **Fix (5 pasos):**
+  1. Generar secret de 32+ chars hex en PowerShell: `(New-Object Random).NextBytes($bytes)` × 32
+  2. Guardar en `.env.local` Y password manager
+  3. Subir a Vercel: `vercel env add WHATSAPP_WEBHOOK_SECRET production --value $env:WHATSAPP_WEBHOOK_SECRET --force --yes --cwd "C:\Users\User\Documents\Click"`
+  4. Sincronizar el MISMO valor como `hub.verify_token` en Meta for Developers (whatsapp-business/wa-settings del app Qlick_wb)
+  5. Redeploy
+
+#### 🟠 M1. OPT_OUT_RE falso positivo (bug peligroso)
+
+- **Síntoma:** `/^(no|cancelar|baja|stop|unsubscribe)/i` matcheaba "no" suelto → "No tengo dinero ahora" se clasificaba como opt_out → bot descartaba lead del CRM.
+- **Estado:** ✅ **RESUELTO 2026-07-01** (commit `e642602`). Regex endurecido para requerir contexto negativo explícito (`no gracias`, `no me interesa`, `cancelar`, `baja`, `stop`, etc.).
+
+#### 🟠 M2. TEMPLATES dead code
+
+- **Síntoma:** `const TEMPLATES` ya no se referenciaba desde el switch (migrado a texto libre en commit `1cb8e9d`).
+- **Estado:** ✅ **RESUELTO 2026-07-01** (commit `e642602`). Comentario explicativo de dónde restaurar cuando se creen templates en Meta.
+
+#### 🟠 A3. Promise.race con timeout 10s
+
+- **Síntoma:** `await Promise.race([botPromise, botTimeout])` bloquea response de Meta hasta 10s. Si bot tarda >5s, Meta reintenta → doble procesamiento.
+- **Estado:** ✅ **RESUELTO 2026-07-01** (commit `e642602`). Restaurado `void processInboundSafely(msg)`. Auditor sugirió `waitUntil` pero SOLO está en Next.js 15+; repo usa Next 14.2.35.
+- **Trade-off conocido:** Vercel puede matar container post-response. Idempotencia por UNIQUE `whatsapp_message_id` previene duplicados.
+
+#### 🟠 A2. createLeadFromWhatsApp no maneja 23505
+
+- **Síntoma:** Race Meta-retry (>5s sin 200) creaba duplicado silencioso, fallback a `id=null`, respuesta sin persistir.
+- **Estado:** ✅ **RESUELTO 2026-07-01** (commit `e642602`). Ahora si `error.code === '23505'`, busca lead existente por phone y lo retorna.
+
+#### 🟠 A1. 16+ console.error de debug ensuciando logs
+
+- **Estado:** ✅ **PARCIALMENTE RESUELTO 2026-07-01** (commit `4faae1c`). Helpers `debugLog` (gate `NODE_ENV !== "production"`) y `errorLog` (siempre) implementados en `bot-engine.ts`. Debug puros migrados. Errores reales se quedan.
+- **Pendiente:** considerar logger estructurado (pino/winston) — ver B2.
+
+#### 🟡 M3. loadConversationWindow hace 2 queries
+
+- **Estado:** ✅ **RESUELTO 2026-07-01** (commit `4faae1c`). 1 sola query con relación embebida PostgREST (`leads!lead_id(phone_normalized)`) + filtro OR que cubre pre-lead y post-lead.
+
+#### 🟡 B3. firstName fallback "hola" → "Hola hola"
+
+- **Estado:** ✅ **RESUELTO 2026-07-01** (commit `4faae1c`). Fallback a `""` (string vacío).
+
+#### 🟡 M1. Regenerar typegen Supabase (quitar 12 casts `as never`)
+
+- **Síntoma:** Typegen desincronizado. Tablas `lead_whatsapp_conversations`, `lead_consent_log`, `event_qr_tokens` no están en `src/types/supabase.ts`.
+- **Estado:** Pendiente. Requiere supabase CLI + login (no automático).
+- **Severidad:** 🟡 Medio. No bloquea funcionalidad pero oculta bugs.
+- **Fix:**
+  1. `npx supabase login`
+  2. `npx supabase gen types typescript --project-id ugpejblymtbwtsoiykyj > src/types/supabase.ts`
+  3. Reemplazar `as never` con tipos correctos
+  4. Para el cast de línea 710 (`id: null as unknown as string` en fallback): tipar `lead.id` como `string | null` solo en el camino de fallback, o crear tipo `PartialLead` separado.
+
+#### 🟢 Pendientes Fase 7+
+
+- B1: persistConversation silencia errores no-23505 (mejor devolver enum)
+- B2: Logger no estructurado → pino/winston con `LOG_LEVEL` configurable
+- B4: Doble INSERT en persistConversation no es atómico (UPDATE por wamid sería mejor)
+
+#### 🟡 7. Re-sincronizar `WHATSAPP_WEBHOOK_SECRET` (validación firma)
+
+- **Bloquea:** webhook abierto a spoofing (cualquiera puede mandar POSTs falsificados).
+- **Estado:** Secret removido de Vercel (handler salta validación, log warning).
+- **Severidad:** 🟡 Medio. No prod-safe en estado actual.
+
+#### 🟡 8. Borrar app fantasma `2202427980234937` ("WA DevX Webhook Events 1P App")
+
+- **Bloquea:** Meta puede rutear mensajes a la app fantasma en lugar de Qlick_wb (sigue subscripta).
+- **Estado:** DELETE específico vía API devuelve `success: true` pero la app reaparece (es "1P" first-party de Meta).
+- **Severidad:** 🟡 Bajo. Meta prioriza Qlick_wb por ahora.
+
+#### 🟡 7. Re-sincronizar `WHATSAPP_WEBHOOK_SECRET` (validación firma)
+
+- **Bloquea:** webhook abierto a spoofing (cualquiera puede mandar POSTs falsificados).
+- **Estado:** Secret removido de Vercel (handler salta validación, log warning).
+- **Severidad:** 🟡 Medio. No prod-safe en estado actual.
+
+#### 🟡 8. Borrar app fantasma `2202427980234937` ("WA DevX Webhook Events 1P App")
+
+- **Bloquea:** Meta puede rutear mensajes a la app fantasma en lugar de Qlick_wb (sigue subscripta).
+- **Estado:** DELETE específico vía API devuelve `success: true` pero la app reaparece (es "1P" first-party de Meta).
+- **Severidad:** 🟡 Bajo. Meta prioriza Qlick_wb por ahora.
+
+#### 🟠 2. Crear 3 templates en Meta Business Manager
+
+- **Bloquea:** outreach proactivo (mensajes sin que el usuario escriba primero), cron jobs del funnel Fase 2.
+- **Templates faltantes:** `conf_bienvenida`, `conf_info_evento`, `conf_confirmacion_registro`.
+- **Estado actual:** bot usa texto libre (funciona en ventana 24h, suficiente para responder).
+- **Fix sugerido:**
+  1. Meta Business Manager → WhatsApp Manager → Message Templates
+  2. Crear los 3 templates con idioma `es_MX`, categoría `MARKETING` (welcome/info) y `UTILITY` (confirmación)
+  3. Esperar aprobación de Meta (puede tardar minutos-horas)
+  4. En código: revertir el cambio de texto libre en `bot-engine.ts` para usar templates otra vez
+- **Severidad:** 🟠 Alto. Necesario para Fase 2 (cron jobs) pero no bloquea el 6 jul.
+
+#### 🟠 3. Re-sincronizar `WHATSAPP_WEBHOOK_SECRET` (validación firma)
+
+- **Bloquea:** webhook abierto a spoofing (cualquiera puede mandar POSTs falsificados).
+- **Estado:** Secret removido de Vercel esta sesión (handler salta validación, log warning).
+- **Fix:**
+  1. Generar secret: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
+  2. `vercel env add WHATSAPP_WEBHOOK_SECRET production --cwd "C:\Users\User\Documents\Click"` → pegar mismo valor.
+  3. En panel Meta (WhatsApp > Configuration > Webhook), tildar "Adjuntar un certificado de cliente" o setear el secret en algún campo (depende de la UI actual).
+  4. Verificar que Meta firma POSTs con ese secret.
+- **Severidad:** 🟠 Alto. No prod-safe en estado actual.
+
+#### 🟡 4. Limpiar console.error de debug agregados hoy
+
+- **Archivos modificados con debug logging temporal:**
+  - `src/lib/whatsapp/bot-engine.ts` (4 console.error en processInboundMessage + fallback sintético)
+  - `src/lib/whatsapp/providers/meta-cloud-api-provider.ts` (console.error cuando Meta falla)
+  - `src/lib/whatsapp/index.ts` (console.error en getActiveWhatsAppProvider)
+  - `src/lib/crm/leads-server.ts` (AbortController con console.error TIMEOUT en findLeadByPhone)
+  - `src/app/api/whatsapp/webhook/route.ts` (console.error en processInboundSafely START/END + await Promise.race con timeout 10s bloqueando response)
+- **Severidad:** 🟡 Medio. Es debug que ensucia logs. NO bloquea funcionalidad pero debería limpiarse.
+
+#### 🟡 5. Restaurar fire-and-forget en handler webhook
+
+- **Cambio temporal:** cambié `void processInboundSafely(msg)` por `await Promise.race([botPromise, botTimeout])` con timeout 10s. Esto bloquea el response de Meta hasta que el bot termine.
+- **Por qué:** Vercel mataba el container post-response y los logs del Promise.race interno nunca aparecían.
+- **Riesgo actual:** Meta puede reintentar si el response tarda >5s. La idempotencia del webhook (UNIQUE whatsapp_message_id) previene duplicados PERO es un anti-pattern.
+- **Fix:** cuando se arregle Supabase y los logs del Promise.race interno aparezcan correctamente, restaurar `void processInboundSafely(msg)`.
+- **Severidad:** 🟡 Medio. Funciona pero es hack.
+
+#### 🟡 6. Borrar app fantasma `2202427980234937` ("WA DevX Webhook Events 1P App")
+
+- **Bloquea:** Meta puede rutear mensajes a la app fantasma en lugar de Qlick_wb (sigue subscripta).
+- **Estado:** DELETE específico vía API devuelve `success: true` pero la app reaparece (es "1P" first-party de Meta).
+- **Fix probable:**
+  1. Contactar Meta Support → solicitar des-suscripción de la app 1P.
+  2. O esperar a que Meta limpie automáticamente (sin ETA conocido).
+- **Severidad:** 🟡 Bajo. Meta prioriza Qlick_wb por ahora (webhook configurado), pero no garantizado.
+
+---**
 
 ### Hito B — Login alumno con magic link fallback
 
@@ -852,6 +1206,36 @@ Google Calendar.
 Verificación pendiente (visual con sesión admin): confirmar que la tarea
 vencida "Tarea 1" (en DB, due 2026-06-27) se renderiza en la card roja
 del Calendario.
+
+---
+
+#### ⚪ 7. Dominio `qlick.marketing` no comprado — bloqueador de Resend (2026-07-01)
+
+- **Bloquea:** Pase digital visual por correo + recordatorios automáticos 24h/2h.
+- **Severidad:** ⚪ Bloqueado (decisión de David: "marcamos como pendiente, aún no trabajaremos en eso").
+- **Por qué:** Para que Resend mande emails con `from: notificaciones@qlick.marketing`, el dominio tiene que estar validado en Resend con registros SPF/DKIM/DMARC. Sin dominio comprado, no se puede validar.
+- **Estado actual (2026-07-01 ~20:09):**
+  - Las 3 env vars de Resend NO están en Vercel production: `RESEND_API_KEY`, `RESEND_FROM_ADDRESS`, `RESEND_REPLY_TO`.
+  - El job `/api/cron/event-reminders` corre cada 30 min y loggea los emails en consola — no llegan a leads.
+  - El bot sigue mandando el link del pase por WhatsApp (eso funciona).
+  - El check-in sigue promoviendo el lead a `event_attended` (eso funciona, no depende de email).
+  - Solo se pierde el canal de email.
+- **Impacto operativo 6 jul:**
+  - Asistentes que olvidan: sin recordatorio 24h, ~30% no-shows extra.
+  - Staff en puerta: tiene que buscar por nombre en admin (no pueden escanear QR desde la pantalla del asistente, que sí existe en `/check-in/[token]`).
+  - Mitigación: admin manda recordatorio manual via broadcast (`buildEventBroadcast` en `src/lib/contact/whatsapp.ts:438` — ya existe, genera wa.me links pre-armados).
+- **Fix cuando David lo destrabe:**
+  1. Comprar `qlick.marketing` (Namecheap, Cloudflare Registrar, GoDaddy — preferencia de David).
+  2. Configurar DNS en Resend (SPF/DKIM/DMARC). 24-48h propagación.
+  3. Setear 3 env vars en Vercel production:
+     - `RESEND_API_KEY` (de Resend dashboard, scope: send).
+     - `RESEND_FROM_ADDRESS=notificaciones@qlick.marketing`.
+     - `RESEND_REPLY_TO=david17891@gmail.com`.
+  4. (Opcional) `CRON_SECRET` para auth del cron + configurar header `Authorization: Bearer <secret>` en Vercel Cron.
+  5. Trigger manual de prueba: `curl https://qlick-three.vercel.app/api/cron/event-reminders`.
+  6. Verificar: `SELECT * FROM event_reminder_log ORDER BY sent_at DESC LIMIT 10;` en Supabase.
+- **Workaround temporal (5 min, sin dominio):** usar sandbox de Resend `onboarding@resend.dev` como `RESEND_FROM_ADDRESS`. Email sale pero **solo al owner de la cuenta Resend** (David). Sirve para validar el flow, NO para producción real con leads.
+- **Refs:** `docs/HANDOFF_v0.7.1_FASE_7A_REMINDERS.md` (sección "Limitaciones documentadas" + "Pendiente pre-deploy"), `docs/STATUS.md` §"Fase 7a", `data/PROJECT-LOG.md` entrada 2026-07-01 ~17:45.
 
 ---
 

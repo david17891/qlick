@@ -3,7 +3,12 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { User } from "@/types";
-import { Navbar, Footer } from "@/components/layout";
+// Imports directos del client component (no del wrapper SSR) porque esta
+// page es "use client". En /aprender el usuario ya está authed para ver
+// sus cursos, pero el resolver SSR aquí no es crítico — el Navbar client
+// hidratará con la sesión real al montarse.
+import { Navbar as NavbarClient } from "@/components/layout/Navbar";
+import { Footer } from "@/components/layout/Footer";
 import { getCurrentUser } from "@/lib/auth/mock-auth";
 import { getEnrollmentsForUser } from "@/lib/data/enrollments";
 import { getCourseById, flatLessons } from "@/lib/data/courses";
@@ -36,7 +41,7 @@ export default function AprenderPage() {
   if (!ready || !user) {
     return (
       <>
-        <Navbar />
+        <NavbarClient />
         <Container className="py-20">
           <p className="text-ink-muted text-center">Cargando…</p>
         </Container>
@@ -49,7 +54,7 @@ export default function AprenderPage() {
 
   return (
     <>
-      <Navbar />
+      <NavbarClient />
       <Container size="wide" className="py-10">
         <h1 className="text-3xl font-bold text-ink mb-2">Mis aprendizajes</h1>
         <p className="text-ink-muted mb-8">

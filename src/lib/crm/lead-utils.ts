@@ -22,6 +22,7 @@ export const leadStatusLabel: Record<LeadStatus, string> = {
   payment_pending: "Pago pendiente",
   enrolled: "Inscrito",
   active_student: "Alumno activo",
+  event_attended: "Asistió al evento",
   lost: "Perdido",
   archived: "Archivado"
 };
@@ -62,6 +63,7 @@ export const statusTone: Record<
   payment_pending: "warning",
   enrolled: "success",
   active_student: "success",
+  event_attended: "success",
   lost: "danger",
   archived: "neutral"
 };

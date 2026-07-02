@@ -272,7 +272,7 @@ async function sendAdminNotificationForNewLead(input: {
     return;
   }
 
-  const { sendEmail } = await import("@/lib/email/resend-client");
+  const { sendEmail } = await import("@/lib/email/brevo-client");
   const { renderSurveyWithConsentEmail } = await import(
     "@/lib/email/templates/survey-with-consent"
   );
