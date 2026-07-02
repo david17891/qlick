@@ -432,7 +432,7 @@ async function createLeadFromWhatsApp(
   phoneNormalized: string,
   contactName?: string
 ): Promise<Lead | null> {
-  const safeName = contactName?.trim() || "Por confirmar";
+  const safeName = contactName?.trim() || "";
   const syntheticEmail = `wa.${createHash("sha256")
     .update(phoneNormalized)
     .digest("hex")
@@ -516,7 +516,7 @@ async function findOrCreateLead(
     return {
       lead: {
         id: `lead_demo_${phoneNormalized.slice(-6)}`,
-        name: contactName?.trim() || "Por confirmar",
+        name: contactName?.trim() || "",
         email: "demo@placeholder.local",
         phone: phoneNormalized,
         status: "new",
@@ -933,10 +933,18 @@ async function buildResponsePlan(args: {
       const hasHistory = !args.isFirstMessage;
       if (hasHistory && content) {
         const stripped = content
-          .replace(/^\s*(hola|buen[oa]s d[ií]as|buen[oa]s tardes|buen[oa]s noches|qué tal|hi|hello)[,.\s]*/i, "")
-          .replace(/^\s*hola[,\s]+[^,\n.]*[,.\s]*/i, "") // "Hola, soy X. " (presentacion)
+          // "Hola, ..." o "Buen[oa]s, ..."
+          .replace(/^\s*(hola|buen[oa]s\s+(d[ií]as|tardes|noches)|qué tal|hi|hello)[,.\s]*/i, "")
+          // "Hola Por, ..." o "Hola David, ..." (presentacion con nombre)
+          .replace(/^\s*hola[,\s]+[^,.\n]{1,30}[,.\s]*/i, "")
+          // "Por, gracias por escribir a Qlick..." (sin Hola)
+          .replace(/^\s*[A-Z][a-záéíóú]+,\s*gracias por (escribir|contactarnos|comunicarte)[,.\s]*/i, "")
+          // "gracias por escribir a Qlick..." (sin nombre)
           .replace(/^\s*gracias por (escribir|contactarnos|comunicarte)[,.\s]*/i, "")
-          .replace(/^\s*soy\s+qlick[,\s]+asistente.*?[.\n]/i, "") // "Soy Qlick, asistente..."
+          // "Soy Qlick, asistente..." (presentacion del bot)
+          .replace(/^\s*soy\s+qlick[,\s]+asistente.*?[.\n]/i, "")
+          // "¡Hola Por!" (con admiracion al inicio, sin coma)
+          .replace(/^\s*¡?\s*hola[¡!.,\s]+[^¡!.,\n]{1,30}!?\s*/i, "")
           .trim();
         if (stripped && stripped !== content) {
           content = stripped;
@@ -1040,7 +1048,7 @@ export async function processInboundMessage(
         // Cast a `Lead` con `id: null` es válido solo en fallback; el resto
         // del flujo verifica `supabase` antes de usar `lead.id`.
         id: null as unknown as string,
-        name: message.contactName?.trim() || "Por confirmar",
+        name: message.contactName?.trim() || "",
         email: `${phoneNormalized.slice(-6)}@placeholder.local`,
         phone: phoneNormalized,
         status: "new",

@@ -55,7 +55,7 @@ test("buildSystemPrompt(isFirstMessage=true) instruye saludar", () => {
 test("buildSystemPrompt(isFirstMessage=false) instruye NO saludar", () => {
   const prompt = buildSystemPrompt(TEST_PROFILE, undefined, false);
   assert.match(prompt, /NO es el primer mensaje/);
-  assert.match(prompt, /NO saludes/);
+  assert.match(prompt, /NUNCA con saludo/);
   // NO debe tener la regla de "Saluda al lead"
   assert.doesNotMatch(prompt, /Saluda al lead por su nombre/);
 });
