@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-01 ~17:45 (Fase 7a: pase digital por correo + funnel `event_attended` en check-in + cron reminders 24h/2h. 181/181 tests ✅. Lint ✅. Build ✅. Pendiente: David corre migración SQL + push.)
+> **Última actualización:** 2026-07-02 ~02:40 (Dominio `qlick.digital` listo, Cloudflare Email Routing confirmado, Brevo + dominio autenticado, /privacidad actualizado, Email routing MX records agregados. 181/181 tests ✅. Lint ✅. Build ✅. Pendiente: commit de cambios de privacidad + gitignore.)
 
 ---
 
@@ -16,15 +16,29 @@
 
 | Campo | Valor |
 |---|---|
-| **Dominio** | `https://qlick-three.vercel.app` |
+| **Dominio** | `https://www.qlick.digital` (apex redirect www→apex en Vercel) |
+| **Dominio Vercel (auto)** | `qlick-three.vercel.app` (legacy, sigue activo) |
 | **Production deploy ID** | `dpl_qo40c17el…` |
 | **Production URL (auto)** | `qlick-qo40c17el-david17891-9351s-projects.vercel.app` |
-| **Branch** | `feat/fase-6-hitos` |
-| **Commit** | `43320d2` (HEAD — docs(github-auth): setup persistente + reference doc) |
-| **Commits ahead of origin** | 0 (los 12 commits de la sesión 30-jun ya están pusheados) |
-| **Mensaje actual** | `chore: untrack tmp scripts from feat/fase-6-hitos` |
+| **Branch** | `feat/fase-6-waba-setup` |
+| **Commit HEAD** | `7b0e271` (migración Resend → Brevo, push exitoso) |
+| **Commits ahead of origin** | 0 (5 commits pusheados en esta sesión) |
+| **Mensaje actual** | `feat(email): migrar a Brevo + tests (resend→brevo)` |
 | **Build status** | ✅ READY + PROMOTED + aliasAssigned |
 | **Build duration** | ~51s (con cache del deploy anterior) |
+
+### Dominio `qlick.digital` (sesión 2026-07-02)
+
+- Comprado en Hostinger, 1 año, $3.50 USD. **Renovación $55/yr — considerar migrar a Cloudflare Registrar en 2027-06** (ahorro ~$25/yr).
+- DNS delegado a Cloudflare (michael + monroe). Proxy OFF (DNS only) para que Vercel pueda emitir cert SSL.
+- Vercel: `qlick.digital` + `www.qlick.digital` → Valid Configuration. Cert SSL emitido.
+- Catch-all Email Routing: Drop. 3 reglas: `hola@` + `privacidad@` + `noreply@` → `david17891@gmail.com`.
+
+### Email pipeline (sesión 2026-07-02)
+
+- **Brevo Free** (300 emails/día): cuenta creada, dominio `qlick.digital` autenticado (Brevo code TXT + 2 DKIM CNAMEs + DMARC TXT). Remitente `Qlick <noreply@qlick.digital>` verificado.
+- **API key en Vercel production**: `BREVO_API_KEY`, `BREVO_FROM_ADDRESS`, `BREVO_REPLY_TO`. Test real con `messageId: <...@smtp-relay.mailin.fr>` ✅.
+- **Cloudflare Email Routing MX records** agregados manualmente (3 MX + 1 SPF). Routing de `privacidad@qlick.digital` confirmado con email externo ✅.
 
 ### Deploys de producción (limpieza ✅ 2026-06-29 ~02:55)
 
