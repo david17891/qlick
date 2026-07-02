@@ -1428,7 +1428,7 @@ export async function processInboundMessage(
           : await loadActiveEventContext().catch(() => null);
         // FIX 2026-07-02: usar URL publica del QR en vez de data URL.
         // Los data URLs no se renderizan en Gmail/Outlook.
-        const qrImageUrl = `${appBaseUrl()}/api/qr/${qr.token}.png`;
+        const qrImageUrl = `${appBaseUrl()}/api/event-qr/${qr.token}.png`;
         const result = await sendEventQrPassEmail({
           attendeeName: lead.name,
           attendeeEmail: email,
