@@ -6,8 +6,11 @@
  * Outlook NO renderizan data URLs inline (politica anti-tracking).
  * Ahora el QR se sirve desde aca, y el email lo referencia por URL.
  *
+ * Path: /api/event-qr/[token] (separado de /api/qr/[courseSlug] que
+ * devuelve el QR de inscripcion a un curso LMS).
+ *
  * Uso en el email:
- *   <img src="https://qlick.digital/api/qr/abc123.png" />
+ *   <img src="https://qlick.digital/api/event-qr/abc123.png" />
  *
  * El QR codifica la URL publica del check-in:
  *   https://qlick.digital/check-in/abc123
@@ -17,7 +20,6 @@
  *
  * Publico: el QR ya es visible en la URL del check-in (que se manda
  * por WhatsApp), asi que no agrega superficie de ataque.
- * Audit: registramos cada hit con timestamp + referer (server-side).
  */
 
 import { generateQrPng } from "@/lib/qr/generate";
@@ -52,7 +54,7 @@ export async function GET(_req: Request, { params }: RouteParams) {
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn(
-      "[api/qr] generateQrPng failed",
+      "[api/event-qr] generateQrPng failed",
       err instanceof Error ? err.message : String(err),
     );
     return new Response("Error generando QR", { status: 500 });
