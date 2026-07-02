@@ -20,8 +20,8 @@ export const metadata: Metadata = {
  *    (requerida por Meta App Review).
  */
 const RESPONSABLE = "Qlick Marketing Integral";
-const CONTACTO_PRIVACIDAD = "david17891@gmail.com";
-const ULTIMA_ACTUALIZACION = "Última actualización: 30 de junio de 2026";
+const CONTACTO_PRIVACIDAD = "privacidad@qlick.digital";
+const ULTIMA_ACTUALIZACION = "Última actualización: 2 de julio de 2026";
 
 type Seccion = {
   id: string;
@@ -88,7 +88,9 @@ const secciones: Seccion[] = [
     ],
     lista: [
       "Supabase: base de datos principal (Postgres) y autenticación. Almacena leads, conversaciones y eventos.",
-      "Vercel: hosting y despliegue de la aplicación web (https://qlick-three.vercel.app).",
+      "Vercel: hosting y despliegue de la aplicación web (https://www.qlick.digital).",
+      "Cloudflare: gestión de DNS, protección del sitio y Email Routing (reenvío de los correos que llegan a qlick.digital hacia las bandejas responsables).",
+      "Brevo: envío de correos electrónicos transaccionales (pase digital con QR, recordatorios de eventos, magic links de autenticación). El contenido de los emails se procesa a través de la infraestructura de Brevo. Ver política de privacidad de Brevo en https://www.brevo.com/legal/privacypolicy.",
       "Meta WhatsApp Business Platform (Cloud API): canal de mensajería WhatsApp. Los mensajes que nos envías se procesan a través de Meta. Ver política de privacidad de Meta en https://www.facebook.com/policy.php.",
       "DeepSeek (IA): modelo de lenguaje que utiliza el contenido de tu mensaje (sin tu nombre ni datos sensibles como PII identificable separada) para generar respuestas automáticas. El contenido se envía a los servidores de DeepSeek únicamente para producir la respuesta y no se almacena para entrenamiento."
     ],

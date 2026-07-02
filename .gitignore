@@ -138,3 +138,5 @@ dev-*.log
 /5s
 /development
 /preview
+
+scripts/verify-brevo.mjs
