@@ -62,6 +62,8 @@ import {
   applyEventOverrides,
   type ManualContextBundle
 } from "../bot/manual-context";
+import type { ActiveEventContext } from "../ai/event-context-loader";
+import type { ConversationWindow } from "../ai/conversation-window";
 
 import type { IncomingWhatsAppMessage } from "./webhooks/types";
 import { getActiveWhatsAppProvider } from ".";
@@ -327,28 +329,56 @@ async function persistConsent(
 /**
  * Genera un QR token (URL-safe, 32 chars) y lo inserta en `event_qr_tokens`
  * asociado al evento activo y al teléfono del asistente.
+ *
+ * FIX 2026-07-02 (sesion David): bot multi-evento. Acepta `eventSlug`
+ * opcional. Si se pasa, usa ESE evento especifico. Si no, cae al primer
+ * `published` (back-compat con versiones anteriores del flujo).
  */
 async function generateQrToken(
   supabase: SupabaseAdmin,
   phoneNormalized: string,
   attendeeName: string,
-  attendeeEmail: string | null
+  attendeeEmail: string | null,
+  eventSlug?: string | null
 ): Promise<{ token: string; url: string } | null> {
-  // Buscar el evento activo (placeholder: el primer evento publicado).
-  const { data: evt, error: evtErr } = await supabase
-    .from("events")
-    .select("id, ends_at")
-    .eq("status", "published")
-    .order("starts_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (evtErr || !evt) {
-    // eslint-disable-next-line no-console
-    console.warn("[whatsapp/bot] generateQrToken: no hay evento publicado.");
-    return null;
+  // Buscar el evento: si nos pasan slug, ESE; si no, el primero published.
+  let evt: { id: string; ends_at: string | null } | null = null;
+  if (eventSlug) {
+    const { data, error } = await supabase
+      .from("events")
+      .select("id, ends_at")
+      .eq("status", "published")
+      .eq("slug", eventSlug)
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[whatsapp/bot] generateQrToken: error buscando por slug",
+        { slug: eventSlug, code: (error as { code?: string }).code }
+      );
+      return null;
+    }
+    evt = data as { id: string; ends_at: string | null } | null;
   }
-  const eventId = (evt as { id: string }).id;
-  const endsAt = (evt as { ends_at?: string | null }).ends_at;
+  if (!evt) {
+    // Fallback: primer evento published (comportamiento historico).
+    const { data, error: evtErr } = await supabase
+      .from("events")
+      .select("id, ends_at")
+      .eq("status", "published")
+      .order("starts_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (evtErr || !data) {
+      // eslint-disable-next-line no-console
+      console.warn("[whatsapp/bot] generateQrToken: no hay evento publicado.");
+      return null;
+    }
+    evt = data as { id: string; ends_at: string | null };
+  }
+  const eventId = evt.id;
+  const endsAt = evt.ends_at;
   // expires_at = event end + 6h (alineado con el comment del SQL).
   const baseEnd = endsAt ? new Date(endsAt) : new Date();
   const expiresAt = new Date(baseEnd.getTime() + 6 * 60 * 60 * 1000);
@@ -428,6 +458,114 @@ async function touchLead(
   patch: { last_contacted_at?: string; summary?: string }
 ): Promise<void> {
   await supabase.from("leads").update(patch).eq("id", leadId);
+}
+
+/**
+ * FIX 2026-07-02 (sesion David): bot multi-evento.
+ * Identifica a cual evento publicado se refiere el lead, mirando los
+ * ultimos outbound del bot en el `conversationWindow`.
+ *
+ * Estrategia de matching (en orden, primer match gana):
+ * 1. Slug textual (e.g. "ia-marketing-primeros-pasos")
+ * 2. Indice del catalogo ([1], [2], [3]) o "el primero/segundo/tercero"
+ * 3. Titulo del evento (palabras clave >3 chars)
+ * 4. Location (palabras clave >3 chars)
+ * 5. null si no se puede identificar
+ *
+ * Esto permite que cuando el lead da su email despues de una conversacion
+ * sobre el evento 1, el QR se genere para el evento 1 (no el primero
+ * publicado que es lo que hacia antes).
+ */
+/**
+ * Funcion exportada solo para tests. Ver findEventInConversation abajo.
+ */
+export function _findEventInConversationForTest(
+  conversationWindow: ConversationWindow | undefined,
+  allEvents: ActiveEventContext[]
+): ActiveEventContext | null {
+  return findEventInConversation(conversationWindow, allEvents);
+}
+
+function findEventInConversation(
+  conversationWindow: ConversationWindow | undefined,
+  allEvents: ActiveEventContext[]
+): ActiveEventContext | null {
+  if (
+    !conversationWindow ||
+    !conversationWindow.messages ||
+    allEvents.length === 0
+  ) {
+    return null;
+  }
+
+  // Ultimos 3 outbound del bot (mas reciente primero).
+  const botMessages = conversationWindow.messages
+    .filter((m) => m.direction === "outbound" && m.body)
+    .slice(-3)
+    .reverse();
+
+  for (const msg of botMessages) {
+    const body = (msg.body ?? "").toLowerCase();
+
+    // 1) Indice del catalogo: [N] o "el primero/segundo/tercero".
+    // Va PRIMERO porque es la referencia mas explicita. Si el bot dijo
+    // "[2] Ads en Meta", queremos matchear [2], no por titulo.
+    //
+    // FIX 2026-07-02: si hay MULTIPLES [N] en el body, es una LISTA
+    // de eventos (no una confirmacion de registro), asi que devolvemos
+    // null para que el caller no se confunda. Si hay UN solo [N], ese
+    // es la referencia del registro. Si hay CERO [N], seguimos con
+    // los fallbacks (slug, title, location).
+    const allIndices = [...body.matchAll(/\[(\d+)\]/g)];
+    if (allIndices.length === 1) {
+      const idx = parseInt(allIndices[0][1], 10) - 1;
+      if (idx >= 0 && idx < allEvents.length) return allEvents[idx];
+    }
+    if (allIndices.length > 1) {
+      // Lista de eventos — no es una confirmacion. Dejamos que el
+      // LLM aclare con el lead.
+      continue;
+    }
+    const ordMatch = body.match(/el\s+(primero|segundo|tercero|cuarto|quinto)/);
+    if (ordMatch) {
+      let idx = 0;
+      if (ordMatch[0].includes("primero")) idx = 0;
+      else if (ordMatch[0].includes("segundo")) idx = 1;
+      else if (ordMatch[0].includes("tercero")) idx = 2;
+      else if (ordMatch[0].includes("cuarto")) idx = 3;
+      else if (ordMatch[0].includes("quinto")) idx = 4;
+      if (idx >= 0 && idx < allEvents.length) return allEvents[idx];
+    }
+
+    // 2) Slug textual
+    for (const evt of allEvents) {
+      if (body.includes(evt.slug.toLowerCase())) return evt;
+    }
+
+    // 3) Titulo del evento (palabras >3 chars)
+    for (const evt of allEvents) {
+      const titleWords = evt.title
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((w) => w.length > 3);
+      const matchCount = titleWords.filter((w) => body.includes(w)).length;
+      // Si matchea 1 palabra del titulo, lo damos por bueno.
+      // Si matchea 2+, es muy seguro.
+      if (matchCount >= 1) return evt;
+    }
+
+    // 4) Location (palabras >3 chars)
+    for (const evt of allEvents) {
+      const locWords = evt.location
+        .toLowerCase()
+        .split(/[\s,]+/)
+        .filter((w) => w.length > 3);
+      const matchCount = locWords.filter((w) => body.includes(w)).length;
+      if (matchCount >= 1) return evt;
+    }
+  }
+
+  return null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -883,10 +1021,20 @@ async function buildResponsePlan(args: {
       // Antes mandaba `${appBaseUrl()}/qr` que NO existe en el routing.
       // Si Supabase cayó y no se pudo generar el token, respondemos sin
       // link (mejor que mandar una URL rota).
+      //
+      // FIX 2026-07-02 (sesion David): multi-evento. Usar el evento del
+      // registro (detectado por findEventInConversation) si esta disponible.
+      // Si no, fallback a getActiveEvent() (env vars) o al evento del QR.
       const qrUrl = args.qrUrl ?? null;
+      const evt = getActiveEvent();
+      // FIX 2026-07-02: si tenemos el evento del registro, usar ese para
+      // el mensaje. Si no, usar el fallback (getActiveEvent = env vars).
+      // NOTA: la fuente de verdad del evento del QR es el que se paso
+      // a generateQrToken en processInboundMessage. Lo reflejamos aca.
+      const eventLine = `\n\nTambien te enviamos el pase con el QR a tu correo. Es el link de check-in para que lo presentes el dia del evento.`;
       const bodyText = qrUrl
-        ? `Listo ${firstName}, registramos tu email ${email}. Tu pase: ${qrUrl}. Te esperamos el ${getActiveEvent().date} en ${getActiveEvent().location}.`
-        : `Listo ${firstName}, registramos tu email ${email}. Te esperamos el ${getActiveEvent().date} en ${getActiveEvent().location}.`;
+        ? `Listo ${firstName}, te registramos para el evento. Tu pase (link de check-in): ${qrUrl}${eventLine}`
+        : `Listo ${firstName}, registramos tu email ${email}. Te esperamos el ${evt.date} en ${evt.location}.`;
       return {
         kind: "text",
         body: bodyText,
@@ -1158,9 +1306,29 @@ export async function processInboundMessage(
   }
 
   // 5. Si el intent es provide_email: actualizar email del lead + log consent.
+  // FIX 2026-07-02 (sesion David): bot multi-evento. Identificamos a cual
+  // evento se esta registrando el lead basandonos en el conversationWindow
+  // (ultimo outbound del bot). Si no se puede identificar, fallback al
+  // primer evento published (comportamiento historico).
   let qrUrl: string | null = null;
+  let registrationEventSlug: string | null = null;
+  let registrationEventTitle: string | null = null;
   if (intent === "provide_email" && supabase) {
     const email = body.trim().toLowerCase();
+    // FIX 2026-07-02: cargar conversationWindow aca (no estaba en
+    // processInboundMessage, solo en buildResponsePlan) para identificar
+    // el evento del registro.
+    const convWindowForEvent = await loadConversationWindow(
+      lead.phone ?? "",
+      8
+    ).catch(() => undefined);
+    // Cargar todos los eventos publicados para identificar el correcto.
+    const allEvents = await loadAllActiveEvents().catch(() => [] as ActiveEventContext[]);
+    // Buscar el evento en la conversacion (ultimo outbound del bot).
+    const matchedEvent = findEventInConversation(convWindowForEvent, allEvents);
+    registrationEventSlug = matchedEvent?.slug ?? null;
+    registrationEventTitle = matchedEvent?.title ?? null;
+
     await supabase
       .from("leads")
       .update({ email, consent_to_contact: true })
@@ -1171,13 +1339,20 @@ export async function processInboundMessage(
       consent_granted: true,
       consent_source: "whatsapp_bot",
       consent_text: CONSENT_DISCLOSURE,
-      metadata: { intent, messageId: message.messageId }
+      // FIX 2026-07-02: metadata incluye el evento del registro (multi-evento).
+      metadata: {
+        intent,
+        messageId: message.messageId,
+        eventSlug: registrationEventSlug,
+        eventTitle: registrationEventTitle
+      }
     });
     const qr = await generateQrToken(
       supabase,
       phoneNormalized,
       lead.name,
-      email
+      email,
+      registrationEventSlug
     );
     qrUrl = qr?.url ?? null;
 

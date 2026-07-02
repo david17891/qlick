@@ -235,7 +235,14 @@ export function buildTaskPrompt(
       "- Si hay EVENTO ACTIVO en el contexto y el mensaje del lead es sobre ese evento, ÚSALO.\n" +
       "- Si el lead pregunta por el evento, incluye nombre, fecha y lugar en tu respuesta.\n" +
       "- NO confirmes pagos, accesos, ni descuentos.\n" +
-      "- NO uses frases vagas tipo 'te contactaremos pronto' si tienes info concreta.",
+      "- NO uses frases vagas tipo 'te contactaremos pronto' si tienes info concreta.\n" +
+      // FIX 2026-07-02 (sesion David): bot multi-evento + QR.
+      // El LLM debe confirmar el evento antes de pedir email, para que
+      // el bot-engine pueda identificar a cual evento registrar.
+      "- Si el lead quiere REGISTRARSE, SIEMPRE confirma primero el evento " +
+      "mencionando nombre y fecha (e.g. 'Te registro para IA y Marketing: " +
+      "Primeros Pasos del 12 de julio. Mandame tu email por favor'). " +
+      "Si el lead no dijo a cual evento, pregunta 'Cual te interesa: [1], [2] o [3]?' antes de pedir el email.",
     summarize_conversation:
       "Resume la conversación en 1-2 frases, destacando el siguiente paso concreto.",
     detect_urgency:

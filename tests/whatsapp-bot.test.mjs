@@ -283,6 +283,7 @@ test("meta-cloud-api: send() reintenta en 5xx y luego falla", async () => {
  * ───────────────────────────────────────────────────────────── */
 
 import { detectIntent } from "../src/lib/whatsapp/bot-engine.ts";
+import { _findEventInConversationForTest } from "../src/lib/whatsapp/bot-engine.ts";
 
 test("detectIntent: primer mensaje → welcome", () => {
   assert.equal(detectIntent("Hola", true), "welcome");
@@ -355,6 +356,157 @@ test("detectIntent: 'Hola, [continuación]' → greeting (saludo gana)", () => {
   assert.equal(detectIntent("Hola, quiero saber si tienen...", false), "greeting");
   assert.equal(detectIntent("Hola, buenas tardes", false), "greeting");
   assert.equal(detectIntent("Hola, quiero inscribirme", false), "register");
+});
+
+/* ─────────────────────────────────────────────────────────────
+ * 3b. findEventInConversation — bot multi-evento
+ * ───────────────────────────────────────────────────────────── */
+
+const FAKE_EVENTS = [
+  {
+    id: "e1",
+    slug: "ia-marketing-primeros-pasos",
+    title: "IA y Marketing: Primeros Pasos",
+    description: null,
+    startsAt: new Date("2026-07-12"),
+    endsAt: null,
+    location: "WeWork Reforma Latino, CDMX",
+    humanStartsAt: "12 de julio",
+    humanDuration: "2 horas",
+    promptBlock: "",
+    source: "db"
+  },
+  {
+    id: "e2",
+    slug: "ads-meta-estrategia-avanzada",
+    title: "Ads en Meta: Estrategia Avanzada",
+    description: null,
+    startsAt: new Date("2026-07-19"),
+    endsAt: null,
+    location: "Online (Zoom)",
+    humanStartsAt: "19 de julio",
+    humanDuration: "3 horas",
+    promptBlock: "",
+    source: "db"
+  },
+  {
+    id: "e3",
+    slug: "funnels-venta-gdl",
+    title: "Funnels de Venta que Convierten",
+    description: null,
+    startsAt: new Date("2026-07-26"),
+    endsAt: null,
+    location: "Hub de Innovacion GDL, Guadalajara",
+    humanStartsAt: "26 de julio",
+    humanDuration: "4 horas",
+    promptBlock: "",
+    source: "db"
+  }
+];
+
+function makeWindow(bodies) {
+  return {
+    phoneNormalized: "+525555555555",
+    messages: bodies.map((b, idx) => ({
+      direction: idx % 2 === 0 ? "outbound" : "inbound",
+      body: b,
+      timestamp: new Date().toISOString(),
+      messageType: "text"
+    }))
+  };
+}
+
+test("findEventInConversation: matchea por slug textual", () => {
+  const win = makeWindow([
+    "Te registro para ads-meta-estrategia-avanzada del 19 de julio."
+  ]);
+  const result = _findEventInConversationForTest(win, FAKE_EVENTS);
+  assert.equal(result?.slug, "ads-meta-estrategia-avanzada");
+});
+
+test("findEventInConversation: matchea por indice [2] (un solo N en el body)", () => {
+  // FIX 2026-07-02: si hay multiples [N] en el body, es una LISTA, no
+  // una confirmacion. Solo matcheamos si hay UN SOLO [N].
+  const win = makeWindow([
+    "Te registro para el [2] Ads en Meta. Manda tu email por favor."
+  ]);
+  const result = _findEventInConversationForTest(win, FAKE_EVENTS);
+  assert.equal(result?.slug, "ads-meta-estrategia-avanzada");
+});
+
+test("findEventInConversation: con multiples [N] en el body (lista) devuelve null", () => {
+  const win = makeWindow([
+    "Tienes estos eventos: [1] IA y Marketing, [2] Ads en Meta, [3] Funnels. Cual te interesa?"
+  ]);
+  const result = _findEventInConversationForTest(win, FAKE_EVENTS);
+  assert.equal(result, null);
+});
+
+test("findEventInConversation: matchea por 'el segundo'", () => {
+  const win = makeWindow([
+    "Te interesa el segundo? Manda tu email."
+  ]);
+  const result = _findEventInConversationForTest(win, FAKE_EVENTS);
+  assert.equal(result?.slug, "ads-meta-estrategia-avanzada");
+});
+
+test("findEventInConversation: matchea por titulo (palabras clave)", () => {
+  const win = makeWindow([
+    "Te ayudo con Marketing para el evento Primeros Pasos. Manda tu email."
+  ]);
+  const result = _findEventInConversationForTest(win, FAKE_EVENTS);
+  assert.equal(result?.slug, "ia-marketing-primeros-pasos");
+});
+
+test("findEventInConversation: matchea por location (CDMX)", () => {
+  const win = makeWindow([
+    "El evento en WeWork Reforma Latino es el 12 de julio. Te registro?"
+  ]);
+  const result = _findEventInConversationForTest(win, FAKE_EVENTS);
+  assert.equal(result?.slug, "ia-marketing-primeros-pasos");
+});
+
+test("findEventInConversation: matchea por location (Online/Zoom)", () => {
+  const win = makeWindow([
+    "El taller online por Zoom. Te interesa registrarte?"
+  ]);
+  const result = _findEventInConversationForTest(win, FAKE_EVENTS);
+  assert.equal(result?.slug, "ads-meta-estrategia-avanzada");
+});
+
+test("findEventInConversation: sin conversacion devuelve null", () => {
+  const result = _findEventInConversationForTest(undefined, FAKE_EVENTS);
+  assert.equal(result, null);
+});
+
+test("findEventInConversation: sin eventos devuelve null", () => {
+  const win = makeWindow(["Algo sobre CDMX"]);
+  const result = _findEventInConversationForTest(win, []);
+  assert.equal(result, null);
+});
+
+test("findEventInConversation: solo mensajes inbound (sin outbound) devuelve null", () => {
+  // makeWindow genera alternating, el primer msg es outbound. Si queremos
+  // solo inbound, hay que pasarlos invertidos o filtrar.
+  const win = {
+    phoneNormalized: "+525555555555",
+    messages: [
+      {
+        direction: "inbound",
+        body: "Quiero el de CDMX",
+        timestamp: new Date().toISOString(),
+        messageType: "text"
+      }
+    ]
+  };
+  const result = _findEventInConversationForTest(win, FAKE_EVENTS);
+  assert.equal(result, null);
+});
+
+test("findEventInConversation: si no matchea nada, devuelve null", () => {
+  const win = makeWindow(["Hola, como estas? Bienvenido a Qlick."]);
+  const result = _findEventInConversationForTest(win, FAKE_EVENTS);
+  assert.equal(result, null);
 });
 
 /* ─────────────────────────────────────────────────────────────
