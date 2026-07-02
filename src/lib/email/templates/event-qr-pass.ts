@@ -24,8 +24,14 @@ export interface EventQrPassInput {
   eventStartsAt: string;
   /** Lugar del evento (opcional). */
   eventLocation: string | null;
-  /** Data URL del QR (base64 PNG, ~10KB). Generado con `generateQrDataUrl`. */
-  qrDataUrl: string;
+  /**
+   * URL PUBLICA del QR (e.g. `https://qlick.digital/api/qr/abc123.png`).
+   * FIX 2026-07-02 (sesion David): antes era un data URL inline
+   * (`data:image/png;base64,...`) que NO se renderizaba en Gmail/Outlook.
+   * Ahora el QR se sirve desde un endpoint publico y se referencia
+   * por URL. Compatible con todos los clientes de email.
+   */
+  qrImageUrl: string;
   /** URL pública del pase (la misma que codifica el QR). */
   checkInUrl: string;
 }
@@ -90,10 +96,13 @@ export function renderEventQrPassEmail(
   const eventTime = formatEventTime(input.eventStartsAt);
   const eventLocation = input.eventLocation ? esc(input.eventLocation) : null;
   const checkInUrl = esc(input.checkInUrl);
-  // El QR data URL ya viene como "data:image/png;base64,..." — no escapar
-  // porque rompería el base64. Confiamos en `qrcode` lib (no produce chars
-  // peligrosos para HTML attribute en este contexto).
-  const qrSrc = input.qrDataUrl;
+  // El QR image URL es publica (https://...). Validamos que sea absoluta
+  // por seguridad (no inline data URLs que algunos clientes no renderizan).
+  // FIX 2026-07-02: ahora se sirve desde /api/qr/[token].png en vez de
+  // un data URL inline.
+  const qrSrc = input.qrImageUrl.startsWith("http")
+    ? input.qrImageUrl
+    : `https://qlick.digital${input.qrImageUrl}`;
 
   // Subject: copy genérico, sin PII (anti-spam). El subject también se
   // inyecta en <title>...</title> del HTML, así que lo escapamos para

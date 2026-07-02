@@ -1416,19 +1416,28 @@ export async function processInboundMessage(
     // Bloque 1 (Fase 7a): enviar pase digital al correo del asistente.
     // Best-effort: si falla, el link del QR por WhatsApp sigue funcionando.
     // No bloquea el flow principal.
-    if (qrUrl) {
+    //
+    // FIX 2026-07-02 (sesion David): el email debe usar el evento del
+    // REGISTRO (registrationEventSlug), no loadActiveEventContext() que
+    // siempre retorna el primero. Asi el email coincide con el QR y la
+    // pagina de check-in.
+    if (qrUrl && qr) {
       try {
-        const event = await loadActiveEventContext().catch(() => null);
-        const qrDataUrl = await generateQrDataUrl(qrUrl, { width: 512 });
+        const event = registrationEventSlug
+          ? await loadActiveEventContext(registrationEventSlug).catch(() => null)
+          : await loadActiveEventContext().catch(() => null);
+        // FIX 2026-07-02: usar URL publica del QR en vez de data URL.
+        // Los data URLs no se renderizan en Gmail/Outlook.
+        const qrImageUrl = `${appBaseUrl()}/api/qr/${qr.token}.png`;
         const result = await sendEventQrPassEmail({
           attendeeName: lead.name,
           attendeeEmail: email,
-          eventTitle: event?.title ?? "el evento",
+          eventTitle: event?.title ?? registrationEventTitle ?? "el evento",
           eventStartsAt: event?.startsAt
             ? event.startsAt.toISOString()
             : new Date().toISOString(),
           eventLocation: event?.location ?? null,
-          qrDataUrl,
+          qrImageUrl,
           checkInUrl: qrUrl,
         });
         if (!result.ok) {
