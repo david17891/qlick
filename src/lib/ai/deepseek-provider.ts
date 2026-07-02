@@ -286,7 +286,12 @@ export const deepseekAgentProvider: AIAgentProvider = {
       typeof context.isFirstMessage === "boolean"
         ? context.isFirstMessage
         : (context.conversationWindow?.messages.length ?? 0) === 0;
-    const systemPrompt = buildSystemPrompt(context.profile, undefined, isFirstMessage);
+    // BUGFIX 2026-07-02: el parametro `activeEvent` estaba hardcodeado a
+    // `undefined`, lo que hacia que el system prompt NO incluyera el bloque
+    // "EVENTO ACTIVO" con info del evento del 6 jul. El LLM respondia con
+    // texto generico sin contexto. Ahora pasamos el del context (que el
+    // bot-engine cargo de DB/env vars/placeholder).
+    const systemPrompt = buildSystemPrompt(context.profile, context.activeEvent, isFirstMessage);
     const userPrompt = buildTaskPrompt(task, context);
 
     let currentTier: DeepSeekTier = initialTier;
