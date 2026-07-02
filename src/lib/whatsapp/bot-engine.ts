@@ -84,7 +84,7 @@ export type BotIntent =
   | "provide_email"
   | "interactive_event_yes"
   | "interactive_event_inscribir"
-  | "interactive_show_courses"
+  | "interactive_show_events"
   | "interactive_talk_human"
   | "question";
 
@@ -765,26 +765,49 @@ async function buildResponsePlan(args: {
       // Fase 7a: Reply Buttons en welcome. Más conversión que texto abierto.
       // Títulos de botones tienen límite de 20 chars en Meta — usar
       // mensajes genéricos + poner el nombre del evento en el body.
-      const evt = getActiveEvent();
+      //
+      // FIX 2026-07-02 (sesion David): cargamos el activeEvent REAL de DB
+      // (no el placeholder de env vars que mostraba eventos que no
+      // existian). Si no hay evento en DB, mostramos solo el saludo
+      // + botones (sin la linea "Evento activo: ...").
+      const realActiveEvent = await loadActiveEventContext().catch(() => null);
+      // FIX 2026-07-02: filtrar placeholders obvios en firstName. Si el
+      // lead tiene name="Por" (data legacy del primer test) o vacio,
+      // no le llamamos por nombre.
+      const PLACEHOLDER_NAMES = new Set([
+        "por",
+        "por confirmar",
+        "confirmar",
+        "test",
+        "test number",
+        "(empty)"
+      ]);
+      const cleanFirstName = PLACEHOLDER_NAMES.has((firstName ?? "").toLowerCase().trim())
+        ? ""
+        : firstName ?? "";
+      const saludo = cleanFirstName ? `¡Hola ${cleanFirstName}!` : "¡Hola!";
+      const eventLine = realActiveEvent && realActiveEvent.source === "db"
+        ? `\n\nPróximo evento: ${realActiveEvent.title} (${realActiveEvent.humanStartsAt})`
+        : "";
       const interactive = {
         type: "button" as const,
         body: {
-          text: `¡Hola ${firstName}! Soy Qlick, asistente de Qlick Marketing Integral. ¿Qué te interesa?\n\nEvento activo: ${evt.name} (${evt.date})`
+          text: `${saludo} Soy Qlick, asistente de Qlick Marketing Integral. ¿Qué te interesa?${eventLine}`
         },
         action: {
           buttons: [
             {
               type: "reply" as const,
               reply: {
-                id: `evt_yes_${evt.name.replace(/\s+/g, "_").toLowerCase().slice(0, 20)}`,
+                id: "evt_yes_next",
                 title: "Info evento"
               }
             },
             {
               type: "reply" as const,
               reply: {
-                id: "show_courses",
-                title: "Ver cursos"
+                id: "show_events",
+                title: "Ver eventos"
               }
             },
             {
@@ -867,18 +890,27 @@ async function buildResponsePlan(args: {
       // Devolvemos los detalles del evento + un botón "Inscribirme" para
       // que el siguiente paso sea explícito (en vez de texto abierto
       // "mandame tu email").
-      const evt = getActiveEvent();
+      //
+      // FIX 2026-07-02 (sesion David): cargar el activeEvent real de DB.
+      // Si no hay, mensaje generico en vez de placeholder de env vars.
+      const evt = await loadActiveEventContext().catch(() => null);
+      const evtFallback = getActiveEvent();
+      const evtName = evt?.title ?? evtFallback.name;
+      const evtDate = evt?.humanStartsAt ?? evtFallback.date;
+      const evtLoc = evt?.location ?? evtFallback.location;
+      const evtDur = evt?.humanDuration ?? evtFallback.duration;
+      const evtSlug = evt?.slug ?? evtFallback.name.toLowerCase().replace(/\s+/g, "_");
       const interactive = {
         type: "button" as const,
         body: {
-          text: `📅 ${evt.name}\n🗓 ${evt.date} · 📍 ${evt.location} · ⏱ ${evt.duration}\n\n¿Listo para inscribirte?`
+          text: `📅 ${evtName}\n🗓 ${evtDate} · 📍 ${evtLoc} · ⏱ ${evtDur}\n\n¿Listo para inscribirte?`
         },
         action: {
           buttons: [
             {
               type: "reply" as const,
               reply: {
-                id: `evt_inscribir_${evt.name.replace(/\s+/g, "_").toLowerCase().slice(0, 20)}`,
+                id: `evt_inscribir_${evtSlug.slice(0, 20)}`,
                 title: "Inscribirme"
               }
             },
@@ -926,42 +958,50 @@ async function buildResponsePlan(args: {
           })
       };
     }
-    case "interactive_show_courses": {
-      // List Message con cursos disponibles (mock por ahora — sale de `events`
-      // cuando integremos el loader a la DB).
-      const evt = getActiveEvent();
-      const interactive = {
+    case "interactive_show_events": {
+      // FIX 2026-07-02 (sesion David): antes este caso listaba 3 cursos
+      // hardcoded (Marketing Basico, IA para Marketing, Curso personalizado)
+      // que NO existian en DB. Ahora lista los eventos REALES publicados.
+      // Si solo hay 1, lo muestra destacado. Si hay varios, los lista todos.
+      const allEvents = await loadAllActiveEvents().catch(() => [] as ActiveEventContext[]);
+      if (allEvents.length === 0) {
+        // No hay eventos publicados. Degradar a texto simple.
+        const bodyText =
+          "Por ahora no tenemos eventos publicados, pero estamos preparando los proximos. " +
+          "Te aviso cuando haya algo. Mientras tanto, ?tenes alguna otra pregunta?";
+        return {
+          kind: "text",
+          body: bodyText,
+          send: () => provider.send({ to: phoneNormalized, body: bodyText })
+        };
+      }
+      const sections = [
+        {
+          title: allEvents.length === 1 ? "Proximo evento" : "Proximos eventos",
+          rows: allEvents.slice(0, 10).map((evt) => ({
+            id: `evt_info_${evt.slug}`,
+            title: evt.title.slice(0, 24),
+            description: `${evt.humanStartsAt} · ${evt.location}`.slice(0, 72)
+          }))
+        }
+      ];
+      const interactive: import("../whatsapp/providers/whatsapp-provider").InteractiveMessage = {
         type: "list" as const,
         body: {
-          text: "Estos son los cursos de Qlick. Elegí uno para ver detalle:"
+          text: allEvents.length === 1
+            ? "Tenemos este evento proximo:"
+            : `Tenemos ${allEvents.length} eventos proximos. Elegi el que te interesa:`
         },
         action: {
-          button: "Ver cursos",
-          sections: [
-            {
-              title: "Cursos vigentes",
-              rows: [
-                {
-                  id: "course_marketing_basico",
-                  title: "Marketing Básico",
-                  description: "Fundamentos de marketing para emprendedores".slice(0, 72)
-                },
-                {
-                  id: "course_ia_marketing",
-                  title: "IA para Marketing",
-                  description: "Cómo usar IA para automatizar tu marketing".slice(0, 72)
-                },
-                {
-                  id: "course_curso_personalizado",
-                  title: "Curso personalizado",
-                  description: "Hablemos de lo que necesitás".slice(0, 72)
-                }
-              ]
-            }
-          ]
-        },
-        footer: { text: `Próximo evento: ${evt.name} (${evt.date})`.slice(0, 60) }
+          button: "Ver eventos",
+          sections
+        }
       };
+      if (allEvents.length > 0) {
+        interactive.footer = {
+          text: "Toca uno para ver detalle o escribe tu pregunta".slice(0, 60)
+        };
+      }
       const bodyText = interactive.body.text;
       return {
         kind: "interactive",
@@ -1177,7 +1217,15 @@ export async function processInboundMessage(
     };
   }
 
-  const body = (message.text ?? "").trim();
+  // FIX 2026-07-02 (sesion David): si el mensaje es un boton de List
+  // Message (interactive, buttonTitle presente), usamos el titulo visible
+  // como body para que el LLM tenga contexto de que evento eligio el
+  // usuario. Sin esto, el LLM recibe body vacio y no sabe que responder.
+  const body = (
+    message.type === "interactive" && message.buttonTitle
+      ? message.buttonTitle
+      : message.text ?? ""
+  ).trim();
   // Timeout 5s para evitar que Supabase cuelgue la ejecución del bot.
   // Si no responde, caemos a modo demo (sin persistencia).
   const supabasePromise = getSupabase();
@@ -1268,12 +1316,21 @@ export async function processInboundMessage(
   // intent se deriva del buttonId en vez de regex sobre el texto.
   let intent: BotIntent;
   if (message.buttonId) {
-    if (message.buttonId.startsWith("evt_yes_")) {
+    if (message.buttonId === "evt_yes_next" || message.buttonId.startsWith("evt_yes_")) {
+      // FIX 2026-07-02: el boton del welcome ahora es "evt_yes_next"
+      // (sin sufijo de nombre de evento). Tambien matcheamos el patron
+      // viejo por si hay botones cacheados.
       intent = "interactive_event_yes";
-    } else if (message.buttonId.startsWith("evt_inscribir_")) {
+    } else if (message.buttonId.startsWith("evt_inscribir_") || message.buttonId === "evt_inscribir_next") {
       intent = "interactive_event_inscribir";
-    } else if (message.buttonId === "show_courses") {
-      intent = "interactive_show_courses";
+    } else if (message.buttonId.startsWith("evt_info_")) {
+      // FIX 2026-07-02: nuevo boton del list "Ver eventos" cuando hay
+      // varios. El slug viene en el buttonId (e.g. evt_info_ads-meta-...).
+      // Lo tratamos como question y dejamos que el LLM responda con el
+      // detalle del evento (el slug esta en el contexto del message).
+      intent = "question";
+    } else if (message.buttonId === "show_events") {
+      intent = "interactive_show_events";
     } else if (message.buttonId === "talk_human") {
       intent = "interactive_talk_human";
     } else {

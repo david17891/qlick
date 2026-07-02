@@ -683,21 +683,24 @@ test("processInboundMessage: buttonId evt_inscribir_* → interactive_event_insc
   }
 });
 
-test("processInboundMessage: buttonId show_courses → interactive_show_courses", async () => {
+test("processInboundMessage: buttonId show_events → interactive_show_events", async () => {
+  // FIX 2026-07-02 (sesion David): el boton del welcome ahora es
+  // "show_events" (antes "show_courses" con cursos hardcoded que no
+  // existian). Ahora lista los eventos REALES de DB.
   disableSupabase();
   const m = mockFetch();
   try {
     const result = await processInboundMessage({
       messageId: "wamid_btn2",
       from: "523312345678",
-      text: "Ver cursos",
+      text: "Ver eventos",
       type: "interactive",
-      buttonId: "show_courses",
-      buttonTitle: "Ver cursos"
+      buttonId: "show_events",
+      buttonTitle: "Ver eventos"
     });
-    assert.equal(result.intent, "interactive_show_courses");
-    // Devuelve List Message con cursos.
-    assert.equal(result.responseKind, "interactive");
+    assert.equal(result.intent, "interactive_show_events");
+    // Sin Supabase, cae a texto (no hay eventos para listar).
+    assert.equal(result.responseKind, "text");
   } finally {
     m.restore();
   }
