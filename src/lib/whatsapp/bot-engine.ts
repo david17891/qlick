@@ -163,6 +163,15 @@ function getActiveEvent(): {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const GREETING_RE = /^(hola|hi|buenos|buenas|informaci[oó]n|info|menu|men[uú])/i;
+// FIX 2026-07-02 (sesion David): respuestas afirmativas CORTAS en medio de
+// una conversacion (despues de que el LLM hace una pregunta) NO deberian
+// disparar el template estatico de register. Van al LLM para que mantenga
+// el contexto conversacional.
+//   "Si"  -> el LLM responde coherente con contexto
+//   "Si, quiero inscribirme" -> sigue siendo register (tiene palabras adicionales)
+//   "Ok" / "Dale" / "Va" -> idem, van al LLM
+// NO incluye "no" porque ese es opt_out (el regex OPT_OUT_RE ya lo maneja).
+const AFFIRMATIVE_RE = /^(s[ií]|ok|dale|va)$/i;
 // Registro corto (anclado al inicio) — palabras muy específicas del
 // usuario confirmando inscripción.
 const REGISTER_RE = /^(s[ií]|confirmo|inscribirme|registrarme|quiero|me interesa)/i;
@@ -214,6 +223,11 @@ export function detectIntent(
   if (!text) return "question";
   // Señales fuertes: siempre ganan, incluso en primer mensaje.
   if (OPT_OUT_RE.test(text)) return "opt_out";
+  // FIX 2026-07-02: respuestas afirmativas cortas (Si, Ok, Dale, Va) en
+  // medio de conversacion NO son register. Van al LLM para que mantenga
+  // contexto. La excepcion (Si, quiero inscribirme) sigue siendo register
+  // porque AFFIRMATIVE_RE no matchea cuando hay palabras adicionales.
+  if (AFFIRMATIVE_RE.test(text)) return "question";
   if (REGISTER_RE.test(text)) return "register";
   if (REGISTER_PHRASE_RE.test(text)) return "register";
   if (EMAIL_RE.test(text)) return "provide_email";

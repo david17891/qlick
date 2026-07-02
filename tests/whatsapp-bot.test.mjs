@@ -296,8 +296,22 @@ test("detectIntent: hola/info/menu → greeting", () => {
   assert.equal(detectIntent("menu", false), "greeting");
 });
 
-test("detectIntent: sí/quiero/inscribirme → register", () => {
-  assert.equal(detectIntent("sí", false), "register");
+test("detectIntent: sí/ok/dale/va sueltos → question (van al LLM, NO a register)", () => {
+  // FIX 2026-07-02 (sesion David): respuestas afirmativas cortas en medio
+  // de una conversacion NO son register. Van al LLM para que mantenga
+  // el contexto conversacional. Antes estos casos caian al menu estatico
+  // de "Ver eventos" rompiendo el flujo multi-turno.
+  assert.equal(detectIntent("sí", false), "question");
+  assert.equal(detectIntent("Si", false), "question");
+  assert.equal(detectIntent("ok", false), "question");
+  assert.equal(detectIntent("dale", false), "question");
+  assert.equal(detectIntent("va", false), "question");
+});
+
+test("detectIntent: si quiero inscribirme (con palabras adicionales) → register", () => {
+  // La excepcion: si "si" viene con palabras adicionales, sigue siendo
+  // register. AFFIRMATIVE_RE no matchea cuando hay mas palabras.
+  assert.equal(detectIntent("Si, quiero inscribirme", false), "register");
   assert.equal(detectIntent("Si, quiero", false), "register");
   assert.equal(detectIntent("inscribirme", false), "register");
   assert.equal(detectIntent("registrarme", false), "register");
