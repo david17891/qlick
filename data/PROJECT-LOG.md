@@ -992,3 +992,49 @@ oreply@email.cloudflare.net ("Are you missing an email sent from david17891@gmai
 **Por qué es urgente:** antes de tu conferencia del 6 jul, el webhook está abierto a spoofing. Con secret activo, Meta firma los POSTs y el handler rechaza los no firmados.
 
 ---
+---
+
+## 2026-07-02 ~04:00 · Lección crítica: `vercel env pull` miente para vars sensitive
+
+- **Pregunta:** ¿Por qué cada vez que seteo una var sensitive en Vercel con `--value`, el `vercel env pull` me muestra vacío? ¿La var no se guardó?
+- **Respuesta encontrada:** **Sí se guardó.** El `vercel env pull` desencripta vars plain pero NO desencripta vars sensitive (es policy/limitation de Vercel CLI, no bug en mi flujo). El `vercel env ls` muestra la presencia de la var pero NO el valor real. El CLI dice "Overrode" y eso es la confirmación real de que se guardó.
+- **Lección para futuras sesiones:**
+  - **NO confiar en `vercel env pull` como verificación de vars sensitive.** Devuelve vacío aunque estén guardadas.
+  - **Verificación real:** probar en runtime con POST firmado (si firmás con el secret que debería estar, y el handler responde 200, está seteado) o con endpoint debug que loggee `process.env.X.length` (sin mostrar el valor).
+  - **El CLI diciendo "Overrode" + el `vercel env ls` mostrando la var presente** es la mejor confirmación que se tiene sin acceso al valor real.
+  - **Para vars sensitive: NO hay forma de leer el valor desde CLI**, hay que probar comportamiento.
+- **Por qué importa esta sesión:** dimos 3 vueltas sobre el webhook secret porque pensé que no se había guardado. En realidad SÍ se guardó. El problema era OTRO (el botón "Verificar y guardar" de Meta estaba disabled por otra razón, probablemente el verify_token no coincidía con el de Meta).
+- **Trigger:** Sesión 2026-07-02 04:00, después de 3 intentos de setear `WHATSAPP_WEBHOOK_SECRET` + 1 `WHATSAPP_WEBHOOK_VERIFY_TOKEN` y ver pull vacío cada vez. David frustrado: "siento que hacemos esto una y otra vez lo mismo, por que no se quedan guardados?".
+
+---
+
+## 2026-07-02 ~04:20 · Plan Hobby Vercel limita crons a 1/día
+
+- **Pregunta:** ¿Por qué el build de producción estaba STUCK en un commit viejo? (todos mis push eran rechazados, el último deploy de prod tenía 17+ horas de antiguedad)
+- **Causa raíz:** `vercel.json` tenía `"schedule": "*/30 * * * *"` (cada 30 min = 48 veces/día). El plan Hobby de Vercel limita a 1 cron job por día. **El build fallaba con error "Hobby accounts are limited to daily cron jobs"** y Vercel seguía sirviendo el último deploy que SÍ pasó.
+- **Síntomas que produjo esto:**
+  - Página de privacidad mostraba `david17891@gmail.com` (versión vieja)
+  - Bot no respondía a "hola" desde sandbox
+  - Webhook no se actualizaba con la nueva URL
+  - Deploys automáticos se "tragaban" sin error visible desde el dashboard
+- **Lección:** **antes de hacer un deploy, verificar que `vercel.json` no tenga crons que excedan el plan actual.** Comando rápido: `vercel deploy --prod --yes` y ver si el build pasa.
+- **Fix aplicado:** `"schedule": "0 8 * * *"` (1 vez al día, 8am UTC = 1am Phoenix). Comentado que migrar a Cloudflare Workers o Supabase pg_cron para granularidad fina (24h+2h reminders).
+- **Trigger:** Sesión 2026-07-02 ~04:00. Detectado cuando intenté `vercel deploy --prod --yes` para forzar un fresh deploy y el error apareció.
+
+---
+
+## 2026-07-02 ~04:25 · Cierre de sesión con "Si funciona no lo arregles"
+
+- **Decisión de David:** No tocar el webhook setup de Meta ni el alias Vercel. Está funcionando (bot responde, eventos se procesan, emails salen). Migración a `qlick.digital` post-6 jul.
+- **Razón:** frustration acumulada por 3+ intentos de cambiar URL/token que no se "guardaban" (en realidad sí se guardaban — `vercel env pull` miente). David opta por no arreglar lo que funciona.
+- **Lección:** **respetar el principio de "no fix lo que funciona".** A 4 días del evento, NO es momento de hacer cambios que puedan romper algo. Migración post-evento con tiempo.
+- **Pendiente post-6 jul que SÍ hay que hacer (migración completa):**
+  - Cambiar URL del webhook en Meta a `https://www.qlick.digital/api/whatsapp/webhook` (con verify_token fresco sincronizado en Vercel)
+  - Cambiar "Data Deletion URL" en Meta a `https://www.qlick.digital/privacidad` (branding, no bloquea)
+  - Re-sincronizar `WHATSAPP_WEBHOOK_SECRET` real en Vercel (ahora está vacío, código skip-valida, webhook abierto a spoofing)
+  - Migrar cron a Cloudflare Workers (1 vez/día no es suficiente para recordatorios 24h+2h)
+  - Decidir producto: ¿ruta `/encuesta/[token]` para walks-in?
+  - Templates Meta (3) para outreach proactivo
+- **Trigger:** Sesión 2026-07-02 04:17.
+
+---
