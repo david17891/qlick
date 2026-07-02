@@ -885,3 +885,44 @@ oreply@email.cloudflare.net ("Are you missing an email sent from david17891@gmai
 - **Trigger:** Sesión 2026-07-02 02:33. Test post-agregado de MX records.
 
 ---
+---
+
+## 2026-07-02 ~02:45 · Auditoría profunda del proyecto (3 sub-agents en paralelo)
+
+- **Pregunta:** David pidió "revisión a fondo de lo que hay, lo que no hay, lo que ya se hizo y no se guardó, lo que falta". Antes del 6 jul, panorama honesto.
+- **Decisión:** Lanzar 3 explorer agents en paralelo sobre (1) bot WhatsApp, (2) funnel eventos/QR/check-in/cron, (3) infra (migrations/env vars/deploys). Yo en paralelo releí memoria y docs clave.
+- **Hallazgos críticos consolidados (17 gaps detectados):**
+  - **🔴 P0 (romperán el 6 jul):**
+    1. `src/lib/whatsapp/human-handoff.ts:74` chequea `RESEND_API_KEY` (ya no existe) → emails de handoff NUNCA salen. Lead clickea "Hablar con humano" → David nunca se entera. **Fix: 1 línea (`RESEND_API_KEY` → `BREVO_API_KEY`).**
+    2. `WHATSAPP_WEBHOOK_SECRET` removido en Vercel → webhook abierto a spoofing (cualquier POST inyecta mensajes). **Fix: David 5 min + 1 línea en `webhook/route.ts:90`.**
+    3. Bot LLM repite "Hola Por, gracias por escribir..." en cada `question` (conversation window no se observa en uso). UX rota en el flow conversacional. **Fix: debug `loadConversationWindow` + ajustar system prompt.**
+    4. **No existe ruta `/encuesta/[token]` ni `/api/submit-survey`** → walks-in no pueden dejar survey público. Funnel queda abierto. `promoteSurveyToLead` solo se dispara desde `runEventImport.ts:340` (Excel admin). **Fix: ~medio día, o documentar workaround Excel como decisión consciente para 6 jul.**
+  - **🟠 P1 (dañarán UX/conversión):**
+    5. Plantillas Meta NO creadas (3: `conf_bienvenida`, `conf_info_evento`, `conf_confirmacion_registro`). Bot usa texto libre (ventana 24h Meta). Si Meta rechaza text por >24h, bot no responde.
+    6. 5 migrations Fase 7a no confirmadas aplicadas en Supabase: `bot_manual_context`, `lead_profile`, `handoff_requests`, `lead_event_attended_status`, `event_reminder_log`. Código en prod las asume.
+    7. `NEXT_PUBLIC_APP_URL` en Vercel apunta a `qlick-three.vercel.app` (no `qlick.digital`). QR codes y emails embebidos usan dominio legacy.
+    8. `findLeadByPhone` timeouts intermitentes 5s. Riesgo de timeout Vercel mata container.
+    9. 3 archivos siguen diciendo "Resend" en logs/comentarios (`event-qr-pass.ts:6,11`, `event-reminder.ts:6,11`, `event_reminder_log.resend_message_id`). Debugging cuesta más.
+    10. Carga de cursos hardcoded en `interactive_show_courses` (`bot-engine.ts:791-803`). NO lee DB.
+    11. No hay UI admin para `handoff_requests`. Leads se pierden si David no mira DB.
+    12. Discrepancia 24 vs 27 tablas en STATUS.md (schema drift posible).
+  - **🟡 P2 (deuda técnica):**
+    13. `whatsapp_status`/`last_contacted_at` en `leads` marcado "pendiente de verificar".
+    14. Tests del webhook HTTP comentados (10+ tests skipped en `whatsapp-bot.test.mjs:587-752`).
+    15. Docs desactualizadas mencionando `RESEND_*` y `qlick.marketing` (HANDOFF_v0.7.1_FASE_7A_REMINDERS.md, SMTP_SETUP.md, STATUS.md L323).
+    16. Inconsistencias entre código y docs (`webhooks/handler.ts:1-13` dice "placeholder" cuando no lo es; `whatsapp-provider.ts:7-13` dice "manual_wa es único activo" cuando `meta_cloud_api` está activo).
+    17. `app fantasma 2202427980234937` no se puede borrar (es 1P Meta, reaparece tras DELETE).
+- **Lo que SÍ está verificado funcional:**
+  - Bot end-to-end: greeting → register → provide_email → QR (probado con David 5+ mensajes en sandbox +1 555 201 7643).
+  - DeepSeek V4-Flash → V4-Pro switch con escalado (8 tests OK).
+  - QR tokens con UNIQUE constraint + idempotencia vía 23505 retry.
+  - Check-in POST marca `event_attended` + tag + audit log.
+  - Email QR pass template listo + 7 tests.
+  - Email reminder 24h/2h templates listos + 10 tests.
+  - Brevo + dominio qlick.digital + DNS + DKIM/SPF/DMARC + Email Routing confirmado.
+  - 181/181 tests, type-check ✅, lint ✅, build ✅.
+- **Razón:** David explícito: "perdemos siempre contexto, muchas veces ha pasado que estamos apunto de hacer algo y me dices 'he descubierto que esto ya estaba'". Auditoría previene ese loop.
+- **Impacto:** 17 gaps documentados con paths/líneas/severidad. Plan de acción priorizado (4 críticos P0 antes de 6 jul; 8 altos P1; 5 medios P2).
+- **Trigger:** Sesión 2026-07-02 02:45. Pre-6 jul check.
+
+---

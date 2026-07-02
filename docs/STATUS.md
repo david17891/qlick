@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-02 ~02:40 (Dominio `qlick.digital` listo, Cloudflare Email Routing confirmado, Brevo + dominio autenticado, /privacidad actualizado, Email routing MX records agregados. 181/181 tests ✅. Lint ✅. Build ✅. Pendiente: commit de cambios de privacidad + gitignore.)
+> **Última actualización:** 2026-07-02 ~02:50 (Auditoría profunda completa: 17 gaps detectados. 4 críticos P0 (handoff email silenciosamente roto, webhook sin firma, LLM repite saludo, no hay ruta survey pública), 8 altos P1, 5 medios P2. Plan de acción priorizado en `docs/OPEN_ITEMS.md §0`.)
 
 ---
 
