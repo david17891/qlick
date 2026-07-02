@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-01 ~03:30 (Bot WhatsApp con 7 fixes del auditor externo aplicados. 2 pasadas de auditoría (17 + 3 findings). Todos los fixes posibles sin acción humana aplicados. 151/151 tests pasan. Pendiente de David: C1 (webhook secret) + M1 (typegen regenerar).)
+> **Última actualización:** 2026-07-01 ~17:45 (Fase 7a: pase digital por correo + funnel `event_attended` en check-in + cron reminders 24h/2h. 181/181 tests ✅. Lint ✅. Build ✅. Pendiente: David corre migración SQL + push.)
 
 ---
 
@@ -259,6 +259,81 @@ $login = Invoke-WebRequest -Uri "https://qlick-three.vercel.app/api/dev/login" -
 Invoke-WebRequest -Uri "https://qlick-three.vercel.app/dashboard" -UseBasicParsing -MaximumRedirection 0 -WebSession $sv
 # → Debe devolver 200 (no 307 a /login)
 ```
+
+---
+
+## 🎟️ Fase 7a — Pase digital + funnel promotion + cron reminders (2026-07-01 ~17:45)
+
+Cierra el ciclo de vida del lead en el evento: registrar → recibe pase → reminders → asiste → funnel promotion.
+
+### 1. Pase digital por correo (Bloque 1)
+- Cuando el bot detecta email (intent `provide_email`):
+  1. Inserta QR token en `event_qr_tokens` (igual que antes).
+  2. Genera QR visual (PNG 512px, data URL) con `generateQrDataUrl`.
+  3. Manda email con QR embebido + CTA "Ver mi pase online" al correo del asistente.
+  4. **Best-effort:** si el email falla, el link por WhatsApp sigue funcionando.
+- Template: `src/lib/email/templates/event-qr-pass.ts` (HTML inline brand-aligned).
+- Helper: `src/lib/email/event-qr-pass.ts` (`sendEventQrPassEmail`).
+
+### 2. Funnel promotion al check-in (Bloque 2)
+- Migración SQL: `20260701170000_lead_event_attended_status.sql` agrega el valor
+  `event_attended` al enum `lead_status`.
+- POST `/api/check-in/[token]` después de marcar check-in en `event_qr_tokens` +
+  `event_attendees`:
+  - Busca el lead por `phone_normalized`.
+  - Si existe y no estaba en `event_attended` ni en `lost`/`archived` →
+    `UPDATE leads SET status='event_attended', tags=[..., 'event:<slug>:attended']`.
+  - Si no existe (walk-in) → loggeo + sigue, NO falla.
+- El cambio cierra el gap que David mencionó el 2026-07-01: "el check-in cambia de etapa en el funnel".
+- Tipos actualizados: `LeadStatus` en `types/crm.ts` + `types/supabase.ts` (union + array).
+- Etiquetas legibles: "Asistió al evento" (tone `success`) en `src/lib/crm/lead-utils.ts`.
+
+### 3. Cron reminders 24h + 2h antes (Bloque 3)
+- `vercel.json` con `*/30 * * * *` → `GET /api/cron/event-reminders`.
+- `src/lib/cron/event-reminders.ts` (`runEventRemindersJob`):
+  - Calcula ventanas 24h±30min y 2h±30min desde "ahora".
+  - Busca eventos `published` cuyo `starts_at` cae en la ventana.
+  - Para cada uno, busca tokens QR sin reminder previo (idempotente vía
+    `event_reminder_log` UNIQUE en `(event_qr_token_id, reminder_kind)`).
+  - Manda email recordatorio (best-effort) con `sendEventReminderEmail`.
+- Tabla nueva: `event_reminder_log` (`20260701180000_event_reminder_log.sql`).
+  RLS=on (sin policies → solo service role).
+- Templates: `event-reminder.ts` (24h "Mañana: X", 2h "En 2 horas: X").
+
+### Env vars requeridas (en Vercel production)
+
+Si no están seteadas, el job corre igual pero los emails se loggean en consola (modo dev). Para que los recordatorios lleguen a los asistentes:
+
+| Key | Tipo | Default | Notas |
+|---|---|---|---|
+| `RESEND_API_KEY` | sensitive | (vacío) | Si vacío en prod, email NO se envía. |
+| `RESEND_FROM_ADDRESS` | plain | `notificaciones@qlick.marketing` | Debe estar validado en Resend (SPF/DKIM). |
+| `RESEND_REPLY_TO` | plain | `david17891@gmail.com` | Reply-to del email. |
+| `CRON_SECRET` | sensitive | (vacío) | Si seteado, Vercel Cron manda `Authorization: Bearer <secret>`. Si vacío, abierto (dev). |
+
+### Limitación documentada
+
+**WhatsApp automatizado (templates de Meta)** NO está implementado. Para que
+los reminders también lleguen por WhatsApp, se necesitan templates aprobadas
+en Meta Business Manager (`event_reminder_24h`, `event_reminder_2h`) — proceso
+de 24-48h. Para el 6 de julio, los reminders salen solo por email (que ya
+funciona). Migración a WhatsApp queda para Fase 7+.
+
+### Validación
+
+- `npm run type-check` → ✅ 0 errores
+- `npm run lint` → ✅ 0 warnings/errors
+- `npm test` → ✅ 181/181 (eran 151, +30 nuevos: 7 qr-pass, 10 reminder, 10 cron, 3 typegen-related)
+- `npm run build` → ✅ Compila, ruta `/api/cron/event-reminders` registrada
+
+### Pendiente David (pre-deploy)
+
+1. Correr migración SQL en Supabase (los 2 archivos `.sql` aplican con `db push`).
+2. Verificar que `RESEND_API_KEY` y `RESEND_FROM_ADDRESS` estén en Vercel production env.
+3. Push del branch `feat/fase-6-waba-setup` (o cherry-pick a `feat/fase-7-*`).
+4. (Opcional) Setea `CRON_SECRET` y configúralo en Vercel Cron para auth.
+
+Detalle completo en `docs/HANDOFF_v0.7.1_FASE_7A_REMINDERS.md`.
 
 ---
 

@@ -701,3 +701,24 @@ El auditor externo (sesión Mavis separada `mvs_32924e74454541b494a071ca30955d64
 - **Defensive code para migraciones dudosas funciona bien** — omitir `whatsapp_status` del INSERT permitió al bot funcionar end-to-end antes de aplicar la migration. Hoy aplicamos la migration completa y restauramos el campo explícito en el INSERT.
 - **Auditor externo es invaluable** — ojos frescos encontraron M5 (peligroso), M3 (perf), A4 PII que yo no había visto.
 - **Cross-session communication via mavis**: la separación de Mavis root + worker (auditor) funcionó bien después del setup inicial. El auditor dejó el reporte en archivo por la regla de "no inline >8KB blobs".
+
+
+---
+
+## 2026-07-01 ~17:45 · Fase 7a — Pase digital + funnel promotion + cron reminders
+
+- **Pregunta:** David pidió que el lead (a) reciba un QR visual al registrarse, (b) cambie de etapa en el funnel cuando hace check-in, y (c) reciba recordatorios automáticos 24h y 2h antes del evento. ¿Cómo cerrar el ciclo end-to-end antes del 6 de julio?
+- **Decisión:** 3 bloques en un solo commit.
+  1. **Bloque 1 (Pase digital):** nuevo template HTML `event-qr-pass.ts` + helper `sendEventQrPassEmail`. Enganche en `bot-engine.ts` después de `generateQrToken`: genera QR PNG (512px) con `generateQrDataUrl`, manda email con QR embebido inline + CTA "Ver mi pase online". Best-effort (no rompe el flow si falla).
+  2. **Bloque 2 (Funnel promotion):** migración SQL `20260701170000_lead_event_attended_status.sql` agrega `'event_attended'` al enum `lead_status`. Endpoint POST `/api/check-in/[token]` ahora busca el lead por `phone_normalized` y le setea `status='event_attended'` + tag `event:<slug>:attended`. Idempotente + respeta `lost`/`archived`.
+  3. **Bloque 3 (Cron reminders):** nueva tabla `event_reminder_log` (UNIQUE en `event_qr_token_id, reminder_kind` para idempotencia). Endpoint `GET /api/cron/event-reminders` con auth opcional vía `CRON_SECRET`. `vercel.json` configura `*/30 * * * *`. Ventanas 24h±30min y 2h±30min. Email-only (Resend) — WhatsApp queda para Fase 7+ por constraint de templates Meta (24-48h aprobación).
+- **Razón:** David quiere cerrar el ciclo del lead en el evento sin fricción. El funnel promotion era el gap más urgente (leads se quedaban en `new` aunque hubieran asistido). Los reminders son la única defensa real contra no-shows para el 6 de julio.
+- **Impacto:**
+  - Lead que manda email por WhatsApp recibe **2 cosas**: link en chat + QR visual en correo.
+  - Cuando escanean el QR en puerta → automáticamente el lead pasa a `event_attended` en el CRM.
+  - 24h antes del evento → email "Mañana: X". 2h antes → email "En 2 horas: X". Ambos con CTA al pase.
+- **Trigger:** Sesión 2026-07-01 17:24. David dijo "registrar, me pide nombre y correo, ya me registra y me guarda y me manda QR de confirmación para ingreso, al momento que el qr entra a ingreso, ya cambia de etapa en el funnel" + "quiero que se haga un recordatorio 24 horas y quizá unas horas antes del evento".
+- **Validación:** type-check ✅, lint ✅, test 181/181 ✅ (eran 151, +30 nuevos), build ✅ con `/api/cron/event-reminders` registrada.
+- **Limitación documentada:** WhatsApp templates no implementadas (Meta approval cycle). Para el 6 jul los reminders salen solo por email.
+- **Pendiente David:** (1) correr migración SQL en Supabase, (2) verificar `RESEND_API_KEY` + `RESEND_FROM_ADDRESS` en Vercel, (3) push + (opcional) `CRON_SECRET` en Vercel Cron.
+- **Handoff:** `docs/HANDOFF_v0.7.1_FASE_7A_REMINDERS.md`.

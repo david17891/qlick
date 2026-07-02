@@ -217,7 +217,41 @@ export async function POST(
     }
   }
 
-  // 3. Audit log.
+  // 3. Bloque 2 (Fase 7a): promover el lead a `event_attended` en el funnel.
+  // Buscar el lead por phone y actualizar status. Si no hay match (asistió
+  // como walk-in sin estar en el CRM), loggear pero NO fallar — el check-in
+  // en event_qr_tokens + event_attendees ya quedó registrado arriba.
+  if (found.row.attendee_phone_normalized) {
+    const { data: leadRows, error: leadErr } = await supabase
+      .from("leads")
+      .select("id, status, tags")
+      .eq("phone_normalized", found.row.attendee_phone_normalized)
+      .limit(1);
+    if (!leadErr && leadRows && leadRows.length > 0) {
+      const lead = leadRows[0] as { id: string; status: string; tags: string[] | null };
+      // Idempotente: si ya estaba en event_attended, no actualizamos.
+      // Si estaba en lost/archived, respetamos (no resucitamos sin revisión manual).
+      const wasAttended = lead.status === "event_attended";
+      const wasClosed = lead.status === "lost" || lead.status === "archived";
+      if (!wasAttended && !wasClosed) {
+        const tagToAdd = `event:${found.event.slug}:attended`;
+        const existingTags = lead.tags ?? [];
+        const mergedTags = existingTags.includes(tagToAdd)
+          ? existingTags
+          : [...existingTags, tagToAdd];
+        await supabase
+          .from("leads")
+          .update({
+            status: "event_attended",
+            tags: mergedTags,
+            last_contacted_at: nowIso,
+          })
+          .eq("id", lead.id);
+      }
+    }
+  }
+
+  // 4. Audit log.
   await logAdminAction({
     actor_email: "self@qlick.checkin",
     action: "check_in",

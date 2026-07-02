@@ -46,6 +46,19 @@ export function slugify(input: string): string {
 }
 
 /**
+ * URL base pública de la app (sin trailing slash).
+ *
+ * Usada para construir links absolutos (QR check-in, email CTAs, etc.).
+ * Prioridad: `NEXT_PUBLIC_APP_URL` env > fallback a qlick.mx.
+ *
+ * Server-only seguro: el fallback es prod-correcto. En dev local con
+ * `npm run dev` la env se setea a `http://localhost:3000`.
+ */
+export function appBaseUrl(): string {
+  return process.env.NEXT_PUBLIC_APP_URL?.trim() || "https://qlick.mx";
+}
+
+/**
  * Formatea una fecha ISO a formato legible en español.
  *
  * **Importante:** se fuerza `timeZone: 'UTC'` para evitar mismatches

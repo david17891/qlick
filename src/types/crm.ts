@@ -25,6 +25,7 @@ export type LeadStatus =
   | "payment_pending"
   | "enrolled"
   | "active_student"
+  | "event_attended"
   | "lost"
   | "archived";
 

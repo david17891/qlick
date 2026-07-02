@@ -63,6 +63,9 @@ import {
 
 import type { IncomingWhatsAppMessage } from "./webhooks/types";
 import { getActiveWhatsAppProvider } from ".";
+import { sendEventQrPassEmail } from "../email/event-qr-pass";
+import { generateQrDataUrl } from "../qr/generate";
+import { appBaseUrl } from "../utils";
 
 /* ------------------------------------------------------------------ */
 /*  Tipos                                                              */
@@ -150,10 +153,7 @@ function getActiveEvent(): {
   };
 }
 
-/** URL base pública (para QR check-in). */
-function appBaseUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL?.trim() || "https://qlick.mx";
-}
+/** URL base pública (para QR check-in). Re-exportada desde ../utils. */
 
 /* ------------------------------------------------------------------ */
 /*  Clasificación de intents                                           */
@@ -1083,6 +1083,38 @@ export async function processInboundMessage(
       email
     );
     qrUrl = qr?.url ?? null;
+
+    // Bloque 1 (Fase 7a): enviar pase digital al correo del asistente.
+    // Best-effort: si falla, el link del QR por WhatsApp sigue funcionando.
+    // No bloquea el flow principal.
+    if (qrUrl) {
+      try {
+        const event = await loadActiveEventContext().catch(() => null);
+        const qrDataUrl = await generateQrDataUrl(qrUrl, { width: 512 });
+        const result = await sendEventQrPassEmail({
+          attendeeName: lead.name,
+          attendeeEmail: email,
+          eventTitle: event?.title ?? "el evento",
+          eventStartsAt: event?.startsAt
+            ? event.startsAt.toISOString()
+            : new Date().toISOString(),
+          eventLocation: event?.location ?? null,
+          qrDataUrl,
+          checkInUrl: qrUrl,
+        });
+        if (!result.ok) {
+          errorLog("[whatsapp/bot] sendEventQrPassEmail failed", {
+            leadId: lead.id,
+            error: result.error,
+          });
+        }
+      } catch (err) {
+        errorLog("[whatsapp/bot] sendEventQrPassEmail threw", {
+          leadId: lead.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
   }
 
   // 6. Construir plan de respuesta y enviar.
