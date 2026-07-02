@@ -14,7 +14,7 @@
  */
 
 import { createSupabaseAdminClient } from "../supabase/admin";
-import { sendEmail } from "../email/resend-client";
+import { sendEmail } from "../email/brevo-client";
 
 export interface HumanHandoffArgs {
   leadId?: string | null;

@@ -8,7 +8,7 @@
  * Server-only. No importar desde Client Components.
  */
 
-import { sendEmail, type SendEmailResult } from "./resend-client";
+import { sendEmail, type SendEmailResult } from "./brevo-client";
 import {
   renderEventQrPassEmail,
   type EventQrPassInput,

@@ -722,3 +722,77 @@ El auditor externo (sesión Mavis separada `mvs_32924e74454541b494a071ca30955d64
 - **Limitación documentada:** WhatsApp templates no implementadas (Meta approval cycle). Para el 6 jul los reminders salen solo por email.
 - **Pendiente David:** (1) correr migración SQL en Supabase, (2) verificar `RESEND_API_KEY` + `RESEND_FROM_ADDRESS` en Vercel, (3) push + (opcional) `CRON_SECRET` en Vercel Cron.
 - **Handoff:** `docs/HANDOFF_v0.7.1_FASE_7A_REMINDERS.md`.
+
+---
+
+## 2026-07-01 ~23:51 · Migración event_qr_tokens_unique aplicada en Supabase
+
+- **Pregunta:** El fix #1 de la auditoría 2026-07-01 (4dece6e) ya está en código (SELECT antes de INSERT + retry on 23505 en generateQrToken), pero la UNIQUE constraint en DB no estaba aplicada. Sin la constraint, el código se defiende solo en application layer — si el bot escala a múltiples instancias o si entra un webhook race, la protección salta.
+- **Decisión:** David pegó el SQL en el SQL Editor de Supabase. Resultado: `Success. No rows returned`. La migración limpia duplicados pre-existentes (conservando el más antiguo por id) y agrega UNIQUE (event_id, attendee_phone_normalized) solo si no existe.
+- **Razón:** La constraint es la barrera de último recurso. El código ya intenta reusar el token existente antes de insertar, pero la UNIQUE garantiza que **dos procesos simultáneos no puedan crear dos tokens distintos** para el mismo (evento, teléfono). Esto era el race condition que causaba 2 QRs al mismo asistente.
+- **Impacto:**
+  - Cierre definitivo del bug #1 de la auditoría.
+  - event_qr_tokens ahora garantiza idempotencia a nivel DB.
+  - El handler de 23505 en ot-engine.ts:376 ya no debería dispararse en producción normal (solo en condiciones de race muy raras entre el SELECT y el INSERT, lo cual es defensa en profundidad).
+  - RLS sigue activa en la tabla — solo service-role puede insertar.
+- **Trigger:** Sesión 2026-07-01 23:48 post-reboot. Mavis intentó aplicar vía CLI pero supabase no estaba instalado y .env.local solo tiene SUPABASE_SECRET_KEY (REST), no DATABASE_URL. Decisión: que David la pegue en el SQL Editor (2 min, evita improvisar con password). Aplicada al instante.
+- **Pendiente:** Commitear la migración al repo (ya está commiteada en el working tree como 20260701210000_event_qr_tokens_unique.sql, pero conviene confirmar que el file no quedó uncommitted). Agregar también una línea a STATUS cuando se actualice para el snapshot del 2 jul.
+
+---
+
+## 2026-07-01 ~23:51 · Feedback correctivo: documentar más, hacer menos sin痕
+
+- **Pregunta:** David dijo textual: "por qué hacemos tantas cosas y no documentamos? nos falla eso del registro". Es la segunda vez que aparece este patrón en el proyecto (la primera fue al cierre de Fase 7a — Mavis documentó pero tarde).
+- **Decisión:** Adoptar la regla: **cada cambio que requiera ejecución (SQL, env var, config externo) se documenta en PROJECT-LOG.md ANTES de cerrar el turno o pasar a la siguiente tarea**, no después. Si la tarea no es trivial, también entrada en OPEN_ITEMS cuando quede deuda, y STATUS.md cuando cambie el snapshot de producción.
+- **Razón:** El log append-only es la única defensa del proyecto contra "¿por qué hicimos X?" cuando ya pasaron 2 semanas. La auditoría 2026-07-01 detectó 11 bugs + 4 fixes precisamente porque faltaba documentación de decisiones pasadas. Documentar no es opcional — es parte del commit.
+- **Impacto:**
+  - Reduce el "trabajo perdido" de re-descubrir decisiones.
+  - Acelera handoffs a futuro (cualquier agente que entre al repo entiende el por qué).
+  - David puede escanear PROJECT-LOG.md y reconstruir lo que pasó sin tener que pedirlo.
+- **Trigger:** Conversación post-reboot 2026-07-01 23:51. David estaba aplicándo la migración y notó el gap.
+- **Aplicación inmediata:** Esta entrada + la entrada de la migración se escriben en el mismo turno en que se aplican. No se difieren al final de la sesión.
+
+---
+
+---
+
+## 2026-07-02 ~00:12 · Dominio qlick.digital comprado en Hostinger (1 año)
+
+- **Pregunta:** El repo apuntaba a qlick-three.vercel.app (placeholder Vercel). Para el 6 jul launch se necesitaba dominio propio para: (1) emails transaccionales con SPF/DKIM correctos, (2) QR codes en correos con URL limpia, (3) branding consistente, (4) aviso de privacidad con dominio serio.
+- **Decisión:** Comprar qlick.digital en Hostinger, 1 año, MXN 61.99 primer año (~.50 USD). MXN 979.99 renovación al año 2 (~ USD) — más caro que alternativas, pero David lo compró como validación inicial (razón emocional explícita).
+- **Razón:** Hostinger dio el precio de entrada más bajo. Los argumentos técnicos a favor de Porkbun/Cloudflare (precio renewal predecible, sin upsells) pesan a 5 años, pero David decidió pagar el premium del primer año por la validación. Aceptable como decisión de producto.
+- **Impacto:**
+  - **Inmediato:** tenemos dominio propio. Próximo paso: delegar DNS a Cloudflare (gratis) para tener Email Routing + DNS rápido.
+  - **Día 6 jul:** QR codes, links de email, sitemap, OG metadata apuntan a qlick.digital en vez de qlick-three.vercel.app.
+  - **Año 2 (jul 2027):** migrar a Porkbun o Cloudflare Registrar antes de que cobre los  de renovación. Calendario reminder puesto.
+- **Trigger:** Sesión 2026-07-01 23:56. David preguntó opciones, vio que Cloudflare cobraba , pidió alternativas (Hostinger), decidió comprar en Hostinger. Compra confirmada a las 00:12 del 2 jul.
+- **Pendiente:**
+  1. Verificar que dominio está activo en hPanel de Hostinger (5-30 min post-compra)
+  2. Crear / confirmar cuenta en Cloudflare (gratis)
+  3. Cambiar nameservers de Hostinger a Cloudflare
+  4. Activar Cloudflare Email Routing → hola@, privacidad@ reenvían a Gmail
+  5. Crear cuenta Brevo Free para outbound
+  6. Configurar SPF/DKIM/DMARC en Cloudflare DNS (Brevo da los registros)
+  7. Env vars en Vercel
+  8. Test end-to-end
+- **Decisión NO tomada todavía:** aviso de privacidad queda con david17891@gmail.com hasta definir mail oficial. Cuando se decida el mail, actualizar /privacidad y commit dedicado.
+- **Reminder:** 2027-06-15 migrar dominio a Porkbun/Cloudflare antes de que Hostinger cobre  de renovación.
+
+---
+
+---
+
+## 2026-07-02 ~00:29 · Nameservers delegados a Cloudflare
+
+- **Pregunta:** Para que Cloudflare pueda manejar el DNS de qlick.digital (CDN, Email Routing, etc.), el dominio en Hostinger tiene que apuntar a los nameservers de Cloudflare.
+- **Decisión:** David cambió los nameservers en hPanel de Hostinger de tlas.dns.parking.com + hyperion.dns.parking.com (parking DNS de Hostinger) a michael.ns.cloudflare.com + monroe.ns.cloudflare.com (los asignados por Cloudflare al agregar el site).
+- **Razón:** Una vez que propague, todas las consultas DNS de qlick.digital pasan por Cloudflare, que tiene los 2 CNAME records (raíz + www) apuntando a cname.vercel-dns.com. Esto permite que el sitio web cargue detrás del CDN de Cloudflare.
+- **Estado actual:**
+  - Cloudflare ya tiene los 2 CNAME records (raíz + www) → cname.vercel-dns.com, Proxied.
+  - Hostinger confirma cambio: popup ¡Nameservers modificados!.
+  - Pendiente: que Cloudflare detecte la propagación (5-30 min típico, hasta 24h según el popup).
+- **Próximo paso (David):** volver a Cloudflare → click I updated my nameservers → esperar confirmación.
+- **Próximo paso (Mavis en paralelo):** migración esend-client.ts → revo-client.ts (decidido en este turno por presupuesto: Brevo free 300/día vs Resend Pro /mes).
+- **Trigger:** Sesión 2026-07-02 00:12-00:29. Flow de setup: comprar dominio → agregar a Cloudflare → configurar DNS records → cambiar nameservers en Hostinger.
+
+---

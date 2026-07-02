@@ -6,7 +6,7 @@
  * Server-only.
  */
 
-import { sendEmail, type SendEmailResult } from "./resend-client";
+import { sendEmail, type SendEmailResult } from "./brevo-client";
 import {
   renderEventReminderEmail,
   type EventReminderInput,
