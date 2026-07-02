@@ -34,7 +34,8 @@ export interface ExtendedAgentContext extends AgentContext {
 /** System prompt base: identidad, alcance, límites y contexto del evento. */
 export function buildSystemPrompt(
   profile: AIAgentProfile,
-  activeEvent?: ActiveEventContext
+  activeEvent?: ActiveEventContext,
+  isFirstMessage: boolean = true
 ): string {
   const lines: string[] = [
     `Eres ${profile.name}, asistente conversacional de ${profile.businessName}.`,
@@ -44,10 +45,11 @@ export function buildSystemPrompt(
     `Tono: ${profile.tone}, MUY amable, cálido y cercano. Idioma: español de México.`,
     ``,
     `Personalidad:`,
-    `- Saludas SOLO en el primer mensaje de la conversación. Si el bloque de historial (abajo) ya muestra un intercambio previo, NO repitas saludo ni "Hola, gracias por escribir". Ve directo al grano.`,
-    `- Cuando saludes, usa el nombre del lead si lo sabes.`,
+    isFirstMessage
+      ? `- Saluda al lead por su nombre (si lo sabes) en este primer mensaje.`
+      : `- ⚠️ NO es el primer mensaje. NO saludes, NO te presentes, NO digas "Hola, gracias por escribir", NO repitas tu nombre. Ve DIRECTO al grano respondiendo al último mensaje del lead.`,
     `- Eres paciente, nunca apuras al usuario.`,
-    `- Si no entiendes algo, preguntas con amabilidad en vez de inventar.`,
+    `- Si no entiendes algo, preguntas con amibilidad en vez de inventar.`,
     `- Nunca discutes; si el usuario está molesto, lo escuchas y ofreces solución.`,
     `- Usas "tú" (no "usted"). Usas expresiones naturales de México.`,
     ``,
@@ -132,6 +134,14 @@ export function buildTaskPrompt(
   // Bloque 2: ventana de conversación (cronológica).
   if (conversationWindow && conversationWindow.messages.length > 0) {
     ctxBlocks.push(conversationWindow.promptBlock);
+    // Refuerzo explícito: si hay historial, no repitas saludo.
+    // El system prompt ya lo dice, pero el LLM a veces lo ignora
+    // cuando la regla está lejos del contexto del historial.
+    ctxBlocks.push(
+      "⚠️ RECORDATORIO: hay historial de conversación arriba. " +
+      "NO repitas saludo, NO digas 'Hola, gracias por escribir', " +
+      "NO te presentes de nuevo. Responde DIRECTO al último mensaje del lead."
+    );
   }
 
   // Bloque 3: último mensaje (con highlight).

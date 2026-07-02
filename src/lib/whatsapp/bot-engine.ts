@@ -920,6 +920,19 @@ async function buildResponsePlan(args: {
         content =
           "Gracias por tu mensaje. Un asesor de Qlick te va a responder pronto.";
       }
+      // Safety net: si hay historial y la respuesta empieza con saludo o
+      // "gracias por escribir", strip. (Por si el LLM ignora los prompts.)
+      const hasHistory = (conversationWindow?.messages.length ?? 0) > 0;
+      if (hasHistory && content) {
+        const stripped = content
+          .replace(/^\s*(hola|buen[oa]s d[ií]as|buen[oa]s tardes|buen[oa]s noches|qué tal|hi|hello)[,.\s]*/i, "")
+          .replace(/^\s*hola[,\s]+[^,\n.]*[,.\s]*/i, "") // "Hola, soy X. " (presentacion)
+          .replace(/^\s*gracias por (escribir|contactarnos|comunicarte)[,.\s]*/i, "")
+          .trim();
+        if (stripped && stripped !== content) {
+          content = stripped;
+        }
+      }
       // Validar guardrails: si el LLM metió una frase prohibida, fallback.
       const validation = validateAgentReply(content);
       if (!validation.ok) {

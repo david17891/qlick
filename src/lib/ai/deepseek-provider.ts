@@ -278,7 +278,10 @@ export const deepseekAgentProvider: AIAgentProvider = {
   async run(task: AgentTask, context: AgentContext): Promise<AgentResult> {
     // Paso 1: tier inicial segun tipo de tarea
     const initialTier = chooseTier(task);
-    const systemPrompt = buildSystemPrompt(context.profile);
+    // Si hay historial de conversacion, NO es el primer mensaje. El system prompt
+    // adapta las reglas para que el LLM no repita saludo. (Fix 2026-07-02.)
+    const isFirstMessage = (context.conversationWindow?.messages.length ?? 0) === 0;
+    const systemPrompt = buildSystemPrompt(context.profile, undefined, isFirstMessage);
     const userPrompt = buildTaskPrompt(task, context);
 
     let currentTier: DeepSeekTier = initialTier;
