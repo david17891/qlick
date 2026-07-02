@@ -796,3 +796,92 @@ El auditor externo (sesión Mavis separada `mvs_32924e74454541b494a071ca30955d64
 - **Trigger:** Sesión 2026-07-02 00:12-00:29. Flow de setup: comprar dominio → agregar a Cloudflare → configurar DNS records → cambiar nameservers en Hostinger.
 
 ---
+
+---
+
+## 2026-07-02 ~00:55 · Dominio qlick.digital + www.qlick.digital LIVE en Vercel
+
+- **Pregunta:** Después de comprar el dominio, delegar DNS a Cloudflare y cambiar los CNAMEs, faltaba que Vercel reconociera qlick.digital y www.qlick.digital como dominios custom.
+- **Decisión:** Vercel agregó ambos. El primer intento falló porque Cloudflare tenía proxy ON (naranja) en los CNAMEs — Vercel se quejaba con badge 'Proxy Detected' y no podía verificar el dominio ni emitir cert SSL. Solución: cambiar el proxy a DNS only (gris) en los 2 CNAMEs + actualizar el target al específico de Vercel 9b88340863dc785d.vercel-dns-017.com. (parte de la migración interna de Vercel, el genérico cname.vercel-dns.com sigue funcionando pero no es el recomendado).
+- **Razón:** Vercel necesita acceso directo al origen para verificar el dominio y emitir el cert SSL. Cloudflare proxy ON lo bloquea. Para el MVP, DNS only es suficiente (sin CDN/WAF de Cloudflare, pero el bot no lo necesita). Si en el futuro se quiere proxy ON, hay setup adicional (CNAME setup, edge certs).
+- **Estado actual:**
+  - qlick.digital → 308 redirect a www.qlick.digital → Production (Vercel)
+  - www.qlick.digital → Production (Vercel)
+  - qlick-three.vercel.app → Production (legacy, sigue funcionando)
+  - Cloudflare DNS: 2 CNAMEs con proxy OFF, target específico de Vercel
+  - Cloudflare SSL: pendiente cambiar a 'Full' (siguiente paso)
+- **Próximo paso:** Cloudflare Email Routing + Brevo setup (outbound). Esto permite que el bot mande emails desde 
+oreply@qlick.digital y vos recibas consultas en hola@qlick.digital.
+- **Trigger:** Sesión 2026-07-02 00:12-00:55. Flow completo de setup de dominio: comprar → Cloudflare → DNS records → nameservers → Vercel → SSL. Tiempo total: ~45 min de clock, varios bloqueos (CLI no instalado, TLDs sin markup caro, Vercel proxy issue).
+- **Validación:**
+  - nslookup directo a michael.ns.cloudflare.com → IPs de Cloudflare (104.21.78.243, 172.67.138.187) ✅
+  - Vercel status: 3/3 'Valid Configuration' ✅
+  - Migración a Brevo pusheada: commit 7b0e271 en eat/fase-6-waba-setup ✅
+
+---
+
+---
+
+## 2026-07-02 ~01:50 · Brevo dominio qlick.digital autenticado (4 DNS records propagados)
+
+- **Pregunta:** Para que Brevo pueda enviar emails desde 
+oreply@qlick.digital, el dominio tiene que estar autenticado con SPF/DKIM/DMARC. Esto requiere 4 DNS records en Cloudflare.
+- **Decisión:** David agregó los 4 records que Brevo da al autenticar un dominio:
+  1. TXT @ → revo-code:... (verificación de propiedad)
+  2. CNAME revo1._domainkey → 1.qlick-digital.dkim.brevo.com (DKIM 1)
+  3. CNAME revo2._domainkey → 2.qlick-digital.dkim.brevo.com (DKIM 2)
+  4. TXT _dmarc → =DMARC1; p=none; rua=mailto:rua@dmarc.brevo.com (DMARC monitoring)
+- **Razón:** SPF/DKIM/DMARC son obligatorios para que los mails no caigan en spam. Gmail, Outlook, Yahoo verifican todos antes de entregar. Sin DKIM, el QR pass del evento iba a terminar en spam del 70%+ de los recipients.
+- **Estado actual:** Brevo muestra 'Autenticado' con checkmark verde. Los 4 records propagados en Cloudflare con proxy OFF (gris).
+- **Próximo paso:** generar BREVO_API_KEY en Brevo dashboard, agregar env vars en Vercel (BREVO_API_KEY, BREVO_FROM_ADDRESS, BREVO_REPLY_TO), redeploy, test end-to-end.
+- **Trigger:** Sesión 2026-07-02 01:38-01:50. Setup tomó 12 min. Email Routing (cloudflare) ya activo desde ~01:18.
+- **Validación:** Brevo status verde, 6 records totales en Cloudflare DNS (2 de Vercel + 4 de Brevo), todos DNS only.
+
+---
+
+---
+
+## 2026-07-02 ~02:18 · Email end-to-end test EXITOSO (Brevo + qlick.digital)
+
+- **Pregunta:** Después de configurar Brevo (cuenta, dominio autenticado, remitente 
+oreply@qlick.digital verificado, API key en Vercel), faltaba verificar que un email real llegara.
+- **Decisión:** Creé scripts/verify-brevo.mjs (script interactivo que pide la API key sin guardarla) y David lo corrió. Resultado: messageId: <202607020917.75181188149@smtp-relay.mailin.fr>, mode: prod — email enviado y procesado por Brevo.
+- **Razón:** Antes del 6 jul launch, el bot necesita poder enviar QR pass, magic links y recordatorios. Sin email funcionando, todo el funnel se cae. El test confirma que el flow Brevo → DNS → recipient funciona end-to-end.
+- **Estado actual:** Email pipeline 100% funcional. Faltan 2 detalles de hygiene: (1) verificar headers SPF/DKIM/DMARC en Gmail, (2) sacar la regla de 
+oreply@ routing en Cloudflare y ponerla en Drop (cleanup, opcional).
+- **Trigger:** Sesión 2026-07-02 01:50-02:18. Setup de email completo: Brevo cuenta + dominio autenticado + remitente + API key + Vercel env vars + redeploy + test.
+- **Pendiente:** Validar headers en Gmail (SPF/DKIM/DMARC pass), commit de erify-brevo.mjs a .gitignore (ya agregado).
+
+---
+
+---
+
+## 2026-07-02 ~02:25 · BUG: Cloudflare Email Routing sin MX records
+
+- **Pregunta:** David mandó email de prueba a privacidad@qlick.digital desde Gmail, no llegó.
+- **Diagnóstico:** Resolve-DnsName qlick.digital -Type MX desde 1.1.1.1, 8.8.8.8 y default — todos devuelven solo SOA, **0 MX records**. Sin MX, Gmail rebota el mail (Recipient domain has no MX o similar).
+- **Causa probable:** Cloudflare Email Routing debería agregar MX records automáticamente al activarse (apuntan a oute[1-3].mx.cloudflare.net). Por algún motivo (timing de cuando se cambió nameservers, bug de su UI, o se desincronizó) no se agregaron. Las reglas de routing (hola@, privacidad@, noreply@) sí están activas, pero sin MX no hay manera que los mails lleguen a Cloudflare.
+- **Decisión:** Agregar los 3 MX records manualmente + 1 TXT (SPF) en Cloudflare DNS:
+  - MX @ route1.mx.cloudflare.net prio 10
+  - MX @ route2.mx.cloudflare.net prio 20
+  - MX @ route3.mx.cloudflare.net prio 30
+  - TXT @ "v=spf1 include:_spf.mx.cloudflare.net ~all"
+- **Razón:** Sin MX no hay forma que un mail externo llegue a Cloudflare para que se aplique la regla de routing. Es un fix de 3 min pero crítico.
+- **Lección:** Después de activar Cloudflare Email Routing, SIEMPRE verificar que los MX records estén en el DNS con Resolve-DnsName <domain> -Type MX. Si no están, agregarlos manualmente.
+- **Trigger:** Sesión 2026-07-02 02:25. Test de routing de privacidad@qlick.digital después del setup completo de email. Mismo día que se activó Email Routing.
+- **Pendiente:** Validar que después de agregar los MX, Gmail entrega el mail a privacidad@qlick.digital y Cloudflare lo reenvía a david17891@gmail.com.
+
+---
+
+---
+
+## 2026-07-02 ~02:33 · Email Routing CONFIRMADO funcional (Gmail deduplica el mismo From/To)
+
+- **Pregunta:** Después de agregar los MX records, ¿el routing de Email Routing reenvía mails a Gmail?
+- **Resultado:** SÍ. David mandó email de prueba desde david17891@gmail.com a privacidad@qlick.digital y NO le llegó a su inbox. PERO recibió un mail de 
+oreply@email.cloudflare.net ("Are you missing an email sent from david17891@gmail.com to privacidad@qlick.digital?"). Esto confirma que Cloudflare SÍ recibió y reenvió el mail, pero Gmail lo deduplicó porque el From y el To son el mismo email.
+- **Lección:** Para testear Email Routing, NO uses el mismo email como origen y destino final (Gmail lo descarta). Usá un email externo diferente o triggereá el flow real del bot.
+- **Estado:** Routing 100% funcional, falta validar con email externo.
+- **Trigger:** Sesión 2026-07-02 02:33. Test post-agregado de MX records.
+
+---
