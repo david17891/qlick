@@ -944,9 +944,33 @@ async function buildResponsePlan(args: {
       // Fase 7a.5: el usuario clickeó "Inscribirme" después de ver info
       // del evento. Le pedimos el email explícitamente. Si responde con
       // un email válido, el intent `provide_email` se encarga.
-      const evt = getActiveEvent();
+      //
+      // FIX 2026-07-02 (sesion David): cargamos el activeEvent real de
+      // DB (no el placeholder de env vars que decia "IA y Marketing
+      // Basico el 6 de julio" cuando el evento real es otro).
+      const evtReal = await loadActiveEventContext().catch(() => null);
+      const evtFallback = getActiveEvent();
+      const evtName = evtReal?.title ?? evtFallback.name;
+      const evtDate = evtReal?.humanStartsAt ?? evtFallback.date;
+      // FIX 2026-07-02: filtrar firstName de placeholders (mismo set
+      // que el welcome y el LLM context). El "Por" del lead legacy
+      // generaba "Excelente Por!".
+      const PLACEHOLDER_NAMES_INSCR = new Set([
+        "por",
+        "por confirmar",
+        "confirmar",
+        "test",
+        "test number",
+        "(empty)"
+      ]);
+      const cleanFirstName = PLACEHOLDER_NAMES_INSCR.has(
+        (firstName ?? "").toLowerCase().trim()
+      )
+        ? ""
+        : firstName ?? "";
+      const saludo = cleanFirstName ? `¡Excelente ${cleanFirstName}!` : "¡Excelente!";
       const bodyText =
-        `¡Excelente ${firstName || ""}! Para inscribirte a "${evt.name}" el ${evt.date}, ` +
+        `${saludo} Para inscribirte a "${evtName}" el ${evtDate}, ` +
         `mandame tu email por acá y te paso tu QR de entrada.`;
       return {
         kind: "text",
@@ -1116,9 +1140,29 @@ async function buildResponsePlan(args: {
         allEvents.length > 1
           ? formatEventsListBlock(allEvents)
           : undefined;
+      // FIX 2026-07-02 (sesion David): filtrar placeholders en el leadName
+      // que pasamos al LLM. Si el lead tiene name="Por" (data legacy de
+      // pruebas iniciales) o "test" / "Test Number", no se lo pasamos
+      // al LLM. Asi el LLM no genera "Excelente Por!" o "Hola Por!".
+      // El placeholder "Por confirmar" lo genera bot-engine cuando el
+      // contact de Meta no trae nombre, pero ese caso ya retorna ""
+      // (ver createLeadFromWhatsApp). El bug es para leads YA en DB.
+      const LLM_PLACEHOLDER_NAMES = new Set([
+        "por",
+        "por confirmar",
+        "confirmar",
+        "test",
+        "test number",
+        "(empty)"
+      ]);
+      const cleanLeadName = LLM_PLACEHOLDER_NAMES.has(
+        (lead.name ?? "").toLowerCase().trim()
+      )
+        ? ""
+        : lead.name ?? "";
       const result = await agent.run("suggest_reply", {
         profile,
-        leadName: lead.name,
+        leadName: cleanLeadName,
         courseOfInterest: lead.courseOfInterest,
         lastIncomingMessage: body,
         activeEvent,
