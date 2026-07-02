@@ -913,21 +913,30 @@ async function buildResponsePlan(args: {
         leadProfile: args.leadProfile ?? undefined,
         // El provider usa `conversationSummary` para inyectar info extra
         // al prompt. Le pasamos el bloque manual para que el LLM lo vea.
-        conversationSummary: manualContext?.promptBlock || undefined
+        conversationSummary: manualContext?.promptBlock || undefined,
+        // Flag confiable: el lead ya existía cuando llegó este mensaje (= hay
+        // historial de conversación). Más confiable que `conversationWindow`
+        // porque el loader puede fallar silenciosamente.
+        isFirstMessage: args.isFirstMessage
       });
       let content = result.content?.trim();
       if (!content) {
         content =
           "Gracias por tu mensaje. Un asesor de Qlick te va a responder pronto.";
       }
-      // Safety net: si hay historial y la respuesta empieza con saludo o
-      // "gracias por escribir", strip. (Por si el LLM ignora los prompts.)
-      const hasHistory = (conversationWindow?.messages.length ?? 0) > 0;
+      // Safety net: si NO es el primer mensaje del lead y la respuesta empieza
+      // con saludo o "gracias por escribir", strip. (Por si el LLM ignora los
+      // prompts.) Usamos `!isFirstMessage` en vez de `conversationWindow` porque
+      // el window loader puede fallar silenciosamente con .catch(() => undefined).
+      // El flag `isFirstMessage` (basado en `findOrCreateLead().created`) es
+      // mucho más confiable.
+      const hasHistory = !args.isFirstMessage;
       if (hasHistory && content) {
         const stripped = content
           .replace(/^\s*(hola|buen[oa]s d[ií]as|buen[oa]s tardes|buen[oa]s noches|qué tal|hi|hello)[,.\s]*/i, "")
           .replace(/^\s*hola[,\s]+[^,\n.]*[,.\s]*/i, "") // "Hola, soy X. " (presentacion)
           .replace(/^\s*gracias por (escribir|contactarnos|comunicarte)[,.\s]*/i, "")
+          .replace(/^\s*soy\s+qlick[,\s]+asistente.*?[.\n]/i, "") // "Soy Qlick, asistente..."
           .trim();
         if (stripped && stripped !== content) {
           content = stripped;

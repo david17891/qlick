@@ -278,9 +278,14 @@ export const deepseekAgentProvider: AIAgentProvider = {
   async run(task: AgentTask, context: AgentContext): Promise<AgentResult> {
     // Paso 1: tier inicial segun tipo de tarea
     const initialTier = chooseTier(task);
-    // Si hay historial de conversacion, NO es el primer mensaje. El system prompt
-    // adapta las reglas para que el LLM no repita saludo. (Fix 2026-07-02.)
-    const isFirstMessage = (context.conversationWindow?.messages.length ?? 0) === 0;
+    // Preferimos el flag `isFirstMessage` del context (viene de
+    // `findOrCreateLead().created` en bot-engine, que es confiable). Si no
+    // viene, caemos al fallback de `conversationWindow` (menos confiable
+    // porque el loader puede fallar silenciosamente con .catch).
+    const isFirstMessage =
+      typeof context.isFirstMessage === "boolean"
+        ? context.isFirstMessage
+        : (context.conversationWindow?.messages.length ?? 0) === 0;
     const systemPrompt = buildSystemPrompt(context.profile, undefined, isFirstMessage);
     const userPrompt = buildTaskPrompt(task, context);
 

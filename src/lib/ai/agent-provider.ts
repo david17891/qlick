@@ -38,6 +38,13 @@ export interface AgentContext {
   conversationWindow?: import("./conversation-window").ConversationWindow;
   /** Perfil persistente del lead (memoria larga entre sesiones). */
   leadProfile?: import("./lead-profile").LeadProfile;
+  /**
+   * true si este es el primer mensaje del lead (acaba de ser creado en DB).
+   * Más confiable que `conversationWindow?.messages.length === 0` porque el
+   * window loader puede fallar silenciosamente con .catch(() => undefined).
+   * Calculado por `bot-engine` via `findOrCreateLead().created`.
+   */
+  isFirstMessage?: boolean;
 }
 
 export type AgentTask =
