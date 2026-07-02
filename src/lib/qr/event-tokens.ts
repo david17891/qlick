@@ -89,7 +89,11 @@ function buildCheckInUrl(baseUrl: string, token: string): string {
   try {
     base = new URL(baseUrl);
   } catch {
-    base = new URL("http://localhost:3000");
+    // Fallback consistente con lib/utils.ts → appBaseUrl(). Si env var
+    // no está seteada, usamos el dominio público de Qlick (no localhost,
+    // porque los QR ya están en emails/WhatsApp y deben apuntar a un
+    // dominio accesible). En dev local, setear NEXT_PUBLIC_APP_URL.
+    base = new URL("https://qlick.mx");
   }
   const url = new URL(`/check-in/${encodeURIComponent(token)}`, base);
   return url.toString();

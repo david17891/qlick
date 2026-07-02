@@ -338,6 +338,27 @@ async function generateQrToken(
   const expiresAt = new Date(baseEnd.getTime() + 6 * 60 * 60 * 1000);
 
   const token = randomBytes(24).toString("base64url").slice(0, 32);
+
+  // Idempotencia (auditoría 2026-07-01): si ya existe un token para este
+  // (event_id, phone) — porque Meta reentregó el webhook o el bot procesó
+  // el mismo email 2 veces — reusamos el existente en vez de insertar
+  // duplicado. La UNIQUE constraint en DB bloquea el duplicado, pero es
+  // mejor hacer el SELECT antes para evitar 23505 ruidoso en logs.
+  const { data: existing } = await supabase
+    .from("event_qr_tokens" as never)
+    .select("token")
+    .eq("event_id" as never, eventId)
+    .eq("attendee_phone_normalized" as never, phoneNormalized)
+    .gt("expires_at" as never, new Date().toISOString())
+    .order("created_at" as never, { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (existing) {
+    const existingToken = (existing as { token: string }).token;
+    const url = `${appBaseUrl()}/check-in/${existingToken}`;
+    return { token: existingToken, url };
+  }
+
   const { error } = await supabase
     .from("event_qr_tokens" as never)
     .insert({
@@ -349,6 +370,25 @@ async function generateQrToken(
       expires_at: expiresAt.toISOString()
     } as never);
   if (error) {
+    // Si el error es 23505 (unique violation) significa que otro proceso
+    // insertó el mismo (event_id, phone) entre nuestro SELECT y el INSERT.
+    // Reintentamos el SELECT para devolver ese token.
+    if ((error as { code?: string }).code === "23505") {
+      const { data: raced } = await supabase
+        .from("event_qr_tokens" as never)
+        .select("token")
+        .eq("event_id" as never, eventId)
+        .eq("attendee_phone_normalized" as never, phoneNormalized)
+        .gt("expires_at" as never, new Date().toISOString())
+        .order("created_at" as never, { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (raced) {
+        const racedToken = (raced as { token: string }).token;
+        const url = `${appBaseUrl()}/check-in/${racedToken}`;
+        return { token: racedToken, url };
+      }
+    }
     errorLog("[whatsapp/bot] generateQrToken falló", {
       code: (error as { code?: string }).code
     });

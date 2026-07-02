@@ -199,18 +199,29 @@ async function callDeepSeekTier(
   };
 
   const MAX_ATTEMPTS = 2;
+  const FETCH_TIMEOUT_MS = 10_000; // 10s — alineado con Vercel function timeout.
   let lastError = "Sin respuesta del provider.";
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
+      // Auditoría 2026-07-01: agregar timeout vía AbortController. Antes,
+      // si la API de DeepSeek se colgaba, el fetch esperaba indefinidamente
+      // y el `processInboundMessage` también. Ahora, 10s y abort.
+      const controller = new AbortController();
+      const timeoutHandle = setTimeout(
+        () => controller.abort(),
+        FETCH_TIMEOUT_MS
+      );
       const res = await fetch(DEEPSEEK_API_URL, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal: controller.signal
       });
+      clearTimeout(timeoutHandle);
 
       const data = (await res.json().catch(() => ({}))) as DeepSeekChatResponse;
 
