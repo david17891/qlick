@@ -1064,6 +1064,36 @@ del Calendario.
 
 ---
 
+#### ⚪ 7. Dominio `qlick.marketing` no comprado — bloqueador de Resend (2026-07-01)
+
+- **Bloquea:** Pase digital visual por correo + recordatorios automáticos 24h/2h.
+- **Severidad:** ⚪ Bloqueado (decisión de David: "marcamos como pendiente, aún no trabajaremos en eso").
+- **Por qué:** Para que Resend mande emails con `from: notificaciones@qlick.marketing`, el dominio tiene que estar validado en Resend con registros SPF/DKIM/DMARC. Sin dominio comprado, no se puede validar.
+- **Estado actual (2026-07-01 ~20:09):**
+  - Las 3 env vars de Resend NO están en Vercel production: `RESEND_API_KEY`, `RESEND_FROM_ADDRESS`, `RESEND_REPLY_TO`.
+  - El job `/api/cron/event-reminders` corre cada 30 min y loggea los emails en consola — no llegan a leads.
+  - El bot sigue mandando el link del pase por WhatsApp (eso funciona).
+  - El check-in sigue promoviendo el lead a `event_attended` (eso funciona, no depende de email).
+  - Solo se pierde el canal de email.
+- **Impacto operativo 6 jul:**
+  - Asistentes que olvidan: sin recordatorio 24h, ~30% no-shows extra.
+  - Staff en puerta: tiene que buscar por nombre en admin (no pueden escanear QR desde la pantalla del asistente, que sí existe en `/check-in/[token]`).
+  - Mitigación: admin manda recordatorio manual via broadcast (`buildEventBroadcast` en `src/lib/contact/whatsapp.ts:438` — ya existe, genera wa.me links pre-armados).
+- **Fix cuando David lo destrabe:**
+  1. Comprar `qlick.marketing` (Namecheap, Cloudflare Registrar, GoDaddy — preferencia de David).
+  2. Configurar DNS en Resend (SPF/DKIM/DMARC). 24-48h propagación.
+  3. Setear 3 env vars en Vercel production:
+     - `RESEND_API_KEY` (de Resend dashboard, scope: send).
+     - `RESEND_FROM_ADDRESS=notificaciones@qlick.marketing`.
+     - `RESEND_REPLY_TO=david17891@gmail.com`.
+  4. (Opcional) `CRON_SECRET` para auth del cron + configurar header `Authorization: Bearer <secret>` en Vercel Cron.
+  5. Trigger manual de prueba: `curl https://qlick-three.vercel.app/api/cron/event-reminders`.
+  6. Verificar: `SELECT * FROM event_reminder_log ORDER BY sent_at DESC LIMIT 10;` en Supabase.
+- **Workaround temporal (5 min, sin dominio):** usar sandbox de Resend `onboarding@resend.dev` como `RESEND_FROM_ADDRESS`. Email sale pero **solo al owner de la cuenta Resend** (David). Sirve para validar el flow, NO para producción real con leads.
+- **Refs:** `docs/HANDOFF_v0.7.1_FASE_7A_REMINDERS.md` (sección "Limitaciones documentadas" + "Pendiente pre-deploy"), `docs/STATUS.md` §"Fase 7a", `data/PROJECT-LOG.md` entrada 2026-07-01 ~17:45.
+
+---
+
 ## 2. Features pendientes por fase
 
 ### Fase 4 — UI Admin `/admin/eventos` + WhatsApp manual
