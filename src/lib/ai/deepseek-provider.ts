@@ -297,21 +297,12 @@ export const deepseekAgentProvider: AIAgentProvider = {
     let currentTier: DeepSeekTier = initialTier;
     let result: AgentResult;
 
-    // BUGFIX 2026-07-02: si la tarea es pro-priority (suggest_reply),
-    // vamos DIRECTO a Pro. Antes, el codigo SIEMPRE arrancaba en Flash y
-    // solo escalaba a Pro si Flash fallaba. Flash (deepseek-chat, mas
-    // debil) respondia con texto generico que ignoraba el activeEvent y
-    // repetia "Por, gracias por escribir" en cada turno. Pro (deepseek-
-    // reasoner) obedece el system prompt, usa el activeEvent, y da
-    // respuestas contextuales. Costo ~30x mayor pero la sugerencia de
-    // respuesta es outbound directo al lead, vale la inversion.
-    if (initialTier === "pro") {
-      result = await callDeepSeekTier("pro", systemPrompt, userPrompt);
-      result.task = task;
-      currentTier = "pro";
-    } else {
-      // Tarea no prioritaria: arrancamos en Flash y escalamos a Pro
-      // si Flash devuelve baja confidence o falla.
+    // HIPOTESIS 2026-07-02 (sesion David): ahora que el system prompt
+    // tiene el activeEvent bien inyectado (commit efd9f85) y la
+    // DEEPSEEK_API_KEY esta configurada, Flash deberia obedecer. Pro
+    // funciona pero es verboso y ~30x mas caro. Volvemos al flujo
+    // original: Flash primero, Pro solo si Flash falla o baja conf.
+    if (initialTier === "flash") {
       result = await callDeepSeekTier("flash", systemPrompt, userPrompt);
       result.task = task;
       currentTier = "flash";
@@ -327,6 +318,12 @@ export const deepseekAgentProvider: AIAgentProvider = {
         result = escalated;
         currentTier = "pro";
       }
+    } else {
+      // Tarea pro-priority (no deberia pasar con suggest_reply en este
+      // experimento, pero mantenemos el branch por si se agregan mas).
+      result = await callDeepSeekTier("pro", systemPrompt, userPrompt);
+      result.task = task;
+      currentTier = "pro";
     }
 
     // Si el resultado final fallo despues de todos los reintentos, devolvemos
