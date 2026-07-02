@@ -1037,4 +1037,25 @@ oreply@email.cloudflare.net ("Are you missing an email sent from david17891@gmai
   - Templates Meta (3) para outreach proactivo
 - **Trigger:** Sesión 2026-07-02 04:17.
 
+------
+
+## 2026-07-02 ~04:30 · G-2 CERRADO (verificación con test runtime, no con env pull)
+
+- **Pregunta:** David sospecha que G-2 (webhook HMAC) ya estaba cerrado porque hicimos el setup varias veces.
+- **Verificación final (test runtime que NO expone secretos):**
+  1. POST sin firma `X-Hub-Signature-256` al webhook actual `https://www.qlick.digital/api/whatsapp/webhook`
+  2. Resultado: **401 con body `{"ok":false,"message":"Falta X-Hub-Signature-256."}`**
+  3. Conclusión: `process.env.WHATSAPP_WEBHOOK_SECRET` SÍ está seteado en runtime. Handler entra al `if (secret)` que rechaza. Validación activa.
+- **Por qué tomó 3 vueltas llegar acá:**
+  - El método de verificación inicial (`vercel env pull --environment production`) **miente para vars sensitive** (devuelve vacío aunque estén guardadas). Esto es un known issue de Vercel CLI, no bug en mi flujo.
+  - El CLI diciendo "Overrode" + el `vercel env ls` mostrando la var presente ES la mejor confirmación que se puede tener desde CLI.
+  - El único método de verificación definitivo es el **test runtime**: POST sin firma debe dar 401.
+- **David tenía razón** en sospechar. La frustración vino del método de verificación (pull mintiendo), no del setup real.
+- **Lección consolidada** (ya en memoria del agente en sección "vercel env pull miente para vars sensitive"):
+  - NUNCA confiar en `vercel env pull` como verificación de vars sensitive
+  - SIEMPRE probar en runtime con POST sin firma → debe dar 401 si validación está activa
+  - Si el pull muestra vacío pero el runtime test da 401, el secret SÍ está
+- **Estado final G-2:** ✅ CERRADO. El webhook valida HMAC contra el App Secret de Meta.
+- **Trigger:** Sesión 2026-07-02 04:25, después de que David dijera "estas seguro que no miente, revísalo 10 veces".
+
 ---
