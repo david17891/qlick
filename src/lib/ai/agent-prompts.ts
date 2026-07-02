@@ -70,17 +70,41 @@ export function buildSystemPrompt(
   ];
 
   // Inyectar contexto del evento activo (si hay uno cargado).
+  // FIX 2026-07-02 (sesion David): el LLM estaba inventando precios
+  // y otros datos que no estan en el bloque. Reforzamos con:
+  //   1. Listado explicito de QUE tienes disponible (no solo "el bloque de arriba")
+  //   2. Listado explicito de QUE NO tienes (no inventes)
+  //   3. Plantilla exacta de respuesta cuando falta info
+  //   4. Tono: humano, conciso, real (max 2-3 oraciones)
   if (activeEvent) {
     lines.push(``, activeEvent.promptBlock);
     lines.push(
       ``,
-      `⚠️ CUANDO EL LEAD PREGUNTE POR EL EVENTO (cualquier pregunta: costo, lugar, fecha, "qué es", etc.):`,
-      `- USA OBLIGATORIAMENTE la información del bloque "EVENTO ACTIVO" de arriba.`,
-      `- Empieza tu respuesta con la info concreta: nombre del evento, fecha, lugar.`,
-      `- NO des respuestas genéricas tipo "Sobre los cursos de Qlick, ¿quieres el temario?".`,
-      `- NO inventes fechas, lugares ni horarios. Si no está en el bloque, di "aún no tengo ese detalle, pero te lo confirmo".`,
-      `- Si el lead quiere inscribirse, dile que necesitas su nombre completo y correo para registrarlo.`,
-      `- Si el lead pregunta algo técnico fuera de tu alcance, escala con amabilidad.`
+      `=== COMPORTAMIENTO CUANDO EL LEAD PREGUNTA SOBRE EL EVENTO ===`,
+      ``,
+      `LO QUE SI TIENES del evento (en el bloque EVENTO ACTIVO arriba):`,
+      `- Nombre del evento`,
+      `- Fecha y hora de inicio`,
+      `- Duracion`,
+      `- Lugar`,
+      `SOLO esos 4 datos. Todo lo demas NO lo tienes.`,
+      ``,
+      `LO QUE NUNCA DEBES INVENTAR (regla dura):`,
+      `- PRECIO / COSTO. Si el lead pregunta costo y no hay precio en el bloque, responde EXACTAMENTE: "Aun no tengo el precio confirmado, lo reviso con el equipo y te paso. ?Te interesa apartar tu lugar?"`,
+      `- Temario detallado / temas especificos`,
+      `- Nombre del expositor / ponente`,
+      `- Direccion exacta del lugar (solo tienes el nombre, no la calle)`,
+      `- Cupo disponible / lugares restantes`,
+      `- Cualquier numero, fecha, hora o dato que NO este escrito arriba`,
+      ``,
+      `SI TE FALTA INFO, usa esta plantilla:`,
+      `"[Lo que SI sabes del bloque] + 'Aun no tengo [el dato que falta] confirmado, lo reviso y te paso. ?Te interesa que te avise cuando lo tenga?'"`,
+      ``,
+      `TONO DE LA RESPUESTA:`,
+      `- Humano, conciso, real. Max 2-3 oraciones en WhatsApp.`,
+      `- Sin emojis excesivos (max 1 por mensaje).`,
+      `- Empieza DIRECTO con la info del evento, sin saludo ni presentacion.`,
+      `- NO uses frases vagas tipo 'te contactaremos pronto' si tienes dato concreto.`
     );
   }
 
@@ -179,9 +203,14 @@ export function buildTaskPrompt(
   ctxBlocks.push(`Tarea: ${instructions[task]}`);
 
   // Si hay evento activo, agregar recordatorio final.
+  // FIX 2026-07-02: reforzar que NO invente datos, y que use la
+  // plantilla de "no tengo el dato" si falta info.
   if (activeEvent) {
     ctxBlocks.push(
-      `\nRecordatorio: el evento activo es "${activeEvent.title}" el ${activeEvent.humanStartsAt}. Úsalo cuando sea relevante.`
+      `\nRecordatorio final: el evento activo es "${activeEvent.title}" el ${activeEvent.humanStartsAt}. ` +
+      `Datos disponibles: nombre, fecha, duracion, lugar. ` +
+      `Si el lead pregunta por algo MAS (precio, temario, expositor, direccion exacta, cupo), ` +
+      `NO inventes. Di "aun no tengo [dato] confirmado, lo reviso y te paso" y pregunta si le interesa que le avises.`
     );
   }
 
