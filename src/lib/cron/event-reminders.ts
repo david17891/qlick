@@ -281,15 +281,23 @@ export async function runEventRemindersJob(
         }
 
         const checkInUrl = `${baseUrl}/check-in/${t.token}`;
-        const result = await sendEventReminderEmail({
-          attendeeName: t.attendeeName ?? "Asistente",
-          attendeeEmail: t.attendeeEmail,
-          eventTitle: evt.eventTitle,
-          eventStartsAt: evt.eventStartsAt,
-          eventLocation: evt.eventLocation,
-          reminderKind: window.kind,
-          checkInUrl,
-        });
+        // FIX P1 2026-07-03: pasamos eventId + tokenId para que el
+        // resultado se loggee en event_email_log (visibilidad admin).
+        const result = await sendEventReminderEmail(
+          {
+            attendeeName: t.attendeeName ?? "Asistente",
+            attendeeEmail: t.attendeeEmail,
+            eventTitle: evt.eventTitle,
+            eventStartsAt: evt.eventStartsAt,
+            eventLocation: evt.eventLocation,
+            reminderKind: window.kind,
+            checkInUrl,
+          },
+          {
+            eventId: evt.eventId,
+            eventQrTokenId: t.tokenId,
+          }
+        );
 
         // Loggear (con ON CONFLICT DO NOTHING para idempotencia si el cron
         // corre 2 veces antes del commit del primero).

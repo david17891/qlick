@@ -2101,17 +2101,30 @@ export async function processInboundMessage(
         if (lead.email && !lead.email.endsWith("@placeholder.local")) {
           try {
             const qrImageUrl = `${appBaseUrl()}/api/event-qr/${existing.token}.png`;
-            await sendEventQrPassEmail({
-              attendeeName: lead.name?.trim() || "Asistente",
-              attendeeEmail: lead.email,
-              eventTitle: evtName,
-              eventStartsAt: evt?.startsAt
-                ? evt.startsAt.toISOString()
-                : new Date().toISOString(),
-              eventLocation: evt?.location ?? null,
-              qrImageUrl,
-              checkInUrl: existing.url
-            });
+            // FIX P1 2026-07-03: pasamos eventId + tokenId para que el
+            // resultado se loggee en event_email_log (visibilidad admin).
+            await sendEventQrPassEmail(
+              {
+                attendeeName: lead.name?.trim() || "Asistente",
+                attendeeEmail: lead.email,
+                eventTitle: evtName,
+                eventStartsAt: evt?.startsAt
+                  ? evt.startsAt.toISOString()
+                  : new Date().toISOString(),
+                eventLocation: evt?.location ?? null,
+                qrImageUrl,
+                checkInUrl: existing.url,
+              },
+              {
+                eventId: existing.eventId,
+                // existing es { token, url, eventId } de findActiveQrTokenForLead.
+                // No expone el id del token (PK), solo el token string. Para
+                // event_qr_token_id tendríamos que agregarlo al return — por
+                // ahora pasamos null (el log queda sin FK al token row, pero
+                // igual queda el event_id para filtrar).
+                eventQrTokenId: null,
+              }
+            );
           } catch (err) {
             errorLog("[whatsapp/bot] already_registered: reenvío email falló", {
               leadId: lead.id,
@@ -2416,17 +2429,27 @@ export async function processInboundMessage(
         // FIX 2026-07-02: usar URL publica del QR en vez de data URL.
         // Los data URLs no se renderizan en Gmail/Outlook.
         const qrImageUrl = `${appBaseUrl()}/api/event-qr/${qr.token}.png`;
-        const result = await sendEventQrPassEmail({
-          attendeeName: lead.name,
-          attendeeEmail: email,
-          eventTitle: event?.title ?? registrationEventTitle ?? "el evento",
-          eventStartsAt: event?.startsAt
-            ? event.startsAt.toISOString()
-            : new Date().toISOString(),
-          eventLocation: event?.location ?? null,
-          qrImageUrl,
-          checkInUrl: qrUrl,
-        });
+        // FIX P1 2026-07-03: pasamos eventId + tokenId para que el
+        // resultado se loggee en event_email_log (visibilidad admin).
+        // `generateQrToken` no devuelve el token.id (PK), solo el string —
+        // para event_qr_token_id haría falta otro SELECT. Por ahora null.
+        const result = await sendEventQrPassEmail(
+          {
+            attendeeName: lead.name,
+            attendeeEmail: email,
+            eventTitle: event?.title ?? registrationEventTitle ?? "el evento",
+            eventStartsAt: event?.startsAt
+              ? event.startsAt.toISOString()
+              : new Date().toISOString(),
+            eventLocation: event?.location ?? null,
+            qrImageUrl,
+            checkInUrl: qrUrl,
+          },
+          {
+            eventId: event?.id ?? null,
+            eventQrTokenId: null,
+          }
+        );
         if (!result.ok) {
           errorLog("[whatsapp/bot] sendEventQrPassEmail failed", {
             leadId: lead.id,
