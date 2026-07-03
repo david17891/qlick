@@ -1318,4 +1318,32 @@ ode --env-file=.env.local scripts/exec-sql.mjs <file> (requiere SUPABASE_DB_PASS
   - Re-inscripción a evento de pago → "pago pendiente" en vez de QR.
   - David puede probar el flow completo desde cero: welcome → ver eventos → inscribirme (gratis) → pedir nombre → pedir email → QR nuevo. Y para evento de pago → "pendiente de pago" sin QR.
 
-- **Trigger:** Sesion 2026-07-03 ~01:20, despues de que David reportara los botones cortados y pidiera borrar sus datos.
+- **Trigger:** Sesion 2026-07-03 ~01:20, despues de que David reportara los botones cortados y pidiera borrar sus datos.---
+
+## 2026-07-03 ~01:35 · Privacy: endpoint publico check-in NO devuelve phone/email
+
+- **Pregunta:** David pregunto "tambien registramos el celular o lo estamos omitiendo?". Hice analisis:
+
+  | Tabla | Columna | Proposito |
+  |---|---|---|
+  | leads | phone, phone_normalized (UNIQUE) | FK logica |
+  | event_qr_tokens | attendee_phone_normalized (UNIQUE con event_id) | Idempotencia QR |
+  | lead_whatsapp_conversations | phone_normalized | Indexar conversaciones |
+  | lead_consent_log | phone_normalized | Indexar consentimientos |
+  | event_confirmations | phone_normalized | Asistentes |
+  | event_attendees | phone_normalized | Asistentes |
+  | event_surveys | phone_normalized | Encuestados |
+
+  Conclusion: SI registramos el celular en 7 tablas. Se ve en el admin dashboard, pero NO en el email del QR pass.
+
+- **Riesgo detectado:** el endpoint GET /api/check-in/[token] es PUBLICO (sin auth). Cualquier persona con el link del QR puede pegarle y obtener `attendee.phone` y `attendee.email` en el JSON de respuesta. Bajo LFPDPPP (ley mexicana de proteccion de datos), son datos personales que no deben quedar visibles a terceros sin consentimiento explicito del titular.
+
+- **Fix:** quitar phone y email del JSON publico. El SELECT interno sigue trayendolos (matching UPDATE event_attendees, UPDATE leads, audit log). page.tsx no le pasa attendeeEmail al CheckInClient. Componente CheckInClient: prop `attendeeEmail` ahora opcional; si llega undefined, no se renderiza el bloque 'Tambien te lo mandamos a tu correo'.
+
+- **Restricciones que David puso:** "siempre y cuando no nos afecte y podamos volver". El cambio es REVERSIBLE (un commit solo, 3 archivos, cambios aislados). NO afecta recordatorios por WhatsApp (esos consultan lead.phone directo desde DB con service_role, no desde este endpoint).
+
+- **Commit:** `ec3aea7` pusheado a origin/main.
+
+- **Validacion:** 203/203 tests OK, type-check OK, lint OK, build OK.
+
+- **Trigger:** Sesion 2026-07-03 ~01:30, despues de que David preguntara sobre el celular y mi analisis detectara el riesgo de privacy.
