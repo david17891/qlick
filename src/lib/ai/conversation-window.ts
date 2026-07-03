@@ -25,6 +25,12 @@ export interface ConversationMessage {
   messageType: string;
   body: string | null;
   timestamp: string;
+  /**
+   * FIX 2026-07-02 (sesion David, Commit A): metadata del mensaje.
+   * El bot-engine consulta esto para state machine (ej. awaiting_field
+   * del flow secuencial nombre → email). Es JSON arbitrario.
+   */
+  metadata: Record<string, unknown> | null;
 }
 
 export interface ConversationWindow {
@@ -126,6 +132,10 @@ export async function loadConversationWindow(
     // messages lookup) con un LEFT JOIN en una sola ronda.
     // Fix M3 del auditor 2026-07-01.
     //
+    // FIX 2026-07-02 (Commit A): ahora tambien pedimos `metadata` para
+    // que el bot-engine pueda consultar state machine (ej. awaiting_field
+    // del flow secuencial nombre -> email).
+    //
     // Sintaxis PostgREST: `leads!lead_id(...)` para hacer LEFT JOIN a través
     // de la FK `lead_whatsapp_conversations.lead_id → leads.id`. El LEFT
     // asegura que pre-lead messages (lead_id = NULL) también aparecen vía
@@ -135,7 +145,7 @@ export async function loadConversationWindow(
     const { data: convRows, error } = await supabase
       .from("lead_whatsapp_conversations" as never)
       .select(
-        "id, direction, message_type, body, created_at, lead_id, leads!lead_id(phone_normalized)" as never
+        "id, direction, message_type, body, created_at, metadata, lead_id, leads!lead_id(phone_normalized)" as never
       )
       .or(
         `phone_normalized.eq.${phoneNormalized},leads.phone_normalized.eq.${phoneNormalized}` as never
@@ -164,6 +174,7 @@ export async function loadConversationWindow(
         message_type: string;
         body: string | null;
         created_at: string;
+        metadata: Record<string, unknown> | null;
       }>
     )
       .map((r) => ({
@@ -171,7 +182,8 @@ export async function loadConversationWindow(
         direction: r.direction,
         messageType: r.message_type,
         body: r.body,
-        timestamp: r.created_at
+        timestamp: r.created_at,
+        metadata: r.metadata
       }))
       // Revertir para que el orden cronológico sea ascendente
       // (lead_oldest → lead_newest).

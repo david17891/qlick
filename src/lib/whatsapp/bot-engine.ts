@@ -82,6 +82,7 @@ export type BotIntent =
   | "register"
   | "opt_out"
   | "provide_email"
+  | "provide_name"
   | "interactive_event_yes"
   | "interactive_event_inscribir"
   | "interactive_show_events"
@@ -805,6 +806,13 @@ interface OutboundPlan {
   templateName?: string;
   /** Mensaje interactivo (si kind=interactive). */
   interactive?: import("../whatsapp/providers/whatsapp-provider").InteractiveMessage;
+  /**
+   * FIX 2026-07-02 (Commit A): metadata a persistir en el outbound.
+   * Usado por state machine (ej. awaiting_field='name' del flow
+   * secuencial nombre → email). El bot-engine consulta este flag en
+   * el siguiente turno para detectar el intent correcto.
+   */
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -1011,29 +1019,43 @@ async function buildResponsePlan(args: {
           })
       };
     }
-    case "interactive_event_inscribir": {
+case "interactive_event_inscribir": {
       // Fase 7a.5: el usuario clickeó "Inscribirme" después de ver info
-      // del evento. Le pedimos el email explícitamente. Si responde con
-      // un email válido, el intent `provide_email` se encarga.
+      // del evento. Le pedimos el email (o nombre primero, según el
+      // evento). Si responde con un email válido, el intent
+      // `provide_email` se encarga.
       //
       // FIX 2026-07-02 (sesion David): cargamos el activeEvent real de
       // DB (no el placeholder de env vars que decia "IA y Marketing
       // Basico el 6 de julio" cuando el evento real es otro).
+      //
+      // FIX 2026-07-02 (Commit A): si `requiresName=true`, el flow
+      // es secuencial: primero nombre, después email. Marcamos el
+      // outbound con metadata.awaiting_field='name' para que el
+      // siguiente intent del lead sea `provide_name`.
       const evtReal = await loadActiveEventContext().catch(() => null);
       const evtFallback = getActiveEvent();
       const evtName = evtReal?.title ?? evtFallback.name;
       const evtDate = evtReal?.humanStartsAt ?? evtFallback.date;
       // FIX 2026-07-02: filtrar firstName de placeholders (mismo set
       // que el welcome y el LLM context). El "Por" del lead legacy
-      // generaba "Excelente Por!". Ver constante de módulo PLACEHOLDER_NAMES.
+      // generaba "Excelente Por!".
       const clean = cleanFirstName(firstName);
       const saludo = clean ? `¡Excelente ${clean}!` : "¡Excelente!";
-      const bodyText =
-        `${saludo} Para inscribirte a "${evtName}" el ${evtDate}, ` +
-        `mandame tu email por acá y te paso tu QR de entrada.`;
+      const requiresName = evtReal?.requiresName === true;
+      const bodyText = requiresName
+        ? `${saludo} Para inscribirte a "${evtName}" el ${evtDate}, ` +
+          `primero decime tu nombre completo. Después te pido tu email.`
+        : `${saludo} Para inscribirte a "${evtName}" el ${evtDate}, ` +
+          `mandame tu email por acá y te paso tu QR de entrada.`;
       return {
         kind: "text",
         body: bodyText,
+        // FIX 2026-07-02 (Commit A): pasamos metadata para que el
+        // processInboundMessage persista el awaiting_field. El
+        // bot-engine consulta este flag en el siguiente turno para
+        // detectar el intent `provide_name`.
+        metadata: requiresName ? { awaiting_field: "name" } : undefined,
         send: () =>
           provider.send({
             to: phoneNormalized,
@@ -1138,6 +1160,82 @@ async function buildResponsePlan(args: {
           })
       };
     }
+    case "provide_name": {
+      // FIX 2026-07-02 (Commit A): el lead mandó un texto libre cuando
+      // el último outbound del bot tenía metadata.awaiting_field='name'
+      // (el bot pidió nombre porque requires_name=true). Respondemos
+      // pidiendo el email.
+      //
+      // NOTA: la persistencia del `lead.name` se hace en
+      // `processInboundMessage` (luego de este handler), NO aca, porque
+      // aca no tenemos acceso a `supabase`. El handler solo construye
+      // el plan (body + metadata).
+      //
+      // Validaciones defensivas:
+      //   - Que el body NO sea un email (si lo es, el detectIntent
+      //     debería haberlo clasificado como provide_email).
+      //   - Que tenga al menos 2 palabras (Juan, no "j").
+      //   - Que no supere 100 chars.
+      const name = body.trim();
+      const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(name);
+      const wordCount = name.split(/\s+/).filter(Boolean).length;
+      if (looksLikeEmail) {
+        // Edge case: el bot pidió nombre pero el lead mandó email.
+        // Respondemos recordándole que primero necesitamos el nombre.
+        const bodyText =
+          `Gracias por el email, pero primero necesito tu nombre completo ` +
+          `(nombre y apellido). Después te paso el QR.`;
+        return {
+          kind: "text",
+          body: bodyText,
+          // Mantenemos awaiting_field='name' para que el próximo turno
+          // siga siendo provide_name.
+          metadata: { awaiting_field: "name" },
+          send: () =>
+            provider.send({ to: phoneNormalized, body: bodyText })
+        };
+      }
+      if (wordCount < 2) {
+        // Probablemente escribió solo "Juan" o "David". Pedimos apellido.
+        const bodyText =
+          `Necesito tu nombre completo (nombre y apellido) para el ` +
+          `certificado. Por favor mandámelo así: "Juan Pérez".`;
+        return {
+          kind: "text",
+          body: bodyText,
+          metadata: { awaiting_field: "name" },
+          send: () =>
+            provider.send({ to: phoneNormalized, body: bodyText })
+        };
+      }
+      if (name.length > 100) {
+        const bodyText =
+          `El nombre que mandaste es muy largo. ¿Me lo podés escribir ` +
+          `más corto? (máximo 100 caracteres)`;
+        return {
+          kind: "text",
+          body: bodyText,
+          metadata: { awaiting_field: "name" },
+          send: () =>
+            provider.send({ to: phoneNormalized, body: bodyText })
+        };
+      }
+      // Nombre válido. El processInboundMessage va a persistirlo.
+      // Acá solo retornamos el plan para pedir el email.
+      const clean = cleanFirstName(name);
+      const saludo = clean ? `Gracias ${clean}.` : "Gracias.";
+      const bodyText =
+        `${saludo} Ahora mandame tu email y te paso tu QR de entrada.`;
+      return {
+        kind: "text",
+        body: bodyText,
+        // FIX 2026-07-02 (Commit A): siguiente paso es email. Marcamos
+        // el outbound para que el bot sepa que ahora awaiting_field='email'.
+        metadata: { awaiting_field: "email" },
+        send: () =>
+          provider.send({ to: phoneNormalized, body: bodyText })
+      };
+    }
     case "provide_email": {
       const email = body.trim();
       // FIX A5: usar el QR token real generado por processInboundMessage.
@@ -1165,6 +1263,9 @@ async function buildResponsePlan(args: {
       return {
         kind: "text",
         body: bodyText,
+        // FIX 2026-07-02 (Commit A): el flow de inscripcion completo
+        // termina aca. Limpiamos cualquier awaiting_field pendiente.
+        metadata: { awaiting_field: null },
         send: () =>
           provider.send({
             to: phoneNormalized,
@@ -1449,7 +1550,26 @@ export async function processInboundMessage(
       intent = "question";
     }
   } else {
-    intent = detectIntent(body, isFirstMessage);
+    // FIX 2026-07-02 (Commit A): state machine para flow secuencial.
+    // Si el último outbound del bot marcó awaiting_field='name' (porque
+    // el evento requiere nombre) Y el lead mandó texto que NO es email,
+    // es `provide_name` (no `question`). El LLM no debe intervenir
+    // porque el flow es estricto.
+    const earlyWindow = await loadConversationWindow(phoneNormalized, 4).catch(
+      () => undefined
+    );
+    const lastOutbound = earlyWindow?.messages
+      .filter((m) => m.direction === "outbound")
+      .slice(-1)[0];
+    const awaitingField =
+      (lastOutbound?.metadata as { awaiting_field?: string | null } | null)
+        ?.awaiting_field ?? null;
+    const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body);
+    if (awaitingField === "name" && body && !looksLikeEmail) {
+      intent = "provide_name";
+    } else {
+      intent = detectIntent(body, isFirstMessage);
+    }
   }
 
   // 4. Actualizar whatsapp_status según intent (best-effort).
@@ -1474,6 +1594,38 @@ export async function processInboundMessage(
     }
   }
 
+  // 4.5 FIX 2026-07-02 (Commit A): si el intent es provide_name, persistir
+  // el nombre en `leads.name`. Lo hacemos ANTES de buildResponsePlan para
+  // que el handler pueda usar el `lead.name` actualizado en mensajes
+  // posteriores (ej. cuando llegue provide_email).
+  if (intent === "provide_name" && supabase && lead.id) {
+    const name = body.trim();
+    const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(name);
+    const wordCount = name.split(/\s+/).filter(Boolean).length;
+    // Solo persistir si pasó las validaciones del handler (no email,
+    // 2+ palabras, <=100 chars). Si falló la validación, NO actualizamos.
+    if (!looksLikeEmail && wordCount >= 2 && name.length <= 100) {
+      const { error: nameUpdateErr } = await supabase
+        .from("leads")
+        .update({ name })
+        .eq("id", lead.id);
+      if (nameUpdateErr) {
+        errorLog("[whatsapp/bot] provide_name: update lead.name falló", {
+          leadId: lead.id,
+          code: (nameUpdateErr as { code?: string }).code,
+        });
+      } else {
+        // Actualizamos el `lead` en memoria para que buildResponsePlan
+        // (provide_name handler) use el nuevo nombre.
+        lead.name = name;
+        debugLog("[whatsapp/bot] provide_name: nombre persistido", {
+          leadId: lead.id,
+          name
+        });
+      }
+    }
+  }
+
   // 5. Si el intent es provide_email: actualizar email del lead + log consent.
   // FIX 2026-07-02 (sesion David): bot multi-evento. Identificamos a cual
   // evento se esta registrando el lead basandonos en el conversationWindow
@@ -1482,11 +1634,15 @@ export async function processInboundMessage(
   let qrUrl: string | null = null;
   let registrationEventSlug: string | null = null;
   let registrationEventTitle: string | null = null;
+  let registrationEventRequiresName: boolean = false;
   if (intent === "provide_email" && supabase) {
     const email = body.trim().toLowerCase();
-    // FIX 2026-07-02: cargar conversationWindow aca (no estaba en
-    // processInboundMessage, solo en buildResponsePlan) para identificar
-    // el evento del registro.
+    // FIX 2026-07-02 (Commit A): si el evento del registro requiere
+    // nombre Y el lead no tiene nombre en DB, NO avanzamos al QR.
+    // Respondemos pidiendo el nombre primero. Este caso pasa cuando
+    // el lead saltó el flow secuencial (mandó email sin pasar por
+    // provide_name).
+    // Cargamos el evento del registration via findEventInConversation.
     // FIX P0-4 (auditoria 2026-07-02): usar phoneNormalized (siempre
     // seteado desde message.from) en vez de lead.phone ?? "" (que puede
     // ser null en el fallback de Supabase caída).
@@ -1500,7 +1656,72 @@ export async function processInboundMessage(
     const matchedEvent = findEventInConversation(convWindowForEvent, allEvents);
     registrationEventSlug = matchedEvent?.slug ?? null;
     registrationEventTitle = matchedEvent?.title ?? null;
-
+    registrationEventRequiresName = matchedEvent?.requiresName === true;
+    if (registrationEventRequiresName && !lead.name?.trim()) {
+      // El evento requiere nombre y el lead no lo dio. Pedimos nombre
+      // antes de avanzar al QR. NO generamos QR, NO enviamos email.
+      const bodyText =
+        `Antes del email necesito tu nombre completo (es para el ` +
+        `certificado). Por favor mandámelo así: "Juan Pérez". Después ` +
+        `te paso tu email para el QR.`;
+      // FIX 2026-07-02 (Commit A): persistir el outbound con
+      // metadata.awaiting_field='name' para que el próximo turno
+      // sea provide_name.
+      // Saltamos buildResponsePlan y enviamos manualmente.
+      const provider = getActiveWhatsAppProvider();
+      let sendResult: { ok: boolean; externalId?: string; demo?: boolean } = {
+        ok: false
+      };
+      try {
+        const r = await provider.send({ to: phoneNormalized, body: bodyText });
+        sendResult = { ok: r.ok, externalId: r.externalId, demo: r.demo };
+      } catch (err) {
+        errorLog("[whatsapp/bot] provide_email (requires_name check) send falló", {
+          leadId: lead.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      // Persistir el outbound para que el próximo turno sepa
+      // awaiting_field='name'.
+      if (supabase) {
+        await persistConversation(supabase, {
+          lead_id: lead.id,
+          phone_normalized: phoneNormalized,
+          direction: "outbound",
+          message_type: "text",
+          body: bodyText,
+          whatsapp_message_id: sendResult.externalId ?? null,
+          metadata: {
+            intent: "provide_email",
+            templateName: null,
+            demo: sendResult.demo ?? false,
+            awaiting_field: "name",
+            blocked_reason: "requires_name_missing"
+          }
+        });
+      }
+      return {
+        ok: true,
+        intent: "provide_email",
+        leadId: lead.id,
+        conversationId: undefined,
+        outboundMessageId: sendResult.externalId,
+        responseKind: "text",
+        responsePreview: bodyText,
+        demo: sendResult.demo ?? false,
+        note: "Bot bloqueó provide_email: evento requiere nombre pero lead no lo dio."
+      };
+    }
+    // FIX 2026-07-02: cargar conversationWindow aca (no estaba en
+    // processInboundMessage, solo en buildResponsePlan) para identificar
+    // el evento del registro.
+    // FIX P0-4 (auditoria 2026-07-02): usar phoneNormalized (siempre
+    // seteado desde message.from) en vez de lead.phone ?? "" (que puede
+    // ser null en el fallback de Supabase caída).
+    // FIX 2026-07-02 (Commit A): convWindowForEvent y allEvents ya se
+    // cargaron arriba (en el bloque del requires_name check). Reusamos
+    // esas variables. Si llegamos aca es porque el evento NO requiere
+    // nombre O el lead YA tiene nombre.
     // FIX P1-3 (auditoria 2026-07-02): capturar error del update de lead.
     // Si falla (FK, constraint, network), el email queda desactualizado
     // y los siguientes pasos usan el email viejo. Loggeamos para debug
@@ -1620,10 +1841,15 @@ export async function processInboundMessage(
       message_type: plan.kind,
       body: plan.body,
       whatsapp_message_id: sendResult.externalId ?? null,
+      // FIX 2026-07-02 (Commit A): incluir metadata del plan
+      // (ej. awaiting_field del flow secuencial nombre → email).
+      // Spread DESPUES de los defaults para que el plan pueda
+      // override si necesita.
       metadata: {
         intent,
         templateName: plan.templateName ?? null,
-        demo: sendResult.demo ?? false
+        demo: sendResult.demo ?? false,
+        ...(plan.metadata ?? {})
       }
     });
   }

@@ -374,7 +374,9 @@ const FAKE_EVENTS = [
     humanStartsAt: "12 de julio",
     humanDuration: "2 horas",
     promptBlock: "",
-    source: "db"
+    source: "db",
+    // FIX 2026-07-02 (Commit A): evento con certificado, requiere nombre.
+    requiresName: true
   },
   {
     id: "e2",
@@ -387,7 +389,8 @@ const FAKE_EVENTS = [
     humanStartsAt: "19 de julio",
     humanDuration: "3 horas",
     promptBlock: "",
-    source: "db"
+    source: "db",
+    requiresName: false
   },
   {
     id: "e3",
@@ -400,7 +403,8 @@ const FAKE_EVENTS = [
     humanStartsAt: "26 de julio",
     humanDuration: "4 horas",
     promptBlock: "",
-    source: "db"
+    source: "db",
+    requiresName: false
   }
 ];
 
@@ -527,6 +531,26 @@ test("findEventInConversation: si no matchea nada, devuelve null", () => {
   const win = makeWindow(["Hola, como estas? Bienvenido a Qlick."]);
   const result = _findEventInConversationForTest(win, FAKE_EVENTS);
   assert.equal(result, null);
+});
+
+/* ─────────────────────────────────────────────────────────────
+ * 3c. requires_name flag (Commit A)
+ *
+ * El evento 1 (IA y Marketing) tiene certificado → requiresName=true.
+ * Los eventos 2 y 3 no tienen certificado → requiresName=false.
+ * El bot-engine usa esto para decidir si pide nombre antes del email.
+ * ───────────────────────────────────────────────────────────── */
+
+test("FAKE_EVENTS: evento 1 (IA y Marketing) tiene requiresName=true (certificado)", () => {
+  assert.equal(FAKE_EVENTS[0].requiresName, true);
+});
+
+test("FAKE_EVENTS: evento 2 (Ads Meta) tiene requiresName=false (sin certificado)", () => {
+  assert.equal(FAKE_EVENTS[1].requiresName, false);
+});
+
+test("FAKE_EVENTS: evento 3 (Funnels GDL) tiene requiresName=false (sin certificado)", () => {
+  assert.equal(FAKE_EVENTS[2].requiresName, false);
 });
 
 /* ─────────────────────────────────────────────────────────────

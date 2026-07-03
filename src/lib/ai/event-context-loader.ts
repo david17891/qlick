@@ -35,6 +35,13 @@ export interface ActiveEventContext {
   promptBlock: string;
   /** Fuente de la data: "db" (real) | "env" (fallback) | "placeholder". */
   source: "db" | "env" | "placeholder";
+  /**
+   * FIX 2026-07-02 (sesion David, Commit A): si true, el bot pide
+   * nombre completo del lead ANTES del email en el flow de inscripcion.
+   * Usar para eventos con certificado donde el nombre va impreso.
+   * Default false (eventos sin certificado, solo email basta).
+   */
+  requiresName: boolean;
 }
 
 type SupabaseAdmin = SupabaseClient<Database>;
@@ -73,7 +80,11 @@ function fallbackFromEnv(): ActiveEventContext {
       location,
       description: null
     }),
-    source: process.env.EVENT_NAME ? "env" : "placeholder"
+    source: process.env.EVENT_NAME ? "env" : "placeholder",
+    // FIX 2026-07-02: fallback conservador — el placeholder no sabe
+    // si requiere nombre. False por default; si el evento real lo
+    // requiere, lo lee de DB.
+    requiresName: false
   };
 }
 
@@ -227,7 +238,7 @@ export async function loadActiveEventContext(
       ? await supabase
           .from("events" as never)
           .select(
-            "id, slug, title, description, starts_at, ends_at, location, status"
+            "id, slug, title, description, starts_at, ends_at, location, status, requires_name"
           )
           .eq("status", "published")
           .eq("slug", slug)
@@ -236,7 +247,7 @@ export async function loadActiveEventContext(
       : await supabase
           .from("events" as never)
           .select(
-            "id, slug, title, description, starts_at, ends_at, location, status"
+            "id, slug, title, description, starts_at, ends_at, location, status, requires_name"
           )
           .eq("status", "published")
           .order("starts_at", { ascending: true })
@@ -255,6 +266,7 @@ export async function loadActiveEventContext(
       starts_at: string;
       ends_at: string | null;
       location: string | null;
+      requires_name?: boolean;
     };
 
     const humanStartsAt = formatHumanDate(evt.starts_at);
@@ -279,7 +291,8 @@ export async function loadActiveEventContext(
       humanStartsAt,
       humanDuration,
       promptBlock,
-      source: "db"
+      source: "db",
+      requiresName: Boolean(evt.requires_name)
     };
   } catch {
     return fallbackFromEnv();
@@ -315,7 +328,7 @@ export async function loadAllActiveEvents(): Promise<ActiveEventContext[]> {
     const { data, error } = await supabase
       .from("events" as never)
       .select(
-        "id, slug, title, description, starts_at, ends_at, location, status"
+        "id, slug, title, description, starts_at, ends_at, location, status, requires_name"
       )
       .eq("status", "published")
       .order("starts_at", { ascending: true });
@@ -332,6 +345,7 @@ export async function loadAllActiveEvents(): Promise<ActiveEventContext[]> {
       starts_at: string;
       ends_at: string | null;
       location: string | null;
+      requires_name?: boolean;
     }>).map((evt) => {
       const humanStartsAt = formatHumanDate(evt.starts_at);
       const humanDuration = formatHumanDuration(evt.starts_at, evt.ends_at);
@@ -354,7 +368,8 @@ export async function loadAllActiveEvents(): Promise<ActiveEventContext[]> {
         humanStartsAt,
         humanDuration,
         promptBlock,
-        source: "db" as const
+        source: "db" as const,
+        requiresName: Boolean(evt.requires_name)
       };
     });
   } catch {
