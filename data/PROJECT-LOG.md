@@ -1346,4 +1346,26 @@ ode --env-file=.env.local scripts/exec-sql.mjs <file> (requiere SUPABASE_DB_PASS
 
 - **Validacion:** 203/203 tests OK, type-check OK, lint OK, build OK.
 
-- **Trigger:** Sesion 2026-07-03 ~01:30, despues de que David preguntara sobre el celular y mi analisis detectara el riesgo de privacy.
+- **Trigger:** Sesion 2026-07-03 ~01:30, despues de que David preguntara sobre el celular y mi analisis detectara el riesgo de privacy.---
+
+## 2026-07-03 ~01:42 · Vista QR pass: agregar hora del evento
+
+- **Pregunta:** David reporto que la vista `/check-in/[token]` muestra "13 de julio de 2026" pero no la hora. El lead no sabe a qué hora tiene que ir.
+
+- **Fix:** agregar `formatTime()` local en `CheckInClient.tsx` (HH:mm en `America/Mexico_City`). Modificados 3 lugares: header principal, card "Ya estás en puerta", card de detalle del evento.
+
+- **Scope decision:**
+  - `formatDate()` en `lib/utils.ts` sigue con `timeZone: 'UTC'` (afecta 38 lugares, no toco por scope creep).
+  - `formatTime()` usa `timeZone: 'America/Mexico_City'` (hora local del evento, lo que el admin configuró).
+  - Diferencia intencional documentada en el TODO del helper.
+  - Edge case conocido: eventos muy tarde en la noche (23:00+ CDMX) pueden mostrar fecha UTC del día siguiente. Raro, aceptable.
+
+- **NO tocado (David confirmó "no bloqueante por ahora"):**
+  - Email del QR pass: NO le llegó a David (problema de delivery Resend/SMTP). El template YA tiene la hora del evento en su lógica, pero David no lo ve porque el email no llega. Fix futuro.
+  - Copy "Te enviará los detalles de pago": David dijo "esto bueno, ya no envío nada de detalles de pago". NO cambiar.
+
+- **Commit:** `a22b7bb` pusheado a origin/main.
+
+- **Validación:** type-check OK, lint OK, 203/203 tests OK, build OK.
+
+- **Trigger:** Sesión 2026-07-03 ~01:40, screenshot de la vista del QR pass sin hora.
