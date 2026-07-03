@@ -1181,4 +1181,40 @@ ode --env-file=.env.local scripts/exec-sql.mjs <file> (requiere SUPABASE_DB_PASS
   - Verificar con David que el flow de inscripcion ahora funciona end-to-end (welcome → Ver eventos → click evento → inscribirme → nombre → email → QR).
   - Despues: Commit B (staff scanner con link temporal).
 
-- **Trigger:** Sesion 2026-07-02 23:48, despues de que David pusheara el commit `bb17daf`, probara el flow en +52 653 293 5492 y reportara "esta fallando, quita el hablar por un humano por ahora...".
+- **Trigger:** Sesion 2026-07-02 23:48, despues de que David pusheara el commit `bb17daf`, probara el flow en +52 653 293 5492 y reportara "esta fallando, quita el hablar por un humano por ahora...".---
+
+## 2026-07-03 ~00:15 · Fix register hardcoded + matchTextToEvent 'el 2' + copy
+
+- **Pregunta:** David testeo el flow multi-evento (preguntar por los otros eventos despues de registrarse al primero). Detectó 2 bugs + 1 sugerencia de UX:
+
+  1. **case 'register' hardcodeaba el placeholder de env vars.** Cuando David escribio 'si el 2, me puedes inscribir...', el bot disparo register y mostro 'IA y Marketing Basico / 6 de julio / Ciudad de Mexico / 2 horas' (placeholder), NO los 3 eventos reales.
+  2. **matchTextToEvent no detectaba 'el 2' como ordinal.** David escribio 'si el 2, ...' sin brackets. El regex existente solo matcheaba '[N]' con brackets o 'el primero/segundo'. Resultado: el bot no identifico el evento 2, cai'a al fallback del primer evento published (IA y Marketing) y generaba el mismo QR del primer registro. David reporto: 'me mando dos correos, pero al mismo' (mismo link check-in).
+  3. **UX:** copy 'Ver eventos' -> 'Proximos eventos' en welcome. Mas claro.
+
+- **Causa raiz del bug QR:**
+  - `findEventInConversation` -> `matchTextToEvent('si el 2, me puedes inscribir...', allEvents)` -> no matchea [N] ni ordinal ni slug ni titulo -> retorna null.
+  - `generateQrToken(eventSlug=null)` -> cae al 'primer evento published' que es IA y Marketing (el mismo del primer registro).
+  - `event_qr_tokens` ya tiene UNIQUE constraint en (event_id, phone), entonces el bot reusa el token existente del evento 1.
+  - Resultado: segundo correo con el mismo link.
+
+- **Decisiones tomadas:**
+  - **Fix 1:** `case "register"` ahora carga `loadAllActiveEvents()` y arma un list interactivo con los eventos REALES. Row.id usa el prefijo `evt_info_<slug>` (no `evt_<name>`) para que processInboundMessage matchee correctamente con `interactive_event_yes` via `loadActiveEventContext(requestedSlug)`. Fallback al placeholder solo si Supabase no responde (modo demo).
+  - **Fix 2:** `matchTextToEvent` agrega heuristica para detectar numero suelto o casi-suelto en los primeros 15 chars del body: regex `/(?:^|el\s+|si\s+)(\d+)\b/`. Matchea 'el 2', 'si el 2', '2,', '2.', '2 -', '2'. Conservadora: 'hay 2 eventos' no matchearia porque 'hay' esta antes del primer match de numero.
+  - **Fix 3:** copy del welcome. Solo el del welcome (no los paths internos de list message).
+
+- **NOTA sobre multi-QR:** generateQrToken YA estaba bien implementado. Usa `event_id + phone` como UNIQUE constraint en `event_qr_tokens`. Si David esta en 2 eventos, genera 2 tokens diferentes (uno por evento). El bug visible NO era de generacion sino de identificacion — al arreglar matchTextToEvent, automaticamente se genera el QR correcto para el evento que David indica.
+
+- **Commit:** `72fa276` pusheado a origin/main.
+
+- **Impacto esperado:**
+  - Bug 1 fix: 'si, inscribime' -> muestra los 3 eventos reales con sus datos de DB (no el placeholder hardcoded).
+  - Bug 2 fix: 'si el 2, inscribime' -> identifica evento 2 (Ads en Meta), genera QR NUEVO para Ads en Meta, manda correo con el link correcto.
+  - Copy fix: bienvenida mas clara.
+
+- **Pendiente multi-evento:**
+  - Validar con David que el flow ahora funciona end-to-end (registrarse al evento 1, preguntar por otros, inscribirse al evento 2, recibir 2 QRs diferentes en 2 correos diferentes).
+  - Despues: estrategia de pagos para eventos de pago ($599, $1,200). Scope: definir adapter (Stripe/Mercado Pago/OXXO SPEI) + UI de checkout + webhook de confirmacion. Pendiente de discusion con David.
+
+- **Validacion:** 203/203 tests OK, type-check OK, lint OK, build OK.
+
+- **Trigger:** Sesion 2026-07-03 ~00:00, David testeo el flow multi-evento despues de que el fix del loader (`ee62e21`) estuviera deployado, reporto 'me volvio a inscribir al otro evento, si me mando dos correos, pero al mismo'.
