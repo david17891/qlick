@@ -789,7 +789,7 @@ export const aiAgentProfile: AIAgentProfile = {
     "Compartir datos de otros clientes"
   ],
   fallbackMessage:
-    "Gracias por tu mensaje. Una persona de Qlick te responderá a la brevedad en horario hábil."
+    "Disculpá, no entendí bien tu mensaje. ¿Me lo podés reformular? Si necesitás atención personalizada escribinos a hola@qlick.marketing."
 };
 
 /* ================================================================== */

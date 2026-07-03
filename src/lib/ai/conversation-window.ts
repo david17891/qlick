@@ -126,30 +126,31 @@ export async function loadConversationWindow(
   }
 
   try {
-    // Una sola query con relación embebida: trae los últimos N mensajes
-    // de la conversación filtrando por phone_normalized del lead relacionado.
-    // Esto reemplaza el patrón anterior de 2 queries (lead_id lookup +
-    // messages lookup) con un LEFT JOIN en una sola ronda.
-    // Fix M3 del auditor 2026-07-01.
+    // FIX 2026-07-02 (sesion David, "name bug"): antes este query usaba
+    // `.or(\`phone_normalized.eq.${phoneNormalized},leads.phone_normalized.eq.${phoneNormalized}\`)`,
+    // un LEFT JOIN a `leads` para cubrir el caso de mensajes pre-lead
+    // (lead_id = NULL). PERO PostgREST parsea el `+` (de los teléfonos
+    // E.164 como +52XXXXXXXXXX) como espacio en URL encoding y falla
+    // silenciosamente con `failed to parse logic tree`, devolviendo
+    // array vacío. Resultado: el bot-engine no encontraba el último
+    // outbound con `awaiting_field='name'` y caía al LLM.
     //
-    // FIX 2026-07-02 (Commit A): ahora tambien pedimos `metadata` para
-    // que el bot-engine pueda consultar state machine (ej. awaiting_field
-    // del flow secuencial nombre -> email).
+    // Fix: filtrar SOLO por `phone_normalized` directo. Como `lead_id` es
+    // nullable en `lead_whatsapp_conversations` y los mensajes pre-lead
+    // también tienen `phone_normalized` populado, esta query cubre ambos
+    // casos sin necesidad del LEFT JOIN. Sacrificamos el caso raro de
+    // un mismo phone con múltiples leads (migración de número, etc.) que
+    // no aplica en producción.
     //
-    // Sintaxis PostgREST: `leads!lead_id(...)` para hacer LEFT JOIN a través
-    // de la FK `lead_whatsapp_conversations.lead_id → leads.id`. El LEFT
-    // asegura que pre-lead messages (lead_id = NULL) también aparecen vía
-    // phone_normalized de la conversación misma. PERO el filtro por
-    // leads.phone_normalized requiere que lead_id NO sea null, así que
-    // combinamos ambos con un OR para cubrir ambos casos.
+    // FIX 2026-07-02 (Commit A): pedimos `metadata` para que el
+    // bot-engine pueda consultar state machine (ej. awaiting_field del
+    // flow secuencial nombre → email).
     const { data: convRows, error } = await supabase
       .from("lead_whatsapp_conversations" as never)
       .select(
-        "id, direction, message_type, body, created_at, metadata, lead_id, leads!lead_id(phone_normalized)" as never
+        "id, direction, message_type, body, created_at, metadata, lead_id" as never
       )
-      .or(
-        `phone_normalized.eq.${phoneNormalized},leads.phone_normalized.eq.${phoneNormalized}` as never
-      )
+      .eq("phone_normalized", phoneNormalized)
       .order("created_at", { ascending: false })
       .limit(safeLimit);
 

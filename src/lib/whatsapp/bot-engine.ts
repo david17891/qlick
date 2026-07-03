@@ -942,13 +942,6 @@ async function buildResponsePlan(args: {
                 id: "show_events",
                 title: "Ver eventos"
               }
-            },
-            {
-              type: "reply" as const,
-              reply: {
-                id: "talk_human",
-                title: "Hablar con humano"
-              }
             }
           ]
         },
@@ -1060,13 +1053,6 @@ async function buildResponsePlan(args: {
               reply: {
                 id: `evt_inscribir_${evtSlug.slice(0, 20)}`,
                 title: "Inscribirme"
-              }
-            },
-            {
-              type: "reply" as const,
-              reply: {
-                id: "talk_human",
-                title: "Hablar con humano"
               }
             }
           ]
@@ -1242,35 +1228,19 @@ case "interactive_event_inscribir": {
       };
     }
     case "interactive_talk_human": {
-      // Handoff a humano (Fase 7a.3). Persistimos a Supabase y mandamos
-      // email a David si está configurado. Best-effort: si falla, igual
-      // respondemos al lead (no bloqueamos el flow).
-      const recentConv = await loadConversationWindow(phoneNormalized, 8).catch(
-        () => null
-      );
-      const lastMessages =
-        recentConv?.messages.map((m) => ({
-          direction: m.direction as "inbound" | "outbound",
-          body: m.body ?? "",
-          timestamp: m.timestamp
-        })) ?? [];
-      await sendHumanHandoff({
-        leadId: lead.id,
-        leadName: firstName || "Lead",
-        leadPhone: phoneNormalized,
-        leadEmail: lead.email ?? undefined,
-        lastMessages
-      }).catch((err) => {
-        // No propagamos: el lead ya fue notificado por WhatsApp.
-        // eslint-disable-next-line no-console
-        console.warn(
-          "[whatsapp/bot] human handoff failed",
-          err instanceof Error ? err.message : String(err)
-        );
-      });
+      // FIX 2026-07-02 (sesion David, "quitar hablar con humano"):
+      // David pidió que el bot resuelva TODO sin intervención humana.
+      // El handoff a humano (Fase 7a.3) queda como ÚLTIMO RECURSO detrás
+      // de un canal explícito (correo o link de contacto), no como
+      // botón prominente en el flow principal.
+      //
+      // Si un lead clickea `talk_human` (botón viejo cacheado o link
+      // compartido), respondemos con los canales de contacto y le
+      // preguntamos qué necesita. NO notificamos a David por email.
       const bodyText =
-        `Perfecto ${firstName || ""}. Un humano del equipo Qlick te escribe a la brevedad ` +
-        `por acá mismo. Mientras tanto, ¿hay algo urgente que quieras contarme?`;
+        `Si necesitás atención más personalizada, podés escribirnos a ` +
+        `hola@qlick.marketing o visitar https://qlick.digital/contacto. ` +
+        `Mientras tanto, ¿hay algo más en lo que te pueda ayudar?`;
       return {
         kind: "text",
         body: bodyText,
@@ -1457,7 +1427,7 @@ case "interactive_event_inscribir": {
       let content = result.content?.trim();
       if (!content) {
         content =
-          "Gracias por tu mensaje. Un asesor de Qlick te va a responder pronto.";
+          "Disculpá, no pude procesar tu mensaje. ¿Me lo podés reformular? Si necesitás atención personalizada escribinos a hola@qlick.marketing.";
       }
       // Safety net: si NO es el primer mensaje del lead y la respuesta empieza
       // con saludo o "gracias por escribir", strip. (Por si el LLM ignora los
