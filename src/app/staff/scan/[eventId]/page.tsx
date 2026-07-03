@@ -45,6 +45,15 @@ interface RecentCheckIn {
   eventTitle: string;
   at: string;
   ok: boolean;
+  /**
+   * TRUE si la API devolvio `alreadyCheckedIn: true` — el asistente ya
+   * estaba check-in antes de este escaneo. El backend es idempotente y NO
+   * re-registra, pero el staff debe saberlo visualmente para no confundir
+   * un re-escaneo con un nuevo check-in.
+   */
+  duplicate?: boolean;
+  /** ISO timestamp del check-in ORIGINAL si duplicate=true. */
+  alreadyCheckedInAt?: string;
 }
 
 const STORAGE_KEY = "qlick.staff.identity";
@@ -52,6 +61,28 @@ const STORAGE_KEY = "qlick.staff.identity";
 interface StaffIdentity {
   email?: string;
   displayName?: string;
+}
+
+/**
+ * FIX 2026-07-03 (sesion David "ya lo estaba registrando"): helper para
+ * mostrar tiempos relativos en espanol ("hace 3m", "hace 2h") en el feedback
+ * de re-escaneo y en la lista de recientes.
+ */
+function formatRelativeTime(iso: string, nowMs: number = Date.now()): string {
+  const ms = nowMs - new Date(iso).getTime();
+  if (ms < 0) return "ahora";
+  const s = Math.floor(ms / 1000);
+  if (s < 5) return "ahora";
+  if (s < 60) return `hace ${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `hace ${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) {
+    const remM = m % 60;
+    return remM > 0 ? `hace ${h}h ${remM}m` : `hace ${h}h`;
+  }
+  const d = Math.floor(h / 24);
+  return `hace ${d}d`;
 }
 
 function loadStaffIdentity(): StaffIdentity {
@@ -83,7 +114,7 @@ export default function StaffScanPage() {
   const [identity, setIdentity] = useState<StaffIdentity>({});
   const [recentCheckIns, setRecentCheckIns] = useState<RecentCheckIn[]>([]);
   const [lastFeedback, setLastFeedback] = useState<{
-    type: "ok" | "error";
+    type: "ok" | "warning" | "error";
     msg: string;
   } | null>(null);
   const [manualToken, setManualToken] = useState("");
@@ -232,15 +263,34 @@ export default function StaffScanPage() {
         ok: boolean;
         attendee?: { name: string; event_title: string };
         checkedInAt?: string;
+        checkedInBy?: string;
+        alreadyCheckedIn?: boolean;
         error?: string;
         crossEvent?: boolean;
         qrEventTitle?: string;
       };
       if (data.ok) {
-        const msg = data.attendee
-          ? `✓ ${data.attendee.name} — check-in OK`
-          : "✓ Check-in OK";
-        setLastFeedback({ type: "ok", msg });
+        // FIX 2026-07-03 (sesion David "ya lo estaba registrando"): el
+        // backend es idempotente y devuelve `alreadyCheckedIn: true` +
+        // `checkedInAt` del check-in ORIGINAL cuando el asistente ya
+        // estaba registrado. Mostrarlo distinto: warning (amber) en vez
+        // de ok (emerald), con el tiempo relativo desde el primer check-in.
+        let feedbackType: "ok" | "warning" = "ok";
+        let msg: string;
+        if (data.alreadyCheckedIn) {
+          feedbackType = "warning";
+          const ago = data.checkedInAt
+            ? formatRelativeTime(data.checkedInAt)
+            : "antes";
+          msg = data.attendee
+            ? `⚠ ${data.attendee.name} ya estaba check-in (${ago}). Re-escaneo idempotente, no se re-registra.`
+            : `⚠ Ya estaba check-in (${ago}). Re-escaneo idempotente.`;
+        } else {
+          msg = data.attendee
+            ? `✓ ${data.attendee.name} — check-in OK`
+            : "✓ Check-in OK";
+        }
+        setLastFeedback({ type: feedbackType, msg });
         setRecentCheckIns((prev) => [
           {
             id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -248,6 +298,8 @@ export default function StaffScanPage() {
             eventTitle: data.attendee?.event_title ?? "",
             at: new Date().toISOString(),
             ok: true,
+            duplicate: data.alreadyCheckedIn ?? false,
+            alreadyCheckedInAt: data.alreadyCheckedIn ? data.checkedInAt : undefined,
           },
           ...prev,
         ].slice(0, 5));
@@ -395,6 +447,8 @@ export default function StaffScanPage() {
             className={`rounded-xl p-3 text-sm font-semibold ${
               lastFeedback.type === "ok"
                 ? "bg-emerald-50 border border-emerald-200 text-emerald-800"
+                : lastFeedback.type === "warning"
+                ? "bg-amber-50 border border-amber-200 text-amber-900"
                 : "bg-rose-50 border border-rose-200 text-rose-800"
             }`}
           >
@@ -473,10 +527,26 @@ export default function StaffScanPage() {
                 <li key={r.id} className="py-2 flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <p
-                      className={`text-sm font-semibold truncate ${r.ok ? "text-emerald-700" : "text-rose-700"}`}
+                      className={`text-sm font-semibold truncate ${
+                        r.ok
+                          ? r.duplicate
+                            ? "text-amber-700"
+                            : "text-emerald-700"
+                          : "text-rose-700"
+                      }`}
                     >
-                      {r.ok ? "✓" : "✗"} {r.name}
+                      {r.ok ? (r.duplicate ? "↻" : "✓") : "✗"} {r.name}
+                      {r.duplicate && (
+                        <span className="ml-1 text-[10px] font-bold uppercase tracking-wide text-amber-700">
+                          re-scan
+                        </span>
+                      )}
                     </p>
+                    {r.duplicate && r.alreadyCheckedInAt && (
+                      <p className="text-xs text-amber-700/80 truncate">
+                        primer check-in {formatRelativeTime(r.alreadyCheckedInAt, new Date(r.at).getTime())}
+                      </p>
+                    )}
                     {!r.ok && (
                       <p className="text-xs text-ink-muted truncate">{r.eventTitle}</p>
                     )}

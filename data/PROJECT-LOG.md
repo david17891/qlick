@@ -1489,3 +1489,38 @@ equiresName=false (fallback).
 - **Validación:** correr `npm run type-check && npm run lint && npm test && npm run build` antes de commit. Esperado todo verde.
 
 - **Trigger:** Sesión 2026-07-03 ~16:30, David pidió "ponlo en todo el código" después de que la auditoría revelara que el route handler ya estaba fixeado pero el scanner seguía vulnerable a QRs cacheados/viejos.
+
+## 2026-07-03 ~16:55 · Scanner UI: distinguir check-in nuevo vs re-escaneo
+
+- **Pregunta / bug:** David probó el scanner contra su propio QR (ya estaba check-in). Reportó: "los logs me dicen david martinez, pero como que sigue registrando, añadir al escáner que si ya está escaneado marcar, revisar flujo de eso".
+
+- **Diagnóstico:**
+  - Endpoint `/api/staff/check-in` (route.ts:185-199): YA devuelve `{ alreadyCheckedIn: true, checkedInAt, checkedInBy }` cuando el asistente ya estaba check-in. Backend idempotente: NO re-registra ni pisa `checked_in_at` original. ✅
+  - UI scanner (`src/app/staff/scan/[eventId]/page.tsx`): mostraba el MISMO mensaje "✓ david martinez — check-in OK" tanto para check-in nuevo como para re-escaneo. La lista de "últimos 5 check-ins" tampoco diferenciaba. Visualmente parecía re-registrar cuando solo era idempotente.
+
+- **Fix aplicado** (solo UI, sin tocar backend):
+  - Helper `formatRelativeTime(iso)` para "hace 3m" / "hace 2h" / "hace 1d".
+  - `lastFeedback` ahora tiene 3 tipos: `ok` (verde, check-in nuevo) / `warning` (amber, re-escaneo) / `error` (rose).
+  - `submitCheckIn` lee `data.alreadyCheckedIn`:
+    - Si true → "⚠ {nombre} ya estaba check-in (hace Xm). Re-escaneo idempotente, no se re-registra." + feedback type `warning`.
+    - Si false → "✓ {nombre} — check-in OK" + type `ok` (igual que antes).
+  - `RecentCheckIn` interface: agregado `duplicate?: boolean` + `alreadyCheckedInAt?: string`.
+  - Lista de recientes: en duplicados muestra ícono `↻` (en vez de `✓`), color amber, chip "re-scan", y sub-línea "primer check-in hace Xm" usando el timestamp ORIGINAL del backend.
+
+- **Estilo:**
+  - ok: emerald-50/200/800 (verde, igual que antes).
+  - warning: amber-50/200/900 (amarillo, NUEVO — designa atención sin alarma).
+  - error: rose-50/200/800 (igual que antes).
+
+- **NO tocado:**
+  - Backend — el contrato API ya estaba correcto, no necesita cambio.
+  - Throttle del mismo token en `SCAN_THROTTLE_MS` (2500ms) — sigue ahí, evita spam del escaneo continuo de html5-qrcode.
+  - WalkInForm — un walk-in nunca puede ser re-escaneo (siempre genera token nuevo), no aplica el nuevo flag.
+
+- **Bundle:** `/staff/scan/[eventId]` 4.25kB → 4.65kB (+400 bytes del helper + lógica).
+
+- **Tests:** no se agregaron (el comportamiento es UI pura; el contrato de la API ya está cubierto por el endpoint). En uso real se valida.
+
+- **Validación:** type-check OK, lint OK, 233/233 tests OK, build OK.
+
+- **Trigger:** Sesión 2026-07-03 ~16:50, después de probar el fix `e210091` del escaneo con un QR ya cacheado.
