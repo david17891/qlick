@@ -50,10 +50,26 @@ type Status =
   | { kind: "already"; at: string };
 
 function formatTime(iso: string): string {
+  // FIX 2026-07-03 (sesion David): la vista del QR pass mostraba solo
+  // fecha ("13 de julio de 2026") pero NO la hora — el lead no sabía
+  // a qué hora es el evento. Lo agregamos como "HH:mm" en timezone
+  // America/Mexico_City (la hora local del evento, no UTC).
+  //
+  // Nota: forzamos `timeZone: 'America/Mexico_City'` igual que
+  // formatDate() en lib/utils.ts usa `timeZone: 'UTC'`. La diferencia
+  // es intencional: formatDate prioriza hydration safety (server UTC
+  // == client UTC == estable); formatTime prioriza "lo que el admin
+  // configuró" (hora local CDMX).
+  //
+  // TODO futuro: unificar formatDate a America/Mexico_City también
+  // (afecta 38 lugares, scope creep, no urgente). Por ahora aceptamos
+  // el edge case de eventos muy tarde en la noche donde la fecha UTC
+  // puede ser un día después de la fecha CDMX (raro).
   try {
     return new Date(iso).toLocaleTimeString("es-MX", {
       hour: "2-digit",
       minute: "2-digit",
+      timeZone: "America/Mexico_City",
     });
   } catch {
     return iso;
@@ -98,7 +114,7 @@ export function CheckInClient({
             <strong>{eventTitle}</strong>.
           </p>
           <p className="text-sm text-ink-muted">
-            📅 {formatDate(eventStartsAt)} · pasa y disfruta.
+            📅 {formatDate(eventStartsAt)} · 🕒 {formatTime(eventStartsAt)} · pasa y disfruta.
           </p>
 
           {/* Mostramos el QR tambien en el caso "already" — el asistente
@@ -122,7 +138,7 @@ export function CheckInClient({
               {eventTitle}
             </p>
             <p className="text-sm text-ink-soft">
-              📅 {formatDate(eventStartsAt)}
+              📅 {formatDate(eventStartsAt)} · 🕒 {formatTime(eventStartsAt)}
             </p>
             {eventLocation && (
               <p className="text-sm text-ink-soft">📍 {eventLocation}</p>
@@ -157,7 +173,7 @@ export function CheckInClient({
           </div>
           <div className="border-t border-brand-100 pt-3 space-y-1.5">
             <p className="text-sm font-semibold text-ink">{eventTitle}</p>
-            <p className="text-sm text-ink-soft">📅 {formatDate(eventStartsAt)}</p>
+            <p className="text-sm text-ink-soft">📅 {formatDate(eventStartsAt)} · 🕒 {formatTime(eventStartsAt)}</p>
             {eventLocation && (
               <p className="text-sm text-ink-soft">📍 {eventLocation}</p>
             )}
