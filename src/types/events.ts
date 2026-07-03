@@ -24,7 +24,8 @@ export type EventStatus = "draft" | "published" | "archived";
 export type EventConfirmationSource =
   | "imported_excel"
   | "public_form"
-  | "manual";
+  | "manual"
+  | "whatsapp_bot";
 
 /** Cómo se registró la asistencia (auditoría). */
 export type EventAttendeeSource =

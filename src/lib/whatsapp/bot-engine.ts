@@ -67,6 +67,13 @@ import type { ConversationWindow } from "../ai/conversation-window";
 
 import type { IncomingWhatsAppMessage } from "./webhooks/types";
 import { getActiveWhatsAppProvider } from ".";
+// FIX 2026-07-03 (sesion David, "no aparece en confirmados"): el bot debe
+// SIEMPRE registrar la confirmacion en event_confirmations cuando un lead
+// completa el flow de inscripcion (provide_email) o re-envia un QR existente
+// (interactive_event_inscribir). createConfirmation es idempotente
+// (dedup por email/phone), safe de llamar en ambos paths.
+// Ver docs/BOT_REGISTRATION_RULE.md para la regla completa.
+import { createConfirmation } from "../events/confirmations-server";
 import { sendEventQrPassEmail } from "../email/event-qr-pass";
 import { generateQrDataUrl } from "../qr/generate";
 import { appBaseUrl } from "../utils";
@@ -2040,6 +2047,29 @@ export async function processInboundMessage(
         const evt = await loadActiveEventContext(targetSlug).catch(() => null);
         const evtName = evt?.title ?? targetSlug;
         const evtDate = evt?.humanStartsAt ?? "";
+
+        // REGLA 2026-07-03 (sesion David): defense in depth. Si llegamos a
+        // "ya estás registrado" SIN haber pasado por provide_email (ej: QR
+        // token creado manualmente por admin, o data legacy sin confirmation),
+        // igual aseguramos que exista la fila en event_confirmations.
+        // createConfirmation es idempotente.
+        if (evt?.id) {
+          try {
+            await createConfirmation({
+              eventId: evt.id,
+              name: lead.name?.trim() || "Asistente",
+              email: lead.email ?? null,
+              phoneRaw: phoneNormalized,
+              phoneNormalized,
+              source: "whatsapp_bot",
+            });
+          } catch (err) {
+            errorLog("[whatsapp/bot] already_registered: createConfirmation fallback falló", {
+              leadId: lead.id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
         // FIX 2026-07-03 (sesion David): si el evento es de pago, NO
         // reenviamos QR ni email — el método de pago está por implementar.
         // Avisamos al lead que está registrado pero pendiente de pago.
@@ -2412,6 +2442,50 @@ export async function processInboundMessage(
       registrationEventSlug
     );
     qrUrl = qr?.url ?? null;
+
+    // REGLA 2026-07-03 (sesion David): el bot SIEMPRE registra al lead en
+    // `event_confirmations` cuando completa el flow de inscripcion. Asi el
+    // panel admin "Confirmados" lo muestra. createConfirmation es idempotente
+    // (dedup por email/phone), best-effort: si falla (Supabase caido, schema
+    // mismatch, etc.) loggeamos y seguimos — el QR sigue funcionando para el
+    // user. El admin lo vera como "no confirmado" pero el registro es
+    // recuperable desde la DB / el admin puede re-importarlo.
+    //
+    // Necesitamos el event_id (no slug) para event_confirmations.event_id.
+    // `generateQrToken` no lo devuelve hoy, asi que lo resolvemos aca via
+    // loadActiveEventContext() (que ya cacheamos en registrationEventSlug).
+    if (qr && registrationEventSlug) {
+      try {
+        const regEvt = await loadActiveEventContext(registrationEventSlug).catch(() => null);
+        if (regEvt?.id) {
+          const confResult = await createConfirmation({
+            eventId: regEvt.id,
+            name: lead.name?.trim() || "Asistente",
+            email,
+            phoneRaw: phoneNormalized,
+            phoneNormalized,
+            source: "whatsapp_bot",
+          });
+          debugLog("[whatsapp/bot] provide_email: confirmation registrada", {
+            leadId: lead.id,
+            eventId: regEvt.id,
+            created: confResult.created,
+            persisted: confResult.persisted,
+            note: confResult.note,
+          });
+        } else {
+          errorLog("[whatsapp/bot] provide_email: no se pudo resolver event_id para confirmation", {
+            leadId: lead.id,
+            eventSlug: registrationEventSlug,
+          });
+        }
+      } catch (err) {
+        errorLog("[whatsapp/bot] provide_email: createConfirmation falló", {
+          leadId: lead.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
 
     // Bloque 1 (Fase 7a): enviar pase digital al correo del asistente.
     // Best-effort: si falla, el link del QR por WhatsApp sigue funcionando.

@@ -17,7 +17,14 @@ import { formatDate } from "@/lib/utils";
 import { filterConfirmations, resolveConfirmationSource } from "@/lib/events/confirmation-filter";
 import { PipelineColumn } from "./_components/PipelineColumn";
 import { PipelineCard } from "./_components/PipelineCard";
-import { markSurveyReviewedAction, unmarkSurveyReviewedAction, linkAttendeeToConfirmationAction, markWhatsAppStatusAction } from "./_actions";
+import {
+  markSurveyReviewedAction,
+  unmarkSurveyReviewedAction,
+  linkAttendeeToConfirmationAction,
+  markWhatsAppStatusAction,
+  deleteAttendeeAction,
+  deleteConfirmationAction,
+} from "./_actions";
 import { WHATSAPP_STATUSES, WHATSAPP_STATUS_LABEL, WHATSAPP_STATUS_TONE, type WhatsAppStatus } from "@/lib/leads/whatsapp-status";
 import { buildEventBroadcast } from "@/lib/contact/whatsapp";
 import { buildDirectWhatsAppLink, buildLeadOutreachMessage } from "@/lib/contact/whatsapp";
@@ -580,11 +587,12 @@ export default async function AdminEventoDetailPage({
                       defaultValue={activeSource}
                       className="px-3 py-2 border border-brand-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-300"
                     >
-                      <option value="">Todas</option>
-                      <option value="imported_excel">Importado Excel</option>
-                      <option value="public_form">Formulario público</option>
-                      <option value="manual">Manual</option>
-                    </select>
+<option value="">Todas</option>
+                  <option value="imported_excel">Importado Excel</option>
+                  <option value="public_form">Formulario público</option>
+                  <option value="manual">Manual</option>
+                  <option value="whatsapp_bot">Bot WhatsApp</option>
+                </select>
                   </div>
                   <button
                     type="submit"
@@ -634,7 +642,7 @@ export default async function AdminEventoDetailPage({
                     description="Proba quitar el filtro de fuente o limpiar la busqueda."
                   />
                 ) : (
-                  <Table headers={["Nombre", "Email", "Teléfono", "Fuente", "Confirmó"]}>
+                  <Table headers={["Nombre", "Email", "Teléfono", "Fuente", "Confirmó", ""]}>
                     {filteredConfirmations.map((c) => (
                       <tr key={c.id} className="hover:bg-brand-50/30">
                         <td className="px-5 py-3 font-medium text-ink">{c.name}</td>
@@ -647,6 +655,30 @@ export default async function AdminEventoDetailPage({
                         </td>
                         <td className="px-5 py-3 text-ink-muted text-xs">
                           {formatDate(c.confirmedAt)}
+                        </td>
+                        <td className="px-5 py-3 text-right">
+                          <form
+                            action={deleteConfirmationAction.bind(null, null)}
+                            onSubmit={(e) => {
+                              if (
+                                !window.confirm(
+                                  `Eliminar a "${c.name}"? Esto borra tambien sus QR tokens asociados.`,
+                                )
+                              ) {
+                                e.preventDefault();
+                              }
+                            }}
+                          >
+                            <input type="hidden" name="confirmationId" value={c.id} />
+                            <input type="hidden" name="eventId" value={event.id} />
+                            <button
+                              type="submit"
+                              className="text-xs px-2 py-1 rounded bg-rose-100 text-rose-700 hover:bg-rose-200 transition"
+                              title="Eliminar este confirmado y sus QR tokens asociados"
+                            >
+                              Eliminar
+                            </button>
+                          </form>
                         </td>
                       </tr>
                     ))}
@@ -678,7 +710,7 @@ export default async function AdminEventoDetailPage({
               />
             ) : (
               <Table
-                headers={["Nombre", "Email", "Teléfono", "Confirmación", "Check-in", "Match manual"]}
+                headers={["Nombre", "Email", "Teléfono", "Confirmación", "Check-in", "Match manual", ""]}
               >
                 {attendees.map((a) => (
                   <tr key={a.id} className="hover:bg-brand-50/30">
@@ -739,6 +771,30 @@ export default async function AdminEventoDetailPage({
                           </SubmitButton>
                         </form>
                       )}
+                    </td>
+                    <td className="px-5 py-3 text-right">
+                      <form
+                        action={deleteAttendeeAction.bind(null, null)}
+                        onSubmit={(e) => {
+                          if (
+                            !window.confirm(
+                              `Eliminar asistente "${a.name ?? "—"}"?`,
+                            )
+                          ) {
+                            e.preventDefault();
+                          }
+                        }}
+                      >
+                        <input type="hidden" name="attendeeId" value={a.id} />
+                        <input type="hidden" name="eventId" value={event.id} />
+                        <button
+                          type="submit"
+                          className="text-xs px-2 py-1 rounded bg-rose-100 text-rose-700 hover:bg-rose-200 transition"
+                          title="Eliminar este asistente"
+                        >
+                          Eliminar
+                        </button>
+                      </form>
                     </td>
                   </tr>
                 ))}
