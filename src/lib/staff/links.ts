@@ -170,7 +170,10 @@ export async function generateStaffLink(
   }
 
   const link = mapRowToLink(data as unknown as EventStaffLinkRow);
-  const url = `${appBaseUrl()}/staff/scan/${encodeURIComponent(token)}`;
+  // FIX 2026-07-03 (bug post-deploy): el path correcto es /api/staff/scan/
+  // (endpoint que valida y redirige a la página del scanner). Antes era
+  // /staff/scan/ que NO existe → 404 en Vercel.
+  const url = `${appBaseUrl()}/api/staff/scan/${encodeURIComponent(token)}`;
   return {
     ok: true,
     link,

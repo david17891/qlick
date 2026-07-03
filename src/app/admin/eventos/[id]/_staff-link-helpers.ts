@@ -23,5 +23,8 @@ export interface StaffLinkWithUrl extends EventStaffLink {
  * que renderiza el panel.
  */
 export function staffLinkWithUrl(link: EventStaffLink): StaffLinkWithUrl {
-  return { ...link, url: `${appBaseUrl()}/staff/scan/${link.token}` };
+  // FIX 2026-07-03 (bug post-deploy): el path correcto es /api/staff/scan/
+  // (endpoint que valida y redirige a la página del scanner). Antes era
+  // /staff/scan/ que NO existe → 404 en Vercel.
+  return { ...link, url: `${appBaseUrl()}/api/staff/scan/${link.token}` };
 }
