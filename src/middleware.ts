@@ -50,27 +50,25 @@ import { supabaseConfig, isValidSupabaseUrl } from "@/lib/supabase/config";
  */
 export const config = {
   matcher: [
-    // FIX 2026-07-03 v3 (sesion David, agujero de seguridad): probamos
-    // 3 variantes que NO compilaron en Next.js 14:
-    //   - "{/:path*}" → "Unexpected MODIFIER"
-    //   - "(?:/.*)?" → "Pattern cannot start with ?"
-    //   - ".*" wildcard → "invalid route source"
+    // FIX 2026-07-03 v4 (sesion David, agujero aun abierto): diagnostic
+    // via api.vercel.com confirmo que el matcher ["/admin", "/admin/:path*"]
+    // matchea "/admin/eventos" pero NO "/admin" exacto (la documentacion
+    // de Next.js 14 dice lo contrario, pero el runtime confirma otra cosa).
     //
-    // Volvemos a la unica sintaxis valida (strings + :path*) con dos
-    // patterns separados. PERO el diagnostic del runtime muestra que
-    // Next.js emite meta-refresh client-side en lugar de 307 cuando el
-    // middleware deja pasar la request al server component. La defensa
-    // real es la pagina /admin/page.tsx que llama requireAdmin().
+    // Probe via api.vercel.com:
+    //   /admin              → 200 (sin redirect — agujero abierto)
+    //   /admin/login        → 200 (público, OK)
+    //   /admin/eventos      → 307 → /admin/login?returnUrl=... (middleware OK)
+    //   /api/admin/*        → 401 (middleware OK)
     //
-    // Validacion fina del pathname dentro del middleware
-    // (pathname.startsWith("/admin/") o === "/admin") previene falsos
-    // positivos.
-    "/admin",
-    "/admin/:path*",
-    "/api/admin/:path*",
-    "/dashboard/:path*",
-    "/aprender/:path*",
-    "/pagar/:path*",
+    // Workaround: usamos regex ^/admin(/.*)?$ que matchea ambos con un
+    // solo pattern. Si Next.js no acepta la sintaxis, falla el build
+    // (mejor que runtime silencioso).
+    "/admin(/.*)?",
+    "/api/admin(/.*)?",
+    "/dashboard(/.*)?",
+    "/aprender(/.*)?",
+    "/pagar(/.*)?",
   ],
 };
 
