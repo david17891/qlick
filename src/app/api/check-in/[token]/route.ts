@@ -211,21 +211,74 @@ export async function POST(
     );
   }
 
-  // 2. UPDATE event_attendees si hay match por phone (en el mismo evento).
+  // 2. UPDATE o CREATE event_attendees si hay phone (en el mismo evento).
+  //
+  // FIX 2026-07-03 (auditoria pre-scanner): si NO existe attendee previo
+  // con este (event_id, phone), lo creamos al vuelo como walk-in
+  // (source='check_in', confirmation_id=null). Sin esto, el funnel
+  // post-evento (encuesta, promotion a lead) no podría encontrar al
+  // asistente que nunca confirmó pero llega con su QR pass.
+  //
+  // El chequeo NO se filtra por `checked_in_at IS NULL` (como antes)
+  // porque si ya hubo check-in previo del mismo (event_id, phone) — por
+  // ej. el asistente perdió el primer QR y generamos uno nuevo — ese
+  // attendee ya está. Lo dejamos como está (el evento ya quedó
+  // registrado, no duplicamos).
   if (found.row.attendee_phone_normalized) {
+    const phone = found.row.attendee_phone_normalized;
     const { data: attendeeRows, error: attErr } = await supabase
       .from("event_attendees")
       .select("id, checked_in_at")
       .eq("event_id", found.row.event_id)
-      .eq("phone_normalized", found.row.attendee_phone_normalized)
-      .is("checked_in_at", null)
+      .eq("phone_normalized", phone)
       .limit(1);
-    if (!attErr && attendeeRows && attendeeRows.length > 0) {
-      const target = attendeeRows[0] as { id: string };
-      await supabase
+    if (attErr) {
+      // Loggear pero NO fallar el check-in — event_qr_tokens ya quedó.
+      // eslint-disable-next-line no-console
+      console.warn("[api/check-in] SELECT event_attendees falló", {
+        code: attErr.code,
+        eventId: found.row.event_id,
+      });
+    } else if (attendeeRows && attendeeRows.length > 0) {
+      const target = attendeeRows[0] as { id: string; checked_in_at: string | null };
+      // Solo UPDATE si checked_in_at es NULL (idempotencia).
+      if (!target.checked_in_at) {
+        const { error: updErr } = await supabase
+          .from("event_attendees")
+          .update({ checked_in_at: nowIso, checked_in_by: "self" })
+          .eq("id", target.id);
+        if (updErr) {
+          // eslint-disable-next-line no-console
+          console.warn("[api/check-in] UPDATE event_attendees falló", {
+            code: updErr.code,
+            attendeeId: target.id,
+          });
+        }
+      }
+    } else {
+      // Walk-in: no existe attendee previo. Crear al vuelo.
+      // Si choca por UNIQUE(event_id, email) — caso raro donde el mismo
+      // email se usó en otra confirmation con phone distinto — ignorar
+      // el 23505 y seguir. El check-in en event_qr_tokens ya quedó.
+      const { error: insErr } = await supabase
         .from("event_attendees")
-        .update({ checked_in_at: nowIso, checked_in_by: "self" })
-        .eq("id", target.id);
+        .insert({
+          event_id: found.row.event_id,
+          confirmation_id: null,
+          name: found.row.attendee_name,
+          email: found.row.attendee_email,
+          phone_normalized: phone,
+          checked_in_at: nowIso,
+          checked_in_by: "self",
+          source: "check_in",
+        });
+      if (insErr && insErr.code !== "23505") {
+        // eslint-disable-next-line no-console
+        console.warn("[api/check-in] INSERT event_attendees (walk-in) falló", {
+          code: insErr.code,
+          eventId: found.row.event_id,
+        });
+      }
     }
   }
 
