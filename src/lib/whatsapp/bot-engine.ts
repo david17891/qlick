@@ -1296,29 +1296,37 @@ case "interactive_event_inscribir": {
           send: () => provider.send({ to: phoneNormalized, body: bodyText })
         };
       }
-      // 1-3 eventos → button message (cada evento es un botón). El
-      // buttonId `evt_yes_<slug>` viaja al handler interactive_event_yes
-      // que carga ESE evento específico.
+      // 1-3 eventos → LIST MESSAGE con título (24 chars) + descripción
+      // (72 chars). Meta limita button titles a 20 chars (quedaban
+      // cortados como "IA y Marketing: Pri."). List message da más
+      // espacio y se ve más limpio.
+      // FIX 2026-07-03 (sesion David, "botones cortados"): antes este
+      // path mandaba BUTTON MESSAGE con títulos truncados a 20 chars.
+      // Resultado: "IA y Marketing: Primeros Pasos" se veía como
+      // "IA y Marketing: Pri.". Ahora usamos list message igual que
+      // para 4+ eventos, con descripción fecha+lugar.
       if (allEvents.length <= 3) {
-        const buttons = allEvents.slice(0, 3).map((evt) => ({
-          type: "reply" as const,
-          reply: {
-            id: `evt_yes_${evt.slug}`,
-            // Meta limita titles a 20 chars en button reply; truncamos
-            // el título del evento para que entre. Si el slug también
-            // es >20, el handler hace evtSlug.slice(0, 20) al construir
-            // el botón "Inscribirme".
-            title: evt.title.length > 20 ? evt.title.slice(0, 19) + "." : evt.title
+        const sections = [
+          {
+            title: "Próximos eventos",
+            rows: allEvents.slice(0, 10).map((evt) => ({
+              id: `evt_info_${evt.slug}`,
+              title: evt.title.slice(0, 24),
+              description: `${evt.humanStartsAt} · ${evt.location}`.slice(0, 72)
+            }))
           }
-        }));
+        ];
         const interactive: import("../whatsapp/providers/whatsapp-provider").InteractiveMessage = {
-          type: "button" as const,
+          type: "list" as const,
           body: {
             text: allEvents.length === 1
-              ? "Este es el proximo evento:"
-              : `Tenemos ${allEvents.length} eventos proximos. Elegi el que te interesa:`
+              ? "Tenemos este evento próximo:"
+              : `Tenemos ${allEvents.length} eventos próximos. Elegí el que te interesa:`
           },
-          action: { buttons },
+          action: {
+            button: "Próximos eventos",
+            sections
+          },
           footer: {
             text: "Toca uno para ver detalle".slice(0, 60)
           }
@@ -2032,8 +2040,64 @@ export async function processInboundMessage(
         const evt = await loadActiveEventContext(targetSlug).catch(() => null);
         const evtName = evt?.title ?? targetSlug;
         const evtDate = evt?.humanStartsAt ?? "";
-        // Reenviamos el email con el QR existente (best-effort).
-        // Usamos el email del lead si lo tiene.
+        // FIX 2026-07-03 (sesion David): si el evento es de pago, NO
+        // reenviamos QR ni email — el método de pago está por implementar.
+        // Avisamos al lead que está registrado pero pendiente de pago.
+        const desc = evt?.description ?? "";
+        const priceMatch = desc.match(/\$\s?(\d{1,3}(?:[,.]?\d{3})*)\s*(mxn|usd|pesos)?/i);
+        const isFree = /sin\s+costo/i.test(desc);
+        if (priceMatch && !isFree) {
+          const priceDisplay = priceMatch[0].replace(/\s+/g, " ").trim();
+          const clean = cleanFirstName(lead.name);
+          const saludo = clean ? `¡Hola ${clean}!` : "¡Hola!";
+          const bodyText =
+            `${saludo} Ya estás registrado en *${evtName}* (${priceDisplay}). ` +
+            `\n\n⚠️ *Método de pago por implementar.* Te avisamos cuando esté ` +
+            `listo para que completes el registro.` +
+            `\n\nSi querés acelerar, escribinos a hola@qlick.marketing.`;
+          const provider = getActiveWhatsAppProvider();
+          let sendResult: { ok: boolean; externalId?: string; demo?: boolean } = {
+            ok: false
+          };
+          try {
+            const r = await provider.send({ to: phoneNormalized, body: bodyText });
+            sendResult = { ok: r.ok, externalId: r.externalId, demo: r.demo };
+          } catch (err) {
+            errorLog("[whatsapp/bot] already_registered (paid): send falló", {
+              leadId: lead.id,
+              error: err instanceof Error ? err.message : String(err)
+            });
+          }
+          if (supabase) {
+            await persistConversation(supabase, {
+              lead_id: lead.id,
+              phone_normalized: phoneNormalized,
+              direction: "outbound",
+              message_type: "text",
+              body: bodyText,
+              whatsapp_message_id: sendResult.externalId ?? null,
+              metadata: {
+                intent: "interactive_event_inscribir",
+                templateName: null,
+                demo: sendResult.demo ?? false,
+                already_registered: true,
+                pending_payment: true,
+                existing_event_slug: targetSlug,
+                pending_event_price: priceDisplay
+              }
+            });
+          }
+          return {
+            ok: true,
+            intent,
+            leadId: lead.id,
+            responseKind: "text",
+            responsePreview: bodyText,
+            demo: sendResult.demo,
+            note: `already_registered_pending_payment: ${targetSlug} ${priceDisplay}`
+          };
+        }
+        // Evento gratis (o sin precio detectado). Reenviamos email + QR.
         if (lead.email && !lead.email.endsWith("@placeholder.local")) {
           try {
             const qrImageUrl = `${appBaseUrl()}/api/event-qr/${existing.token}.png`;
