@@ -210,6 +210,46 @@ const REGISTER_RE = /^(s[ií]|confirmo|inscribirme|registrarme|quiero|me interes
 // saludo. RIESGO de falsos positivos mitigado porque las frases son
 // específicas del funnel (palabras únicas).
 const REGISTER_PHRASE_RE = /\b(quiero\s+inscribirme|me\s+interesa\s+(inscribirme|el\s+curso|el\s+evento|saber\s+m[aá]s)|inscribirme\s+al?\s+evento|c[oó]mo\s+me\s+inscribo)\b/i;
+
+/**
+ * FIX 2026-07-02 (sesion David, "Si tras pregunta cerrada"): heurística
+ * para detectar si el bot acaba de hacer una pregunta CERRADA de
+ * inscripción (sí/no). Si matchea, marcamos el outbound con metadata
+ * `awaiting_confirmation_for_event_slug` para que el próximo affirmative
+ * corto del lead salte directo al flow `interactive_event_inscribir` sin
+ * pasar por el LLM (que tiende a confundirse con respuestas tan cortas
+ * y termina dando fallback).
+ *
+ * Caso que SÍ detecta: "¿Te gustaría apartar tu lugar?" / "¿Querés que te
+ * apunte en Funnels de Venta?" / "¿Te inscribes a IA y Marketing?".
+ *
+ * Caso que NO detecta: preguntas abiertas tipo "¿Qué te interesa?" o
+ * "¿Cuál es tu presupuesto?" (no son cerradas, no podemos inferir la
+ * intención de un "Si" vago).
+ *
+ * `eventSlug` es el slug del evento que el bot está describiendo en el
+ * contexto del mensaje. Si el bot habla de varios eventos, este helper
+ * devuelve `null` y NO marcamos el outbound (mejor que el LLM mantenga
+ * el control y le pida al lead que confirme cuál evento).
+ */
+function detectClosedConfirmationQuestion(
+  text: string,
+  eventSlug: string | null
+): { isClosed: boolean; eventSlug: string | null } {
+  const t = text.trim();
+  // Cerrada = termina en "?" (con o sin signo de apertura "¿").
+  const isQuestion = /\?\s*$/.test(t);
+  if (!isQuestion) return { isClosed: false, eventSlug: null };
+  // Debe mencionar una ACCION concreta de inscripción. La regex acepta
+  // "apartar", "inscribir", "registrar", "reservar", "confirmar", con
+  // sus variantes pronominales (te apunto, te inscribo, etc.).
+  const hasActionWords =
+    /\b(apartar|inscribir|inscribes|inscribo|inscribirme|registrar|registro|reservar|confirmar|apunto|apuntarte|apunto\s+a\s+ti)\b/i.test(
+      t
+    );
+  if (!hasActionWords) return { isClosed: false, eventSlug: null };
+  return { isClosed: true, eventSlug };
+}
 /**
  * Detecta opt-out del usuario.
  *
@@ -836,8 +876,22 @@ async function buildResponsePlan(args: {
    * prompt del agente LLM para que recuerde contexto entre sesiones.
    * Opcional: si no hay DB / no hay profile todavía, el agente opera sin él. */
   leadProfile?: import("../ai").LeadProfile | null;
+  /** ID del boton clickeado por el lead (solo aplica cuando message.type ===
+   * "interactive" y buttonId viene en el webhook de Meta). Lo usamos para
+   * extraer el slug del evento cuando el lead selecciona uno especifico de
+   * un button o list message (e.g. "evt_yes_ia-marketing-primeros-pasos").
+   * NULL para mensajes de texto libres. */
+  buttonId?: string | null;
+  /** Slug del evento sobre el que el bot preguntó "¿Te gustaría...?". Lo
+   * seteamos desde processInboundMessage cuando detectamos que el último
+   * outbound del bot fue una pregunta cerrada de inscripción
+   * (awaiting_confirmation_for_event_slug en metadata) y el lead respondió
+   * con un affirmative corto. Asi el handler `interactive_event_inscribir`
+   * sabe a qué evento inscribir sin tener que re-preguntar. NULL si el
+   * flow no viene de un affirmative corto. */
+  requestedEventSlug?: string | null;
 }): Promise<OutboundPlan> {
-  const { intent, lead, body, phoneNormalized } = args;
+  const { intent, lead, body, phoneNormalized, buttonId } = args;
   const provider = getActiveWhatsAppProvider();
   const firstName = lead.name?.split(" ")[0] || "";
   // eslint-disable-next-line no-console
@@ -965,14 +1019,29 @@ async function buildResponsePlan(args: {
       };
     }
     case "interactive_event_yes": {
-      // Fase 7a.5: el usuario clickeó "Info evento" en el welcome.
+      // Fase 7a.5: el usuario clickeó "Info evento" en el welcome o un
+      // botón específico de un evento en el list de "Ver eventos".
       // Devolvemos los detalles del evento + un botón "Inscribirme" para
       // que el siguiente paso sea explícito (en vez de texto abierto
       // "mandame tu email").
       //
       // FIX 2026-07-02 (sesion David): cargar el activeEvent real de DB.
       // Si no hay, mensaje generico en vez de placeholder de env vars.
-      const evt = await loadActiveEventContext().catch(() => null);
+      //
+      // FIX 2026-07-02 (sesion David, "Ver eventos muestra los 3"):
+      // cuando el lead selecciona un evento específico del button message
+      // "Ver eventos" (buttonId = "evt_yes_<slug>"), usamos ESE slug
+      // en `loadActiveEventContext(slug)` en vez del activeEvent por defecto.
+      // Sin esto, mostraríamos siempre el primer evento published.
+      let requestedSlug: string | undefined;
+      if (
+        buttonId &&
+        buttonId.startsWith("evt_yes_") &&
+        buttonId !== "evt_yes_next"
+      ) {
+        requestedSlug = buttonId.slice("evt_yes_".length);
+      }
+      const evt = await loadActiveEventContext(requestedSlug).catch(() => null);
       const evtFallback = getActiveEvent();
       const evtName = evt?.title ?? evtFallback.name;
       const evtDate = evt?.humanStartsAt ?? evtFallback.date;
@@ -1033,7 +1102,15 @@ case "interactive_event_inscribir": {
       // es secuencial: primero nombre, después email. Marcamos el
       // outbound con metadata.awaiting_field='name' para que el
       // siguiente intent del lead sea `provide_name`.
-      const evtReal = await loadActiveEventContext().catch(() => null);
+      //
+      // FIX 2026-07-02 (sesion David, "Si tras pregunta cerrada"):
+      // si el handler se invoca desde un affirmative corto (Bug 1),
+      // `requestedEventSlug` viene con el slug del evento sobre el que
+      // el bot preguntó. Lo usamos en loadActiveEventContext para
+      // mantener consistencia con la pregunta que el lead está
+      // respondiendo (ej. "¿Te gustaría apartar tu lugar en IA y
+      // Marketing?" → inscribir a ESE evento, no al activeEvent default).
+      const evtReal = await loadActiveEventContext(args.requestedEventSlug ?? undefined).catch(() => null);
       const evtFallback = getActiveEvent();
       const evtName = evtReal?.title ?? evtFallback.name;
       const evtDate = evtReal?.humanStartsAt ?? evtFallback.date;
@@ -1068,6 +1145,13 @@ case "interactive_event_inscribir": {
       // hardcoded (Marketing Basico, IA para Marketing, Curso personalizado)
       // que NO existian en DB. Ahora lista los eventos REALES publicados.
       // Si solo hay 1, lo muestra destacado. Si hay varios, los lista todos.
+      //
+      // FIX 2026-07-02 (sesion David, "Ver eventos muestra los 3"):
+      // cuando hay 1-3 eventos publicados, mandamos un BUTTON MESSAGE
+      // (3 botones max en Meta) con un botón por evento, así el lead
+      // ve los nombres directo sin tener que abrir un menú aparte.
+      // Cuando hay 4+ eventos, caemos al LIST MESSAGE (Meta limita
+      // a 10 rows por sección) para que el lead pueda elegir cualquiera.
       const allEvents = await loadAllActiveEvents().catch(() => [] as ActiveEventContext[]);
       if (allEvents.length === 0) {
         // No hay eventos publicados. Degradar a texto simple.
@@ -1080,9 +1164,50 @@ case "interactive_event_inscribir": {
           send: () => provider.send({ to: phoneNormalized, body: bodyText })
         };
       }
+      // 1-3 eventos → button message (cada evento es un botón). El
+      // buttonId `evt_yes_<slug>` viaja al handler interactive_event_yes
+      // que carga ESE evento específico.
+      if (allEvents.length <= 3) {
+        const buttons = allEvents.slice(0, 3).map((evt) => ({
+          type: "reply" as const,
+          reply: {
+            id: `evt_yes_${evt.slug}`,
+            // Meta limita titles a 20 chars en button reply; truncamos
+            // el título del evento para que entre. Si el slug también
+            // es >20, el handler hace evtSlug.slice(0, 20) al construir
+            // el botón "Inscribirme".
+            title: evt.title.length > 20 ? evt.title.slice(0, 19) + "." : evt.title
+          }
+        }));
+        const interactive: import("../whatsapp/providers/whatsapp-provider").InteractiveMessage = {
+          type: "button" as const,
+          body: {
+            text: allEvents.length === 1
+              ? "Este es el proximo evento:"
+              : `Tenemos ${allEvents.length} eventos proximos. Elegi el que te interesa:`
+          },
+          action: { buttons },
+          footer: {
+            text: "Toca uno para ver detalle".slice(0, 60)
+          }
+        };
+        const bodyText = interactive.body.text;
+        return {
+          kind: "interactive",
+          body: bodyText,
+          interactive,
+          send: () =>
+            provider.send({
+              to: phoneNormalized,
+              body: bodyText,
+              interactive
+            })
+        };
+      }
+      // 4+ eventos → list message (max 10 rows en Meta).
       const sections = [
         {
-          title: allEvents.length === 1 ? "Proximo evento" : "Proximos eventos",
+          title: "Proximos eventos",
           rows: allEvents.slice(0, 10).map((evt) => ({
             id: `evt_info_${evt.slug}`,
             title: evt.title.slice(0, 24),
@@ -1093,20 +1218,16 @@ case "interactive_event_inscribir": {
       const interactive: import("../whatsapp/providers/whatsapp-provider").InteractiveMessage = {
         type: "list" as const,
         body: {
-          text: allEvents.length === 1
-            ? "Tenemos este evento proximo:"
-            : `Tenemos ${allEvents.length} eventos proximos. Elegi el que te interesa:`
+          text: `Tenemos ${allEvents.length} eventos proximos. Elegi el que te interesa:`
         },
         action: {
           button: "Ver eventos",
           sections
+        },
+        footer: {
+          text: "Toca uno para ver detalle o escribe tu pregunta".slice(0, 60)
         }
       };
-      if (allEvents.length > 0) {
-        interactive.footer = {
-          text: "Toca uno para ver detalle o escribe tu pregunta".slice(0, 60)
-        };
-      }
       const bodyText = interactive.body.text;
       return {
         kind: "interactive",
@@ -1374,9 +1495,30 @@ case "interactive_event_inscribir": {
         });
         content = profile.fallbackMessage;
       }
+      // FIX 2026-07-02 (sesion David, "Si tras pregunta cerrada"): si el
+      // LLM (o el fallback) terminó con una pregunta cerrada de inscripción
+      // (ej. "¿Te gustaría apartar tu lugar?"), marcamos el outbound con
+      // el slug del evento sobre el que preguntó. Asi el próximo affirmative
+      // corto del lead ("Si", "Ok") puede ir directo a
+      // `interactive_event_inscribir` sin volver al LLM (que tiende a
+      // confundirse con respuestas tan cortas y da fallback).
+      //
+      // Solo marcamos cuando hay UN evento en juego (single source of
+      // truth). Si el bot está describiendo varios, el helper devuelve
+      // eventSlug=null y NO marcamos — el LLM mantiene el control hasta
+      // que el lead confirme cuál evento le interesa.
+      const closedQuestion = detectClosedConfirmationQuestion(
+        content,
+        // Si hay eventsListBlock con >1 evento, NO marcamos. Si hay un
+        // activeEvent puntual o el catalogo tiene 1 solo, usamos su slug.
+        eventsListBlock ? null : activeEvent?.slug ?? null
+      );
       return {
         kind: "text",
         body: content,
+        metadata: closedQuestion.isClosed
+          ? { awaiting_confirmation_for_event_slug: closedQuestion.eventSlug }
+          : undefined,
         send: () =>
           provider.send({ to: phoneNormalized, body: content ?? "" })
       };
@@ -1528,6 +1670,13 @@ export async function processInboundMessage(
   // 3. Detectar intent. Si el usuario clickeó un botón (Fase 7a), el
   // intent se deriva del buttonId en vez de regex sobre el texto.
   let intent: BotIntent;
+  // FIX 2026-07-02 (sesion David, "Si tras pregunta cerrada"): slug del
+  // evento que el bot preguntó cerrar (ej. "¿Te gustaría apartar tu
+  // lugar en IA y Marketing?"). Se setea en la rama `else` (texto libre)
+  // cuando detectamos `awaiting_confirmation_for_event_slug` en el último
+  // outbound + AFFIRMATIVE_RE matchea. Se pasa a `buildResponsePlan`
+  // para que `interactive_event_inscribir` sepa a qué evento inscribir.
+  let requestedEventSlug: string | null = null;
   if (message.buttonId) {
     if (message.buttonId === "evt_yes_next" || message.buttonId.startsWith("evt_yes_")) {
       // FIX 2026-07-02: el boton del welcome ahora es "evt_yes_next"
@@ -1569,6 +1718,35 @@ export async function processInboundMessage(
       intent = "provide_name";
     } else {
       intent = detectIntent(body, isFirstMessage);
+    }
+    // FIX 2026-07-02 (sesion David, "Si tras pregunta cerrada"): si el
+    // último outbound del bot marcó awaiting_confirmation_for_event_slug
+    // (porque preguntó algo como "¿Te gustaría apartar tu lugar?"),
+    // Y el lead respondió con un affirmative corto (AFFIRMATIVE_RE),
+    // saltamos al flow `interactive_event_inscribir` con el slug ya
+    // conocido. Sin esto, el affirmative va al LLM, el LLM se confunde
+    // con respuestas tan cortas y cae al fallback "hablar con humano".
+    const awaitingConfirmationForSlug =
+      (lastOutbound?.metadata as {
+        awaiting_confirmation_for_event_slug?: string | null;
+      } | null)?.awaiting_confirmation_for_event_slug ?? null;
+    if (
+      intent === "question" &&
+      awaitingConfirmationForSlug &&
+      AFFIRMATIVE_RE.test(body)
+    ) {
+      intent = "interactive_event_inscribir";
+      // FIX 2026-07-02: persistimos el slug en metadata del inbound
+      // para que `buildResponsePlan` (via `args.requestedEventSlug`)
+      // sepa a qué evento inscribir sin re-preguntar.
+      // Tambien lo guardamos en una variable local que pasamos al
+      // buildResponsePlan más abajo.
+      requestedEventSlug = awaitingConfirmationForSlug;
+      // FIX 2026-07-02: tambien marcamos el whatsapp_status del lead
+      // como "interesado" para reflejar que ya está en flow de inscripción.
+      // (Esto se hace más abajo en la sección 4 via intent != question,
+      // pero como ahora SÍ es interactive_event_inscribir, ya queda
+      // cubierto por el bloque existente.)
     }
   }
 
@@ -1810,7 +1988,17 @@ export async function processInboundMessage(
     isFirstMessage,
     phoneNormalized,
     qrUrl,
-    leadProfile
+    leadProfile,
+    // FIX 2026-07-02 (sesion David, "Ver eventos muestra los 3"): pasamos
+    // el buttonId para que handlers como interactive_event_yes puedan
+    // extraer el slug del evento cuando el lead selecciona uno especifico
+    // de un button o list message.
+    buttonId,
+    // FIX 2026-07-02 (sesion David, "Si tras pregunta cerrada"): pasamos
+    // el slug del evento cuando el handler `interactive_event_inscribir`
+    // se invoca desde un affirmative corto tras una pregunta cerrada
+    // del bot. Asi inscribimos al evento correcto sin re-preguntar.
+    requestedEventSlug
   });
 
   let sendResult: { ok: boolean; externalId?: string; demo?: boolean } = {

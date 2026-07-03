@@ -113,6 +113,12 @@ export function buildSystemPrompt(
       `- Nombre del expositor / ponente`,
       `- Direccion exacta del lugar (solo tienes el nombre del venue, no la calle)`,
       `- Cupo disponible / lugares restantes`,
+      // FIX 2026-07-02 (sesion David, "coffee break es inventado?"): el
+      // LLM estaba inventando amenities plausibles ("incluye coffee break
+      // y materiales digitales") basandose solo en "taller presencial".
+      // Regla explicita: NO asumas amenities. Si no esta escrito en
+      // Detalles, no existe.
+      `- Amenities / incluye (coffee break, materiales digitales, grabacion, certificado, snack, lunch, etc). SOLO lo que este escrito en Detalles. NO asumas que un taller presencial incluye comida o materiales.`,
       `- Cualquier numero, fecha, hora o dato que NO este escrito en el bloque`,
       ``,
       `SI TE FALTA INFO, usa esta plantilla:`,
@@ -143,6 +149,12 @@ export function buildSystemPrompt(
       `- Nombre del expositor / ponente`,
       `- Direccion exacta del lugar (solo tienes el nombre, no la calle)`,
       `- Cupo disponible / lugares restantes`,
+      // FIX 2026-07-02 (sesion David, "coffee break es inventado?"): el
+      // LLM estaba inventando amenities plausibles ("incluye coffee break
+      // y materiales digitales") basandose solo en "taller presencial".
+      // Regla explicita: NO asumas amenities. Si no esta escrito en
+      // el bloque EVENTO ACTIVO, no existe.
+      `- Amenities / incluye (coffee break, materiales digitales, grabacion, certificado, snack, lunch, etc). SOLO lo que este escrito arriba. NO asumas que un taller presencial incluye comida o materiales.`,
       `- Cualquier numero, fecha, hora o dato que NO este escrito arriba`,
       ``,
       `SI TE FALTA INFO, usa esta plantilla:`,
