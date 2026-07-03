@@ -1,0 +1,31 @@
+-- ============================================================================
+-- Cleanup de tokens QR viejos (sesion 2026-07-02, auditoria P1-1)
+--
+-- El bot-engine genera tokens QR en `event_qr_tokens` para cada registro.
+-- Si un lead nunca hace check-in y nunca vuelve, el token queda en DB
+-- indefinidamente. Acumular miles de tokens viejos:
+--   1) Hace queries a `event_qr_tokens` mas lentas.
+--   2) Ocupa espacio en Supabase.
+--   3) Puede confundir debugging (mezcla tokens reales con fantasmas).
+--
+-- Este migration NO borra datos (es solo documentacion de la query).
+-- El borrado real se hace via:
+--   - Cron diario en Vercel (`/api/cron/cleanup-qr-tokens`), o
+--   - Script manual (`node --env-file=.env.local scripts/cleanup-qr-tokens.mjs`).
+--
+-- Criterio de borrado:
+--   - expires_at < now() - 30 days   (lleva mas de 30 dias vencido)
+--   - checked_in_at IS NULL          (nunca se uso)
+--
+-- Por que 30 dias de gracia: si el evento tuvo algun delay y el lead llego
+-- tarde, todavia tiene chance de hacer check-in. Despues de 30 dias, el
+-- token ya no tiene valor operativo.
+--
+-- Por que checked_in_at IS NULL: si un lead YA hizo check-in, ese registro
+-- es data historica (auditoria). Solo limpiamos tokens NO usados.
+-- ============================================================================
+
+-- Query de referencia (NO se ejecuta automaticamente):
+-- DELETE FROM public.event_qr_tokens
+-- WHERE expires_at < (now() - INTERVAL '30 days')
+--   AND checked_in_at IS NULL;
