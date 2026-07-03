@@ -21,6 +21,10 @@ interface Props {
   eventLocation: string | null;
   alreadyCheckedIn: boolean;
   checkedInAt: string | null;
+  /** URL publica del QR (servida por /api/event-qr/[token].png). */
+  qrImageUrl: string;
+  /** Email del asistente (para mencionar que tambien se lo mandamos ahi). */
+  attendeeEmail: string | null;
 }
 
 type Status =
@@ -49,6 +53,8 @@ export function CheckInClient({
   eventLocation,
   alreadyCheckedIn,
   checkedInAt,
+  qrImageUrl,
+  attendeeEmail,
 }: Props) {
   const [status, setStatus] = useState<Status>(
     alreadyCheckedIn && checkedInAt
@@ -114,6 +120,40 @@ export function CheckInClient({
           <p className="text-xs text-ink-muted">
             Check-in registrado a las {formatTime(status.at)}.
           </p>
+
+          {/* FIX UX 2026-07-02 (sesion David): mostramos el QR al
+              asistente en la pantalla post-check-in. Asi si no vio el
+              email o lo perdio, tiene el QR visible para el staff. */}
+          <div className="rounded-2xl bg-white border border-emerald-200 p-5">
+            <p className="text-xs uppercase font-bold text-emerald-700 mb-3 tracking-wide">
+              Tu pase (codigo QR)
+            </p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={qrImageUrl}
+              alt={`Codigo QR de entrada para ${eventTitle}`}
+              width={240}
+              height={240}
+              className="mx-auto block bg-white p-3 rounded-xl border border-emerald-100"
+            />
+            <p className="mt-3 text-xs text-ink-muted">
+              Mostrá esta pantalla (o el email) al staff en la entrada.
+            </p>
+          </div>
+
+          {/* FIX UX 2026-07-02: avisamos que tambien se mando al correo,
+              para reforzar el canal de respaldo. */}
+          {attendeeEmail && (
+            <div className="rounded-2xl bg-emerald-50/60 border border-emerald-100 p-3 text-sm text-emerald-900">
+              <p>
+                📧 Tambien te lo mandamos a <strong>{attendeeEmail}</strong>.
+              </p>
+              <p className="text-xs text-emerald-700 mt-1">
+                Si no lo ves, revisá spam o promociones.
+              </p>
+            </div>
+          )}
+
           <div className="rounded-2xl bg-white border border-emerald-200 p-4 text-left">
             <p className="text-xs uppercase font-bold text-emerald-700 mb-1">
               {eventTitle}
@@ -143,6 +183,27 @@ export function CheckInClient({
             {attendeeName}, hiciste check-in a las {formatTime(status.at)}.
             Pasá y disfrutá.
           </p>
+
+          {/* FIX UX 2026-07-02: mostramos el QR tambien en el caso
+              "already checked in" — el asistente puede haber perdido
+              el email o querer mostrar el pase en el celular. */}
+          <div className="rounded-2xl bg-white border border-brand-200 p-5">
+            <p className="text-xs uppercase font-bold text-brand-700 mb-3 tracking-wide">
+              Tu pase (codigo QR)
+            </p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={qrImageUrl}
+              alt={`Codigo QR de entrada para ${eventTitle}`}
+              width={220}
+              height={220}
+              className="mx-auto block bg-white p-3 rounded-xl border border-brand-100"
+            />
+            <p className="mt-3 text-xs text-ink-muted">
+              Tambien te lo mandamos a tu correo cuando te registraste.
+            </p>
+          </div>
+
           <div className="rounded-2xl bg-white border border-brand-200 p-4 text-left">
             <p className="text-xs uppercase font-bold text-brand-700 mb-1">
               {eventTitle}

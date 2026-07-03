@@ -51,7 +51,7 @@ interface CheckInError {
 }
 
 type FetchResult =
-  | { kind: "ok"; info: CheckInInfo }
+  | { kind: "ok"; info: CheckInInfo; qrImageUrl: string }
   | { kind: "expired"; info: CheckInError }
   | { kind: "not_found"; info: CheckInError }
   | { kind: "demo" };
@@ -68,7 +68,14 @@ async function fetchInfo(token: string): Promise<FetchResult> {
     });
     const data = (await res.json()) as CheckInInfo | CheckInError;
     if (res.status === 200 && "ok" in data && data.ok) {
-      return { kind: "ok", info: data as CheckInInfo };
+      return {
+        kind: "ok",
+        info: data as CheckInInfo,
+        // FIX UX 2026-07-02 (sesion David): calculamos la URL publica
+        // del QR en el server. Asi el client no necesita saber el dominio
+        // ni construir paths relativos.
+        qrImageUrl: `${baseUrl}/api/event-qr/${encodeURIComponent(token)}.png`
+      };
     }
     if (res.status === 410) {
       return { kind: "expired", info: data as CheckInError };
@@ -151,7 +158,7 @@ export default async function CheckInPage({ params }: Props) {
   }
 
   // Estado OK: pasar al Client Component.
-  const { info } = result;
+  const { info, qrImageUrl } = result;
   return (
     <CheckInClient
       token={token}
@@ -161,6 +168,8 @@ export default async function CheckInPage({ params }: Props) {
       eventLocation={info.event.location}
       alreadyCheckedIn={info.alreadyCheckedIn}
       checkedInAt={info.checkedInAt}
+      qrImageUrl={qrImageUrl}
+      attendeeEmail={info.attendee.email}
     />
   );
 }
