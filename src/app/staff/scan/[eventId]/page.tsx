@@ -3,26 +3,31 @@
 /**
  * Página del scanner del staff (Commit B, 2026-07-03).
  *
- * Ruta: `/admin/eventos/[id]/staff/scan?token=...`
+ * Ruta: `/staff/scan/[eventId]?token=...`
  *
- * Esta página:
- *   1. Lee `token` del query string.
+ * FIX 2026-07-03 v7 (sesion David): la pagina estaba en
+ * `/admin/eventos/[id]/staff/scan` — ruta protegida por auth admin en
+ * el middleware. El staff abre el link sin login (puede ser persona
+ * externa de la institucion), asi que la pagina DEBE ser publica.
+ * La movimos a `/staff/scan/[eventId]` que NO matchea el middleware
+ * (solo filtra /admin, /api/admin, /dashboard, /aprender, /pagar).
+ *
+ * Esta pagina:
+ *   1. Lee `token` del query string (validado por el endpoint redirect
+ *      /api/staff/scan/[token] que redirige aca).
  *   2. Muestra input opcional de `staff_email` + `displayName`
  *      (cacheados en localStorage).
- *   3. Inicia la cámara con html5-qrcode y queda esperando scans.
+ *   3. Inicia la camara con html5-qrcode y queda esperando scans.
  *   4. Cuando decodifica un QR:
  *      - Extrae el token del path (`/check-in/[token]`).
  *      - POST a `/api/staff/check-in` con `{ token, qr_token, staff_email, staff_displayName }`.
- *      - Muestra feedback: ✅ nombre + OK / ❌ motivo.
- *   5. Lista los últimos 5 check-ins del staff (cache local).
+ *      - Muestra feedback: nombre + OK o motivo del fallo.
+ *   5. Lista los ultimos 5 check-ins del staff (cache local).
  *
- * **Auth:** no requiere login. La autorización es el `token` del staff
- * link (192 bits). El endpoint `/api/staff/scan/[token]` valida ANTES
- * de redirigir acá; re-validamos acá también (defense in depth).
- *
- * **Staff opcional:** si el staff tipea email + nombre, se cachean en
- * localStorage. Si no, fallback a genérico `staff@event` (lo decide el
- * endpoint, no esta página).
+ * **Auth:** NO requiere login. El `token` del query string es la
+ * autorizacion (192 bits entropia). Defense in depth: el componente
+ * re-valida contra el endpoint publico `/api/staff/scan/[token]` antes
+ * de habilitar la camara.
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -32,8 +37,7 @@ import { extractQrToken } from "@/lib/staff/qr-token";
 type Status =
   | { kind: "loading" }
   | { kind: "invalid_token"; reason: string }
-  | { kind: "scanner"; eventTitle: string; eventId: string }
-  | { kind: "ready" };
+  | { kind: "scanner" };
 
 interface RecentCheckIn {
   id: string;
@@ -70,9 +74,9 @@ function saveStaffIdentity(identity: StaffIdentity): void {
 }
 
 export default function StaffScanPage() {
-  const params = useParams<{ id: string }>();
+  const params = useParams<{ eventId: string }>();
   const search = useSearchParams();
-  const eventIdFromUrl = params.id;
+  const eventIdFromUrl = params.eventId;
   const staffToken = search.get("token") ?? "";
 
   const [status, setStatus] = useState<Status>({ kind: "loading" });
@@ -90,8 +94,7 @@ export default function StaffScanPage() {
   const scannerRef = useRef<unknown>(null);
   const scannerDivId = "qr-scanner-region";
 
-  // Validar token al montar. validateStaffToken es estable (no usa
-  // closures que cambien por render), así que lo dejamos fuera del deps.
+  // Validar token al montar.
   useEffect(() => {
     if (!staffToken) {
       setStatus({
@@ -100,7 +103,6 @@ export default function StaffScanPage() {
       });
       return;
     }
-    // Re-validar contra DB via endpoint público.
     void validateStaffToken();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [staffToken]);
@@ -111,25 +113,16 @@ export default function StaffScanPage() {
   }, []);
 
   async function validateStaffToken(): Promise<void> {
-    // Llamamos al endpoint público solo para validar (NO para redirigir).
-    // El endpoint redirige, así que usamos un fetch manual y leemos
-    // la Location del header. Si redirige → OK. Si no → malo.
+    // El endpoint publico /api/staff/scan/[token] redirige (302) si el
+    // token es valido. Lo llamamos con redirect:'manual' para inspeccionar
+    // el resultado sin seguir el redirect.
     try {
       const res = await fetch(
         `/api/staff/scan/${encodeURIComponent(staffToken)}`,
         { redirect: "manual" },
       );
-      // 'manual' redirect nos da opaqueredirect o 302.
       if (res.status === 0 || res.type === "opaqueredirect" || res.status === 302) {
-        // OK — el endpoint público lo validó.
-        // No tenemos el event_id del header location, pero la URL lo trae.
-        setStatus({
-          kind: "scanner",
-          eventId: eventIdFromUrl,
-          eventTitle: "Cargando…",
-        });
-        // Cargar título del evento.
-        void loadEventTitle(eventIdFromUrl);
+        setStatus({ kind: "scanner" });
         return;
       }
       if (res.status === 404) {
@@ -156,14 +149,6 @@ export default function StaffScanPage() {
         reason: `No pude validar el link: ${err instanceof Error ? err.message : String(err)}`,
       });
     }
-  }
-
-  async function loadEventTitle(eventId: string): Promise<void> {
-    // No tenemos un endpoint publico para event detail. Hardcodeamos
-    // el slug si lo vemos en URL... en realidad, la UI del scanner
-    // no necesita el título (ya lo conoce el staff). Lo dejamos como
-    // placeholder.
-    void eventId;
   }
 
   // Iniciar cámara cuando entramos al estado scanner.
@@ -256,22 +241,18 @@ export default function StaffScanPage() {
           ? `Este QR es del evento "${data.qrEventTitle}", no de este.`
           : data.error ?? "Error desconocido.";
         setLastFeedback({ type: "error", msg: `✗ ${errMsg}` });
-        if (data.crossEvent) {
-          // Log visual pero NO push a recent (no fue un check-in real).
-        } else {
-          setRecentCheckIns((prev) =>
-            [
-              {
-                id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                name: "(error)",
-                eventTitle: errMsg,
-                at: new Date().toISOString(),
-                ok: false,
-              },
-              ...prev,
-            ].slice(0, 5),
-          );
-        }
+        setRecentCheckIns((prev) =>
+          [
+            {
+              id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              name: "(error)",
+              eventTitle: errMsg,
+              at: new Date().toISOString(),
+              ok: false,
+            },
+            ...prev,
+          ].slice(0, 5),
+        );
       }
     } catch (err) {
       setLastFeedback({
@@ -314,6 +295,9 @@ export default function StaffScanPage() {
         <header className="text-center pt-2">
           <p className="text-xs font-bold uppercase tracking-widest text-violet-600">
             Scanner de staff
+          </p>
+          <p className="text-[10px] text-ink-muted mt-1">
+            Evento: <code className="font-mono">{eventIdFromUrl?.slice(0, 8)}…</code>
           </p>
         </header>
 

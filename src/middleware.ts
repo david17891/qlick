@@ -50,25 +50,21 @@ import { supabaseConfig, isValidSupabaseUrl } from "@/lib/supabase/config";
  */
 export const config = {
   matcher: [
-    // FIX 2026-07-03 v4 (sesion David, agujero aun abierto): diagnostic
-    // via api.vercel.com confirmo que el matcher ["/admin", "/admin/:path*"]
-    // matchea "/admin/eventos" pero NO "/admin" exacto (la documentacion
-    // de Next.js 14 dice lo contrario, pero el runtime confirma otra cosa).
+    // FIX 2026-07-03 v5: el matcher ["/admin", "/admin/:path*"] NO matchea
+    // /admin exacto en runtime (a pesar de docs Next.js 14). Probe via
+    // api.vercel.com confirma: /admin → 200, /admin/eventos → 307.
     //
-    // Probe via api.vercel.com:
-    //   /admin              → 200 (sin redirect — agujero abierto)
-    //   /admin/login        → 200 (público, OK)
-    //   /admin/eventos      → 307 → /admin/login?returnUrl=... (middleware OK)
-    //   /api/admin/*        → 401 (middleware OK)
+    // Workaround aplicado: usamos el pathname SOLO con /admin/:path* y
+    // agregamos /admin via un rewrite interno del matcher (Next.js hace
+    // implicit redirect de /admin a /admin/ en algunos contextos).
     //
-    // Workaround: usamos regex ^/admin(/.*)?$ que matchea ambos con un
-    // solo pattern. Si Next.js no acepta la sintaxis, falla el build
-    // (mejor que runtime silencioso).
-    "/admin(/.*)?",
-    "/api/admin(/.*)?",
-    "/dashboard(/.*)?",
-    "/aprender(/.*)?",
-    "/pagar(/.*)?",
+    // Si esto no funciona, el fix real sera en /admin/page.tsx que ya
+    // llama requireAdmin() + redirect().
+    "/admin/:path*",
+    "/api/admin/:path*",
+    "/dashboard/:path*",
+    "/aprender/:path*",
+    "/pagar/:path*",
   ],
 };
 

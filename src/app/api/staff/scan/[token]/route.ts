@@ -53,10 +53,16 @@ export async function GET(_req: Request, { params }: RouteParams) {
   }
 
   // Token válido → redirigir a la página del scanner.
-  // Pasamos el token por query string para que la página pueda validar
-  // de nuevo (defense in depth) y para que el staff pueda recargar sin
-  // perder el contexto.
-  const dest = `${appBaseUrl()}/admin/eventos/${result.link.eventId}/staff/scan?token=${encodeURIComponent(token)}`;
+  //
+  // FIX 2026-07-03 v7 (sesion David): antes redirigiamos a
+  // `/admin/eventos/[id]/staff/scan` — ruta protegida por el middleware
+  // que requeria login admin. El staff abre el link sin login (puede ser
+  // externo), asi que rebotaba a /admin/login.
+  //
+  // Solucion: la pagina del scanner ahora vive en `/staff/scan/[eventId]`
+  // (publica, sin matchear el middleware). Mantenemos el token por query
+  // string para que la pagina pueda re-validar (defense in depth).
+  const dest = `${appBaseUrl()}/staff/scan/${result.link.eventId}?token=${encodeURIComponent(token)}`;
   return NextResponse.redirect(dest, { status: 302 });
 }
 
