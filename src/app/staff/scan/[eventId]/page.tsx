@@ -93,6 +93,14 @@ export default function StaffScanPage() {
   // Refs para el scanner de html5-qrcode.
   const scannerRef = useRef<unknown>(null);
   const scannerDivId = "qr-scanner-region";
+  // FIX 2026-07-03 (sesion David, "muchas lecturas consecutivas"): html5-qrcode
+  // dispara el callback onScan cada vez que DECODIFICA un QR del frame. Con
+  // fps:10 puede llamar al callback 5+ veces por segundo si la cámara
+  // queda fija sobre el mismo QR. Eso genera spam de POSTs al backend y
+  // de errores en la UI. Throttle simple: ignorar scans del mismo token
+  // dentro de la ventana SCAN_THROTTLE_MS.
+  const lastScanAtRef = useRef<{ token: string; at: number } | null>(null);
+  const SCAN_THROTTLE_MS = 2500;
 
   // Validar token al montar.
   useEffect(() => {
@@ -196,6 +204,13 @@ export default function StaffScanPage() {
       setLastFeedback({ type: "error", msg: "QR no parece un pase válido." });
       return;
     }
+    // Throttle: ignorar si el mismo token fue escaneado hace <SCAN_THROTTLE_MS.
+    const now = Date.now();
+    const last = lastScanAtRef.current;
+    if (last && last.token === qrToken && now - last.at < SCAN_THROTTLE_MS) {
+      return;
+    }
+    lastScanAtRef.current = { token: qrToken, at: now };
     await submitCheckIn(qrToken);
   }
 
