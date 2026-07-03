@@ -1261,4 +1261,33 @@ ode --env-file=.env.local scripts/exec-sql.mjs <file> (requiere SUPABASE_DB_PASS
 
 - **Validacion:** 203/203 tests OK, type-check OK, lint OK, build OK.
 
-- **Trigger:** Sesion 2026-07-03 ~00:25-00:35, despues de que David confirmara el plan y agregara la sugerencia del button "Si, inscribirme" para limitar las respuestas.
+- **Trigger:** Sesion 2026-07-03 ~00:25-00:35, despues de que David confirmara el plan y agregara la sugerencia del button "Si, inscribirme" para limitar las respuestas.---
+
+## 2026-07-03 ~01:05 · Fix slug truncado en buttonId + marcar eventos de pago
+
+- **Pregunta 1 (bug):** David testeo el flow de re-inscripcion al mismo evento. Reporto "si pude inscribirme al mismo evento" — pero el link del QR que recibio era el MISMO del primer registro (lo cual parecia bien, no duplicado). Sin embargo, el bot decia "Listo, te registramos para el evento" en vez de "Ya estas registrado".
+
+- **Causa raiz:** el buttonId del boton "Inscribirme" se generaba con `evt_inscribir_${evtSlug.slice(0, 20)}`. Para el evento 1 (slug `ia-marketing-primeros-pasos`, 30 chars), quedaba en `ia-marketing-primer` (20 chars). Mi helper `findActiveQrTokenForLead` (del fix anterior) buscaba el evento con slug `ia-marketing-primer` -> NO EXISTE -> retornaba null -> el flow caia al Paso 5 normal que genera QR nuevo. La "duplicacion" parecia evitarse solo por la idempotencia del `generateQrToken` (UNIQUE constraint `event_id+phone` reusa el token), pero el MENSAJE era incorrecto.
+
+- **Fix:** quitar el `.slice(0, 20)` en ambos buttonIds (`evt_inscribir_*` y `confirm_inscription_*`). Meta permite 256 chars en `button.id`, no hay limite practico. Ahora el slug viaja completo y `findActiveQrTokenForLead` matchea correctamente -> dispara el bloque 4.7 con el mensaje "Ya estas registrado, te reenviamos tu QR al correo".
+
+- **Pregunta 2 (feature):** David pidio que los eventos de pago NO generen QR todavia. Quiere marcar "Metodo de pago por implementar" en los QR / links / correos hasta que se implemente el adapter de pago (Stripe vs Mercado Pago vs OXXO SPEI, scope futuro).
+
+- **Decisiones:**
+  - Bloque 4.8 en processInboundMessage, despues del 4.7 (ya registrado).
+  - Deteccion de evento de pago: regex sobre el `description` del evento buscando patron `\$NNN` o `Costo: $NNN`. Conservadora: si no matchea, asume gratis.
+  - Si es de pago Y NO esta registrado:
+    - Mensaje: "¡Listo david! Tu lugar para *Ads en Meta: Estrategia Avanzada* ($599 MXN) está apartado. ⚠️ *Método de pago por implementar.* Te avisamos cuando esté listo. Si querés acelerar, escribinos a hola@qlick.marketing."
+    - NO genera QR (skip Paso 5)
+    - NO envia email con QR
+    - Persiste `metadata.pending_payment=true` para tracking futuro
+
+- **Commit:** `2c5cb73` pusheado a origin/main.
+
+- **Impacto esperado:**
+  - Bug 1: re-inscripcion al mismo evento -> bot dice "Ya estas registrado, te reenviamos tu QR al correo" + mismo QR + mismo email.
+  - Feature: inscripcion a evento de pago -> bot avisa que el pago esta pendiente + no genera QR. Cuando se implemente el adapter de pago, se quita este bloque.
+
+- **Validacion:** 203/203 tests OK, type-check OK, lint OK, build OK.
+
+- **Trigger:** Sesion 2026-07-03 ~00:55, despues de que David reportara el bug del re-registro + la sugerencia de marcar eventos de pago.
