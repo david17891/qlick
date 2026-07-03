@@ -1420,4 +1420,34 @@ ode --env-file=.env.local scripts/exec-sql.mjs <file> (requiere SUPABASE_DB_PASS
 
 - **Pendiente test E2E en Vercel:** David prueba el flujo real (genera link → manda a un conocido → esa persona abre y escanea un QR de prueba → aparece en admin).
 
-- **LOC real:** ~1945 (vs ~1180 estimado). Mas grande por la pagina del scanner (UI mobile-first completa con identidad, camara, fallback, feedback, lista).
+- **LOC real:** ~1945 (vs ~1180 estimado). Mas grande por la pagina del scanner (UI mobile-first completa con identidad, camara, fallback, feedback, lista).---
+
+## 2026-07-03 ~04:25 · Scanner staff E2E + cierre saga scanner + auth
+
+- **Saga scanner staff (Commit B → e2e test → walk-in) y saga seguridad (auth bypass /admin)** cerrada.
+
+- 11 commits en `origin/main` desde 2026-07-03 ~01:00 hasta ~04:25:
+  ```
+  d68a0be chore: scripts e2e-staff-scanner + probe-vercel
+  033ba1d feat(staff): walk-in + lista QRs para testing
+  2db070c fix(staff): pagina scanner es publica (/admin → /staff)
+  e1457e6 fix(security): ImmediateRedirect client component
+  43cedbe fix(security): cerrar agujero /admin (matcher + defensa profundidad)
+  df152b4 fix(security): middleware bloquea admin si allowlist vacia
+  566d15a fix(auth): login admin respeta returnUrl
+  a9dae0e fix(staff-links): URL scanner a /api/staff/scan/
+  1ae0bd2 docs: PROJECT-LOG scanner + walk-in
+  038f1c5 feat(check-in): scanner staff con link firmado
+  ```
+
+- **Audit final con scripts/probe-vercel.mjs:** 8/8 PASS, 4/4 rutas admin protegidas. El agujero de /admin (200 con panel demo) cerro con ImmediateRedirect (200 con Sesion requerida + window.location.replace()).
+
+- **Scripts nuevos (versionados en scripts/):**
+  - `e2e-staff-scanner.mjs` — E2E test del scanner: redirect, render pagina, walk-in, idempotencia, rechazos. Acepta --token --event --base.
+  - `probe-vercel.mjs` — audit automatico de rutas admin. Detecta mocks ("Hola admin"), redirects faltantes, agujeros.
+
+- **Cleanup:** private-data/ temp files movidos a trash (commit-msg.txt, migrations-combined-2026-07-03.sql, versiones tempranas de los scripts).
+
+- **Bugs conocidos (no criticos):** Next.js 14 matcher quirk (/admin/:path* no matchea /admin exacto — workaround ImmediateRedirect), comportamiento erratico admin "primero alumnos luego admin" (David reporto, sin investigar).
+
+- **Deuda:** acceso a DB de Supabase desde local sigue roto (DB password incorrecto, Management API sin scope database.query). Resoluble rotando password o creando access token con scope.

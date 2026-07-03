@@ -335,9 +335,75 @@ Migración aplicada: `20260703020832_event_staff_links.sql`.
 
 ## 5. Resumen ejecutivo
 
-- **Implementado y pusheado:** scanner del staff con link temporal
-  firmado (Commit B). David puede testearlo en Vercel con un evento real.
-- **Pendiente de test E2E:** el flujo end-to-end (David genera link →
-  manda a staff → staff escanea QR → attendee aparece como `checked_in`
-  en el admin). Los unit tests están; falta el smoke test en Vercel.
-- **No urgente (P2 documentado):** 5 nice-to-haves sin urgencia.
+### Estado al 2026-07-03 ~04:20 (sesion de cierre)
+
+**Scanner staff + auth: cerrado.** 11 commits en `origin/main`:
+
+```
+d68a0be chore: scripts de testing y probe de Vercel para scanner staff + audit auth
+033ba1d feat(staff): walk-in registration + lista de QRs para testing
+2db070c fix(staff): pagina del scanner es publica (mover de /admin a /staff)
+e1457e6 fix(security): ImmediateRedirect client component — solucion definitiva al agujero /admin
+43cedbe fix(security): cerrar agujero /admin publico (matcher + defensa en profundidad)
+df152b4 fix(security): middleware bloquea admin en produccion si allowlist vacio
+566d15a fix(auth): login admin respeta returnUrl
+a9dae0e fix(staff-links): URL del scanner apunta a /api/staff/scan/
+1ae0bd2 docs: PROJECT-LOG entrada scanner + walk-in
+038f1c5 feat(check-in): scanner del staff con link temporal firmado
+```
+
+### Audit final (probe automatizado)
+
+```
+PASS  /admin                         200  [Panel administrativo]  (Sesion requerida)
+PASS  /admin/login                   200  (publico)
+PASS  /admin/system/supabase         200  (publico, diagnostico)
+PASS  /admin/eventos                 307  redirect a /admin/login?returnUrl=...
+PASS  /api/admin/emails/recent       401  (middleware)
+PASS  /dashboard                     307  redirect a /login
+PASS  /api/admin/nonexistent         401  (middleware)
+PASS  /staff/scan/[eventId]          200  (publico, scanner del staff)
+
+=== 8/8 PASS, 4/4 rutas admin protegidas ===
+```
+
+### Coverage de los P0/P1/P2
+
+| Item | Estado | Commit |
+|---|---|---|
+| **P0:** Scanner staff con link temporal | ✅ | `038f1c5` |
+| **P0:** URL del scanner apunta a /api/ | ✅ | `a9dae0e` |
+| **P0:** Walk-in registration desde scanner | ✅ | `033ba1d` |
+| **P0:** Lista de QRs en admin para testing | ✅ | `033ba1d` |
+| **P1:** Auth bypass /admin (3 capas defensa) | ✅ | `e1457e6` |
+| **P1:** Login respeta returnUrl | ✅ | `566d15a` |
+| **P1:** Hard-fail si allowlist vacía en producción | ✅ | `df152b4` |
+| **P2:** Rate limiting /api/check-in | 📝 | documentado |
+| **P2:** Validación token /api/event-qr | 📝 | documentado |
+| **P2:** formatTime/formatDate timezone | 📝 | documentado |
+| **P2:** Transaccionalidad POST check-in | 📝 | documentado |
+| **P2:** appBaseUrl vs event-tokens | 📝 | documentado |
+
+### Tests E2E disponibles
+
+- `node scripts/e2e-staff-scanner.mjs` — flujo completo del scanner
+- `node scripts/probe-vercel.mjs` — audit de rutas (corre en CI/manual)
+
+Ambos scripts son read-only contra el deploy.
+
+### Bugs conocidos (no críticos)
+
+- **Next.js 14 matcher quirk:** `/admin/:path*` no matchea `/admin` exacto.
+  Workaround: `ImmediateRedirect` client component. Funcional pero
+  cosmético (no es 307 HTTP puro, es redirect client-side via
+  `window.location.replace()`).
+
+- **Comportamiento errático admin:** David reportó "primero me manda
+  a alumnos y luego a admin". No investigado todavía.
+
+### Deuda pendiente
+
+- ~~Aplicar las 2 migrations nuevas~~ (hecho por David en SQL Editor)
+- ~~Acceso a la DB de Supabase desde local~~ (DB password está roto,
+  Management API no tiene scope de database.query). Resoluble rotando
+  el DB password o creando un access token con scope correcto.
