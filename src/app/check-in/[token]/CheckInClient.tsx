@@ -84,9 +84,16 @@ export function CheckInClient({
           <h1 className="text-2xl font-bold text-ink">
             Ya estás en puerta
           </h1>
+          {/* FIX 2026-07-03 (sesion David): el copy ahora muestra el
+              evento + dia + hora del evento en vez de "el staff confirmó
+              tu ingreso a las 12:08 a.m." (eso es ruido — al lead no le
+              importa cuándo se marcó check-in, le importa el evento). */}
+          <p className="text-base text-ink-soft">
+            <strong>{attendeeName}</strong>, estás dentro de{" "}
+            <strong>{eventTitle}</strong>.
+          </p>
           <p className="text-sm text-ink-muted">
-            {attendeeName}, el staff confirmó tu ingreso a las {formatTime(status.at)}.
-            Pasá y disfrutá.
+            📅 {formatDate(eventStartsAt)} · pasá y disfrutá.
           </p>
 
           {/* Mostramos el QR tambien en el caso "already" — el asistente
