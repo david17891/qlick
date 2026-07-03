@@ -1197,7 +1197,7 @@ async function buildResponsePlan(args: {
             {
               type: "reply" as const,
               reply: {
-                id: `evt_inscribir_${evtSlug.slice(0, 20)}`,
+                id: `evt_inscribir_${evtSlug}`,
                 title: "Inscribirme"
               }
             }
@@ -1637,7 +1637,7 @@ case "interactive_event_inscribir": {
       // con regex). El buttonId `confirm_inscription_<slug>` viaja a
       // processInboundMessage que lo trata como `interactive_event_inscribir`.
       if (closedQuestion.isClosed && closedQuestion.eventSlug) {
-        const confirmId = `confirm_inscription_${closedQuestion.eventSlug.slice(0, 20)}`;
+        const confirmId = `confirm_inscription_${closedQuestion.eventSlug}`;
         const interactive: import("../whatsapp/providers/whatsapp-provider").InteractiveMessage = {
           type: "button" as const,
           body: { text: content },
@@ -2104,6 +2104,100 @@ export async function processInboundMessage(
           demo: sendResult.demo,
           note: `already_registered: ${targetSlug}`
         };
+      }
+    }
+
+    // 4.8 FIX 2026-07-03 (sesion David, "metodo de pago por implementar"):
+    // si el evento al que el lead quiere inscribirse es DE PAGO y AUN
+    // NO está registrado, NO generamos QR ni enviamos email todavia.
+    // El bot le avisa que su lugar está apartado pero el método de pago
+    // está por implementar, y le ofrece escribir a hola@qlick.marketing
+    // si quiere acelerar.
+    //
+    // Detección de evento de pago: parseamos el description buscando un
+    // patron `Costo: $NNN` (o cualquier `$NNN` antes de MXN/USD).
+    // Conservadora: si no matchea, asumimos gratis.
+    if (
+      intent === "interactive_event_inscribir" &&
+      supabase &&
+      lead.id
+    ) {
+      let targetSlug: string | null = requestedEventSlug;
+      if (!targetSlug && buttonId?.startsWith("evt_inscribir_")) {
+        targetSlug = buttonId.slice("evt_inscribir_".length);
+      }
+      if (!targetSlug) {
+        const activeEvt = await loadActiveEventContext().catch(() => null);
+        targetSlug = activeEvt?.slug ?? null;
+      }
+      if (targetSlug) {
+        // No generamos QR de pago si el lead ya está registrado (4.7 ya
+        // manejó ese caso con un mensaje "ya estás registrado").
+        // Si NO está registrado, vemos si es de pago.
+        const alreadyHasToken = await findActiveQrTokenForLead(
+          supabase,
+          lead.id,
+          phoneNormalized,
+          targetSlug
+        );
+        if (!alreadyHasToken) {
+          const evtForPayment = await loadActiveEventContext(targetSlug).catch(() => null);
+          const desc = evtForPayment?.description ?? "";
+          // Patron: "$599 MXN", "$1,200 MXN", "$ 599 MXN", etc.
+          const priceMatch = desc.match(/\$\s?(\d{1,3}(?:[,.]?\d{3})*)\s*(mxn|usd|pesos)?/i);
+          const isFree = /sin\s+costo/i.test(desc);
+          if (priceMatch && !isFree) {
+            const priceDisplay = priceMatch[0].replace(/\s+/g, " ").trim();
+            const evtName = evtForPayment?.title ?? targetSlug;
+            const clean = cleanFirstName(lead.name);
+            const saludo = clean ? `¡Listo ${clean}!` : "¡Listo!";
+            const bodyText =
+              `${saludo} Tu lugar para *${evtName}* (${priceDisplay}) está apartado. ` +
+              `\n\n⚠️ *Método de pago por implementar.* Te avisamos por acá cuando ` +
+              `esté listo para que completes el registro.` +
+              `\n\nSi querés acelerar, escribinos a hola@qlick.marketing.`;
+            const provider = getActiveWhatsAppProvider();
+            let sendResult: { ok: boolean; externalId?: string; demo?: boolean } = {
+              ok: false
+            };
+            try {
+              const r = await provider.send({ to: phoneNormalized, body: bodyText });
+              sendResult = { ok: r.ok, externalId: r.externalId, demo: r.demo };
+            } catch (err) {
+              errorLog("[whatsapp/bot] pending_payment: send falló", {
+                leadId: lead.id,
+                error: err instanceof Error ? err.message : String(err)
+              });
+            }
+            if (supabase) {
+              await persistConversation(supabase, {
+                lead_id: lead.id,
+                phone_normalized: phoneNormalized,
+                direction: "outbound",
+                message_type: "text",
+                body: bodyText,
+                whatsapp_message_id: sendResult.externalId ?? null,
+                metadata: {
+                  intent: "interactive_event_inscribir",
+                  templateName: null,
+                  demo: sendResult.demo ?? false,
+                  pending_payment: true,
+                  pending_event_slug: targetSlug,
+                  pending_event_price: priceDisplay
+                }
+              });
+            }
+            return {
+              ok: true,
+              intent,
+              leadId: lead.id,
+              responseKind: "text",
+              responsePreview: bodyText,
+              demo: sendResult.demo,
+              note: `pending_payment: ${targetSlug} ${priceDisplay}`
+            };
+          }
+        }
       }
     }
   }
