@@ -138,7 +138,7 @@ export function renderEventQrPassEmail(
               </p>
               <p style="margin:0 0 24px;font-size:16px;line-height:1.5;">
                 Confirmamos tu registro a <strong>"${eventTitle}"</strong>.
-                Tu pase digital está acá. Mostralo en la entrada — el staff
+                Tu pase digital está acá. Muéstralo en la entrada — el staff
                 lo escanea y listo.
               </p>
 
@@ -157,7 +157,7 @@ export function renderEventQrPassEmail(
                       style="display:block;margin:0 auto;background:#ffffff;padding:12px;border-radius:8px;border:1px solid #e9d5ff;"
                     />
                     <p style="margin:12px 0 0;font-size:11px;color:#64748b;">
-                      Escaneá desde la app de cámara de tu celular o mostrá esta pantalla al staff.
+                      Escanea desde la app de cámara de tu celular o muestra esta pantalla al staff.
                     </p>
                   </td>
                 </tr>

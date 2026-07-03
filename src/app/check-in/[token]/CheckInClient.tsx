@@ -93,7 +93,7 @@ export function CheckInClient({
             <strong>{eventTitle}</strong>.
           </p>
           <p className="text-sm text-ink-muted">
-            📅 {formatDate(eventStartsAt)} · pasá y disfrutá.
+            📅 {formatDate(eventStartsAt)} · pasa y disfruta.
           </p>
 
           {/* Mostramos el QR tambien en el caso "already" — el asistente
@@ -174,7 +174,7 @@ export function CheckInClient({
             className="mx-auto block bg-white p-3 rounded-xl border border-brand-100"
           />
           <p className="text-xs text-ink-muted text-center">
-            Mostrá esta pantalla (o el email que te mandamos) al staff
+            Muestra esta pantalla (o el email que te mandamos) al staff
             en la entrada. Ellos escanean tu QR para confirmar tu
             asistencia.
           </p>
@@ -188,7 +188,7 @@ export function CheckInClient({
               📧 Tambien te lo mandamos a <strong>{attendeeEmail}</strong>.
             </p>
             <p className="text-xs text-emerald-700 mt-1">
-              Si no lo ves, revisá spam o promociones.
+              Si no lo ves, revisa spam o promociones.
             </p>
           </div>
         )}

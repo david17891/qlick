@@ -2063,7 +2063,7 @@ export async function processInboundMessage(
         const bodyText =
           `${saludo} Ya estás registrado en *${evtName}*. ` +
           `Tu QR actual (link de check-in) es:\n\n${existing.url}` +
-          `\n\nMostralo en la entrada del evento. El staff lo va a escanear.` +
+          `\n\nMuéstralo en la entrada del evento. El staff lo va a escanear.` +
           emailLine;
         const provider = getActiveWhatsAppProvider();
         let sendResult: { ok: boolean; externalId?: string; demo?: boolean } = {
