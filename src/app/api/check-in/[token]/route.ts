@@ -24,6 +24,14 @@
  * entropía, suficiente para que adivinarlo sea computacionalmente
  * inviable. El audit log registra cada hit (incluyendo IP) para
  * trazabilidad de quién hizo check-in.
+ *
+ * **FIX P1 2026-07-03 (auditoria pre-scanner):** el `actor` del check-in
+ * esta hardcodeado como `self` (el asistente confirma su propio check-in).
+ * Cuando se implemente el scanner del staff (Commit B, ver
+ * `docs/CHECK_IN_AUDIT_2026_07_03.md`), ese endpoint staff-side pasara
+ * el `actor` real (email del staff que escaneo) — ver `CheckInActor`
+ * type mas abajo. Este endpoint publico sigue con `self` porque la
+ * autorizacion es el token, no hay forma de identificar al humano detras.
  */
 
 import { NextResponse } from "next/server";
@@ -32,6 +40,38 @@ import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { logAdminAction } from "@/lib/crm/audit-server";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * FIX P1 2026-07-03: tipo del actor que registra un check-in.
+ *
+ * Hoy el endpoint publico usa `kind: "self"` (el asistente confirma su
+ * propio check-in con el token del QR). Cuando se implemente el
+ * scanner del staff (Commit B), el endpoint staff-side usara
+ * `kind: "staff"` con el email + nombre del operador que escaneo.
+ *
+ * Esta definicion queda aca (en lugar de en lib/) porque es el unico
+ * lugar que la usa por ahora. Cuando se sume el scanner, lo movemos
+ * a `lib/check-in/actor.ts`.
+ */
+export type CheckInActorKind = "self" | "staff" | "system";
+
+export interface CheckInActor {
+  kind: CheckInActorKind;
+  /** Email del actor (para audit log + checked_in_by). */
+  email: string;
+  /** Display name opcional (para UI del log admin). */
+  displayName?: string | null;
+}
+
+/**
+ * Actor fijo para este endpoint publico. El staff scanner tendra su
+ * propio endpoint (Commit B) con actor dinamico.
+ */
+const PUBLIC_ACTOR: CheckInActor = {
+  kind: "self",
+  email: "self@qlick.checkin",
+  displayName: "Asistente (self check-in via token)",
+};
 
 interface TokenRow {
   id: string;
@@ -202,7 +242,7 @@ export async function POST(
   // 1. UPDATE event_qr_tokens
   const { error: tokenErr } = await supabase
     .from("event_qr_tokens" as never)
-    .update({ checked_in_at: nowIso, checked_in_by: "self" } as never)
+    .update({ checked_in_at: nowIso, checked_in_by: PUBLIC_ACTOR.email } as never)
     .eq("id" as never, found.row.id);
   if (tokenErr) {
     return NextResponse.json(
@@ -245,7 +285,7 @@ export async function POST(
       if (!target.checked_in_at) {
         const { error: updErr } = await supabase
           .from("event_attendees")
-          .update({ checked_in_at: nowIso, checked_in_by: "self" })
+          .update({ checked_in_at: nowIso, checked_in_by: PUBLIC_ACTOR.email })
           .eq("id", target.id);
         if (updErr) {
           // eslint-disable-next-line no-console
@@ -269,7 +309,7 @@ export async function POST(
           email: found.row.attendee_email,
           phone_normalized: phone,
           checked_in_at: nowIso,
-          checked_in_by: "self",
+          checked_in_by: PUBLIC_ACTOR.email,
           source: "check_in",
         });
       if (insErr && insErr.code !== "23505") {
@@ -317,8 +357,12 @@ export async function POST(
   }
 
   // 4. Audit log.
+  // FIX P1 2026-07-03: ahora usa PUBLIC_ACTOR (kind: "self", email del
+  // sistema) en vez de hardcodear el string. Cuando el scanner del staff
+  // (Commit B) este listo, su endpoint pasara un CheckInActor real con
+  // el email del operador.
   await logAdminAction({
-    actor_email: "self@qlick.checkin",
+    actor_email: PUBLIC_ACTOR.email,
     action: "check_in",
     entity_type: "event_qr_token",
     entity_id: found.row.id,
@@ -326,7 +370,8 @@ export async function POST(
       eventId: found.row.event_id,
       attendeeName: found.row.attendee_name,
       attendeePhone: found.row.attendee_phone_normalized,
-      checkedInBy: "self",
+      actorKind: PUBLIC_ACTOR.kind,
+      checkedInBy: PUBLIC_ACTOR.email,
       ip: req.headers.get("x-forwarded-for") ?? null,
       ua: req.headers.get("user-agent") ?? null,
     },
