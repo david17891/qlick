@@ -1114,3 +1114,35 @@ ode --env-file=.env.local scripts/exec-sql.mjs <file> (requiere SUPABASE_DB_PASS
 - **Trigger:** Sesión 2026-07-02 ~17:00-18:22, después de que David planteara "¿qué es lo que debe hacer ese QR? ¿dónde se va a leer? ¿cómo se va a leer? y como eso va a retroalimentar mi funnel para que siga avanzando en el proceso de leads" → identificación de los 3 gaps → implementación de Commit A → pausa para que David aplique migration manualmente.
 
 - **Continuación esperada:** David aplica migration + Commit B (scanner con link temporal). El evento 1 (IA y Marketing: Primeros Pasos, 13 de julio) será el primer evento con certificado que valide end-to-end el flow secuencial nombre → email → QR.
+---
+
+## 2026-07-02 ~23:35 · Pulido 3 UX bugs detectados en test post-migration
+
+- **Pregunta:** David aplicó la migration `requires_name` (via SQL editor del dashboard) y testeó el bot. Detectó 3 problemas de UX en el flow de inscripción:
+  1. Click "Ver eventos" mostraba "Tenemos 3 eventos próximos. Elegí el que te interesa:" + botón "Ver eventos" — había que clickear 2 veces (list message de Meta abría menú aparte, parecía que el bot no respondía).
+  2. Después de "¿Te gustaría apartar tu lugar?", escribir "Si" mandaba al fallback "Una persona de Qlick te responderá a la brevedad en horario hábil." El LLM se confunde con respuestas tan cortas y termina dando fallback (probable: mencionó "sin costo" → guardrail bloqueó → fallback).
+  3. El LLM dijo "incluye coffee break y materiales digitales" — David no sabía si era inventado. Confirmado en DB: SÍ está en el `description` del evento 1 ("Incluye coffee break y materiales digitales"), pero el prompt NO prohibía inventar amenities, solo precio/temario/dirección/cupo.
+
+- **Decisiones tomadas (1 commit consolidado `bb17daf`):**
+  - **Bug 2:** `interactive_show_events` ahora detecta `allEvents.length <= 3` y manda BUTTON MESSAGE (3 botones max en Meta) con un botón por evento. `buttonId = "evt_yes_<slug>"` viaja al handler `interactive_event_yes` que ahora extrae el slug y llama `loadActiveEventContext(requestedSlug)`. Reservamos list message solo para 4+ eventos.
+  - **Bug 1:** Nueva función helper `detectClosedConfirmationQuestion(text, eventSlug)` con heurística `termina en ? + contiene palabras de acción (apartar/inscribir/registrar/reservar/confirmar)`. El handler `question` (LLM) usa el helper y marca el outbound con `metadata.awaiting_confirmation_for_event_slug = <slug>`. En `processInboundMessage`, si el último outbound tiene ese flag y el body matchea `AFFIRMATIVE_RE`, override intent a `interactive_event_inscribir` y pasamos `requestedEventSlug` al `buildResponsePlan`. El handler usa `loadActiveEventContext(args.requestedEventSlug ?? undefined)` para mantener consistencia con la pregunta que el lead está respondiendo.
+  - **Bug 3:** Agregamos regla explícita en el system prompt (ambas ramas: catálogo y single-event): "Amenities / incluye (coffee break, materiales digitales, grabación, certificado, snack, lunch, etc). SOLO lo que esté escrito en Detalles. NO asumas que un taller presencial incluye comida o materiales."
+
+- **Razón de los 3 cambios juntos (1 commit):** Toca el mismo componente (bot-engine state machine + prompt), arreglar uno sin los otros deja el flow inconsistente. Commits separados crearían friction innecesaria para review.
+
+- **Por qué NO agregamos tests nuevos:** los tests existentes (`whatsapp-bot.test.mjs`) usan `disableSupabase()` así que no cubren el path real de "Ver eventos con 3 eventos de DB". Agregar tests para Bug 2 requeriría mockear `loadAllActiveEvents`. El alcance quirúrgico de la sesión (David quiere pulir comportamiento, no expandir cobertura) decidió skip. Próxima sesión con tiempo: agregar tests con mock de Supabase.
+
+- **Acceso a DB desde local:** confirmado patrón útil: construir URL dinámicamente desde `SUPABASE_PROJECT_REF` + usar `SUPABASE_SECRET_KEY` (crear cliente supabase-js con `https://${PROJECT_REF}.supabase.co`). NO depender de `NEXT_PUBLIC_SUPABASE_URL` (queda vacía tras `vercel env pull`). El script `apply-migration.mjs` ya usa este patrón; lo replicamos para queries ad-hoc. Documentar en `docs/SETUP_GITHUB_AUTH.md` o en un nuevo `docs/SUPABASE_LOCAL_QUERIES.md` cuando haya bandwidth.
+
+- **Impacto:**
+  - Bug 2: primer click en "Ver eventos" = ver los 3 nombres. Cero clicks extra.
+  - Bug 1: "Si" tras pregunta de inscripción = "¡Excelente! Para inscribirte..." (o "decime tu nombre completo" si el evento lo requiere). Ya no cae a "hablar con humano".
+  - Bug 3: si David carga un evento sin amenities en el description, el LLM NO va a inventar "coffee break" o "materiales" — va a decir "no tengo confirmado qué incluye, lo reviso y te paso".
+
+- **Validación:** 203/203 tests OK, type-check OK, lint OK, build OK.
+
+- **Pendiente post-fix:**
+  - Commit B (staff scanner con link temporal) — sigue siendo el siguiente paso planeado.
+  - Próxima sesión David: pushear `bb17daf` desde su terminal local, esperar deploy de Vercel, re-testear el flow completo end-to-end con el evento 1 (IA y Marketing, 13 de julio) para confirmar que "Si" ya no cae al fallback.
+
+- **Trigger:** Sesión 2026-07-02 ~23:17 (post-pausa), David aplicó migration, testeó el bot, mandó los 3 problemas en una sola pasada.
