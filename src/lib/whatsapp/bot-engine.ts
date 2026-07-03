@@ -394,6 +394,78 @@ async function persistConsent(
 }
 
 /**
+ * FIX 2026-07-03 (sesion David, "bot recuerda registro"): busca un
+ * QR token VIGENTE existente para (lead, event) SIN crear uno nuevo.
+ * Usado antes del flow de `interactive_event_inscribir` para detectar
+ * si el lead YA está registrado y ofrecerle reenvío del QR en vez de
+ * generar uno duplicado.
+ *
+ * Returns null si:
+ *   - El evento no existe
+ *   - El lead no tiene token para ese evento
+ *   - El token existe pero ya venció
+ *
+ * Estrategia de busqueda: primero intenta por `attendee_phone_normalized`
+ * (que es como generateQrToken guarda), luego como fallback por
+ * `lead_id` (por si la migración o un seed antiguo dejó registros
+ * inconsistentes). Cobertura amplia pero conservadora — no regenera.
+ */
+async function findActiveQrTokenForLead(
+  supabase: SupabaseAdmin,
+  leadId: string,
+  phoneNormalized: string,
+  eventSlug: string
+): Promise<{ token: string; url: string; eventId: string } | null> {
+  // 1) Resolver event_id por slug.
+  const { data: evtData, error: evtErr } = await supabase
+    .from("events" as never)
+    .select("id")
+    .eq("slug", eventSlug)
+    .eq("status", "published")
+    .maybeSingle();
+  if (evtErr || !evtData) return null;
+  const eventId = (evtData as { id: string }).id;
+
+  // 2) Buscar token vigente del lead para este evento.
+  //    Prioridad: (event_id, attendee_phone_normalized) que es como
+  //    `generateQrToken` guarda. Fallback a (event_id, lead_id) por
+  //    si hay datos legacy.
+  const { data: byPhone } = await supabase
+    .from("event_qr_tokens" as never)
+    .select("token")
+    .eq("event_id" as never, eventId)
+    .eq("attendee_phone_normalized" as never, phoneNormalized)
+    .gt("expires_at" as never, new Date().toISOString())
+    .order("created_at" as never, { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  let token: string | null = null;
+  if (byPhone) {
+    token = (byPhone as { token: string }).token;
+  } else {
+    // Fallback por lead_id (sin filtro de phone — útil si la fila se
+    // creó con phone distinto por algun bug previo).
+    const { data: byLeadId } = await supabase
+      .from("event_qr_tokens" as never)
+      .select("token")
+      .eq("event_id" as never, eventId)
+      .eq("lead_id" as never, leadId)
+      .gt("expires_at" as never, new Date().toISOString())
+      .order("created_at" as never, { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (byLeadId) {
+      token = (byLeadId as { token: string }).token;
+    }
+  }
+
+  if (!token) return null;
+  const url = `${appBaseUrl()}/check-in/${token}`;
+  return { token, url, eventId };
+}
+
+/**
  * Genera un QR token (URL-safe, 32 chars) y lo inserta en `event_qr_tokens`
  * asociado al evento activo y al teléfono del asistente.
  *
@@ -1557,6 +1629,47 @@ case "interactive_event_inscribir": {
         // activeEvent puntual o el catalogo tiene 1 solo, usamos su slug.
         eventsListBlock ? null : activeEvent?.slug ?? null
       );
+      // FIX 2026-07-03 (sesion David): cuando el LLM hace una pregunta
+      // cerrada de inscripción, devolvemos BUTTON MESSAGE con un botón
+      // "Sí, inscribirme" en vez de solo texto. Asi limitamos las
+      // respuestas del lead a 1 click (vs. texto libre "si", "ok", "dale",
+      // "va", "si señor", "claro que sí" que el bot tiene que matchear
+      // con regex). El buttonId `confirm_inscription_<slug>` viaja a
+      // processInboundMessage que lo trata como `interactive_event_inscribir`.
+      if (closedQuestion.isClosed && closedQuestion.eventSlug) {
+        const confirmId = `confirm_inscription_${closedQuestion.eventSlug.slice(0, 20)}`;
+        const interactive: import("../whatsapp/providers/whatsapp-provider").InteractiveMessage = {
+          type: "button" as const,
+          body: { text: content },
+          action: {
+            buttons: [
+              {
+                type: "reply" as const,
+                reply: { id: confirmId, title: "Sí, inscribirme" }
+              },
+              {
+                type: "reply" as const,
+                reply: { id: "cancel", title: "No, gracias" }
+              }
+            ]
+          },
+          footer: {
+            text: "Toca un botón para responder".slice(0, 60)
+          }
+        };
+        return {
+          kind: "interactive",
+          body: content,
+          interactive,
+          metadata: { awaiting_confirmation_for_event_slug: closedQuestion.eventSlug },
+          send: () =>
+            provider.send({
+              to: phoneNormalized,
+              body: content,
+              interactive
+            })
+        };
+      }
       return {
         kind: "text",
         body: content,
@@ -1729,6 +1842,18 @@ export async function processInboundMessage(
       intent = "interactive_event_yes";
     } else if (message.buttonId.startsWith("evt_inscribir_") || message.buttonId === "evt_inscribir_next") {
       intent = "interactive_event_inscribir";
+    } else if (message.buttonId.startsWith("confirm_inscription_")) {
+      // FIX 2026-07-03: el bot manda un button message "Sí, inscribirme"
+      // con buttonId `confirm_inscription_<slug>` cuando el LLM hace
+      // una pregunta cerrada. Extraemos el slug y disparamos el flow.
+      intent = "interactive_event_inscribir";
+      requestedEventSlug = message.buttonId.slice("confirm_inscription_".length);
+    } else if (message.buttonId === "cancel") {
+      // FIX 2026-07-03: si el lead clickea "No, gracias" en la pregunta
+      // cerrada, le respondemos con un mensaje neutral y NO disparamos
+      // inscripción. Marcamos el intent como question para que el LLM
+      // pueda continuar la conversación.
+      intent = "question";
     } else if (message.buttonId.startsWith("evt_info_")) {
       // FIX 2026-07-02: nuevo boton del list "Ver eventos" cuando hay
       // varios. El slug viene en el buttonId (e.g. evt_info_ads-meta-...).
@@ -1758,26 +1883,37 @@ export async function processInboundMessage(
       (lastOutbound?.metadata as { awaiting_field?: string | null } | null)
         ?.awaiting_field ?? null;
     const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body);
-    if (awaitingField === "name" && body && !looksLikeEmail) {
-      intent = "provide_name";
-    } else {
-      intent = detectIntent(body, isFirstMessage);
-    }
     // FIX 2026-07-02 (sesion David, "Si tras pregunta cerrada"): si el
     // último outbound del bot marcó awaiting_confirmation_for_event_slug
-    // (porque preguntó algo como "¿Te gustaría apartar tu lugar?"),
-    // Y el lead respondió con un affirmative corto (AFFIRMATIVE_RE),
-    // saltamos al flow `interactive_event_inscribir` con el slug ya
-    // conocido. Sin esto, el affirmative va al LLM, el LLM se confunde
-    // con respuestas tan cortas y cae al fallback "hablar con humano".
+    // (porque preguntó algo como "¿Te animas a apartar tu lugar?"),
+    // Y el lead respondió con un affirmative (corto o extendido como
+    // "si señor" / "claro que sí"), saltamos al flow
+    // `interactive_event_inscribir` con el slug conocido.
+    //
+    // IMPORTANTE: este check debe ir ANTES de `detectIntent` porque
+    // "si" matchea REGISTER_RE (`/^(s[ií]|...)/i`) y nos roba el
+    // intent antes de poder aplicar el override. Bug visto en test:
+    // David escribió "si señor" después de una pregunta cerrada y
+    // terminó cayendo al handler `register` (lista de 3 eventos) en
+    // vez de ir directo a inscribir.
     const awaitingConfirmationForSlug =
       (lastOutbound?.metadata as {
         awaiting_confirmation_for_event_slug?: string | null;
       } | null)?.awaiting_confirmation_for_event_slug ?? null;
-    if (
-      intent === "question" &&
+    // Regex ampliada: acepta "si", "ok", "dale", "va", "claro",
+    // "desde luego", "por supuesto", "si señor", "si por favor",
+    // "claro que sí", etc. El match es al INICIO del body. Si tiene
+    // contenido significativo después (ej. "si pero el otro evento"),
+    // NO matchea — eso lo maneja detectIntent.
+    const AFFIRMATIVE_EXTENDED_RE = /^(s[ií]|ok|dale|va|claro|desde luego|por supuesto|porfa(?:vor)?)/i;
+    const isAffirmative =
+      AFFIRMATIVE_RE.test(body) || AFFIRMATIVE_EXTENDED_RE.test(body);
+    if (awaitingField === "name" && body && !looksLikeEmail) {
+      intent = "provide_name";
+    } else if (
       awaitingConfirmationForSlug &&
-      AFFIRMATIVE_RE.test(body)
+      isAffirmative &&
+      !looksLikeEmail
     ) {
       intent = "interactive_event_inscribir";
       // FIX 2026-07-02: persistimos el slug en metadata del inbound
@@ -1791,6 +1927,8 @@ export async function processInboundMessage(
       // (Esto se hace más abajo en la sección 4 via intent != question,
       // pero como ahora SÍ es interactive_event_inscribir, ya queda
       // cubierto por el bloque existente.)
+    } else {
+      intent = detectIntent(body, isFirstMessage);
     }
   }
 
@@ -1844,6 +1982,128 @@ export async function processInboundMessage(
           leadId: lead.id,
           name
         });
+      }
+    }
+  }
+
+  // 4.7 FIX 2026-07-03 (sesion David, "bot recuerda registro"): si el
+  // intent es `interactive_event_inscribir` Y tenemos un event_slug
+  // (del botón clickeado, del affirmative corto, o del activeEvent) Y
+  // el lead tiene id válido Y Supabase responde, consultamos si YA
+  // existe un token vigente para (lead, event).
+  //
+  // Si SÍ existe: NO generamos uno nuevo. Reenviamos el email con el
+  // QR existente y respondemos por WhatsApp con el link directo. Asi
+  // evitamos:
+  //   - Duplicar tokens en event_qr_tokens
+  //   - Mandar 2+ correos al mismo lead para el mismo evento
+  //   - Confundir al lead con mensajes "Listo, te registramos..." cuando
+  //     ya estaba registrado
+  //
+  // Si NO existe (o falla el check): seguimos con el flow normal
+  // (Paso 5: provide_email genera QR nuevo).
+  if (
+    intent === "interactive_event_inscribir" &&
+    supabase &&
+    lead.id
+  ) {
+    // Determinar el slug del evento que el lead quiere inscribir.
+    // Prioridad:
+    //   1. requestedEventSlug (afirmative corto tras pregunta cerrada)
+    //   2. activeEvent.slug (evento activo si solo hay 1)
+    //   3. slug del botón (buttonId startsWith "evt_inscribir_")
+    let targetSlug: string | null = requestedEventSlug;
+    if (!targetSlug && buttonId?.startsWith("evt_inscribir_")) {
+      targetSlug = buttonId.slice("evt_inscribir_".length);
+    }
+    if (!targetSlug) {
+      const activeEvt = await loadActiveEventContext().catch(() => null);
+      targetSlug = activeEvt?.slug ?? null;
+    }
+    if (targetSlug) {
+      const existing = await findActiveQrTokenForLead(
+        supabase,
+        lead.id,
+        phoneNormalized,
+        targetSlug
+      );
+      if (existing) {
+        // Ya está registrado. Cargamos info del evento para el mensaje.
+        const evt = await loadActiveEventContext(targetSlug).catch(() => null);
+        const evtName = evt?.title ?? targetSlug;
+        const evtDate = evt?.humanStartsAt ?? "";
+        // Reenviamos el email con el QR existente (best-effort).
+        // Usamos el email del lead si lo tiene.
+        if (lead.email && !lead.email.endsWith("@placeholder.local")) {
+          try {
+            const qrImageUrl = `${appBaseUrl()}/api/event-qr/${existing.token}.png`;
+            await sendEventQrPassEmail({
+              attendeeName: lead.name?.trim() || "Asistente",
+              attendeeEmail: lead.email,
+              eventTitle: evtName,
+              eventStartsAt: evt?.startsAt
+                ? evt.startsAt.toISOString()
+                : new Date().toISOString(),
+              eventLocation: evt?.location ?? null,
+              qrImageUrl,
+              checkInUrl: existing.url
+            });
+          } catch (err) {
+            errorLog("[whatsapp/bot] already_registered: reenvío email falló", {
+              leadId: lead.id,
+              error: err instanceof Error ? err.message : String(err)
+            });
+          }
+        }
+        const clean = cleanFirstName(lead.name);
+        const saludo = clean ? `¡Hola ${clean}!` : "¡Hola!";
+        const emailLine = lead.email && !lead.email.endsWith("@placeholder.local")
+          ? `\n📧 Te lo reenviamos a tu correo ${lead.email} por si lo perdiste.`
+          : "";
+        const bodyText =
+          `${saludo} Ya estás registrado en *${evtName}*. ` +
+          `Tu QR actual (link de check-in) es:\n\n${existing.url}` +
+          `\n\nMostralo en la entrada del evento. El staff lo va a escanear.` +
+          emailLine;
+        const provider = getActiveWhatsAppProvider();
+        let sendResult: { ok: boolean; externalId?: string; demo?: boolean } = {
+          ok: false
+        };
+        try {
+          const r = await provider.send({ to: phoneNormalized, body: bodyText });
+          sendResult = { ok: r.ok, externalId: r.externalId, demo: r.demo };
+        } catch (err) {
+          errorLog("[whatsapp/bot] already_registered: send falló", {
+            leadId: lead.id,
+            error: err instanceof Error ? err.message : String(err)
+          });
+        }
+        if (supabase) {
+          await persistConversation(supabase, {
+            lead_id: lead.id,
+            phone_normalized: phoneNormalized,
+            direction: "outbound",
+            message_type: "text",
+            body: bodyText,
+            whatsapp_message_id: sendResult.externalId ?? null,
+            metadata: {
+              intent: "interactive_event_inscribir",
+              templateName: null,
+              demo: sendResult.demo ?? false,
+              already_registered: true,
+              existing_event_slug: targetSlug
+            }
+          });
+        }
+        return {
+          ok: true,
+          intent,
+          leadId: lead.id,
+          responseKind: "text",
+          responsePreview: bodyText,
+          demo: sendResult.demo,
+          note: `already_registered: ${targetSlug}`
+        };
       }
     }
   }

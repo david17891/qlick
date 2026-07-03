@@ -1,13 +1,26 @@
 "use client";
 
 /**
- * CheckInClient — UI mobile-first para confirmar asistencia.
+ * CheckInClient — UI mobile-first para VER el pase (informativo).
  *
- * Server Component padre (`page.tsx`) pasa el attendee + evento, y
- * este Client Component maneja el botón "Confirmar asistencia" +
- * estados (loading / success / already).
+ * FIX 2026-07-03 (sesion David, modelo de funnel): el QR/link que
+ * recibe el lead es SOLO informativo — muestra "estás registrado, tu
+ * info, tu QR". El check-in REAL (cambio de status a `checked_in`)
+ * lo hace el STAFF escaneando el QR en la puerta del evento
+ * (Commit B del scope).
  *
- * Pega contra `POST /api/check-in/[token]` (mismo segmento dinámico).
+ * Antes este componente tenía un botón "Confirmar asistencia" que
+ * dejaba al lead auto-confirmarse. Ahora se quitó: ya no hay acción
+ * del lado del lead. El status `checked_in` lo setea el scanner.
+ *
+ * El componente sigue manteniendo los estados success / already /
+ * error porque el endpoint POST `/api/check-in/[token]` sigue
+ * existiendo — solo que ahora SOLO se llama desde el scanner del
+ * staff (con auth diferente). Si el lead ya fue checkeado por el
+ * staff, la página muestra "Ya estás en puerta".
+ *
+ * Pega contra `GET /api/check-in/[token]` (read-only) — el POST
+ * ya no se dispara desde esta UI.
  */
 
 import { useState } from "react";
@@ -29,10 +42,7 @@ interface Props {
 
 type Status =
   | { kind: "idle" }
-  | { kind: "loading" }
-  | { kind: "success"; at: string }
-  | { kind: "already"; at: string }
-  | { kind: "error"; message: string };
+  | { kind: "already"; at: string };
 
 function formatTime(iso: string): string {
   try {
@@ -56,74 +66,31 @@ export function CheckInClient({
   qrImageUrl,
   attendeeEmail,
 }: Props) {
-  const [status, setStatus] = useState<Status>(
+  // FIX 2026-07-03: ya no hay estado "loading/success" — el lead NO
+  // dispara ninguna acción. El status solo refleja si el staff ya
+  // hizo check-in (vía scanner, Commit B).
+  const [status] = useState<Status>(
     alreadyCheckedIn && checkedInAt
       ? { kind: "already", at: checkedInAt }
       : { kind: "idle" },
   );
 
-  async function onConfirm() {
-    setStatus({ kind: "loading" });
-    try {
-      const res = await fetch(`/api/check-in/${encodeURIComponent(token)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-      const data = (await res.json()) as {
-        ok: boolean;
-        checkedInAt?: string;
-        alreadyCheckedIn?: boolean;
-        error?: string;
-      };
-      if (res.status === 410) {
-        setStatus({ kind: "error", message: "Tu pase venció. Hablá por WhatsApp." });
-        return;
-      }
-      if (res.status === 404) {
-        setStatus({ kind: "error", message: "Pase no encontrado." });
-        return;
-      }
-      if (!res.ok || !data.ok) {
-        setStatus({
-          kind: "error",
-          message: data.error ?? `Error ${res.status}`,
-        });
-        return;
-      }
-      if (data.alreadyCheckedIn && data.checkedInAt) {
-        setStatus({ kind: "already", at: data.checkedInAt });
-      } else if (data.checkedInAt) {
-        setStatus({ kind: "success", at: data.checkedInAt });
-      } else {
-        setStatus({ kind: "error", message: "Respuesta inválida del servidor." });
-      }
-    } catch (err) {
-      setStatus({
-        kind: "error",
-        message: err instanceof Error ? err.message : "Error de red.",
-      });
-    }
-  }
-
-  // Success
-  if (status.kind === "success") {
+  // Already checked in (por el staff via scanner)
+  if (status.kind === "already") {
     return (
       <main className="min-h-screen bg-gradient-to-b from-emerald-50/40 to-white flex items-center justify-center p-6">
         <div className="max-w-md w-full text-center space-y-5">
-          <div className="text-6xl">🎉</div>
+          <div className="text-6xl">✅</div>
           <h1 className="text-2xl font-bold text-ink">
-            ¡Listo, {attendeeName}!
+            Ya estás en puerta
           </h1>
-          <p className="text-base text-ink-soft">
-            Que disfrutes la conferencia.
-          </p>
-          <p className="text-xs text-ink-muted">
-            Check-in registrado a las {formatTime(status.at)}.
+          <p className="text-sm text-ink-muted">
+            {attendeeName}, el staff confirmó tu ingreso a las {formatTime(status.at)}.
+            Pasá y disfrutá.
           </p>
 
-          {/* FIX UX 2026-07-02 (sesion David): mostramos el QR al
-              asistente en la pantalla post-check-in. Asi si no vio el
-              email o lo perdio, tiene el QR visible para el staff. */}
+          {/* Mostramos el QR tambien en el caso "already" — el asistente
+              puede querer mostrar el pase en el celular como respaldo. */}
           <div className="rounded-2xl bg-white border border-emerald-200 p-5">
             <p className="text-xs uppercase font-bold text-emerald-700 mb-3 tracking-wide">
               Tu pase (codigo QR)
@@ -132,27 +99,11 @@ export function CheckInClient({
             <img
               src={qrImageUrl}
               alt={`Codigo QR de entrada para ${eventTitle}`}
-              width={240}
-              height={240}
+              width={220}
+              height={220}
               className="mx-auto block bg-white p-3 rounded-xl border border-emerald-100"
             />
-            <p className="mt-3 text-xs text-ink-muted">
-              Mostrá esta pantalla (o el email) al staff en la entrada.
-            </p>
           </div>
-
-          {/* FIX UX 2026-07-02: avisamos que tambien se mando al correo,
-              para reforzar el canal de respaldo. */}
-          {attendeeEmail && (
-            <div className="rounded-2xl bg-emerald-50/60 border border-emerald-100 p-3 text-sm text-emerald-900">
-              <p>
-                📧 Tambien te lo mandamos a <strong>{attendeeEmail}</strong>.
-              </p>
-              <p className="text-xs text-emerald-700 mt-1">
-                Si no lo ves, revisá spam o promociones.
-              </p>
-            </div>
-          )}
 
           <div className="rounded-2xl bg-white border border-emerald-200 p-4 text-left">
             <p className="text-xs uppercase font-bold text-emerald-700 mb-1">
@@ -170,80 +121,8 @@ export function CheckInClient({
     );
   }
 
-  // Already checked in
-  if (status.kind === "already") {
-    return (
-      <main className="min-h-screen bg-gradient-to-b from-brand-50/40 to-white flex items-center justify-center p-6">
-        <div className="max-w-md w-full text-center space-y-5">
-          <div className="text-6xl">✅</div>
-          <h1 className="text-2xl font-bold text-ink">
-            Ya registraste tu asistencia
-          </h1>
-          <p className="text-sm text-ink-muted">
-            {attendeeName}, hiciste check-in a las {formatTime(status.at)}.
-            Pasá y disfrutá.
-          </p>
-
-          {/* FIX UX 2026-07-02: mostramos el QR tambien en el caso
-              "already checked in" — el asistente puede haber perdido
-              el email o querer mostrar el pase en el celular. */}
-          <div className="rounded-2xl bg-white border border-brand-200 p-5">
-            <p className="text-xs uppercase font-bold text-brand-700 mb-3 tracking-wide">
-              Tu pase (codigo QR)
-            </p>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={qrImageUrl}
-              alt={`Codigo QR de entrada para ${eventTitle}`}
-              width={220}
-              height={220}
-              className="mx-auto block bg-white p-3 rounded-xl border border-brand-100"
-            />
-            <p className="mt-3 text-xs text-ink-muted">
-              Tambien te lo mandamos a tu correo cuando te registraste.
-            </p>
-          </div>
-
-          <div className="rounded-2xl bg-white border border-brand-200 p-4 text-left">
-            <p className="text-xs uppercase font-bold text-brand-700 mb-1">
-              {eventTitle}
-            </p>
-            <p className="text-sm text-ink-soft">
-              📅 {formatDate(eventStartsAt)}
-            </p>
-            {eventLocation && (
-              <p className="text-sm text-ink-soft">📍 {eventLocation}</p>
-            )}
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  // Error
-  if (status.kind === "error") {
-    return (
-      <main className="min-h-screen bg-gradient-to-b from-rose-50/40 to-white flex items-center justify-center p-6">
-        <div className="max-w-md w-full text-center space-y-5">
-          <div className="text-6xl">⚠️</div>
-          <h1 className="text-2xl font-bold text-ink">
-            Algo salió mal
-          </h1>
-          <p className="text-sm text-ink-muted">{status.message}</p>
-          <a
-            href="https://wa.me/5212222222222?text=Hola%2C%20no%20pude%20completar%20mi%20check-in"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center justify-center gap-2 w-full max-w-xs mx-auto px-6 py-4 rounded-2xl bg-emerald-500 text-white font-semibold text-base shadow-md hover:bg-emerald-600 transition"
-          >
-            💬 Hablar por WhatsApp
-          </a>
-        </div>
-      </main>
-    );
-  }
-
-  // Idle / loading — el estado principal, con el botón grande.
+  // Idle — vista informativa. El lead NO tiene accion; el check-in
+  // lo hace el staff escaneando el QR en puerta.
   return (
     <main className="min-h-screen bg-gradient-to-b from-brand-50/40 to-white flex items-center justify-center p-6">
       <div className="max-w-md w-full space-y-6">
@@ -273,25 +152,43 @@ export function CheckInClient({
           </div>
         </div>
 
-        {/* Botón principal */}
-        <button
-          type="button"
-          onClick={onConfirm}
-          disabled={status.kind === "loading"}
-          className="w-full inline-flex items-center justify-center gap-2 px-6 py-5 rounded-2xl bg-brand-500 text-white font-bold text-lg shadow-lg hover:bg-brand-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {status.kind === "loading" ? (
-            <>
-              <span className="inline-block h-5 w-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              Confirmando…
-            </>
-          ) : (
-            <>✓ Confirmar asistencia</>
-          )}
-        </button>
+        {/* FIX 2026-07-03: vista informativa del QR. El check-in lo hace
+            el staff con el scanner — NO hay boton del lado del lead. */}
+        <div className="rounded-2xl bg-white border border-brand-200 shadow-sm p-5 space-y-3">
+          <p className="text-xs uppercase font-bold text-brand-700 tracking-wide text-center">
+            Tu pase (codigo QR)
+          </p>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={qrImageUrl}
+            alt={`Codigo QR de entrada para ${eventTitle}`}
+            width={240}
+            height={240}
+            className="mx-auto block bg-white p-3 rounded-xl border border-brand-100"
+          />
+          <p className="text-xs text-ink-muted text-center">
+            Mostrá esta pantalla (o el email que te mandamos) al staff
+            en la entrada. Ellos escanean tu QR para confirmar tu
+            asistencia.
+          </p>
+        </div>
+
+        {/* FIX UX 2026-07-02: avisamos que tambien se mando al correo,
+            para reforzar el canal de respaldo. */}
+        {attendeeEmail && (
+          <div className="rounded-2xl bg-emerald-50/60 border border-emerald-100 p-3 text-sm text-emerald-900">
+            <p>
+              📧 Tambien te lo mandamos a <strong>{attendeeEmail}</strong>.
+            </p>
+            <p className="text-xs text-emerald-700 mt-1">
+              Si no lo ves, revisá spam o promociones.
+            </p>
+          </div>
+        )}
 
         <p className="text-center text-[11px] text-ink-muted">
-          Al confirmar, el staff en puerta verá tu nombre registrado.
+          ¿Cambio de planes? Si no podés asistir, no hace falta que
+          hagas nada — el registro expira solo.
         </p>
       </div>
     </main>
