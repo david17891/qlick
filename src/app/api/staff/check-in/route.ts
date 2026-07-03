@@ -65,22 +65,30 @@ async function fetchQrToken(
 ): Promise<{ row: TokenRow; event: EventJoinRow } | null> {
   if (!checkSupabaseConfig().configured) return null;
   const supabase = createSupabaseAdminClient();
+  // FIX 2026-07-03 (sesion David, "QR no encontrado"): la query con
+  // relacion embebida `event:events (...)` retornaba null aunque el token
+  // existia en DB. PostgREST no infiere bien el alias `event:events`
+  // para esta FK (el nombre auto-generado del constraint no matchea la
+  // convencion esperada). Workaround: 2 queries separadas (token + event).
+  // Mas simple y robusto que la relacion embebida.
   const { data, error } = await supabase
     .from("event_qr_tokens" as never)
     .select(
-      `
-      id, event_id, attendee_name, attendee_phone_normalized, attendee_email,
-      token, checked_in_at, checked_in_by, expires_at,
-      event:events ( id, title, starts_at, slug )
-    `,
+      "id, event_id, attendee_name, attendee_phone_normalized, attendee_email, token, checked_in_at, checked_in_by, expires_at",
     )
     .eq("token" as never, token)
     .maybeSingle();
   if (error || !data) return null;
-  type RowWithJoin = TokenRow & { event: EventJoinRow | EventJoinRow[] | null };
-  const row = data as unknown as RowWithJoin;
-  const event = Array.isArray(row.event) ? row.event[0] : row.event;
-  if (!event) return null;
+  const row = data as TokenRow;
+
+  // Segundo query: el evento del token (separado, no embebido).
+  const { data: evtData, error: evtErr } = await supabase
+    .from("events")
+    .select("id, title, starts_at, slug")
+    .eq("id", row.event_id)
+    .maybeSingle();
+  if (evtErr || !evtData) return null;
+  const event = evtData as EventJoinRow;
   return { row, event };
 }
 
