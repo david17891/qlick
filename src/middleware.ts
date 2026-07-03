@@ -92,15 +92,91 @@ function getAdminAllowlist(): Set<string> {
   );
 }
 
-export async function middleware(req: NextRequest) {
-  // Modo demo: no bloquear nada. El panel funciona con el flujo mock.
-  if (!isAuthEnabled()) {
-    return NextResponse.next();
-  }
+/**
+ * ¿Estamos en producción? Lo usamos como signal para hard-fail si el
+ * admin auth no está configurado.
+ */
+function isProduction(): boolean {
+  return process.env.NODE_ENV === "production";
+}
 
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const isApi = pathname.startsWith("/api/admin/");
   const isAdminPath = pathname.startsWith("/admin/") || isApi;
+
+  // FIX 2026-07-03 (sesion David, agujero de seguridad): si la auth admin
+  // no está habilitada Y estamos en PRODUCCIÓN, BLOQUEAMOS todas las
+  // rutas admin (en vez de dejarlas pasar). Esto evita que un deploy de
+  // Vercel sin ADMIN_EMAIL_ALLOWLIST configurado deje el panel admin
+  // público (bug encontrado: David podia entrar a qlick.digital/admin
+  // sin login porque ese deploy no tenia la env var seteada).
+  //
+  // En desarrollo local (NODE_ENV !== "production") seguimos con el
+  // comportamiento original (modo demo): el panel funciona con el flujo
+  // mock y el dev server no necesita Supabase configurado.
+  if (!isAuthEnabled()) {
+    if (isProduction() && isAdminPath) {
+      // eslint-disable-next-line no-console
+      console.error(
+        "[middleware] BLOQUEADO: ruta admin accedida sin ADMIN_EMAIL_ALLOWLIST configurada en produccion. Path:",
+        pathname,
+      );
+      if (isApi) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Admin auth no configurada en produccion. Setee ADMIN_EMAIL_ALLOWLIST en las env vars de Vercel.",
+          },
+          { status: 503 },
+        );
+      }
+      // Renderizar HTML explicativo (no redirigir a /admin/login porque
+      // el login tambien esta roto sin allowlist).
+      return new NextResponse(
+        `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin auth no configurada</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+           background: #fef2f2; color: #7f1d1d; min-height: 100vh;
+           display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .card { max-width: 560px; background: white; border: 1px solid #fecaca;
+            border-radius: 16px; padding: 32px; text-align: center;
+            box-shadow: 0 4px 12px -2px rgba(220, 38, 38, 0.1); }
+    h1 { font-size: 22px; font-weight: 700; margin-bottom: 12px; }
+    p { font-size: 14px; line-height: 1.6; color: #991b1b; margin-bottom: 16px; }
+    code { background: #fee2e2; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🔒 Admin no disponible</h1>
+    <p>
+      El panel admin no está accesible porque <code>ADMIN_EMAIL_ALLOWLIST</code>
+      no está configurada en este entorno de Vercel.
+    </p>
+    <p>
+      Seteala en <strong>Vercel → Project Settings → Environment Variables</strong>
+      con un CSV de emails admin (ej: <code>david17891@gmail.com</code>) y
+      redeploya.
+    </p>
+  </div>
+</body>
+</html>`,
+        {
+          status: 503,
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+        },
+      );
+    }
+    // Desarrollo: modo demo, deja pasar.
+    return NextResponse.next();
+  }
   const allowlist = getAdminAllowlist();
 
   // Construir el cliente Supabase sobre las cookies de la request.
