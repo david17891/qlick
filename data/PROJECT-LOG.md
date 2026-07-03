@@ -1071,3 +1071,46 @@ oreply@email.cloudflare.net ("Are you missing an email sent from david17891@gmai
 - **Costo:** ~30x por outbound (deepseek-reasoner vs deepseek-chat). En demo 10-50 msgs/d\u00eda = centavos. Para producci\u00f3n masiva re-evaluar.
 - **Pr\u00f3ximo paso:** David pushea  8f0bb8 desde su terminal, espera deploy de Vercel, y prueba con +1 555 201 7643 preguntando "Costo?" / "Lugar?" / "Cu\u00e1ndo?". Si la respuesta del LLM menciona "IA y Marketing B\u00e1sico", "6 de julio" o "Ciudad de M\u00e9xico" \u2192 Pro obedece, problema resuelto. Si sigue gen\u00e9rica \u2192 cableado, Opci\u00f3n B.
 - **Trigger:** Sesi\u00f3n 2026-07-02 12:55, despu\u00e9s de que David dijera "y sigue diciendo Por" al probar el bot.
+
+---
+
+## 2026-07-02 ~18:22 · PAUSA — Auditoría 2026-07-02 cerrada + Commit A (nombre configurable) mergeado, queda Commit B (staff scanner) y aplicar migration
+
+- **Pregunta:** David quería pulir el ciclo de vida del QR después del check-in self. Identificamos 3 areas:
+  1. Bot multi-evento: equires_name configurable por evento (eventos con certificado piden nombre).
+  2. Staff scanner con cámara para validar QRs en puerta.
+  3. Link temporal para que David lo mande al staff del evento (sin crear cuentas admin).
+
+- **Decisiones tomadas:**
+  - Commit A (nombre configurable) implementado: nueva columna events.requires_name, intent provide_name, state machine secuencial nombre → email con metadata.awaiting_field en lead_whatsapp_conversations, validaciones (no email, 2+ palabras, ≤100 chars), bloqueo de provide_email si el evento requiere nombre y el lead no lo dio.
+  - Commit B (staff scanner con link temporal) se planificó pero NO se implementó.
+  - Auditoría profunda previa: 4 P0 + 4 P1 + UX improvement del check-in page (mostrar QR + email) cerrados en 6 commits anteriores.
+
+- **Commits pusheados a origin/main en esta sesión:**
+  -  6032cc fix(bot): auditoría 2026-07-02 - 4 P0 + 4 P1 + test fix
+  - 7685a7b feat(cron): cleanup tokens QR viejos (job + endpoint + migration + script)
+  - 60dff6 chore(db): commit 2 migrations preexistentes untracked
+  - 33373d0 chore(db): script check-migrations.mjs para verificar 2 migrations preexistentes
+  - 2b92a5c feat(check-in): mostrar QR + "también te lo mandamos al correo" en página de éxito
+  - 10da15 chore(db): script get-latest-token.mjs para debugging
+  - 069b2d feat(bot): nombre configurable por evento (Commit A - state machine secuencial)
+  - 7a2acda chore(db): scripts dev para DDL + pg como devDependency
+
+- **Validación:** 203/203 tests OK, type-check OK, lint OK, build OK.
+
+- **Pendiente al cierre de la sesión:**
+  1. **🔴 Aplicar migration** 20260702180000_add_requires_name_to_events.sql en Supabase (ALTER TABLE events ADD COLUMN requires_name + UPDATE seed evento 1). David lo hace manual con 
+ode --env-file=.env.local scripts/exec-sql.mjs <file> (requiere SUPABASE_DB_PASSWORD en env) o via SQL editor del dashboard. Sin esto, el flow funciona con equiresName=false (fallback).
+  2. **🟠 Commit B: staff scanner con cámara + link temporal.** Plan completo archivado en conversación. Tabla nueva event_staff_links (token + TTL + revocación), endpoint admin para generar links, página pública /staff/[token]/check-in con html5-qrcode, endpoint /api/staff/check-in con auth via link. ~1.5-2h de implementación.
+  3. **🟢 Fix de la coma huérfana** en /check-in/[token] estado "already" (cuando ttendeeName="" muestra ", hiciste check-in..."). David dijo "lo podemos dejar para luego".
+
+- **Decisiones de scope (David las validó):**
+  - Nombre: opción 1 (estado secuencial, no formato Nombre | email ni LLM infiere).
+  - Scanner: html5-qrcode (200KB, battle-tested) sobre jsQR (DIY).
+  - Auth del scanner: link temporal con DB (audit + revocación) sobre auth admin (más fricción para David).
+
+- **Por qué pausamos ahora:** David dijo "para, vamos a hacer una pausa, documenta, guarda y luego continuamos justo aqui, yo puedo hacer luego la actualización, sin problema". Sesión llevaba ~4h, mucho context cargado, y la migration requiere intervención humana (password DB o pegado en SQL editor).
+
+- **Trigger:** Sesión 2026-07-02 ~17:00-18:22, después de que David planteara "¿qué es lo que debe hacer ese QR? ¿dónde se va a leer? ¿cómo se va a leer? y como eso va a retroalimentar mi funnel para que siga avanzando en el proceso de leads" → identificación de los 3 gaps → implementación de Commit A → pausa para que David aplique migration manualmente.
+
+- **Continuación esperada:** David aplica migration + Commit B (scanner con link temporal). El evento 1 (IA y Marketing: Primeros Pasos, 13 de julio) será el primer evento con certificado que valide end-to-end el flow secuencial nombre → email → QR.

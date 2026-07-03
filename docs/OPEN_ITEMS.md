@@ -1451,3 +1451,60 @@ post-limpieza de docs. Detalle completo en `EVENTS_FUNNEL_FOUNDATION.md`.
   `updateLeadCommercialStatus`.
 - 14 unit tests + 9 tests manuales.
 - Doc `FASE_2_CRM_FOUNDATION.md`.
+
+## N. Sesión 2026-07-02 ~18:22 (PAUSA) — Estado al retomar
+
+### 🔴 Pendiente inmediato (David aplica manual)
+
+- **N-1 · Aplicar migration 20260702180000_add_requires_name_to_events.sql** en Supabase. Comando:
+  `
+  $env:SUPABASE_DB_PASSWORD = "<db-password-del-dashboard>"
+  node --env-file=.env.local scripts/exec-sql.mjs supabase/migrations/20260702180000_add_requires_name_to_events.sql
+  `
+  O pegar el SQL en https://supabase.com/dashboard/project/ugpejblymtbwtsoiykyj/sql/new. Sin esto, el flow funciona con equiresName=false (fallback silencioso, sin pedir nombre).
+
+### 🟠 Planificados para próxima sesión
+
+- **N-2 · Commit B: Staff scanner con link temporal.** Tabla event_staff_links (id, event_id, token, created_by, created_at, expires_at, first_used_at, use_count, revoked_at). Endpoint admin POST /api/admin/eventos/[slug]/staff-links para generar (TTL default 60min). Página pública /staff/[token]/check-in con html5-qrcode + input manual respaldo. Endpoint POST /api/staff/check-in con validación de link + asignación de checked_in_by='staff_link:<id>'. Auto-expiración por check en cada request. Plan completo en conversación de la sesión 2026-07-02 ~17:55. ~1.5-2h de implementación.
+
+- **N-3 · Fix de la coma huérfana en /check-in/[token] estado "already".** Cuando ttendeeName="" (porque el fix de "Por confirmar" → "" funcionó), la pantalla muestra ", hiciste check-in a las 05:04 p.m..." sin nombre antes de la coma. David dijo "lo podemos dejar para luego" — aplazar hasta que se rediseñe el header del check-in page con el scanner (Commit B).
+
+### 🟢 Polish (nice-to-have, no urge)
+
+- **N-4 · ot-engine.ts pesa 1930 líneas.** Refactor: splittear en intents/welcome.ts, intents/register.ts, intents/provide-email.ts, intents/provide-name.ts, intents/question.ts. Pago de deuda pendiente. Mejora legibilidad y testeabilidad.
+
+- **N-5 · P1-5 de auditoría previa: rate limit en endpoints públicos.** /api/check-in/[token] (POST/GET) y /api/event-qr/[token] (GET) son públicos. Sin rate limit, alguien puede hacer 10K requests/seg. Mitigación: rate limit por IP via middleware (src/middleware.ts). Bajo riesgo ahora (DB aguanta), alto riesgo si crece tráfico.
+
+- **N-6 · P2-6 de auditoría previa: assert NEXT_PUBLIC_APP_URL al startup.** Hoy fallback a localhost:3000 si no está seteado en prod, lo que causaría URLs de email/QR rotas. Fix: assert en 
+ext.config.mjs o src/lib/env.ts.
+
+- **N-7 · P2-2 de auditoría previa: summary se actualiza solo si intent !== question.** En ot-engine.ts:1594, summary: intent === "question" ? lead.summary : .... Backwards. Fix: registrar el content del LLM cuando hay question.
+
+### ⚪ Bloqueado por input externo
+
+- (vacío — nada esperando a David más allá de N-1)
+
+---
+
+## M. Auditoría 2026-07-02 ~03:00 — Cerrada en sesión 17:00-18:22 (6 commits)
+
+| Audit ID | Severidad | Descripción corta | Estado |
+|---|---|---|---|
+| **P0-1** | 🔴 | PLACEHOLDER_NAMES duplicado en 4 sitios | ✅ Commit  6032cc |
+| **P0-2** | 🔴 | findEventInConversation solo mira outbound, ignora inbound | ✅ Commit  6032cc |
+| **P0-3** | 🔴 | generateQrToken fallback DESC (más reciente) en vez de ASC (más próximo) | ✅ Commit  6032cc |
+| **P0-4** | 🔴 | loadConversationWindow(lead.phone ?? "") en vez de phoneNormalized | ✅ Commit  6032cc |
+| **P1-1** | 🟠 | Tokens viejos sin limpieza | ✅ Commit 7685a7b (cron diario) |
+| **P1-2** | 🟠 | Body de click truncado a 24 chars (sin buttonId en metadata) | ✅ Commit  6032cc |
+| **P1-3** | 🟠 | Update email + consent sin verificar error | ✅ Commit  6032cc |
+| **P1-4** | 🟠 | findEventInConversation silently fail en idx fuera de rango | ✅ Commit  6032cc |
+| **P2-1** | 🟢 | getActiveEvent() (env vars) usado en 4 sitios | ⚠️ Pospuesto (refactor = N-4) |
+| **P2-2** | 🟢 | Summary backwards (question vs !== question) | ⚠️ Pospuesto (N-7) |
+| **P2-3** | 🟢 | summarize_conversation s never | ⚠️ Pospuesto |
+| **P2-4** | 🟢 | bot-engine.ts 1930 líneas | ⚠️ Pospuesto (N-4) |
+| **P2-5** | 🟢 | Scripts SQL untracked | ✅ Commit 60dff6 |
+| **P2-6** | 🟢 | NEXT_PUBLIC_APP_URL sin assert | ⚠️ Pospuesto (N-6) |
+| **P2-7** | 🟢 | getActiveEvent() redefinido por call site | ⚠️ Pospuesto |
+| **P2-8** | 🟢 | EMAIL_RE permite emails inválidos tipo a@b.c | ⚠️ Pospuesto |
+| **P2-9** | 🟢 | Safety net puede cortar contenido legítimo | ⚠️ Pospuesto |
+| **N-extra: UX check-in** | 🟢 | Mostrar QR + "se mandó al correo" post-check-in | ✅ Commit 2b92a5c |
