@@ -37,7 +37,7 @@ export default function AdminEventoDetailError({
               </h1>
               <p className="text-ink-muted mt-3">
                 El evento puede no existir o Supabase puede estar caído.
-                Probá recargar o volvé a la lista de eventos.
+                Intenta recargar o vuelve a la lista de eventos.
               </p>
 
               {process.env.NODE_ENV !== "production" && error.message && (

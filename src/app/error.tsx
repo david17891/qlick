@@ -57,7 +57,7 @@ export default function RootError({
               </h1>
               <p className="text-ink-muted mt-3">
                 Capturamos un error no manejado. El equipo ya fue notificado
-                (en dev, mirá la consola). Probá recargar o volvé al inicio.
+                (en dev, mira la consola). Intenta recargar o vuelve al inicio.
               </p>
 
               {process.env.NODE_ENV !== "production" && error.message && (

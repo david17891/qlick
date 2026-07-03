@@ -31,6 +31,7 @@ import { buildDirectWhatsAppLink, buildLeadOutreachMessage } from "@/lib/contact
 import { calculateEventMetrics } from "@/lib/events/event-metrics";
 import { CampaignsTab } from "./_components/CampaignsTab";
 import { CheckInTab } from "./_components/CheckInTab";
+import { DeleteRowButton } from "./_components/DeleteRowButton";
 
 interface Props {
   params: { id: string };
@@ -657,28 +658,14 @@ export default async function AdminEventoDetailPage({
                           {formatDate(c.confirmedAt)}
                         </td>
                         <td className="px-5 py-3 text-right">
-                          <form
+                          <DeleteRowButton
                             action={deleteConfirmationAction.bind(null, null)}
-                            onSubmit={(e) => {
-                              if (
-                                !window.confirm(
-                                  `Eliminar a "${c.name}"? Esto borra tambien sus QR tokens asociados.`,
-                                )
-                              ) {
-                                e.preventDefault();
-                              }
-                            }}
-                          >
-                            <input type="hidden" name="confirmationId" value={c.id} />
-                            <input type="hidden" name="eventId" value={event.id} />
-                            <button
-                              type="submit"
-                              className="text-xs px-2 py-1 rounded bg-rose-100 text-rose-700 hover:bg-rose-200 transition"
-                              title="Eliminar este confirmado y sus QR tokens asociados"
-                            >
-                              Eliminar
-                            </button>
-                          </form>
+                            itemId={c.id}
+                            eventId={event.id}
+                            itemName={c.name}
+                            itemType="confirmado"
+                            cascadeNote="Esto borra también sus QR tokens asociados."
+                          />
                         </td>
                       </tr>
                     ))}
@@ -773,28 +760,13 @@ export default async function AdminEventoDetailPage({
                       )}
                     </td>
                     <td className="px-5 py-3 text-right">
-                      <form
+                      <DeleteRowButton
                         action={deleteAttendeeAction.bind(null, null)}
-                        onSubmit={(e) => {
-                          if (
-                            !window.confirm(
-                              `Eliminar asistente "${a.name ?? "—"}"?`,
-                            )
-                          ) {
-                            e.preventDefault();
-                          }
-                        }}
-                      >
-                        <input type="hidden" name="attendeeId" value={a.id} />
-                        <input type="hidden" name="eventId" value={event.id} />
-                        <button
-                          type="submit"
-                          className="text-xs px-2 py-1 rounded bg-rose-100 text-rose-700 hover:bg-rose-200 transition"
-                          title="Eliminar este asistente"
-                        >
-                          Eliminar
-                        </button>
-                      </form>
+                        itemId={a.id}
+                        eventId={event.id}
+                        itemName={a.name ?? "—"}
+                        itemType="asistente"
+                      />
                     </td>
                   </tr>
                 ))}
