@@ -157,6 +157,32 @@ function getActiveEvent(): {
   };
 }
 
+/**
+ * Set de nombres que consideramos placeholders del sistema (no nombres
+ * reales del lead). Cuando el lead tiene uno de estos en `name`, no lo
+ * usamos para construir saludos (`¡Hola Por!`, `¡Excelente Test!`) ni
+ * para pasárselo al LLM como leadName.
+ *
+ * FIX 2026-07-02 (auditoria): antes este Set estaba duplicado en 3 sitios
+ * de este archivo (welcome, interactive_event_inscribir, provide_email)
+ * con riesgo de drift silencioso. Ahora es una sola constante de módulo.
+ */
+const PLACEHOLDER_NAMES = new Set([
+  "por",
+  "por confirmar",
+  "confirmar",
+  "test",
+  "test number",
+  "(empty)"
+]);
+
+/** Helper: devuelve el firstName limpio (sin placeholders). */
+function cleanFirstName(rawName: string | null | undefined): string {
+  const name = (rawName ?? "").toLowerCase().trim();
+  if (PLACEHOLDER_NAMES.has(name)) return "";
+  return rawName?.trim() ?? "";
+}
+
 /** URL base pública (para QR check-in). Re-exportada desde ../utils. */
 
 /* ------------------------------------------------------------------ */
@@ -362,12 +388,17 @@ async function generateQrToken(
     evt = data as { id: string; ends_at: string | null } | null;
   }
   if (!evt) {
-    // Fallback: primer evento published (comportamiento historico).
+    // FIX P0-3 (auditoria 2026-07-02): fallback al evento MÁS PRÓXIMO
+    // cronológicamente (starts_at ASC), no el más reciente (que era
+    // lo que retornaba antes con ASCENDING: false). Cuando un lead se
+    // registra sin contexto, lo más razonable es enviarle el QR del
+    // próximo evento en el calendario, no del último que se publicó.
     const { data, error: evtErr } = await supabase
       .from("events")
       .select("id, ends_at")
       .eq("status", "published")
-      .order("starts_at", { ascending: false })
+      // P0-3: más próximo (ASC) en vez de más reciente (DESC).
+      .order("starts_at", { ascending: true })
       .limit(1)
       .maybeSingle();
     if (evtErr || !data) {
@@ -462,8 +493,11 @@ async function touchLead(
 
 /**
  * FIX 2026-07-02 (sesion David): bot multi-evento.
- * Identifica a cual evento publicado se refiere el lead, mirando los
- * ultimos outbound del bot en el `conversationWindow`.
+ * Identifica a cual evento publicado se refiere el lead, mirando:
+ *   1. PRIMERO el ultimo inbound del lead (mas fuerte: lo que pidio
+ *      explicitamente, ej. "quiero el de GDL").
+ *   2. Si no matchea, los ultimos 3 outbound del bot en el
+ *      `conversationWindow` (lo que el bot le ofrecio).
  *
  * Estrategia de matching (en orden, primer match gana):
  * 1. Slug textual (e.g. "ia-marketing-primeros-pasos")
@@ -472,9 +506,10 @@ async function touchLead(
  * 4. Location (palabras clave >3 chars)
  * 5. null si no se puede identificar
  *
- * Esto permite que cuando el lead da su email despues de una conversacion
- * sobre el evento 1, el QR se genere para el evento 1 (no el primero
- * publicado que es lo que hacia antes).
+ * FIX P0-2 (auditoria 2026-07-02): antes SOLO miraba outbound del bot.
+ * Si el lead escribia "quiero el de GDL" y luego daba su email, ese
+ * inbound con la pista explicita se ignoraba y caia al fallback del
+ * primer evento published. Ahora el inbound tiene prioridad.
  */
 /**
  * Funcion exportada solo para tests. Ver findEventInConversation abajo.
@@ -484,6 +519,82 @@ export function _findEventInConversationForTest(
   allEvents: ActiveEventContext[]
 ): ActiveEventContext | null {
   return findEventInConversation(conversationWindow, allEvents);
+}
+
+/**
+ * Helper interno: intenta matchear un texto contra los eventos
+ * disponibles. Usado tanto para inbound del lead como para outbound
+ * del bot. Misma jerarquia: slug > [N] > "el N-ésimo" > title > location.
+ */
+function matchTextToEvent(
+  text: string,
+  allEvents: ActiveEventContext[]
+): { event: ActiveEventContext; reason: string } | null {
+  const body = text.toLowerCase();
+
+  // 1) Indice del catalogo: [N] o "el primero/segundo/tercero".
+  const allIndices = [...body.matchAll(/\[(\d+)\]/g)];
+  if (allIndices.length === 1) {
+    const idx = parseInt(allIndices[0][1], 10) - 1;
+    if (idx >= 0 && idx < allEvents.length) {
+      return { event: allEvents[idx], reason: "index" };
+    }
+    // P1-4: idx fuera de rango. Antes silently fail; ahora warn.
+    debugLog("[whatsapp/bot] findEventInConversation: idx fuera de rango", {
+      idx,
+      totalEvents: allEvents.length
+    });
+    return null;
+  }
+  if (allIndices.length > 1) {
+    // Lista de eventos — no es una confirmacion. El caller decide.
+    return null;
+  }
+  const ordMatch = body.match(/el\s+(primero|segundo|tercero|cuarto|quinto)/);
+  if (ordMatch) {
+    let idx = 0;
+    if (ordMatch[0].includes("primero")) idx = 0;
+    else if (ordMatch[0].includes("segundo")) idx = 1;
+    else if (ordMatch[0].includes("tercero")) idx = 2;
+    else if (ordMatch[0].includes("cuarto")) idx = 3;
+    else if (ordMatch[0].includes("quinto")) idx = 4;
+    if (idx >= 0 && idx < allEvents.length) {
+      return { event: allEvents[idx], reason: "ordinal" };
+    }
+  }
+
+  // 2) Slug textual
+  for (const evt of allEvents) {
+    if (body.includes(evt.slug.toLowerCase())) {
+      return { event: evt, reason: "slug" };
+    }
+  }
+
+  // 3) Titulo del evento (palabras >3 chars)
+  for (const evt of allEvents) {
+    const titleWords = evt.title
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 3);
+    const matchCount = titleWords.filter((w) => body.includes(w)).length;
+    if (matchCount >= 1) {
+      return { event: evt, reason: `title(${matchCount})` };
+    }
+  }
+
+  // 4) Location (palabras >3 chars)
+  for (const evt of allEvents) {
+    const locWords = evt.location
+      .toLowerCase()
+      .split(/[\s,]+/)
+      .filter((w) => w.length > 3);
+    const matchCount = locWords.filter((w) => body.includes(w)).length;
+    if (matchCount >= 1) {
+      return { event: evt, reason: `location(${matchCount})` };
+    }
+  }
+
+  return null;
 }
 
 function findEventInConversation(
@@ -498,70 +609,40 @@ function findEventInConversation(
     return null;
   }
 
-  // Ultimos 3 outbound del bot (mas reciente primero).
+  // P0-2 (auditoria 2026-07-02): el ULTIMO INBOUND del lead tiene
+  // prioridad. Si el lead escribió "quiero el de GDL", ese texto
+  // es la fuente de verdad más fuerte.
+  const lastInbound = [...conversationWindow.messages]
+    .reverse()
+    .find((m) => m.direction === "inbound" && m.body);
+  if (lastInbound?.body) {
+    const matched = matchTextToEvent(lastInbound.body, allEvents);
+    if (matched) {
+      debugLog("[whatsapp/bot] findEventInConversation: match en inbound", {
+        reason: matched.reason,
+        slug: matched.event.slug
+      });
+      return matched.event;
+    }
+  }
+
+  // Ultimos 3 outbound del bot (mas reciente primero). Si el inbound
+  // no matchea (poco probable), cae a lo que el bot ofreció.
   const botMessages = conversationWindow.messages
     .filter((m) => m.direction === "outbound" && m.body)
     .slice(-3)
     .reverse();
 
   for (const msg of botMessages) {
-    const body = (msg.body ?? "").toLowerCase();
-
-    // 1) Indice del catalogo: [N] o "el primero/segundo/tercero".
-    // Va PRIMERO porque es la referencia mas explicita. Si el bot dijo
-    // "[2] Ads en Meta", queremos matchear [2], no por titulo.
-    //
-    // FIX 2026-07-02: si hay MULTIPLES [N] en el body, es una LISTA
-    // de eventos (no una confirmacion de registro), asi que devolvemos
-    // null para que el caller no se confunda. Si hay UN solo [N], ese
-    // es la referencia del registro. Si hay CERO [N], seguimos con
-    // los fallbacks (slug, title, location).
-    const allIndices = [...body.matchAll(/\[(\d+)\]/g)];
-    if (allIndices.length === 1) {
-      const idx = parseInt(allIndices[0][1], 10) - 1;
-      if (idx >= 0 && idx < allEvents.length) return allEvents[idx];
-    }
-    if (allIndices.length > 1) {
-      // Lista de eventos — no es una confirmacion. Dejamos que el
-      // LLM aclare con el lead.
-      continue;
-    }
-    const ordMatch = body.match(/el\s+(primero|segundo|tercero|cuarto|quinto)/);
-    if (ordMatch) {
-      let idx = 0;
-      if (ordMatch[0].includes("primero")) idx = 0;
-      else if (ordMatch[0].includes("segundo")) idx = 1;
-      else if (ordMatch[0].includes("tercero")) idx = 2;
-      else if (ordMatch[0].includes("cuarto")) idx = 3;
-      else if (ordMatch[0].includes("quinto")) idx = 4;
-      if (idx >= 0 && idx < allEvents.length) return allEvents[idx];
-    }
-
-    // 2) Slug textual
-    for (const evt of allEvents) {
-      if (body.includes(evt.slug.toLowerCase())) return evt;
-    }
-
-    // 3) Titulo del evento (palabras >3 chars)
-    for (const evt of allEvents) {
-      const titleWords = evt.title
-        .toLowerCase()
-        .split(/\s+/)
-        .filter((w) => w.length > 3);
-      const matchCount = titleWords.filter((w) => body.includes(w)).length;
-      // Si matchea 1 palabra del titulo, lo damos por bueno.
-      // Si matchea 2+, es muy seguro.
-      if (matchCount >= 1) return evt;
-    }
-
-    // 4) Location (palabras >3 chars)
-    for (const evt of allEvents) {
-      const locWords = evt.location
-        .toLowerCase()
-        .split(/[\s,]+/)
-        .filter((w) => w.length > 3);
-      const matchCount = locWords.filter((w) => body.includes(w)).length;
-      if (matchCount >= 1) return evt;
+    const matched = matchTextToEvent(msg.body ?? "", allEvents);
+    if (matched) {
+      // Si hay multiples [N] en el body (lista de eventos), matchTextToEvent
+      // retorna null — es lo que queremos, dejamos que el LLM aclare.
+      debugLog("[whatsapp/bot] findEventInConversation: match en outbound", {
+        reason: matched.reason,
+        slug: matched.event.slug
+      });
+      return matched.event;
     }
   }
 
@@ -773,19 +854,9 @@ async function buildResponsePlan(args: {
       const realActiveEvent = await loadActiveEventContext().catch(() => null);
       // FIX 2026-07-02: filtrar placeholders obvios en firstName. Si el
       // lead tiene name="Por" (data legacy del primer test) o vacio,
-      // no le llamamos por nombre.
-      const PLACEHOLDER_NAMES = new Set([
-        "por",
-        "por confirmar",
-        "confirmar",
-        "test",
-        "test number",
-        "(empty)"
-      ]);
-      const cleanFirstName = PLACEHOLDER_NAMES.has((firstName ?? "").toLowerCase().trim())
-        ? ""
-        : firstName ?? "";
-      const saludo = cleanFirstName ? `¡Hola ${cleanFirstName}!` : "¡Hola!";
+      // no le llamamos por nombre. Ver constante de módulo PLACEHOLDER_NAMES.
+      const clean = cleanFirstName(firstName);
+      const saludo = clean ? `¡Hola ${clean}!` : "¡Hola!";
       const eventLine = realActiveEvent && realActiveEvent.source === "db"
         ? `\n\nPróximo evento: ${realActiveEvent.title} (${realActiveEvent.humanStartsAt})`
         : "";
@@ -954,21 +1025,9 @@ async function buildResponsePlan(args: {
       const evtDate = evtReal?.humanStartsAt ?? evtFallback.date;
       // FIX 2026-07-02: filtrar firstName de placeholders (mismo set
       // que el welcome y el LLM context). El "Por" del lead legacy
-      // generaba "Excelente Por!".
-      const PLACEHOLDER_NAMES_INSCR = new Set([
-        "por",
-        "por confirmar",
-        "confirmar",
-        "test",
-        "test number",
-        "(empty)"
-      ]);
-      const cleanFirstName = PLACEHOLDER_NAMES_INSCR.has(
-        (firstName ?? "").toLowerCase().trim()
-      )
-        ? ""
-        : firstName ?? "";
-      const saludo = cleanFirstName ? `¡Excelente ${cleanFirstName}!` : "¡Excelente!";
+      // generaba "Excelente Por!". Ver constante de módulo PLACEHOLDER_NAMES.
+      const clean = cleanFirstName(firstName);
+      const saludo = clean ? `¡Excelente ${clean}!` : "¡Excelente!";
       const bodyText =
         `${saludo} Para inscribirte a "${evtName}" el ${evtDate}, ` +
         `mandame tu email por acá y te paso tu QR de entrada.`;
@@ -1097,23 +1156,12 @@ async function buildResponsePlan(args: {
       // a generateQrToken en processInboundMessage. Lo reflejamos aca.
       // FIX 2026-07-02 (sesion David): filtrar firstName de placeholders.
       // El "Por" del lead legacy causaba "Listo Por..." en este mensaje.
-      const PLACEHOLDER_NAMES_PE = new Set([
-        "por",
-        "por confirmar",
-        "confirmar",
-        "test",
-        "test number",
-        "(empty)"
-      ]);
-      const cleanFirstName = PLACEHOLDER_NAMES_PE.has(
-        (firstName ?? "").toLowerCase().trim()
-      )
-        ? ""
-        : firstName ?? "";
+      // Ver constante de módulo PLACEHOLDER_NAMES.
+      const clean = cleanFirstName(firstName);
       const eventLine = `\n\nTambien te enviamos el pase con el QR a tu correo. Es el link de check-in para que lo presentes el dia del evento.`;
       const bodyText = qrUrl
-        ? `Listo${cleanFirstName ? " " + cleanFirstName : ""}, te registramos para el evento. Tu pase (link de check-in): ${qrUrl}${eventLine}`
-        : `Listo${cleanFirstName ? " " + cleanFirstName : ""}, registramos tu email ${email}. Te esperamos el ${evt.date} en ${evt.location}.`;
+        ? `Listo${clean ? " " + clean : ""}, te registramos para el evento. Tu pase (link de check-in): ${qrUrl}${eventLine}`
+        : `Listo${clean ? " " + clean : ""}, registramos tu email ${email}. Te esperamos el ${evt.date} en ${evt.location}.`;
       return {
         kind: "text",
         body: bodyText,
@@ -1139,7 +1187,12 @@ async function buildResponsePlan(args: {
           loadAllActiveEvents().catch(() => [] as Awaited<
             ReturnType<typeof loadAllActiveEvents>
           >),
-          loadConversationWindow(lead.phone ?? "", 8).catch(() => undefined),
+          // FIX P0-4 (auditoria 2026-07-02): usar phoneNormalized en vez
+          // de lead.phone ?? "". El phoneNormalized viene del input de
+          // Meta y SIEMPRE está seteado, mientras que lead.phone puede
+          // ser null en el fallback (cuando Supabase está caído y
+          // findOrCreateLead devuelve un lead con id=null).
+          loadConversationWindow(phoneNormalized, 8).catch(() => undefined),
           loadManualContext("qlick-bot").catch(() => null)
         ]);
       // Aplicar overrides manuales al evento (fecha/lugar cambiados por operador).
@@ -1159,22 +1212,8 @@ async function buildResponsePlan(args: {
       // que pasamos al LLM. Si el lead tiene name="Por" (data legacy de
       // pruebas iniciales) o "test" / "Test Number", no se lo pasamos
       // al LLM. Asi el LLM no genera "Excelente Por!" o "Hola Por!".
-      // El placeholder "Por confirmar" lo genera bot-engine cuando el
-      // contact de Meta no trae nombre, pero ese caso ya retorna ""
-      // (ver createLeadFromWhatsApp). El bug es para leads YA en DB.
-      const LLM_PLACEHOLDER_NAMES = new Set([
-        "por",
-        "por confirmar",
-        "confirmar",
-        "test",
-        "test number",
-        "(empty)"
-      ]);
-      const cleanLeadName = LLM_PLACEHOLDER_NAMES.has(
-        (lead.name ?? "").toLowerCase().trim()
-      )
-        ? ""
-        : lead.name ?? "";
+      // Ver constante de módulo PLACEHOLDER_NAMES.
+      const cleanLeadName = cleanFirstName(lead.name);
       const result = await agent.run("suggest_reply", {
         profile,
         leadName: cleanLeadName,
@@ -1280,11 +1319,21 @@ export async function processInboundMessage(
   // Message (interactive, buttonTitle presente), usamos el titulo visible
   // como body para que el LLM tenga contexto de que evento eligio el
   // usuario. Sin esto, el LLM recibe body vacio y no sabe que responder.
+  //
+  // FIX P1-2 (auditoria 2026-07-02): el body guardado en
+  // `lead_whatsapp_conversations.body` sigue siendo el buttonTitle (humano,
+  // ej. "IA y Marketing: Pri..." truncado a 24 chars). PERO el slug
+  // completo del evento (buttonId, ej. "evt_info_ia-marketing-primeros-pasos")
+  // se guarda en metadata.buttonId para que el findEventInConversation
+  // y futuros analytics tengan la referencia EXACTA, no el titulo truncado.
   const body = (
     message.type === "interactive" && message.buttonTitle
       ? message.buttonTitle
       : message.text ?? ""
   ).trim();
+  // Capturamos el buttonId (que incluye el slug del evento) para usarlo
+  // en metadata. buttonId es opcional en IncomingWhatsAppMessage.
+  const buttonId = message.buttonId ?? null;
   // Timeout 5s para evitar que Supabase cuelgue la ejecución del bot.
   // Si no responde, caemos a modo demo (sin persistencia).
   const supabasePromise = getSupabase();
@@ -1364,9 +1413,13 @@ export async function processInboundMessage(
       message_type: message.type === "text" ? "text" : "interactive",
       body,
       whatsapp_message_id: message.messageId,
+      // FIX P1-2 (auditoria 2026-07-02): incluir buttonId en metadata.
+      // El body (buttonTitle) puede estar truncado a 24 chars (limite
+      // de Meta para list rows). El slug completo está en buttonId.
       metadata: {
         timestamp: message.timestamp,
-        contactName: message.contactName
+        contactName: message.contactName,
+        buttonId
       }
     });
   }
@@ -1434,8 +1487,11 @@ export async function processInboundMessage(
     // FIX 2026-07-02: cargar conversationWindow aca (no estaba en
     // processInboundMessage, solo en buildResponsePlan) para identificar
     // el evento del registro.
+    // FIX P0-4 (auditoria 2026-07-02): usar phoneNormalized (siempre
+    // seteado desde message.from) en vez de lead.phone ?? "" (que puede
+    // ser null en el fallback de Supabase caída).
     const convWindowForEvent = await loadConversationWindow(
-      lead.phone ?? "",
+      phoneNormalized,
       8
     ).catch(() => undefined);
     // Cargar todos los eventos publicados para identificar el correcto.
@@ -1445,10 +1501,21 @@ export async function processInboundMessage(
     registrationEventSlug = matchedEvent?.slug ?? null;
     registrationEventTitle = matchedEvent?.title ?? null;
 
-    await supabase
+    // FIX P1-3 (auditoria 2026-07-02): capturar error del update de lead.
+    // Si falla (FK, constraint, network), el email queda desactualizado
+    // y los siguientes pasos usan el email viejo. Loggeamos para debug
+    // pero seguimos el flow (no rompemos la conversación).
+    const { error: leadUpdateErr } = await supabase
       .from("leads")
       .update({ email, consent_to_contact: true })
       .eq("id", lead.id);
+    if (leadUpdateErr) {
+      errorLog("[whatsapp/bot] lead email/consent update falló", {
+        leadId: lead.id,
+        email,
+        code: (leadUpdateErr as { code?: string }).code,
+      });
+    }
     await persistConsent(supabase, {
       lead_id: lead.id,
       phone_normalized: phoneNormalized,

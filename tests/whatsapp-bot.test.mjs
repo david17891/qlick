@@ -485,15 +485,35 @@ test("findEventInConversation: sin eventos devuelve null", () => {
   assert.equal(result, null);
 });
 
-test("findEventInConversation: solo mensajes inbound (sin outbound) devuelve null", () => {
-  // makeWindow genera alternating, el primer msg es outbound. Si queremos
-  // solo inbound, hay que pasarlos invertidos o filtrar.
+test("findEventInConversation: solo mensajes inbound con keyword matchea por inbound (P0-2)", () => {
+  // FIX P0-2 (auditoria 2026-07-02): antes SOLO mirabamos outbound del
+  // bot. Ahora el inbound del lead tiene prioridad. Si el lead dice
+  // "Quiero el de CDMX", matcheamos el evento en CDMX por location,
+  // incluso si no hay outbound del bot.
   const win = {
     phoneNormalized: "+525555555555",
     messages: [
       {
         direction: "inbound",
         body: "Quiero el de CDMX",
+        timestamp: new Date().toISOString(),
+        messageType: "text"
+      }
+    ]
+  };
+  const result = _findEventInConversationForTest(win, FAKE_EVENTS);
+  assert.equal(result?.slug, "ia-marketing-primeros-pasos");
+});
+
+test("findEventInConversation: solo mensajes inbound sin keywords devuelve null", () => {
+  // FIX P0-2: si el inbound no tiene keywords de ningun evento (slug,
+  // title, location) y no hay outbound del bot, devolvemos null.
+  const win = {
+    phoneNormalized: "+525555555555",
+    messages: [
+      {
+        direction: "inbound",
+        body: "hola, todo bien?",
         timestamp: new Date().toISOString(),
         messageType: "text"
       }
