@@ -50,23 +50,27 @@ import { supabaseConfig, isValidSupabaseUrl } from "@/lib/supabase/config";
  */
 export const config = {
   matcher: [
-    // FIX 2026-07-03 v2 (sesion David, agujero de seguridad): probamos
-    // con ["/admin", "/admin/:path*"] y "/admin" exacto seguia sin
-    // matchear (Next.js emite meta-refresh client-side en lugar de 307).
+    // FIX 2026-07-03 v3 (sesion David, agujero de seguridad): probamos
+    // 3 variantes que NO compilaron en Next.js 14:
+    //   - "{/:path*}" → "Unexpected MODIFIER"
+    //   - "(?:/.*)?" → "Pattern cannot start with ?"
+    //   - ".*" wildcard → "invalid route source"
     //
-    // La causa: el matcher de Next.js 14 trata ":path*" como "uno o mas
-    // segmentos" (no "cero o mas"), entonces /admin/:path* requiere al
-    // menos un segmento. /admin sin trailing slash queda fuera.
+    // Volvemos a la unica sintaxis valida (strings + :path*) con dos
+    // patterns separados. PERO el diagnostic del runtime muestra que
+    // Next.js emite meta-refresh client-side en lugar de 307 cuando el
+    // middleware deja pasar la request al server component. La defensa
+    // real es la pagina /admin/page.tsx que llama requireAdmin().
     //
-    // Solucion: regex explícito que cubra /admin y /admin/... con un
-    // solo pattern. Validacion fina del pathname dentro del middleware
-    // (pathname.startsWith("/admin/") etc.) previene falsos positivos
-    // tipo /administradores.
-    "/admin{/:path*}",
-    "/api/admin{/:path*}",
-    "/dashboard{/:path*}",
-    "/aprender{/:path*}",
-    "/pagar{/:path*}",
+    // Validacion fina del pathname dentro del middleware
+    // (pathname.startsWith("/admin/") o === "/admin") previene falsos
+    // positivos.
+    "/admin",
+    "/admin/:path*",
+    "/api/admin/:path*",
+    "/dashboard/:path*",
+    "/aprender/:path*",
+    "/pagar/:path*",
   ],
 };
 
