@@ -40,7 +40,7 @@ const statusLabel: Record<PaymentStatus, string> = {
   refunded: "Reembolsado"
 };
 
-export function AdminView() {
+export function AdminView({ adminEmail }: { adminEmail?: string } = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   // Permite deep-link a un tab específico vía ?tab=crm (usado por
@@ -148,13 +148,38 @@ export function AdminView() {
     { id: "futuro", label: "Próximas integraciones", icon: "🚀" }
   ];
 
+  // FIX 2026-07-03 (sesion David, agujero de seguridad): si Supabase
+  // esta configurado (modo real) pero la pagina server-side NO nos paso
+  // adminEmail, es porque el middleware/bypass no se aplico y estamos
+  // renderizando el panel sin sesion real. Mostramos un error claro en
+  // vez de los mocks (que es lo que David veia).
+  if (isSupabaseConfigured() && !adminEmail) {
+    return (
+      <Container size="wide" className="py-20">
+        <Card className="p-8 text-center max-w-md mx-auto">
+          <div className="text-5xl mb-4">🔒</div>
+          <h1 className="text-xl font-bold text-ink mb-2">Sesion requerida</h1>
+          <p className="text-sm text-ink-muted mb-4">
+            El panel admin no esta disponible sin una sesion valida.
+            Redirigiendo al login...
+          </p>
+          <Button onClick={() => router.push("/admin/login")}>
+            Ir al login
+          </Button>
+        </Card>
+      </Container>
+    );
+  }
+
   return (
     <Container size="wide" className="py-10">
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
         <div>
           <p className="text-sm text-ink-muted">Panel administrativo</p>
-          <h1 className="text-3xl font-bold text-ink">Hola, {user?.name?.split(" ")[0] ?? "admin"}</h1>
+          <h1 className="text-3xl font-bold text-ink">
+            Hola, {adminEmail ? adminEmail.split("@")[0] : user?.name?.split(" ")[0] ?? "admin"}
+          </h1>
         </div>
         <Badge tone={user?.role === "admin" ? "brand" : "info"}>
           {(user?.role ?? "admin").toUpperCase()}

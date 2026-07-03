@@ -50,6 +50,10 @@ import { supabaseConfig, isValidSupabaseUrl } from "@/lib/supabase/config";
  */
 export const config = {
   matcher: [
+    // FIX 2026-07-03 (sesion David, agujero de seguridad): "/admin/:path*"
+    // no matchea "/admin" exacto (sin path despues). El admin home quedaba
+    // publico porque el matcher lo saltaba. Agregamos "/admin" explicito.
+    "/admin",
     "/admin/:path*",
     "/api/admin/:path*",
     "/dashboard/:path*",
