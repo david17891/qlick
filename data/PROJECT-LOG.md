@@ -1145,4 +1145,40 @@ ode --env-file=.env.local scripts/exec-sql.mjs <file> (requiere SUPABASE_DB_PASS
   - Commit B (staff scanner con link temporal) — sigue siendo el siguiente paso planeado.
   - Próxima sesión David: pushear `bb17daf` desde su terminal local, esperar deploy de Vercel, re-testear el flow completo end-to-end con el evento 1 (IA y Marketing, 13 de julio) para confirmar que "Si" ya no cae al fallback.
 
-- **Trigger:** Sesión 2026-07-02 ~23:17 (post-pausa), David aplicó migration, testeó el bot, mandó los 3 problemas en una sola pasada.
+- **Trigger:** Sesión 2026-07-02 ~23:17 (post-pausa), David aplicó migration, testeó el bot, mandó los 3 problemas en una sola pasada.---
+
+## 2026-07-02 ~23:53 · Bug critico loader + quitar "Hablar con humano" del bot
+
+- **Pregunta 1:** David testeo el flow despues del commit `bb17daf` y reporto que el bot seguia mandando el fallback "persona de Qlick" despues de que el usuario escribio "david martinez". Esperaba que el bot detectara awaiting_field='name' y pidiera el email.
+
+- **Diagnostico:** debug empirico contra la DB. Los mensajes SÍ se persistian correctamente (incluyendo `metadata.awaiting_field='name'` en el outbound). Pero el loader (`loadConversationWindow`) no los retornaba.
+
+- **Causa raiz:** el query PostgREST usaba `.or(\`phone_normalized.eq.+526532935492,leads.phone_normalized.eq.+526532935492\`)`. El `+` del telefono E.164 se interpreta como espacio en URL encoding, PostgREST falla el parse con `failed to parse logic tree` y devuelve **array vacio silenciosamente**. El bug era preexistente (estaba en el codigo del Commit A) pero NO se habia disparado en los tests unitarios porque `disableSupabase()` no llega al query real.
+
+- **Fix:** filtrar SOLO por `eq("phone_normalized", phoneNormalized)` (sin LEFT JOIN al leads). Cubre tanto mensajes con lead_id como pre-lead. Sacrifica el caso raro de un mismo phone con multiples leads (no aplica en produccion).
+
+- **Pregunta 2 (feedback David):** "quita el hablar por un humano por ahora, es la ultima funcion que quiero, quiero un bot que pueda resolver todo sin humanos, es un registro simple, si tiene un problema mas detallado, le pasamos el link de contancto y que mande un correo, pero ultimo caso".
+
+- **Cambios:**
+  - Removido boton "Hablar con humano" del welcome (3 botones → 2 botones)
+  - Removido boton "Hablar con humano" del `interactive_event_yes`
+  - Handler `interactive_talk_human`: ya NO notifica a David por email ni hace handoff a Supabase. Responde con canales de contacto (hola@qlick.marketing + https://qlick.digital/contacto) y pregunta si hay algo mas en lo que ayudar. El buttonId `talk_human` se mantiene por compat con mensajes viejos cacheados, pero su comportamiento es ahora "info de contacto", no handoff.
+  - Fallback messages cambiados en 2 lugares (bot-engine.ts:1459 inline + crm-data.ts:792 profile.fallbackMessage): "Una persona de Qlick te respondera..." → "Disculpá, no entendí bien tu mensaje. ¿Me lo podés reformular? Si necesitás atención personalizada escribinos a hola@qlick.marketing."
+
+- **Commit:** `ee62e21` pusheado a origin/main.
+
+- **Impacto esperado:**
+  - Bug 1: "david martinez" despues de pedir nombre ahora va a `intent=provide_name`, el handler pide el email, sigue el flow de QR.
+  - Bug 2: el bot ya no ofrece "Hablar con humano" como salida fácil. Si un lead llega con algo raro, el LLM responde o el fallback invita a reformular / mandar correo. David mantiene control porque los mensajes a hola@qlick.marketing le llegan a él.
+
+- **Validacion:** 203/203 tests OK, type-check OK, lint OK, build OK.
+
+- **Leccion aprendida:**
+  - El bug del `+` llevaba en el codigo desde el Commit A pero nadie lo detecto en tests. Patron a recordar: **PostgREST `.or()` con valores que tienen caracteres reservados (`+`, `%`, etc) falla silenciosamente**. Siempre probar queries con datos reales, no solo mocks. Esto es similar al bug `vercel env pull` que miente para vars sensitive — **el test unitario con mock no captura bugs del runtime real**.
+  - El user feedback "el bot no resuelve solo" es estructural. Cualquier cosa que sugiera handoff humano desde el bot principal debe removerse. El canal de contacto (correo) es suficiente como último recurso y mantiene a David en control sin requerir automatizacion compleja.
+
+- **Pendiente:**
+  - Verificar con David que el flow de inscripcion ahora funciona end-to-end (welcome → Ver eventos → click evento → inscribirme → nombre → email → QR).
+  - Despues: Commit B (staff scanner con link temporal).
+
+- **Trigger:** Sesion 2026-07-02 23:48, despues de que David pusheara el commit `bb17daf`, probara el flow en +52 653 293 5492 y reportara "esta fallando, quita el hablar por un humano por ahora...".
