@@ -604,6 +604,29 @@ function matchTextToEvent(
     }
   }
 
+  // FIX 2026-07-02 (sesion David, "register dispara QR equivocado"):
+  // David escribio "si el 2, me puedes inscribir..." y el bot genero
+  // el QR del evento equivocado (IA y Marketing en vez de Ads en Meta).
+  // El matchTextToEvent no matcheaba porque:
+  //   - No hay [2] en el body (escrito como "el 2" sin brackets)
+  //   - El ordinal "el segundo" no aparece (solo "el 2")
+  //   - El slug ni el titulo del evento 2 aparecen en "si el 2..."
+  //
+  // Fix: detectar NUMERO SUELTO o casi-suelto al inicio del body
+  // (ej. "si el 2", "el 2", "2,", "2 -", "2."). Si matchea un
+  // indice valido del catalogo, retornamos ese evento.
+  // Heuristica conservadora: el numero debe estar en los primeros
+  // 15 chars del body para evitar falsos positivos ("hay 2 eventos" no matchearia).
+  const numMatch = body
+    .slice(0, 15)
+    .match(/(?:^|el\s+|si\s+)(\d+)\b/);
+  if (numMatch) {
+    const idx = parseInt(numMatch[1], 10) - 1;
+    if (idx >= 0 && idx < allEvents.length) {
+      return { event: allEvents[idx], reason: "número en inicio" };
+    }
+  }
+
   // 2) Slug textual
   for (const evt of allEvents) {
     if (body.includes(evt.slug.toLowerCase())) {
@@ -940,7 +963,7 @@ async function buildResponsePlan(args: {
               type: "reply" as const,
               reply: {
                 id: "show_events",
-                title: "Ver eventos"
+                title: "Próximos eventos"
               }
             }
           ]
@@ -963,27 +986,78 @@ async function buildResponsePlan(args: {
       };
     }
     case "register": {
-      // List Message: lista navegable de eventos disponibles.
-      const evt = getActiveEvent();
+      // FIX 2026-07-02 (sesion David, "register hardcodea placeholder"):
+      // antes este caso listaba UN solo evento hardcoded desde
+      // `getActiveEvent()` (placeholder de env vars: "IA y Marketing
+      // Basico / 6 de julio / Ciudad de Mexico"). Resultado: cuando
+      // David decia "si el 2, inscribime" y el bot disparaba `register`,
+      // veia solo el placeholder, no los 3 eventos reales. Ademas, el
+      // `evt_<name>` row.id generado no matcheaba ningun case en
+      // processInboundMessage (cai'a a `question` y el LLM tomaba control).
+      //
+      // Fix: cargar TODOS los eventos publicados y armar un list
+      // message con uno por row. Usamos el slug real en row.id con el
+      // prefijo `evt_info_` para que processInboundMessage lo matchee
+      // correctamente con `interactive_event_yes` (despues mi handler
+      // carga el evento por slug via loadActiveEventContext).
+      const allEvents = await loadAllActiveEvents().catch(() => [] as ActiveEventContext[]);
+      if (allEvents.length === 0) {
+        // Fallback al placeholder si Supabase no responde (modo demo).
+        const evt = getActiveEvent();
+        const interactive = {
+          type: "list" as const,
+          body: {
+            text: `Tenemos estos eventos próximos. Elegí el que te interesa para más info:`
+          },
+          action: {
+            button: "Próximos eventos",
+            sections: [
+              {
+                title: "Próximos eventos",
+                rows: [
+                  {
+                    id: `evt_info_${evt.name.replace(/\s+/g, "_").toLowerCase().slice(0, 30)}`,
+                    title: evt.name.slice(0, 24),
+                    description: `${evt.date} · ${evt.location} · ${evt.duration}`.slice(0, 72)
+                  }
+                ]
+              }
+            ]
+          }
+        };
+        const bodyText = interactive.body.text;
+        return {
+          kind: "interactive",
+          body: bodyText,
+          interactive,
+          send: () =>
+            provider.send({
+              to: phoneNormalized,
+              body: bodyText,
+              interactive
+            })
+        };
+      }
+      const sections = [
+        {
+          title: "Próximos eventos",
+          rows: allEvents.slice(0, 10).map((evt) => ({
+            id: `evt_info_${evt.slug}`,
+            title: evt.title.slice(0, 24),
+            description: `${evt.humanStartsAt} · ${evt.location}`.slice(0, 72)
+          }))
+        }
+      ];
       const interactive = {
         type: "list" as const,
         body: {
-          text: `Tenemos estos eventos próximos. Elegí el que te interesa para más info:`
+          text: allEvents.length === 1
+            ? "Tenemos este evento próximo. Elegilo para más info:"
+            : `Tenemos ${allEvents.length} eventos próximos. Elegí el que te interesa para más info:`
         },
         action: {
-          button: "Ver eventos",
-          sections: [
-            {
-              title: "Próximos eventos",
-              rows: [
-                {
-                  id: `evt_${evt.name.replace(/\s+/g, "_").toLowerCase().slice(0, 30)}`,
-                  title: evt.name.slice(0, 24),
-                  description: `${evt.date} · ${evt.location} · ${evt.duration}`.slice(0, 72)
-                }
-              ]
-            }
-          ]
+          button: "Próximos eventos",
+          sections
         }
       };
       const bodyText = interactive.body.text;
