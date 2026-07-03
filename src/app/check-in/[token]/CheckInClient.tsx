@@ -36,8 +36,13 @@ interface Props {
   checkedInAt: string | null;
   /** URL publica del QR (servida por /api/event-qr/[token].png). */
   qrImageUrl: string;
-  /** Email del asistente (para mencionar que tambien se lo mandamos ahi). */
-  attendeeEmail: string | null;
+  /**
+   * Email del asistente (para mencionar que tambien se lo mandamos ahi).
+   * Opcional: el endpoint publico `/api/check-in/[token]` ya NO devuelve
+   * este campo por privacidad (FIX 2026-07-03, sesion David). Si llega
+   * undefined, no se renderiza el bloque "Tambien te lo mandamos a...".
+   */
+  attendeeEmail?: string | null;
 }
 
 type Status =

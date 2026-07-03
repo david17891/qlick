@@ -127,8 +127,20 @@ export async function GET(
     ok: true,
     attendee: {
       name: found.row.attendee_name,
-      phone: found.row.attendee_phone_normalized,
-      email: found.row.attendee_email,
+      // FIX 2026-07-03 (sesion David, privacy): NO devolvemos phone ni
+      // email en el response publico del endpoint. Este endpoint es
+      // accesible sin auth (cualquiera con el token del QR puede
+      // pegarle). Bajo LFPDPPP (ley mexicana) email y telefono son
+      // datos personales — no deben quedar visibles a terceros sin
+      // consentimiento explicito del titular.
+      //
+      // Si el staff/admin los necesita, los consulta en el dashboard
+      // admin (`/admin/eventos/[id]`) que SI tiene auth.
+      //
+      // NOTA: los campos SIGUEN trayendose en la query SELECT porque
+      // los necesitamos internamente para matching (UPDATE
+      // event_attendees, UPDATE leads, audit log). Solo los
+      // omitimos del response JSON.
     },
     event: {
       id: found.event.id,

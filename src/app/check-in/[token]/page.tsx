@@ -169,7 +169,13 @@ export default async function CheckInPage({ params }: Props) {
       alreadyCheckedIn={info.alreadyCheckedIn}
       checkedInAt={info.checkedInAt}
       qrImageUrl={qrImageUrl}
-      attendeeEmail={info.attendee.email}
+      // FIX 2026-07-03 (sesion David, privacy): el endpoint publico
+      // /api/check-in/[token] ya NO devuelve email (ni phone) del
+      // asistente. Mantenemos el tipo `attendeeEmail?: string | null`
+      // en el componente por compat, pero no le pasamos el valor
+      // (queda undefined). El bot ya le dijo "te lo mandamos a tu
+      // correo" por WhatsApp — el usuario no necesita verlo
+      // duplicado aca.
     />
   );
 }
