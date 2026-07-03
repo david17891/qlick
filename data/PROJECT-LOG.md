@@ -1290,4 +1290,32 @@ ode --env-file=.env.local scripts/exec-sql.mjs <file> (requiere SUPABASE_DB_PASS
 
 - **Validacion:** 203/203 tests OK, type-check OK, lint OK, build OK.
 
-- **Trigger:** Sesion 2026-07-03 ~00:55, despues de que David reportara el bug del re-registro + la sugerencia de marcar eventos de pago.
+- **Trigger:** Sesion 2026-07-03 ~00:55, despues de que David reportara el bug del re-registro + la sugerencia de marcar eventos de pago.---
+
+## 2026-07-03 ~01:25 · Botones cortados + pago pendiente en re-registro + limpieza datos David
+
+- **Pregunta 1 (UX):** Botones del list "Proximos eventos" estaban truncados a 20 chars (limite de Meta button titles). Resultado: "IA y Marketing: Pri.", "Ads en Meta: Estrat.", "Funnels de Venta qu.". Feo.
+
+- **Fix 1:** cambiar el path de 1-3 eventos en `interactive_show_events` de BUTTON MESSAGE a LIST MESSAGE. List message permite title 24 chars + description 72 chars. Ahora muestra "IA y Marketing: Primeros Pasos" + fecha + lugar.
+
+- **Pregunta 2 (bug):** David se re-inscribió a Ads en Meta ($599 MXN) después de un registro previo. El bot le dijo "Ya estás registrado, te reenviamos tu QR al correo" y le mandó QR + email aunque el evento es de pago y el método de pago está por implementar.
+
+- **Causa raiz:** el bloque 4.7 (already_registered) reenviaba QR + email para TODOS los eventos sin chequear si era de pago. Bloque 4.8 (pending_payment) solo corría si NO estaba registrado (no existía el token). Resultado: si ya estabas registrado en evento de pago, el 4.7 te mandaba QR igual.
+
+- **Fix 2:** agregar check de precio al inicio del bloque 4.7. Si el evento es de pago, NO reenviamos QR ni email — mandamos "Ya estás registrado en [evento] ($599 MXN). Método de pago por implementar. Te avisamos cuando esté listo." Persiste `metadata.already_registered=true + pending_payment=true`.
+
+- **Operación:** David pidió borrar sus datos de registro (`+526532935492`) para probar el flow completo desde cero. Script `tmp-cleanup-david.mjs` con dry-run + execute:
+  - Encontró: 1 lead, 3 QR tokens, 258 conversations, 10 consents
+  - Borró: consents → conversations → tokens → leads (orden inverso de FKs)
+  - Verificado: 0 rows después del borrado
+
+- **Commits:**
+  - `df3088f` fix(bot): botones cortados + pago pendiente en already_registered
+  - (no commit) script de limpieza tirado a la papelera (era temporal)
+
+- **Impacto:**
+  - Botones del list ahora se ven completos.
+  - Re-inscripción a evento de pago → "pago pendiente" en vez de QR.
+  - David puede probar el flow completo desde cero: welcome → ver eventos → inscribirme (gratis) → pedir nombre → pedir email → QR nuevo. Y para evento de pago → "pendiente de pago" sin QR.
+
+- **Trigger:** Sesion 2026-07-03 ~01:20, despues de que David reportara los botones cortados y pidiera borrar sus datos.
