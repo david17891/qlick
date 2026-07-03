@@ -1368,4 +1368,30 @@ ode --env-file=.env.local scripts/exec-sql.mjs <file> (requiere SUPABASE_DB_PASS
 
 - **Validación:** type-check OK, lint OK, 203/203 tests OK, build OK.
 
-- **Trigger:** Sesión 2026-07-03 ~01:40, screenshot de la vista del QR pass sin hora.
+- **Trigger:** Sesión 2026-07-03 ~01:40, screenshot de la vista del QR pass sin hora.---
+
+## 2026-07-03 ~01:55 · Auditoría check-in + cerrar P1 antes de Commit B (scanner)
+
+- **Pregunta:** David pidió diseñar la validación de entrada con QR. Antes de meter mano, h Auditoría profunda del flujo end-to-end. Resultado: 3 huecos P1 bloqueantes para Commit B (scanner del staff), 5 nice-to-haves P2 sin urgencia.
+
+- **P1 cerrado (3 commits):**
+
+  1. `09b3cac` — Walk-in attendees se crean al vuelo. Antes solo UPDATE si encontraba match por phone; walk-ins quedaban sin fila en event_attendees y el funnel post-evento no los podía encontrar. Ahora INSERT al vuelo con source='check_in' y confirmation_id=null.
+
+  2. `33c3b72` — Email visibility (event_email_log + endpoint admin). Bot y cron solo loggeaban en consola; David testeó y "no me llegó correo". Migration nueva con tabla + índice parcial WHERE ok=false; helper `logEventEmail()` best-effort; call sites actualizados con `extra: { eventId, eventQrTokenId }`; endpoint admin `/api/admin/emails/recent` con filtros (eventId, sinceDays, failedOnly, limit).
+
+  3. `3252e40` — Audit attribution tipado. Antes strings hardcodeados ("self" / "self@qlick.checkin"). Ahora type `CheckInActor { kind: 'self' | 'staff' | 'system', email, displayName? }` y constante `PUBLIC_ACTOR`. Cuando llegue el scanner, su endpoint usará `kind: 'staff'` con actor real.
+
+- **P2 documentado** (no hacer): rate limiting en `/api/check-in/[token]`, validación de token en `/api/event-qr/[token].png`, unificación timezone formatTime/formatDate, transaccionalidad del POST check-in, appBaseUrl vs event-tokens divergencia.
+
+- **Commit B (scanner del staff):** David aprobó link temporal firmado (no login admin). Razones: el staff puede ser externo (institución que cede espacio), a veces va solo a la conferencia. Stack: html5-qrcode (zero-config, ~30KB MIT). Scope atado al evento (no universal). Tabla nueva `event_staff_links` con valid_from/valid_until/revoked_at. Estimación: ~1180 LOC, ~12h trabajo.
+
+- **Decisiones pendientes** (preguntar antes de Commit B):
+  1. Default de valid_until: A) starts_at+4h, B) ends_at+2h, C) configurable. Recomendación: C (default A).
+  2. staff_email/displayName: A) input al abrir scanner cacheado en localStorage, B) genérico "staff@event". Recomendación: A (mejor audit trail).
+  3. Múltiples scanners simultáneos: sí, no hay razón para no.
+  4. Rate limiting del scanner: no (si abusan, lo revocamos).
+
+- **Docs:** `docs/CHECK_IN_AUDIT_2026_07_03.md` — 5 secciones (estado actual, P1 cerrado, P2 documentado, plan Commit B con detalle, resumen ejecutivo).
+
+- **Trigger:** Sesión 2026-07-03 ~01:30, después de aplicar el fix de privacidad + hora del QR pass.
