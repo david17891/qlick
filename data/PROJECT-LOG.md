@@ -1217,4 +1217,48 @@ ode --env-file=.env.local scripts/exec-sql.mjs <file> (requiere SUPABASE_DB_PASS
 
 - **Validacion:** 203/203 tests OK, type-check OK, lint OK, build OK.
 
-- **Trigger:** Sesion 2026-07-03 ~00:00, David testeo el flow multi-evento despues de que el fix del loader (`ee62e21`) estuviera deployado, reporto 'me volvio a inscribir al otro evento, si me mando dos correos, pero al mismo'.
+- **Trigger:** Sesion 2026-07-03 ~00:00, David testeo el flow multi-evento despues de que el fix del loader (`ee62e21`) estuviera deployado, reporto 'me volvio a inscribir al otro evento, si me mando dos correos, pero al mismo'.---
+
+## 2026-07-03 ~00:35 · Bug "si señor" + bot recuerda registro + QR informativo + button confirmar
+
+- **Pregunta:** David testeo el flow multi-evento y reporto 4 cosas:
+
+  1. Bug: "si señor" tras "¿Te animas a apartar tu lugar?" cayo al handler `register` (lista de 3 eventos) en vez de inscribir directo a Ads en Meta.
+  2. Producto: el bot deberia recordar que el lead ya está registrado y ofrecer reenvio del QR en vez de duplicar.
+  3. Producto: separar **registro** (soft commitment "asistire") del **check-in** (asistencia fisica verificada por el staff con scanner). Hoy el QR tiene boton "Confirmar asistencia" que permite al lead auto-confirmarse. David quiere que esa pagina sea solo informativa.
+  4. UX: agregar button message "Si, inscribirme" cuando el LLM pregunta para limitar respuestas variantes ("si", "si señor", "claro que si", "ok", "dale", etc.).
+
+- **Decisiones tomadas (1 commit consolidado `c7224b3`):**
+
+  - **Fix 1: bug "si señor".** Causa: el check de `awaiting_confirmation_for_event_slug` estaba DESPUES de `detectIntent` en processInboundMessage. Cuando David escribio "si señor", `REGISTER_RE` (`/^(s[ií]|...)/i`) matcheaba primero y el intent quedaba en `register` antes de poder aplicar el override. Fix: mover el check ANTES de `detectIntent` + ampliar regex a `AFFIRMATIVE_EXTENDED_RE` que acepta "claro", "desde luego", "por supuesto", "porfa(vor)" ademas de "si/ok/dale/va". Tambien acepta "si señor", "si por favor".
+
+  - **Fix 2: bot recuerda registro.** Nuevo helper `findActiveQrTokenForLead(supabase, leadId, phoneNormalized, eventSlug)` que busca token VIGENTE existente en `event_qr_tokens` por (event_id, attendee_phone_normalized) con fallback a (event_id, lead_id). Si lo encuentra, NO genera uno nuevo — reenvia el email con el QR existente + responde por WhatsApp con el link directo. Bloque 4.7 en processInboundMessage, antes del flow normal de provide_email.
+
+  - **Fix 3: QR informativo.** Modelo de funnel David:
+    ```
+    Estados del lead:
+      1. interested  → quiere info
+      2. registered  → "asistire" (soft commitment)
+      3. checked_in  → asistencia fisica verificada (scanner del staff)
+    ```
+    Quitado el boton "Confirmar asistencia" del CheckInClient.tsx. El QR/link es SOLO informativo. Check-in real lo hace el staff con el scanner (Commit B ya planeado). Status "already" se mantiene para cuando el scanner del staff ya marco al lead.
+
+  - **Fix 4: button message "Si, inscribirme".** Cuando el LLM hace una pregunta cerrada de inscripcion (`detectClosedConfirmationQuestion.isClosed` + slug), el handler `question` ahora devuelve BUTTON MESSAGE en vez de solo texto. Botones: "Si, inscribirme" (buttonId `confirm_inscription_<slug>`) y "No, gracias" (cancel). Asi limitamos las respuestas del lead a 1 click. processInboundMessage detecta `confirm_inscription_<slug>` y dispara `interactive_event_inscribir` con el slug del boton.
+
+- **Commit:** `c7224b3` pusheado a origin/main.
+
+- **Impacto esperado:**
+
+  - Fix 1: "si señor" tras pregunta cerrada → inscribir directo (no lista de 3 eventos).
+  - Fix 2: lead pregunta por evento donde ya esta registrado → bot dice "Ya estas registrado, te reenviamos tu QR al correo" + no duplica tokens.
+  - Fix 3: `/check-in/[token]` solo muestra info, sin boton. Check-in real requiere scanner del staff (Commit B).
+  - Fix 4: LLM hace pregunta → button "Si, inscribirme" + "No, gracias" → 1 click vs. texto libre.
+
+- **Pendiente:**
+
+  - Validar end-to-end con David que el flow funciona.
+  - **Commit B (scanner del staff con link temporal):** ahora es prerequisito para cerrar el ciclo del funnel. Tabla `event_staff_links` (token + TTL + revocacion) + endpoint `/staff/[token]/check-in` con html5-qrcode + endpoint `/api/staff/check-in` con auth via link. Sin esto, el status `checked_in` no se puede setear (el QR es solo informativo).
+
+- **Validacion:** 203/203 tests OK, type-check OK, lint OK, build OK.
+
+- **Trigger:** Sesion 2026-07-03 ~00:25-00:35, despues de que David confirmara el plan y agregara la sugerencia del button "Si, inscribirme" para limitar las respuestas.
