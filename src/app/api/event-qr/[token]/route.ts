@@ -32,7 +32,17 @@ interface RouteParams {
 }
 
 export async function GET(_req: Request, { params }: RouteParams) {
-  const { token } = params;
+  // FIX 2026-07-03 (sesion David, "QR no encontrado"): el path es
+  // /api/event-qr/[token].png (con extension .png) pero Next.js dynamic
+  // routes reciben params.token INCLUYENDO el ".png". Antes se usaba
+  // tal cual para generar el QR, asi que el QR quedaba codificando
+  // ".../check-in/<token>.png" — un token que NO existe en DB. El scanner
+  // del staff lo leia, buscaba por ese string y no encontraba nada.
+  //
+  // Fix: sanitizar el param antes de usarlo. Aceptamos tanto
+  // /api/event-qr/<token> como /api/event-qr/<token>.png.
+  let token = params.token;
+  if (token.endsWith(".png")) token = token.slice(0, -4);
   if (!token || token.length < 16) {
     return new Response("Token invalido", { status: 400 });
   }
