@@ -1394,4 +1394,30 @@ ode --env-file=.env.local scripts/exec-sql.mjs <file> (requiere SUPABASE_DB_PASS
 
 - **Docs:** `docs/CHECK_IN_AUDIT_2026_07_03.md` — 5 secciones (estado actual, P1 cerrado, P2 documentado, plan Commit B con detalle, resumen ejecutivo).
 
-- **Trigger:** Sesión 2026-07-03 ~01:30, después de aplicar el fix de privacidad + hora del QR pass.
+- **Trigger:** Sesión 2026-07-03 ~01:30, después de aplicar el fix de privacidad + hora del QR pass.---
+
+## 2026-07-03 ~02:10 · Scanner del staff con link temporal firmado (Commit B)
+
+- **Trigger:** David pidio disenar la validacion de entrada con QR. Despues de doble auditoria profunda (sesion anterior), cerramos los 3 P1 + decidimos el approach del scanner: link temporal firmado (no login admin), html5-qrcode, scope atado al evento.
+
+- **Decisiones David (2026-07-03):**
+  - Default validUntil: C (configurable, default starts_at+4h)
+  - staff_email/displayName: A con fallback (input al abrir scanner, cacheado en localStorage; si no tipea, queda como 'staff externo')
+  - Multiples scanners simultaneos: si
+  - Rate limiting del scanner: no (si abusan, lo revocamos)
+
+- **Implementacion (commit 038f1c5):**
+  - Migration event_staff_links con valid_from/valid_until/label/revoked_at/use_count.
+  - Lib helpers: links.ts (generate/validate/revoke/list/use), qr-token.ts (extractQrToken puro, testeable).
+  - Endpoints publicos: GET /api/staff/scan/[token] (redirect 302/404/410 con HTML), POST /api/staff/check-in (cross-event 409, walk-in attendees, lead promotion, audit con actor=staff).
+  - Server actions: createStaffLinkAction, listStaffLinksAction, revokeStaffLinkAction (idempotente).
+  - UI admin: StaffLinksPanel con form crear/lista activa/lista revocados/copy URL/countdown 'Vence en Xh Ym' (useEffect tick 60s).
+  - Pagina scanner /admin/eventos/[id]/staff/scan: identidad cacheada en localStorage, camara html5-qrcode, fallback input manual, feedback inmediato, lista ultimos 5 check-ins.
+  - Tests: 21 nuevos (extract-qr-token 13 casos, staff-link-validity 8 casos edge inclusive/exclusive).
+  - Deps: html5-qrcode@2.3.8.
+
+- **Validacion:** type-check OK, lint OK, 224/224 tests OK (203 antes + 21 nuevos), build OK (4 rutas nuevas).
+
+- **Pendiente test E2E en Vercel:** David prueba el flujo real (genera link → manda a un conocido → esa persona abre y escanea un QR de prueba → aparece en admin).
+
+- **LOC real:** ~1945 (vs ~1180 estimado). Mas grande por la pagina del scanner (UI mobile-first completa con identidad, camara, fallback, feedback, lista).

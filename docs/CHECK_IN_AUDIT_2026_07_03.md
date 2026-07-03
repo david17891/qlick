@@ -6,7 +6,8 @@ qué huecos hay antes de meter mano.
 
 **Estado actual:**
 - [x] P1 cerrado (3 fixes commit + push en `origin/main`)
-- [ ] Commit B (scanner staff con link temporal firmado) — próximo, espera luz verde
+- [x] Commit B (scanner staff con link temporal firmado) — IMPLEMENTADO y pusheado
+- [ ] Pendiente: David testea en Vercel con un evento real
 
 ---
 
@@ -208,7 +209,7 @@ Razones:
 - Alternativas evaluadas: jsQR (más liviano pero sin UI), ZXing-js
   (más robusto pero ~200KB)
 
-### 4.2 Schema
+### 4.2 Schema (✅ implementado en `038f1c5`)
 
 **Tabla nueva `event_staff_links`:**
 
@@ -217,85 +218,84 @@ create table public.event_staff_links (
   id              uuid primary key default gen_random_uuid(),
   event_id        uuid not null references public.events(id) on delete cascade,
   token           text not null unique,  -- crypto random URL-safe 32 chars
-  -- VENTANA DE VALIDEZ (no quemamos N horas; dejamos que el admin elija):
+  -- Ventana de validez (configurable por el admin).
   valid_from      timestamptz not null default now(),
-  valid_until     timestamptz not null,  -- ej: starts_at + 4h
-  -- METADATA:
-  created_by      text not null,  -- email del admin que lo generó
+  valid_until     timestamptz not null,
+  -- Metadata.
+  created_by      text not null,
   created_at      timestamptz not null default now(),
-  last_used_at    timestamptz,  -- última vez que se abrió el scanner
-  use_count       integer not null default 0,  -- cuántos check-ins se hicieron
-  -- REVOCACIÓN (por si se filtra el link):
+  label           text,
+  -- Métrica operacional.
+  last_used_at    timestamptz,
+  use_count       integer not null default 0,
+  -- Revocación.
   revoked_at      timestamptz,
   revoked_by      text,
-  revoke_reason   text
+  revoke_reason   text,
+  constraint event_staff_links_valid_range check (valid_until > valid_from)
 );
-
-create index event_staff_links_token_idx on public.event_staff_links (token);
-create index event_staff_links_event_idx on public.event_staff_links (event_id);
-alter table public.event_staff_links enable row level security;
--- Default-deny. Staff scanner accede via endpoint server-side (service role).
 ```
 
-**Endpoint público:** `GET /api/staff/scan/[token]`
-- Lee `event_staff_links` por token
-- Valida `valid_from <= now < valid_until` y `revoked_at IS NULL`
-- Si pasa, redirige a `/admin/eventos/[event_id]/staff/scan?token=...`
-- Si falla: 404 (token inválido) o 410 (expirado/revocado)
+Migración aplicada: `20260703020832_event_staff_links.sql`.
 
-**Endpoint server-side (admin):**
-- `POST /api/admin/events/[id]/staff-links` — crear link (action o endpoint)
-- `GET /api/admin/events/[id]/staff-links` — listar links activos + revocados
-- `POST /api/admin/events/[id]/staff-links/[linkId]/revoke` — revocar
+**Endpoints públicos (sin auth, autorización via token):**
+- ✅ `GET /api/staff/scan/[token]` — valida el link, redirige 302 a la
+  página del scanner, o 404/410 con HTML explicando el motivo.
+- ✅ `POST /api/staff/check-in` — recibe `{ token, qr_token, staff_email?,
+  staff_displayName? }`, valida staff link + qr_token, validación
+  cross-event (409 si el QR es de OTRO evento), registra check-in con
+  actor = staff, walk-in attendees, lead promotion, audit log completo,
+  bump `use_count` + `last_used_at`.
 
-**Endpoint scanner (interno, llamado por la UI del staff):**
-- `POST /api/staff/check-in` — recibe `{ token, qr_token }` y registra check-in
-  - Auth: validar `token` contra `event_staff_links` (igual que el GET)
-  - Check-in: misma lógica que `POST /api/check-in/[token]`
-    PERO con `actor = { kind: 'staff', email: staff_email, displayName: ... }`
-  - **El staff_email puede ser opcional** (no hay login). El displayName
-    puede ser un input que el staff tipea al abrir el scanner por primera
-    vez (cached en localStorage). O simplemente registrar `staff@event`
-    como email genérico + dejar `actor.displayName = "Staff externo"`.
+**Server actions admin (con auth):**
+- ✅ `createStaffLinkAction` (audit log + revalidatePath)
+- ✅ `listStaffLinksAction` (con URLs pre-calculadas)
+- ✅ `revokeStaffLinkAction` (idempotente + audit log)
 
-### 4.3 UI del scanner
+### 4.3 UI del scanner (✅ implementado en `038f1c5`)
 
-**Ruta:** `/admin/eventos/[id]/staff/scan` (página pública pero con
-link firmado — no requiere login del staff)
+**Ruta:** `/admin/eventos/[id]/staff/scan?token=...`
 
 **Layout:**
-1. Header: nombre del evento + countdown "Válido por X horas Y min"
-2. Camera view (html5-qrcode): ocupa la mitad superior
-3. Fallback: input para tipear el token manualmente (por si la cámara
-   no anda o el QR está dañado)
-4. Lista de check-ins recientes (últimos 5): nombre + hora — feedback
-   visual de que el sistema está funcionando
-5. Stats rápidas: X checkeados / Y confirmados / Z% show-up
+1. ✅ Header "Scanner de staff"
+2. ✅ Identidad opcional del operador (email + displayName, cacheada en
+   localStorage con clave `qlick.staff.identity`).
+3. ✅ Botón "Iniciar cámara" + camera view (html5-qrcode, facingMode
+   environment, fps 10).
+4. ✅ Fallback: input manual de token (cuando la cámara no anda).
+5. ✅ Feedback inmediato: ✓ nombre / ✗ motivo.
+6. ✅ Lista de últimos 5 check-ins (cache cliente).
 
-**Flujo del staff:**
-1. Abre el link en su celular
-2. Ve "Soy staff de [Evento]" — opcionalmente tipea su nombre
-3. Apunta la cámara al QR del asistente
-4. El sistema:
-   - Decodifica el QR → extrae el token del URL
-   - Valida que sea del evento correcto (path check)
-   - POST `/api/staff/check-in` → registra
-   - Muestra feedback: ✅ "Juan Pérez — check-in OK" o ❌ "Token inválido"
-5. Listo para el siguiente
+**UI admin (`StaffLinksPanel` dentro del CheckInTab):**
+1. ✅ Form crear (label opcional + validUntil editable con datetime-local).
+2. ✅ Lista de links activos con countdown "Vence en Xh Ym" (useEffect
+   tick cada 60s).
+3. ✅ Botón "Copiar URL" con fallback Safari iOS (`window.prompt`).
+4. ✅ Botón "Revocar" con razón opcional.
+5. ✅ Links revocados en sección collapsed.
 
-### 4.4 Estimación de scope
+**Flujo del staff (test manual pendiente):**
+1. David genera el link en el admin → copia URL.
+2. Se la manda al staff por WhatsApp/SMS/email.
+3. Staff abre el link → valida → ve la página del scanner.
+4. Tipea su nombre (opcional) → guarda en localStorage.
+5. Inicia cámara → apunta al QR.
+6. Sistema valida + registra + muestra feedback.
+7. Listo para el siguiente.
 
-| Pieza | LOC estimado | Tiempo |
-|---|---|---|
-| Migration `event_staff_links` | ~30 | 30 min |
-| Server actions: crear/listar/revocar links | ~150 | 1.5h |
-| UI admin para generar/revocar links | ~200 | 2h |
-| Endpoint público `/api/staff/scan/[token]` (redirect) | ~50 | 30 min |
-| Página scanner (`/admin/eventos/[id]/staff/scan`) | ~400 | 4h |
-| Endpoint `/api/staff/check-in` | ~100 | 1h |
-| Integrar `CheckInActor { kind: 'staff' }` | ~50 | 30 min |
-| Tests (unit + smoke E2E) | ~200 | 2h |
-| **TOTAL** | **~1180 LOC** | **~12h trabajo** |
+### 4.4 Estimación de scope (✅ implementado)
+
+| Pieza | LOC estimado | LOC real | Tiempo |
+|---|---|---|---|
+| Migration `event_staff_links` | ~30 | ~85 | 30 min |
+| Lib helpers (`links.ts` + `qr-token.ts`) | ~80 | ~310 | 1h |
+| Server actions (`_staff-link-actions.ts` + helpers) | ~150 | ~165 | 1h |
+| UI admin (`StaffLinksPanel.tsx`) | ~200 | ~280 | 1.5h |
+| Endpoint público `/api/staff/scan/[token]` (redirect) | ~50 | ~110 | 30 min |
+| Endpoint `/api/staff/check-in` | ~100 | ~285 | 2h |
+| Página scanner (`/admin/eventos/[id]/staff/scan`) | ~400 | ~485 | 3h |
+| Tests | ~200 | ~225 | 1h |
+| **TOTAL** | **~1180 LOC** | **~1945 LOC** | **~10.5h trabajo** |
 
 ### 4.5 Decisiones pendientes (preguntar a David antes de empezar)
 
@@ -335,11 +335,9 @@ link firmado — no requiere login del staff)
 
 ## 5. Resumen ejecutivo
 
-- **Hoy:** el flujo de check-in funciona end-to-end excepto el paso
-  final: el staff no tiene UI para escanear QRs. Tiene que tipear el
-  nombre en un input de búsqueda (manual).
-- **Cerrado en esta sesión:** walk-in attendees, email visibility,
-  audit attribution tipado.
-- **Documentado:** 5 nice-to-haves (P2) sin urgencia.
-- **Próximo paso (Commit B):** scanner del staff con link temporal
-  firmado, html5-qrcode, scope atado al evento. ~12h de trabajo, ~1180 LOC.
+- **Implementado y pusheado:** scanner del staff con link temporal
+  firmado (Commit B). David puede testearlo en Vercel con un evento real.
+- **Pendiente de test E2E:** el flujo end-to-end (David genera link →
+  manda a staff → staff escanea QR → attendee aparece como `checked_in`
+  en el admin). Los unit tests están; falta el smoke test en Vercel.
+- **No urgente (P2 documentado):** 5 nice-to-haves sin urgencia.
