@@ -246,3 +246,110 @@ export async function createConfirmation(
     note: "Confirmación creada en Supabase.",
   };
 }
+
+// ─────────────────────────────────────────────────────────────
+// Delete
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Elimina una confirmación por ID.
+ *
+ * FIX 2026-07-03 (sesion David, admin cleanup): David necesitaba poder
+ * borrar confirmados que se le quedaron de pruebas del bot. Hasta
+ * ahora no habia forma de hacerlo desde el admin.
+ *
+ * Side effect: la tabla `event_attendees` puede tener filas con
+ * `confirmation_id` apuntando a este ID. La constraint es `ON DELETE
+ * SET NULL` (ver migracion 20260627000000_events_funnel.sql), asi que
+ * los attendees quedan con confirmation_id=NULL pero no se borran.
+ * David los puede limpiar manualmente desde la tab Asistentes.
+ *
+ * Tambien elimina los event_qr_tokens asociados a este phone del
+ * mismo evento (mismo (event_id, phone_normalized) — son los pases
+ * generados para este confirmado).
+ *
+ * Auditoria: action='event_confirmation_delete' con metadata.
+ */
+export async function deleteConfirmation(
+  confirmationId: string,
+): Promise<{ ok: boolean; note: string; deletedQrTokens?: number }> {
+  if (!isRealMode()) {
+    return { ok: false, note: "Supabase no configurado." };
+  }
+  if (!confirmationId) {
+    return { ok: false, note: "Falta confirmationId." };
+  }
+  const supabase = createSupabaseAdminClient();
+
+  // 1. Leer la confirmation para audit + cascade de qr_tokens.
+  const { data: conf } = await supabase
+    .from("event_confirmations")
+    .select("event_id, name, email, phone_normalized")
+    .eq("id", confirmationId)
+    .maybeSingle();
+
+  if (!conf) {
+    return { ok: false, note: "Confirmación no encontrada." };
+  }
+
+  // 2. Borrar event_qr_tokens del mismo (event_id, phone_normalized)
+  //    o (event_id, email) — son los pases generados para esta persona.
+  // Usamos `as never` porque event_qr_tokens no esta en el typegen
+  // todavia (migration 20260629223747_whatsapp_funnel_v1.sql lo agrega
+  // pero el cliente TS no se regenero). Mismo patron que el resto del
+  // codigo que accede a esa tabla.
+  let deletedQrTokens = 0;
+  if (conf.phone_normalized || conf.email) {
+    let qrQuery = supabase
+      .from("event_qr_tokens" as never)
+      .delete()
+      .eq("event_id" as never, conf.event_id);
+    if (conf.phone_normalized) {
+      qrQuery = qrQuery.eq(
+        "attendee_phone_normalized" as never,
+        conf.phone_normalized,
+      );
+    } else if (conf.email) {
+      qrQuery = qrQuery.eq("attendee_email" as never, conf.email);
+    }
+    const { data: deleted } = await qrQuery.select("id" as never);
+    deletedQrTokens = Array.isArray(deleted) ? deleted.length : 0;
+  }
+
+  // 3. Borrar la confirmation.
+  const { error } = await supabase
+    .from("event_confirmations")
+    .delete()
+    .eq("id", confirmationId);
+  if (error) {
+    return {
+      ok: false,
+      note: `No se pudo eliminar (${error.code ?? "?"}).`,
+    };
+  }
+
+  // 4. Audit log (best-effort).
+  try {
+    await supabase.from("admin_audit_log").insert({
+      actor_email: "admin@qlick",
+      action: "event_confirmation_delete",
+      entity_type: "event_confirmation",
+      entity_id: confirmationId,
+      metadata: {
+        eventId: conf.event_id,
+        attendeeName: conf.name,
+        attendeeEmail: conf.email,
+        attendeePhone: conf.phone_normalized,
+        deletedQrTokens,
+      },
+    });
+  } catch {
+    // ignore
+  }
+
+  return {
+    ok: true,
+    note: `Confirmación eliminada. ${deletedQrTokens} QR token(s) asociado(s) borrado(s).`,
+    deletedQrTokens,
+  };
+}

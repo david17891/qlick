@@ -350,6 +350,74 @@ export async function getUnmatchedConfirmations(
 }
 
 // ─────────────────────────────────────────────────────────────
+// Delete
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Elimina un attendee por ID.
+ *
+ * FIX 2026-07-03 (sesion David, admin cleanup): David necesitaba poder
+ * borrar attendees que se le quedaron de pruebas. Hasta ahora no habia
+ * forma de hacerlo desde el admin.
+ *
+ * Auditoria: registra `entity_type='event_attendee'` con metadata
+ * del attendee eliminado (nombre, phone, email) para trazabilidad.
+ *
+ * Devuelve `{ ok, note }`.
+ */
+export async function deleteAttendee(
+  attendeeId: string,
+): Promise<{ ok: boolean; note: string }> {
+  if (!isRealMode()) {
+    return { ok: false, note: "Supabase no configurado." };
+  }
+  if (!attendeeId) {
+    return { ok: false, note: "Falta attendeeId." };
+  }
+  const supabase = createSupabaseAdminClient();
+
+  // Primero leemos el attendee para el audit log (nombre + contacto).
+  const { data: row } = await supabase
+    .from("event_attendees")
+    .select("name, email, phone_normalized, event_id")
+    .eq("id", attendeeId)
+    .maybeSingle();
+
+  const { error } = await supabase
+    .from("event_attendees")
+    .delete()
+    .eq("id", attendeeId);
+  if (error) {
+    return {
+      ok: false,
+      note: `No se pudo eliminar (${error.code ?? "?"}).`,
+    };
+  }
+
+  // Audit log (best-effort — si falla, no rompemos el flow).
+  if (row) {
+    try {
+      await supabase.from("admin_audit_log").insert({
+        actor_email: "admin@qlick",
+        action: "event_attendee_delete",
+        entity_type: "event_attendee",
+        entity_id: attendeeId,
+        metadata: {
+          eventId: row.event_id,
+          attendeeName: row.name,
+          attendeeEmail: row.email,
+          attendeePhone: row.phone_normalized,
+        },
+      });
+    } catch {
+      // ignore
+    }
+  }
+
+  return { ok: true, note: "Asistente eliminado." };
+}
+
+// ─────────────────────────────────────────────────────────────
 // Re-export para importador CLI
 // ─────────────────────────────────────────────────────────────
 

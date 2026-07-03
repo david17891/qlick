@@ -9,12 +9,18 @@
  *
  * Validación: cada action valida su input y devuelve un objeto
  * con `ok: boolean` y `note` para feedback al usuario.
+ *
+ * FIX 2026-07-03 (sesion David, admin cleanup): se agregaron
+ * `deleteConfirmationAction` y `deleteAttendeeAction` para que David
+ * pueda limpiar registros de prueba desde el admin (antes no habia
+ * forma de hacerlo).
  */
 
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth/session";
 import { markSurveyReviewed } from "@/lib/events/surveys-server";
-import { linkAttendeeToConfirmation } from "@/lib/events/attendees-server";
+import { linkAttendeeToConfirmation, deleteAttendee } from "@/lib/events/attendees-server";
+import { deleteConfirmation } from "@/lib/events/confirmations-server";
 import { markWhatsAppStatus, isValidWhatsAppStatus, type WhatsAppStatus } from "@/lib/leads/whatsapp-status";
 import { generateEventQrTokens, getEventQrTokens } from "@/lib/qr/event-tokens";
 import { logAdminAction } from "@/lib/crm/audit-server";
@@ -415,4 +421,76 @@ export async function manualCheckInAction(
   });
   revalidatePath(`/admin/eventos/${eventId}`);
   return { ok: true, note: `Walk-in "${q}" registrado como asistente.` };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Delete (FIX 2026-07-03 admin cleanup)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Elimina un asistente (event_attendee) por ID.
+ *
+ * IMPORTANTE: NO elimina el event_qr_tokens asociado. El QR queda
+ * huérfano (sin attendee matcheado). Si querés limpiar tambien el
+ * QR, primero borra el confirmado asociado (que si cascade-elimina
+ * los QR del mismo phone).
+ *
+ * FormData: attendeeId, eventId.
+ */
+export async function deleteAttendeeAction(
+  _prev: FormState | null,
+  formData: FormData,
+): Promise<FormState> {
+  const admin = await requireAdmin();
+  if (!admin) {
+    return { ok: false, note: "No autenticado como admin." };
+  }
+  const attendeeId = formData.get("attendeeId");
+  const eventId = formData.get("eventId");
+  if (typeof attendeeId !== "string" || !attendeeId) {
+    return { ok: false, note: "Falta attendeeId." };
+  }
+  if (typeof eventId !== "string" || !eventId) {
+    return { ok: false, note: "Falta eventId." };
+  }
+  const result = await deleteAttendee(attendeeId);
+  if (result.ok) {
+    revalidatePath(`/admin/eventos/${eventId}`);
+  }
+  return result;
+}
+
+/**
+ * Elimina una confirmación (event_confirmation) por ID.
+ *
+ * Side effects:
+ *   - Cascade-delete: borra los event_qr_tokens del mismo
+ *     (event_id, phone_normalized) — son los pases generados para
+ *     esta persona via el bot de WhatsApp.
+ *   - NO borra event_attendees (la constraint es ON DELETE SET NULL
+ *     en confirmation_id, los asistentes quedan con confirmation_id=NULL).
+ *
+ * FormData: confirmationId, eventId.
+ */
+export async function deleteConfirmationAction(
+  _prev: FormState | null,
+  formData: FormData,
+): Promise<FormState> {
+  const admin = await requireAdmin();
+  if (!admin) {
+    return { ok: false, note: "No autenticado como admin." };
+  }
+  const confirmationId = formData.get("confirmationId");
+  const eventId = formData.get("eventId");
+  if (typeof confirmationId !== "string" || !confirmationId) {
+    return { ok: false, note: "Falta confirmationId." };
+  }
+  if (typeof eventId !== "string" || !eventId) {
+    return { ok: false, note: "Falta eventId." };
+  }
+  const result = await deleteConfirmation(confirmationId);
+  if (result.ok) {
+    revalidatePath(`/admin/eventos/${eventId}`);
+  }
+  return { ok: result.ok, note: result.note };
 }
