@@ -20,10 +20,14 @@ import { getAttendeesByEventId, getConfirmationsByEventId } from "@/lib/events";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { CheckInTabClient } from "./CheckInTabClient";
+import { StaffLinksPanel } from "./StaffLinksPanel";
+import { listStaffLinksAction } from "../_staff-link-actions";
 
 interface Props {
   eventId: string;
   eventTitle: string;
+  /** ISO. Para calcular el default validUntil del staff link (evento + 4h). */
+  eventStartsAt: string;
 }
 
 interface RecentCheckInRow {
@@ -61,15 +65,16 @@ async function fetchRecentCheckIns(
   }));
 }
 
-export async function CheckInTab({ eventId, eventTitle }: Props) {
+export async function CheckInTab({ eventId, eventTitle, eventStartsAt }: Props) {
   // Fetch en paralelo: tokens generados, confirmados, attendees reales
-  // (check-ins manuales + QR), y log reciente.
-  const [tokensResult, confirmations, attendees, recentCheckIns] =
+  // (check-ins manuales + QR), log reciente, y staff links (Commit B).
+  const [tokensResult, confirmations, attendees, recentCheckIns, staffLinksResult] =
     await Promise.all([
       getEventQrTokens(eventId),
       getConfirmationsByEventId(eventId),
       getAttendeesByEventId(eventId),
       fetchRecentCheckIns(eventId, 20),
+      listStaffLinksAction(eventId),
     ]);
 
   const totalQr = tokensResult.tokens.length;
@@ -129,6 +134,34 @@ export async function CheckInTab({ eventId, eventTitle }: Props) {
           phone: c.phoneNormalized ?? c.phoneRaw ?? null,
         }))}
       />
+
+      {/* Commit B (2026-07-03): panel para gestionar links de scanner
+          del staff. David genera links temporales que cualquier persona
+          puede usar en puerta sin login. */}
+      {(() => {
+        const defaultValidUntilMs =
+          new Date(eventStartsAt).getTime() + 4 * 60 * 60 * 1000;
+        const defaultValidUntilIso = new Date(
+          defaultValidUntilMs,
+        ).toISOString();
+        // Para datetime-local: YYYY-MM-DDTHH:mm (en local, no UTC).
+        const local = new Date(defaultValidUntilMs);
+        const pad = (n: number) => String(n).padStart(2, "0");
+        const defaultValidUntilLocal =
+          `${local.getFullYear()}-${pad(local.getMonth() + 1)}-${pad(local.getDate())}` +
+          `T${pad(local.getHours())}:${pad(local.getMinutes())}`;
+        return (
+          <div className="p-5 border-t border-brand-50">
+            <StaffLinksPanel
+              eventId={eventId}
+              eventTitle={eventTitle}
+              defaultValidUntilIso={defaultValidUntilIso}
+              defaultValidUntilLocal={defaultValidUntilLocal}
+              links={staffLinksResult.links ?? []}
+            />
+          </div>
+        );
+      })()}
 
       {/* Log reciente */}
       <div className="p-5 border-t border-brand-50">
