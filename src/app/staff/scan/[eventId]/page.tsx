@@ -275,9 +275,9 @@ export default function StaffScanPage() {
     setLastFeedback({ type: "ok", msg: "✓ Identidad guardada." });
   }
 
-  // ─────────────────────────────────────────────────────────
-  // Render
-  // ─────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────
+// Render
+// ─────────────────────────────────────────────────────────
 
   if (status.kind === "loading") {
     return <CenteredMessage icon="⏳" title="Validando link…" />;
@@ -387,6 +387,39 @@ export default function StaffScanPage() {
           </div>
         )}
 
+        {/* FIX 2026-07-03 v8 (sesion David): registro walk-in. Una
+            persona llega sin QR pass y el staff lo registra en puerta. */}
+        <details className="rounded-xl bg-white border border-violet-100 p-3">
+          <summary className="text-xs font-bold text-violet-700 cursor-pointer">
+            🚶 Registrar walk-in (sin QR)
+          </summary>
+          <WalkInForm
+            staffToken={staffToken}
+            identity={identity}
+            onSuccess={(result) => {
+              setLastFeedback({
+                type: "ok",
+                msg: `✓ ${result.attendee.name} registrado y check-in OK`,
+              });
+              setRecentCheckIns((prev) =>
+                [
+                  {
+                    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                    name: `${result.attendee.name} (walk-in)`,
+                    eventTitle: result.attendee.event_title,
+                    at: new Date().toISOString(),
+                    ok: true,
+                  },
+                  ...prev,
+                ].slice(0, 5),
+              );
+            }}
+            onError={(msg) =>
+              setLastFeedback({ type: "error", msg: `✗ ${msg}` })
+            }
+          />
+        </details>
+
         {/* Fallback: input manual de token */}
         <details className="rounded-xl bg-white border border-violet-100 p-3">
           <summary className="text-xs font-bold text-violet-700 cursor-pointer">
@@ -446,6 +479,171 @@ export default function StaffScanPage() {
         )}
       </div>
     </main>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// WalkInForm — formulario inline para registrar asistente sin QR.
+// POST a /api/staff/register-walk-in. Devuelve QR token + URL.
+// ─────────────────────────────────────────────────────────
+
+function WalkInForm({
+  staffToken,
+  identity,
+  onSuccess,
+  onError,
+}: {
+  staffToken: string;
+  identity: StaffIdentity;
+  onSuccess: (result: {
+    attendee: { name: string; event_title: string };
+    qrToken: string;
+    checkInUrl: string;
+    qrImageUrl: string;
+  }) => void;
+  onError: (msg: string) => void;
+}) {
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [lastResult, setLastResult] = useState<{
+    name: string;
+    qrToken: string;
+    checkInUrl: string;
+  } | null>(null);
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (loading) return;
+    setLoading(true);
+    try {
+      const res = await fetch("/api/staff/register-walk-in", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: staffToken,
+          name,
+          phone,
+          email: email || undefined,
+          staff_email: identity.email,
+          staff_displayName: identity.displayName,
+        }),
+      });
+      const data = (await res.json()) as {
+        ok: boolean;
+        attendee?: { name: string; event_title: string };
+        qrToken?: string;
+        checkInUrl?: string;
+        qrImageUrl?: string;
+        error?: string;
+      };
+      if (data.ok && data.attendee && data.qrToken && data.checkInUrl) {
+        onSuccess({
+          attendee: data.attendee,
+          qrToken: data.qrToken,
+          checkInUrl: data.checkInUrl,
+          qrImageUrl: data.qrImageUrl ?? "",
+        });
+        setLastResult({
+          name: data.attendee.name,
+          qrToken: data.qrToken,
+          checkInUrl: data.checkInUrl,
+        });
+        // Limpiar form para el siguiente walk-in.
+        setName("");
+        setPhone("");
+        setEmail("");
+      } else {
+        onError(data.error ?? "Error desconocido.");
+      }
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Error de red.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function onCopy(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      window.prompt("Copia:", text);
+    }
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="mt-3 space-y-2">
+      <div>
+        <label htmlFor="walkin-name" className="block text-xs text-ink-muted mb-1">
+          Nombre *
+        </label>
+        <input
+          id="walkin-name"
+          type="text"
+          required
+          minLength={2}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Ej. Juan Pérez"
+          className="w-full px-3 py-2 border border-violet-200 rounded-lg text-sm"
+        />
+      </div>
+      <div>
+        <label htmlFor="walkin-phone" className="block text-xs text-ink-muted mb-1">
+          Teléfono * <span className="text-[10px]">(10 dígitos, MX)</span>
+        </label>
+        <input
+          id="walkin-phone"
+          type="tel"
+          required
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="55 1234 5678"
+          className="w-full px-3 py-2 border border-violet-200 rounded-lg text-sm font-mono"
+        />
+      </div>
+      <div>
+        <label htmlFor="walkin-email" className="block text-xs text-ink-muted mb-1">
+          Email (opcional)
+        </label>
+        <input
+          id="walkin-email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="juan@ejemplo.com"
+          className="w-full px-3 py-2 border border-violet-200 rounded-lg text-sm"
+        />
+      </div>
+      <button
+        type="submit"
+        disabled={loading || !name.trim() || !phone.trim()}
+        className="w-full text-sm px-3 py-2.5 rounded-lg bg-emerald-500 text-white font-semibold hover:bg-emerald-600 disabled:opacity-50"
+      >
+        {loading ? "Registrando..." : "✓ Registrar y check-in"}
+      </button>
+
+      {lastResult && (
+        <div className="mt-3 rounded-lg bg-emerald-50 border border-emerald-200 p-3 space-y-2">
+          <p className="text-xs font-semibold text-emerald-800">
+            ✓ {lastResult.name} registrado. Si querés darle el QR:
+          </p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 text-xs bg-white px-2 py-1 rounded border border-emerald-100 break-all font-mono">
+              {lastResult.checkInUrl}
+            </code>
+            <button
+              type="button"
+              onClick={() => onCopy(lastResult.checkInUrl)}
+              className="text-xs px-2 py-1 rounded bg-emerald-500 text-white hover:bg-emerald-600 shrink-0"
+            >
+              Copiar
+            </button>
+          </div>
+        </div>
+      )}
+    </form>
   );
 }
 

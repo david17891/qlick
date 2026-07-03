@@ -933,7 +933,7 @@ export default async function AdminEventoDetailPage({
 
           {/* Sección 6: Check-in QR (Fase 6 Hito C) */}
           {activeTab === "checkin" && (
-            <CheckInTab eventId={event.id} eventTitle={event.title} eventStartsAt={event.startsAt} />
+            <CheckInTab eventId={event.id} eventTitle={event.title} eventSlug={event.slug} eventStartsAt={event.startsAt} />
           )}
 
           {/* Vista Pipeline (Kanban 5 columnas). Solo se renderiza cuando

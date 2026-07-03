@@ -21,11 +21,14 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { CheckInTabClient } from "./CheckInTabClient";
 import { StaffLinksPanel } from "./StaffLinksPanel";
+import { StaffQrTokenList } from "./StaffQrTokenList";
 import { listStaffLinksAction } from "../_staff-link-actions";
+import { appBaseUrl } from "@/lib/utils";
 
 interface Props {
   eventId: string;
   eventTitle: string;
+  eventSlug: string;
   /** ISO. Para calcular el default validUntil del staff link (evento + 4h). */
   eventStartsAt: string;
 }
@@ -65,7 +68,7 @@ async function fetchRecentCheckIns(
   }));
 }
 
-export async function CheckInTab({ eventId, eventTitle, eventStartsAt }: Props) {
+export async function CheckInTab({ eventId, eventTitle, eventSlug, eventStartsAt }: Props) {
   // Fetch en paralelo: tokens generados, confirmados, attendees reales
   // (check-ins manuales + QR), log reciente, y staff links (Commit B).
   const [tokensResult, confirmations, attendees, recentCheckIns, staffLinksResult] =
@@ -151,13 +154,21 @@ export async function CheckInTab({ eventId, eventTitle, eventStartsAt }: Props) 
           `${local.getFullYear()}-${pad(local.getMonth() + 1)}-${pad(local.getDate())}` +
           `T${pad(local.getHours())}:${pad(local.getMinutes())}`;
         return (
-          <div className="p-5 border-t border-brand-50">
+          <div className="p-5 border-t border-brand-50 space-y-4">
             <StaffLinksPanel
               eventId={eventId}
               eventTitle={eventTitle}
               defaultValidUntilIso={defaultValidUntilIso}
               defaultValidUntilLocal={defaultValidUntilLocal}
               links={staffLinksResult.links ?? []}
+            />
+            {/* FIX 2026-07-03 v8: lista de QRs ya generados para que
+                David pueda probar el scanner (copiar URL o token y
+                pegarlo en el input manual del scanner). */}
+            <StaffQrTokenList
+              eventId={eventId}
+              eventSlug={eventSlug}
+              appBaseUrl={appBaseUrl()}
             />
           </div>
         );
