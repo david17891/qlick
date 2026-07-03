@@ -26,7 +26,12 @@ import { Button } from "@/components/ui";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { isValidSupabaseUrl } from "@/lib/supabase/config";
 
-export function AdminGoogleLoginButton() {
+export function AdminGoogleLoginButton({
+  returnUrl,
+}: {
+  /** Path interno al que volver después del login (ej. "/admin/eventos/abc"). */
+  returnUrl?: string;
+}) {
   const [loading, setLoading] = useState(false);
   const [errorNote, setErrorNote] = useState<string | null>(null);
 
@@ -53,7 +58,13 @@ export function AdminGoogleLoginButton() {
       // Apuntamos al callback de admin (que valida allowlist), no al de
       // student. Si el email OAuth no está en ADMIN_EMAIL_ALLOWLIST, el
       // callback hace signOut() y redirige a /admin/login?error=forbidden.
-      const redirectTo = `${window.location.origin}/auth/callback`;
+      //
+      // FIX 2026-07-03 (sesion David): pasamos `returnUrl` para que el
+      // callback redirija al path original (no a /admin por default).
+      const params = new URLSearchParams();
+      if (returnUrl) params.set("returnUrl", returnUrl);
+      const qs = params.toString();
+      const redirectTo = `${window.location.origin}/auth/callback${qs ? `?${qs}` : ""}`;
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",

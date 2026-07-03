@@ -1,14 +1,19 @@
 /**
  * OAuth callback de admin.
  *
- * Supabase redirige aquí tras clic en el magic link. Intercambiamos el `code`
- * por sesión y validamos el allowlist.
+ * Supabase redirige aquí tras clic en el magic link o login con Google.
+ * Intercambiamos el `code` por sesión y validamos el allowlist.
  *
  * Seguridad:
  * - Si el email no está autorizado → cerramos sesión inmediatamente y mandamos
  *   a /admin/login?error=forbidden. Nadie con sesión pero sin permiso entra.
  * - Si el intercambio del code falla → /admin/login?error=callback.
- * - Si todo OK → /admin.
+ * - Si todo OK → /admin (o `returnUrl` si vino en la query, validada que
+ *   sea una ruta interna /admin/...).
+ *
+ * FIX 2026-07-03 (sesion David): antes siempre redirigiamos a /admin,
+ * tirando a la basura la URL donde el usuario queria ir. Ahora respetamos
+ * `returnUrl` (con sanitize: solo paths internos que empiecen con /admin/).
  *
  * Usamos el cliente server (respects RLS) que setea cookies en la respuesta.
  */
@@ -63,14 +68,27 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(loginUrl("callback"));
   }
 
-  // Respuesta final de éxito: redirect a /admin. Las cookies de sesión se
-  // setean SOBRE esta respuesta (la que efectivamente devolvemos). Si las
-  // seteáramos en un NextResponse.next() intermedio y devolviéramos un redirect
-  // distinto, las Set-Cookie se perderían y el middleware nos rebotaría al
-  // login sin sesión (bug que teníamos antes de este cambio).
+  // Respuesta final de éxito: redirect a /admin (o `returnUrl` si vino en
+  // la query y es válido). Las cookies de sesión se setean SOBRE esta
+  // respuesta (la que efectivamente devolvemos). Si las seteáramos en un
+  // NextResponse.next() intermedio y devolviéramos un redirect distinto,
+  // las Set-Cookie se perderían y el middleware nos rebotaría al login
+  // sin sesión (bug que teníamos antes de este cambio).
   const adminUrl = req.nextUrl.clone();
-  adminUrl.pathname = "/admin";
-  adminUrl.search = "";
+  // FIX 2026-07-03: respetar returnUrl si está presente y es seguro
+  // (path interno que empieza con /admin/, no URL absoluta).
+  const rawReturn = url.searchParams.get("returnUrl");
+  const safeReturn =
+    rawReturn &&
+    rawReturn.startsWith("/admin/") &&
+    !rawReturn.startsWith("//") &&
+    !rawReturn.includes("://")
+      ? rawReturn
+      : "/admin";
+  adminUrl.pathname = safeReturn.split("?")[0];
+  adminUrl.search = safeReturn.includes("?")
+    ? safeReturn.split("?")[1]
+    : "";
   const successRes = NextResponse.redirect(adminUrl);
 
   const supabase = createServerClient(

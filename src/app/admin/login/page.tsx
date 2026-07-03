@@ -40,6 +40,18 @@ function AdminLoginPageInner() {
   const callbackErr = params.get("error") === "callback";
   const serverError = forbidden || expired || callbackErr;
 
+  // FIX 2026-07-03 (sesion David): respetar returnUrl para volver a la
+  // URL original despues del login (no siempre a /admin). Sanitize: solo
+  // paths internos que empiecen con /admin/ (no URLs absolutas, no //).
+  const rawReturn = params.get("returnUrl");
+  const returnUrl =
+    rawReturn &&
+    rawReturn.startsWith("/admin/") &&
+    !rawReturn.startsWith("//") &&
+    !rawReturn.includes("://")
+      ? rawReturn
+      : undefined;
+
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [resultNote, setResultNote] = useState<string | null>(() => {
@@ -60,7 +72,7 @@ function AdminLoginPageInner() {
     setLoading(true);
     setResultNote(null);
     try {
-      const result = await requestMagicLinkClient(email);
+      const result = await requestMagicLinkClient(email, { returnUrl });
       setResultNote(result.note);
       setSent(result.sent);
     } catch {
@@ -97,7 +109,7 @@ function AdminLoginPageInner() {
                   El callback /auth/callback sigue validando ADMIN_EMAIL_ALLOWLIST,
                   así que solo funciona para emails autorizados (david17891@gmail.com). */}
               <div className="mb-5">
-                <AdminGoogleLoginButton />
+                <AdminGoogleLoginButton returnUrl={returnUrl} />
               </div>
 
               <div className="relative my-5">

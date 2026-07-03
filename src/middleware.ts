@@ -183,8 +183,14 @@ export async function middleware(req: NextRequest) {
           { status: 401 },
         );
       }
+      // FIX 2026-07-03 (sesion David): pasar returnUrl con la URL original
+      // para que despues del login vuelva a donde queria ir (no a /admin).
       const url = req.nextUrl.clone();
       url.pathname = "/admin/login";
+      // Solo paths internos que empiecen con /admin/ (no URLs absolutas).
+      if (pathname.startsWith("/admin/") && !pathname.startsWith("//")) {
+        url.searchParams.set("returnUrl", pathname + req.nextUrl.search);
+      }
       return NextResponse.redirect(url);
     }
 

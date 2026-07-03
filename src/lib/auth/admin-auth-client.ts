@@ -31,6 +31,7 @@ export interface RequestMagicLinkClientResult {
 
 export async function requestMagicLinkClient(
   email: string,
+  options: { returnUrl?: string | null } = {},
 ): Promise<RequestMagicLinkClientResult> {
   const normalized = email.trim().toLowerCase();
   if (!normalized || !/^[^@]+@[^@]+\.[^@]+$/.test(normalized)) {
@@ -54,7 +55,13 @@ export async function requestMagicLinkClient(
 
   const supabase = createBrowserClient(supabaseUrl, publishableKey);
 
-  const redirectTo = `${appUrl.replace(/\/$/, "")}/auth/callback`;
+  // FIX 2026-07-03 (sesion David): propagar returnUrl al callback para
+  // que el admin pueda volver a la URL original despues del login.
+  // El sanitize del returnUrl esta en el callback (/auth/callback).
+  const params = new URLSearchParams();
+  if (options.returnUrl) params.set("returnUrl", options.returnUrl);
+  const qs = params.toString();
+  const redirectTo = `${appUrl.replace(/\/$/, "")}/auth/callback${qs ? `?${qs}` : ""}`;
 
   const { error } = await supabase.auth.signInWithOtp({
     email: normalized,
