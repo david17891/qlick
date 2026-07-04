@@ -36,7 +36,7 @@
 | **G-7** | 🟠 | ✅ **CERRADO** | `NEXT_PUBLIC_APP_URL` actualizado a `https://www.qlick.digital` en Vercel production. Redeploy triggereado con push `7ae91f2`. |
 | **G-8** | 🟠 | ✅ **CERRADO** | 4 archivos de comentarios + columna `resend_message_id` → `brevo_message_id` (migration `20260702030000`). |
 | **G-9** | 🟠 | ✅ **CERRADO** | Botón "Ver cursos" eliminado en commit `0b97db5` (2026-07-02). Bot renombrado "Ver cursos" → "Ver eventos"; los 3 cursos hardcoded (Marketing Básico, IA para Marketing, Curso personalizado) ya no existen en `bot-engine.ts`. El LMS `courses` se consulta vía `getPublishedCourses()` (`src/lib/lms/courses-server.ts:105`) para `/cursos` y el dashboard. |
-| **G-10** | 🟠 | ⚠️ Pendiente | No hay UI admin para `handoff_requests`. |
+| **G-10** | 🟠 | ✅ **CERRADO** | Página `/admin/handoffs` (Server Component con `requireAdmin()`) + tabla paginada con filtros URL-driven (status, from/to). Acciones por fila: marcar contacted/closed con audit log (`entity_type='handoff_request'`, `action='handoff_status_change'`, snapshots before/after). Empty state contextual, loading skeleton. Commits `9998cb5` (feat) + 19 tests nuevos en `tests/handoffs-server.test.mjs`. |
 | **G-11** | 🟠 | ✅ **CERRADO** | `npx supabase db query --linked`: 27 tablas en `public` (STATUS.md decía 24). |
 | **G-12** | 🟠 | ⚠️ Pendiente | `findLeadByPhone` timeouts intermitentes. |
 | **G-13** | 🟡 | ✅ **CERRADO** | `whatsapp_status`, `last_contacted_at`, `phone_normalized` existen en `leads`. Defensive code del bot es ahora innecesario (cleanup post-6 jul). |
@@ -45,7 +45,7 @@
 | **G-16** | 🟡 | ⚠️ Pendiente | Inconsistencias código/docs. |
 | **G-17** | 🟢 | ⚠️ Pendiente | App fantasma Meta no se puede borrar. |
 
-**Resumen:** 11 gaps cerrados (G-1, G-2, G-3, G-4, G-6, G-7, G-8, G-9, G-11, G-13, G-14, G-15). 5 pendientes (2 críticos: ninguno; 2 altos: G-5, G-10, G-12; 2 medios/bajos: G-16, G-17). Sesión 2026-07-04 ~16:00.
+**Resumen:** 12 gaps cerrados (G-1, G-2, G-3, G-4, G-6, G-7, G-8, G-9, G-10, G-11, G-13, G-14, G-15). 4 pendientes (2 críticos: ninguno; 2 altos: G-5, G-12; 2 medios/bajos: G-16, G-17). Sesión 2026-07-04 ~16:30.
 
 ### 🔴 P0 — Bloquean producción o tienen riesgo legal/seguridad
 
@@ -146,6 +146,31 @@
   pidió hablar.
 - **Fix mínimo:** agregar `/admin/handoffs` con tabla paginada (1-2h).
 - **Severidad:** 🟠 Media — leads se pierden si David no mira DB.
+- **Estado al 2026-07-04 ~16:30:** ✅ **CERRADO** por commit `9998cb5`.
+  Implementación completa:
+    - Página `/admin/handoffs` (Server Component, `requireAdmin()` guard,
+      `dynamic = "force-dynamic"`).
+    - Tabla paginada con filtros URL-driven: status (pending/contacted/closed),
+      from/to (date range). PAGE_SIZE = 50.
+    - Acciones por fila: "Marcar contacted", "Marcar closed" → server action
+      `updateHandoffStatusAction` → `updateHandoffStatus` (race window cerrado
+      con UPDATE condicional sobre status; no-op si status ya coincide).
+    - Audit log por cada cambio (`admin_audit_log`, entity_type
+      `handoff_request`, action `handoff_status_change`, snapshots
+      before/after).
+    - Expandible: muestra la conversación completa (`last_messages` jsonb) +
+      notas admin si las hay. Link wa.me directo para abrir chat en WhatsApp.
+    - Cross-table UX: si el lead confirmó un evento, se muestra el título
+      y fecha (`event_confirmations` join por `phone_normalized`, best-effort).
+    - Empty state contextual (mensaje distinto con vs sin filtros aplicados).
+    - Loading skeleton (`loading.tsx`).
+    - 19 tests nuevos en `tests/handoffs-server.test.mjs` (cubren filtros,
+      validaciones, race window, no-op, defensive mapping, audit log).
+- **Refs:** `src/lib/crm/handoffs-server.ts:1-404`, `src/app/admin/handoffs/page.tsx:1-299`,
+  `src/app/admin/handoffs/HandoffsClient.tsx:1-351`,
+  `src/app/admin/handoffs/_actions.ts:1-59`,
+  `src/app/admin/handoffs/loading.tsx:1-82`,
+  `tests/handoffs-server.test.mjs:1-685`.
 
 #### G-11 · Discrepancia 24 vs 27 tablas en STATUS.md
 
