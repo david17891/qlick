@@ -21,6 +21,7 @@ export { openrouterAgentProvider } from "./openrouter-provider";
 export { deepseekAgentProvider } from "./deepseek-provider";
 export * from "./guardrails";
 export * from "./agent-prompts";
+export * from "./per-phone-rate-limit";
 export {
   loadActiveEventContext,
   loadAllActiveEvents,

@@ -53,7 +53,8 @@ import {
   loadLeadProfile,
   incrementMessageCount,
   regenerateSummary,
-  SUMMARY_EVERY
+  SUMMARY_EVERY,
+  recordAndCheckRateLimit
 } from "../ai";
 import { sendHumanHandoff } from "./human-handoff";
 import { getAIAgentProfile } from "../crm/agent-utils";
@@ -1570,24 +1571,55 @@ case "interactive_event_inscribir": {
       // al LLM. Asi el LLM no genera "Excelente Por!" o "Hola Por!".
       // Ver constante de módulo PLACEHOLDER_NAMES.
       const cleanLeadName = cleanFirstName(lead.name);
-      const result = await agent.run("suggest_reply", {
-        profile,
-        leadName: cleanLeadName,
-        courseOfInterest: lead.courseOfInterest,
-        lastIncomingMessage: body,
-        activeEvent,
-        eventsListBlock,
-        conversationWindow,
-        // Memoria larga persistente entre sesiones (lead_profile.summary).
-        leadProfile: args.leadProfile ?? undefined,
-        // El provider usa `conversationSummary` para inyectar info extra
-        // al prompt. Le pasamos el bloque manual para que el LLM lo vea.
-        conversationSummary: manualContext?.promptBlock || undefined,
-        // Flag confiable: el lead ya existía cuando llegó este mensaje (= hay
-        // historial de conversación). Más confiable que `conversationWindow`
-        // porque el loader puede fallar silenciosamente.
-        isFirstMessage: args.isFirstMessage
-      });
+      // FIX 2026-07-04 (auditoria nocturna): rate limit per phone para
+      // proteger saldo DeepSeek. Default 5 calls / 60s / phone. Sin este
+      // guard un spammer (o un lead testeando el bot agresivamente)
+      // podria agotar los ~$0.28 USD actuales en minutos. Si se excede,
+      // NO llamamos al LLM — devolvemos respuesta de fallback que explica
+      // que estamos con mucha demanda.
+      const rateLimit = recordAndCheckRateLimit(
+        `qlick-bot:${phoneNormalized ?? lead.id ?? "unknown"}`
+      );
+      let result: Awaited<ReturnType<typeof agent.run>>;
+      if (rateLimit.allowed) {
+        result = await agent.run("suggest_reply", {
+          profile,
+          leadName: cleanLeadName,
+          courseOfInterest: lead.courseOfInterest,
+          lastIncomingMessage: body,
+          activeEvent,
+          eventsListBlock,
+          conversationWindow,
+          // Memoria larga persistente entre sesiones (lead_profile.summary).
+          leadProfile: args.leadProfile ?? undefined,
+          // El provider usa `conversationSummary` para inyectar info extra
+          // al prompt. Le pasamos el bloque manual para que el LLM lo vea.
+          conversationSummary: manualContext?.promptBlock || undefined,
+          // Flag confiable: el lead ya existía cuando llegó este mensaje (= hay
+          // historial de conversación). Más confiable que `conversationWindow`
+          // porque el loader puede fallar silenciosamente.
+          isFirstMessage: args.isFirstMessage
+        });
+      } else {
+        errorLog("[whatsapp/bot] LLM rate-limited (skipped DeepSeek call)", {
+          leadId: lead.id,
+          phone: phoneNormalized,
+          callCount: rateLimit.callCount,
+          resetMs: rateLimit.resetMs
+        });
+        result = {
+          ok: true,
+          task: "suggest_reply",
+          provider: "mock",
+          content:
+            "Perdón, tengo mucha demanda ahora mismo. ¿Me das un momento y me volvés a escribir?",
+          confidence: 0,
+          needsReview: false,
+          demo: true,
+          note:
+            `Rate limited: ${rateLimit.callCount} calls in 60s window for phone; resetMs=${rateLimit.resetMs}. DeepSeek not called.`
+        };
+      }
       let content = result.content?.trim();
       if (!content) {
         content =
