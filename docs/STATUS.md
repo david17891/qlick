@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-02 ~03:10 (Sesión de fixes post-auditoría: 6 gaps cerrados (G-1, G-6, G-7, G-8, G-11, G-13). 1 bloqueado en David (G-2 webhook secret). 10 pendientes post-6 jul. 181/181 tests ✅, type-check ✅, lint ✅, build ✅.)
+> **Última actualización:** 2026-07-04 ~15:20 (Sesión auditoría nocturna + 3 fixes (rate limit, tests gates, webhook refactor). 292/292 tests ✅, type-check ✅, lint ✅, build ✅. WABA "Qlick Marketing Digital" operativa con número MX real. Evento 10 jul.)
 
 ---
 
@@ -18,14 +18,14 @@
 |---|---|
 | **Dominio** | `https://www.qlick.digital` (apex redirect www→apex en Vercel) |
 | **Dominio Vercel (auto)** | `qlick-three.vercel.app` (legacy, sigue activo) |
-| **Production deploy ID** | `dpl_qo40c17el…` |
-| **Production URL (auto)** | `qlick-qo40c17el-david17891-9351s-projects.vercel.app` |
-| **Branch** | `feat/fase-6-waba-setup` |
-| **Commit HEAD** | `7b0e271` (migración Resend → Brevo, push exitoso) |
-| **Commits ahead of origin** | 0 (5 commits pusheados en esta sesión) |
-| **Mensaje actual** | `feat(email): migrar a Brevo + tests (resend→brevo)` |
+| **Production deploy ID** | (más reciente de los fixes 2026-07-04) |
+| **Production URL (auto)** | `qlick-three.vercel.app` |
+| **Branch** | `main` |
+| **Commit HEAD** | `14f9c7c` (revert del cron hard-fail, 13 commits de fixes nocturnos previos mergeados) |
+| **Commits ahead of origin** | (depende del último push de David) |
+| **Mensaje actual** | `Revert "fix(security): cron endpoints hard-fail when CRON_SECRET missing in prod"` |
 | **Build status** | ✅ READY + PROMOTED + aliasAssigned |
-| **Build duration** | ~51s (con cache del deploy anterior) |
+| **Build duration** | ~50s (con cache del deploy anterior) |
 
 ### Dominio `qlick.digital` (sesión 2026-07-02)
 
@@ -337,7 +337,7 @@ funciona). Migración a WhatsApp queda para Fase 7+.
 
 - `npm run type-check` → ✅ 0 errores
 - `npm run lint` → ✅ 0 warnings/errors
-- `npm test` → ✅ 181/181 (eran 151, +30 nuevos: 7 qr-pass, 10 reminder, 10 cron, 3 typegen-related)
+- `npm test` → ✅ 292/292 (eran 246, +46 nuevos del bloque de auditoría 2026-07-04: 9 cron-auth + 13 webhook-auth + 24 rate-limit)
 - `npm run build` → ✅ Compila, ruta `/api/cron/event-reminders` registrada
 
 ### Pendiente David (pre-deploy)
@@ -362,3 +362,66 @@ Detalle completo en `docs/HANDOFF_v0.7.1_FASE_7A_REMINDERS.md`.
 - `docs/EVENTS_ADMIN_GUIDE.md` — manual operativo del panel admin de eventos
 - `docs/VERCEL_ENV_SETUP.md` — setup de env vars en Vercel
 - `docs/SUPABASE_CONNECTION_BOOTSTRAP.md` — setup inicial de Supabase
+
+---
+
+## 🔒 Auditoría nocturna 2026-07-04 (~05:00 → ~15:20)
+
+**Sesión:** David + Mavis. **Método:** revisión de endpoints públicos + búsqueda del patrón `if (envVar)` + fix del gate del cron (regression 14f9c7c) + 3 fixes de auditoría.
+
+### Env vars en Vercel production (verificadas 2026-07-04 ~05:30)
+
+| Key | Estado | Notas |
+|---|---|---|
+| `WHATSAPP_WEBHOOK_SECRET` | ✅ **SET** | Generado y subido por David (post-G-2). Webhook hard-fail seguro. |
+| `CRON_SECRET` | ✅ **SET** | Generado por David (recovery post-721279d). 64-char hex. Push del revert (14f9c7c) cachea el env var. |
+| `RESEND_*` | ❌ No seteado | Email usa Brevo (ver §"Email pipeline" arriba). |
+
+### WABA operativa para evento del 10 jul
+
+- **WABA:** "Qlick Marketing Digital" (ID `2083618983565979`)
+- **Phone:** `+52 16634306074` (chip Telcel eSIM Amigo)
+- **Display name:** "Qlick" (aprobado por Meta, requiere página Facebook "Qlick Marketing Digital" conectada al perfil)
+- **Token permanente** generado y subido a Vercel (reemplaza el temporal de 24h).
+- **Sandbox WABA (`1670509767335938`)** queda en desuso — el código apunta solo a la WABA nueva vía env vars.
+
+### Fusión de fixes nocturnos (13 commits antes del revert)
+
+- `95c7b64` — middleware headers (HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy)
+- `d757b0b` — outbound idempotency (skip bot en duplicate webhook)
+- `1d56fc7` — sin phone en errorLogs (PII compliance)
+- `11e8109` — message_type enum compliance
+- `78a5ad8` — per-phone rate limit (5 calls / 60s) para DeepSeek
+- `4d24e0e` — idempotent persistStatusUpdatesIfAny
+- `58dd460` — type error extend sendResult
+- `32da323` — phantom-row fix a inline flows
+- `548acb7` — skip outbound cuando Meta send falla
+- `6fe6654` — 8s AbortController timeout a Meta Cloud API
+- `74f6c1e` — persistConversation idempotent en webhook retries
+- `85211e6` — **webhook hard-fail en prod si WHATSAPP_WEBHOOK_SECRET missing** ✅ activo
+- `721279d` — **cron hard-fail** ⚠️ **REVERTIDO** (`14f9c7c`) por regresión en prod (crons caídos porque CRON_SECRET nunca estuvo seteado)
+
+### Fixes de auditoría 2026-07-04 ~15:00 (bloque actual)
+
+1. **Rate limit per-IP en `/api/submit-survey`** (commit pendiente):
+   - Nuevo módulo `src/lib/api/rate-limit.ts` (sliding window 5/60s + `getClientIp` que prioriza `x-forwarded-for`, fallback `x-real-ip`, default `unknown`).
+   - Aplicado al endpoint público. Devuelve 429 con `Retry-After` header.
+
+2. **Tests de los gates** (commit pendiente):
+   - `tests/cron-auth.test.mjs` (9 tests): cubre Bearer correcto/incorrecto/case-sensitivity/whitespace, CRON_SECRET vacío en dev = pasa.
+   - `tests/whatsapp-webhook-auth.test.mjs` (13 tests): cubre HMAC válido/inválido/hex inválido/longitud distinta, gate prod-sin-secret 503, dev-sin-secret skip, secret-set+firma 401.
+   - `tests/api-rate-limit.test.mjs` (17 tests): cubre 5 allowed/6to rejected, keys independientes, window custom, defaults, cleanup, getClientIp con xff/xri/sin headers.
+
+3. **Refactor del webhook route** (commit pendiente):
+   - Extraído `verifySignature` + el gate completo a `src/lib/whatsapp/webhooks/verify-signature.ts`.
+   - Webhook route ahora solo llama `checkWebhookSignatureGate(req, rawBody)` y traduce el resultado a `NextResponse`. Reducción de ~25 líneas en el route.
+   - Mismo patrón aplicado a los 2 cron endpoints (`/api/cron/cleanup-qr-tokens`, `/api/cron/event-reminders`) → extraído a `src/lib/api/cron-auth.ts`.
+
+### Pendientes David (post-bloque)
+
+- Push de los 3 commits del bloque de auditoría (~5 commits esperados: 2 nuevos módulos, 3 refactors + tests, 1 rate limit aplicado + commit de tests).
+- Verificar en producción post-deploy:
+  - `curl -X POST https://qlick-three.vercel.app/api/cron/event-reminders` → debe devolver 401 sin Bearer, 200 con Bearer de CRON_SECRET.
+  - `curl -X POST https://qlick-three.vercel.app/api/whatsapp/webhook -H "x-hub-signature-256: sha256=invalid"` → 401.
+  - 6 submits seguidos desde misma IP a `/api/submit-survey` → el 6to 429.
+- **Plantillas Meta (3 templates)** sigue siendo el único pendiente que no podemos trabajar directamente nosotros. Tiempo Meta: 24-48h aprobación. Recomendación: mandar ya.
