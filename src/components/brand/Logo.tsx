@@ -84,7 +84,11 @@ export function Logo({
 
   if (href) {
     return (
-      <Link href={href} aria-label={brandManifest.name} className="inline-flex">
+      <Link
+        href={href}
+        aria-label={brandManifest.name}
+        className="inline-flex items-center py-1"
+      >
         {img}
       </Link>
     );

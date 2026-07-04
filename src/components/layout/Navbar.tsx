@@ -140,7 +140,7 @@ export function Navbar({ initialIdentity }: { initialIdentity?: NavbarIdentity }
     <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-brand-100/70">
       <nav className="mx-auto max-w-7xl px-5 sm:px-8 h-16 flex items-center justify-between">
         <div className="flex items-center gap-10">
-          <Logo href="/" lockup="noTagline" height={34} />
+          <Logo href="/" lockup="noTagline" height={36} />
           <ul className="hidden md:flex items-center gap-1">
             {links.map((l) => {
               const active = pathname?.startsWith(l.href);
