@@ -221,14 +221,28 @@ export const metaCloudApiProvider: WhatsAppProvider = {
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
+        // FIX 2026-07-04 (auditoria nocturna David): AbortController con
+        // 8s timeout. Antes, si Meta Cloud API se colgaba, el fetch
+        // esperaba indefinidamente. Vercel corta a los 10s cortando la
+        // conexión a media-request — Meta queda en estado desconocido
+        // ("¿se envio o no?"). 8s nos deja margen sobre el timeout del
+        // webhook (Promise.race 8s en route.ts) y da tiempo al retry interno
+        // (250ms backoff + segundo intento dentro del budget).
+        const controller = new AbortController();
+        const timeoutHandle = setTimeout(
+          () => controller.abort(),
+          8_000
+        );
         const res = await fetch(url, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json"
           },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
+          signal: controller.signal
         });
+        clearTimeout(timeoutHandle);
 
         // Cloud API devuelve 200 incluso con error funcional en algunos
         // casos; leemos el JSON y respetamos el campo `error`.
@@ -274,10 +288,16 @@ const errMsg =
         await sleep(250);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+        // FIX 2026-07-04 (auditoria nocturna): distinguir AbortError por
+        // timeout (8s) de error de red real, para que el log y el note sean
+        // útiles en debugging cuando Meta Cloud API se cuelga.
+        const isAbort = err instanceof Error && err.name === "AbortError";
         lastResult = {
           ok: false,
           provider: "meta_cloud_api",
-          note: `Network error: ${msg}`
+          note: isAbort
+            ? `Meta Cloud API timeout (8s)${ctxSuffix}`
+            : `Network error: ${msg}${ctxSuffix}`
         };
         if (attempt === MAX_ATTEMPTS) return lastResult;
         await sleep(250);
