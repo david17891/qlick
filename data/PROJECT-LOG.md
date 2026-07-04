@@ -1552,3 +1552,54 @@ equiresName=false (fallback).
 - **Validación:** type-check OK, lint OK, 240/240 tests OK (233 antes + 7 nuevos), build OK.
 
 - **Trigger:** Sesión 2026-07-03 ~17:00, después de probar el scanner UI fix de `b957915` y notar que el attendee quedaba como walk-in en el admin.
+
+## 2026-07-03 ~17:30 · Mejoras durante la pausa de David
+
+Mientras David compra el numero MX real en Meta Business Manager (decidido en sesion anterior), aprovecho la pausa para cerrar 2 cosas autonomas:
+
+### 1. `feat(survey): ruta publica /encuesta/[token] + endpoint submit` (commit `21574c5`)
+
+Cierra G-4 (encuesta post-evento publica para walks-in). David podia solo importar encuestas via Excel admin antes; ahora cada asistente recibe un email con /encuesta/[token] y responde desde su celular.
+
+**Componentes:**
+- Migration `20260703180000_event_survey_tokens.sql`: tabla con token URL-safe (32 chars base64url, 192 bits entropia), expires_at = event.endsAt + 30 dias (vs los 6h del QR de check-in). UNIQUE(event_id, email) para regenerar idempotente. RLS default-deny.
+- Helper `src/lib/events/survey-tokens.ts` con 4 funciones: `generateSurveyTokensForEvent`, `lookupSurveyToken`, `markSurveyTokenUsed`, `markSurveyTokenSent`. Idempotente por (event_id, email).
+- Helper puro `src/lib/events/survey-token-expiry.ts` (separado para testearlo con node --test sin @ aliases).
+- Pagina `/encuesta/[token]/page.tsx` (server component): valida token, renderiza CenteredMessage si no existe/expirado/usado, o pasa a EncuestaClient.
+- EncuestaClient.tsx (client component): form mobile-first con rating 1-5, textareas, email + WhatsApp pre-rellenados, checkbox consentimiento LFPDPPP.
+- POST /api/submit-survey: valida token, crea survey con datos del token, marca token usado, corre `promoteSurveyToLead`, audit log.
+
+**Tests:** 6 nuevos. Total 246/246.
+
+**Bundle:** /encuesta/[token] 2.26kB. /api/submit-survey 0 B.
+
+**Pendiente follow-up** (fuera de scope esta sesion):
+- Server action `sendSurveysForEventAction` en admin panel para generar tokens + mandar emails.
+- Template email `survey-invite` con link al token.
+- Cron post-evento automatico.
+
+### 2. `refactor(logs): migrar console.error/warn a debugLog/errorLog` (commit `14b3b9d`)
+
+Aplica el patron de `src/lib/log.ts` (4faae1c):
+
+- console.error('...fallo') -> errorLog (siempre).
+- console.warn('...no configurado') -> debugLog (solo dev).
+- console.info('demo') -> debugLog.
+- console.warn('...NO recomendado en prod') -> infoLog (operacional).
+
+Archivos migrados: meta-cloud-api-provider, api/check-in, api/staff/check-in, api/whatsapp/webhook. Total 10 logs.
+
+Ya migrados antes: bot-engine.ts (~33), whatsapp/index.ts.
+
+Pendiente (~50 logs): leads-server.ts (~14), events-server.ts (~10), surveys/attendees/confirmations-server. Nombres de funcion legitimos (no debug), no urge migrar.
+
+### 3. `docs: actualizar fecha de conferencia 6 jul -> 10 jul`
+
+David corrigio 2026-07-03 ~17:18: NO es 6 de julio, probablemente 10 de julio. Doc `docs/FASE2_FUNNEL_AUTOMATIZADO.md` actualizado. Memoria de agente (qlick-funnel.md) tambien.
+
+### Otros pendientes (no tocados en esta sesion)
+
+- loadConversationWindow (G-3): bug que el bot repite saludo en cada turno. No lo arranque por tiempo, requiere debug profundo.
+- WHATSAPP_WEBHOOK_SECRET (G-2): pendiente que David sincronice Meta UI.
+- Comprar numero MX real: lo hace David en Meta Business Manager durante la pausa.
+- Cron event-reminders `0 8 * * *` solo 1/dia: decision arquitectonica pendiente.
