@@ -39,6 +39,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { logAdminAction } from "@/lib/crm/audit-server";
 import { resolveConfirmationIdForCheckIn } from "@/lib/events/check-in-match";
+import { debugLog, errorLog } from "@/lib/log";
 
 export const dynamic = "force-dynamic";
 
@@ -286,8 +287,7 @@ export async function POST(
       .limit(1);
     if (attErr) {
       // Loggear pero NO fallar el check-in — event_qr_tokens ya quedó.
-      // eslint-disable-next-line no-console
-      console.warn("[api/check-in] SELECT event_attendees falló", {
+      debugLog("[api/check-in] SELECT event_attendees falló", {
         code: attErr.code,
         eventId: found.row.event_id,
       });
@@ -311,8 +311,7 @@ export async function POST(
           .update(updatePayload as never)
           .eq("id", target.id);
         if (updErr) {
-          // eslint-disable-next-line no-console
-          console.warn("[api/check-in] UPDATE event_attendees falló", {
+          errorLog("[api/check-in] UPDATE event_attendees falló", {
             code: updErr.code,
             attendeeId: target.id,
           });
@@ -337,8 +336,7 @@ export async function POST(
           source: "check_in",
         });
       if (insErr && insErr.code !== "23505") {
-        // eslint-disable-next-line no-console
-        console.warn("[api/check-in] INSERT event_attendees (walk-in) falló", {
+        errorLog("[api/check-in] INSERT event_attendees (walk-in) falló", {
           code: insErr.code,
           eventId: found.row.event_id,
         });

@@ -39,6 +39,7 @@ import {
   type EventStaffLink,
 } from "@/lib/staff/links";
 import { resolveConfirmationIdForCheckIn } from "@/lib/events/check-in-match";
+import { debugLog, errorLog } from "@/lib/log";
 
 export const dynamic = "force-dynamic";
 
@@ -233,8 +234,7 @@ export async function POST(req: Request) {
       .eq("phone_normalized", phone)
       .limit(1);
     if (attErr) {
-      // eslint-disable-next-line no-console
-      console.warn("[api/staff/check-in] SELECT event_attendees falló", {
+      debugLog("[api/staff/check-in] SELECT event_attendees falló", {
         code: attErr.code,
       });
     } else if (attendeeRows && attendeeRows.length > 0) {
@@ -273,11 +273,10 @@ export async function POST(req: Request) {
           checked_in_by: staffActorEmail,
           source: "check_in",
         });
-      if (insErr && insErr.code !== "23505") {
-        // eslint-disable-next-line no-console
-        console.warn("[api/staff/check-in] INSERT walk-in falló", {
-          code: insErr.code,
-        });
+        if (insErr && insErr.code !== "23505") {
+          errorLog("[api/staff/check-in] INSERT walk-in falló", {
+            code: insErr.code,
+          });
       }
     }
   }

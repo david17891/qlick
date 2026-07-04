@@ -35,6 +35,7 @@ import type {
   WhatsAppSendResult,
   InteractiveMessage
 } from "./whatsapp-provider";
+import { debugLog, errorLog } from "@/lib/log";
 
 const GRAPH_API_BASE = "https://graph.facebook.com";
 
@@ -178,8 +179,7 @@ export const metaCloudApiProvider: WhatsAppProvider = {
     const apiVersion = readEnv("WHATSAPP_CLOUD_API_VERSION", "v20.0");
 
     if (!phoneNumberId || !token) {
-      // eslint-disable-next-line no-console
-      console.warn(
+      debugLog(
         "[whatsapp/meta] Cloud API no configurada (faltan WHATSAPP_CLOUD_PHONE_NUMBER_ID o WHATSAPP_CLOUD_ACCESS_TOKEN). Devolviendo demo.",
       );
       return {
@@ -248,7 +248,7 @@ const errMsg =
           const isRetryable = res.status >= 500;
 
         // eslint-disable-next-line no-console
-        console.error("[whatsapp/meta] Cloud API error", {
+        errorLog("[whatsapp/meta] Cloud API error", {
           status: res.status,
           errorCode: data.error?.code,
           errorSubcode: data.error?.error_subcode,

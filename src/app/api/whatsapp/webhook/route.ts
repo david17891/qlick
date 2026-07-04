@@ -36,7 +36,7 @@ import type {
 } from "../../../../lib/whatsapp/webhooks/types";
 import { normalizePhone } from "../../../../lib/crm/phone-utils";
 import { processInboundMessage } from "../../../../lib/whatsapp/bot-engine";
-import { debugLog, infoLog } from "../../../../lib/log";
+import { debugLog, errorLog, infoLog } from "../../../../lib/log";
 
 // Next.js: este endpoint siempre corre en Node runtime (necesita crypto).
 export const runtime = "nodejs";
@@ -103,9 +103,8 @@ export async function POST(req: NextRequest) {
       );
     }
   } else {
-    // eslint-disable-next-line no-console
-    console.warn(
-      "[whatsapp/webhook] WHATSAPP_WEBHOOK_SECRET no seteada; saltando validación de firma (NO recomendado en prod)."
+    infoLog(
+      "[whatsapp/webhook] WHATSAPP_WEBHOOK_SECRET no seteada; saltando validación de firma (NO recomendado en prod).",
     );
   }
 
@@ -227,8 +226,7 @@ async function persistInboundIfPossible(
   if (error) {
     // 23505 = unique_violation en whatsapp_message_id. Idempotente: OK.
     if ((error as { code?: string }).code !== "23505") {
-      // eslint-disable-next-line no-console
-      console.error("[whatsapp/webhook] persistInbound falló", {
+      errorLog("[whatsapp/webhook] persistInbound falló", {
         code: (error as { code?: string }).code
       });
     }
@@ -331,8 +329,7 @@ async function processInboundSafely(
       messageId: msg.messageId
     });
   } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error("[whatsapp/webhook] processInboundMessage lanzó excepción", {
+    errorLog("[whatsapp/webhook] processInboundMessage lanzó excepción", {
       messageId: msg.messageId,
       from: msg.from,
       error: err instanceof Error ? err.message : String(err)
