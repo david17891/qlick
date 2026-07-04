@@ -19,7 +19,7 @@
 *.pem
 Thumbs.db
 
-# Mavis (mavis) runtime state GÇö planes, scratchpads, hooks. Local al agente,
+# Mavis (mavis) runtime state Gï¿½ï¿½ planes, scratchpads, hooks. Local al agente,
 # nunca debe entrar al repo.
 .mavis/
 
@@ -62,45 +62,46 @@ next-env.d.ts
 # interpretadas (ej. `2>nul`). Lo ignoramos para que nunca entre al repo.
 /nul
 
-# artefactos ef+¡meros del MCP de Playwright (`mavis mcp call playwright ...`).
-# Cada sesi+¦n del MCP regenera configs y screenshots intermedios aqu+¡. No son
-# parte del producto GÇö son ruido local del agente.
+# artefactos ef+ï¿½meros del MCP de Playwright (`mavis mcp call playwright ...`).
+# Cada sesi+ï¿½n del MCP regenera configs y screenshots intermedios aqu+ï¿½. No son
+# parte del producto Gï¿½ï¿½ son ruido local del agente.
 .playwright-mcp/
 
 # scripts de debug/auth de admin (no son parte del producto, son herramientas
 # locales de desarrollo: kill-dev.ps1 mata listeners 3000/3001;
 # generate-magic-link.mjs genera magic links via Admin API para debug PKCE).
-# Si los necesitas en otro equipo, regenera desde el handoff hist+¦rico:
+# Si los necesitas en otro equipo, regenera desde el handoff hist+ï¿½rico:
 # docs/HANDOFF_v0.5.0_ADMIN_AUTH_LEADS.md
 /scripts/generate-magic-link.mjs
 /scripts/kill-dev.ps1
+/scripts/save-whatsapp-token.ps1
 
-# body temporal de PR (se borra despu+¬s de crear el PR con `gh pr create`)
+# body temporal de PR (se borra despu+ï¿½s de crear el PR con `gh pr create`)
 /PR_BODY.md
 
-# Logs ef+¡meros del dev server local (rotan entre sesiones del agente).
-# Patr+¦n cubre tanto los nombres viejos (`dev-server.log`,
+# Logs ef+ï¿½meros del dev server local (rotan entre sesiones del agente).
+# Patr+ï¿½n cubre tanto los nombres viejos (`dev-server.log`,
 # `dev-server.err.log`) como los nuevos (`dev-out.log`, `dev-err.log`).
 dev-*.log
 
 # ============================================================================
-# Pol+¡tica de datos GÇö NUNCA commitear datos personales / PII
+# Pol+ï¿½tica de datos Gï¿½ï¿½ NUNCA commitear datos personales / PII
 # ============================================================================
 # Los Excels de eventos/conferencias/clientes y cualquier archivo con datos
-# personales (nombres, tel+¬fonos, emails reales) NUNCA deben entrar al repo.
+# personales (nombres, tel+ï¿½fonos, emails reales) NUNCA deben entrar al repo.
 #
 # Patrones cubiertos:
-#  - /private-data/  GåÆ carpeta de uso local del socio/equipo, fuera del repo
-#  - /datos-privados/ GåÆ equivalente en espa+¦ol
-#  - lista_*.xlsx, asistencia_*.xlsx, clientes_*.xlsx, encuesta_*.xlsx GåÆ Excels t+¡picos
-#  - *.csv con datos de leads/eventos GåÆ si los hay, deben ir a private-data/
+#  - /private-data/  Gï¿½ï¿½ carpeta de uso local del socio/equipo, fuera del repo
+#  - /datos-privados/ Gï¿½ï¿½ equivalente en espa+ï¿½ol
+#  - lista_*.xlsx, asistencia_*.xlsx, clientes_*.xlsx, encuesta_*.xlsx Gï¿½ï¿½ Excels t+ï¿½picos
+#  - *.csv con datos de leads/eventos Gï¿½ï¿½ si los hay, deben ir a private-data/
 #
-# Los datos reales S+ì se usan para operaci+¦n local (Supabase, admin privado,
+# Los datos reales S+ï¿½ se usan para operaci+ï¿½n local (Supabase, admin privado,
 # demo privada del socio). NO se usan en: tests, fixtures, screenshots
-# p+¦blicas, logs, ni commits. Para tests usar siempre datos sint+¬ticos
-# (nombres falsos, tel+¬fonos +52XXXXXXXXXX, emails @example.com).
+# p+ï¿½blicas, logs, ni commits. Para tests usar siempre datos sint+ï¿½ticos
+# (nombres falsos, tel+ï¿½fonos +52XXXXXXXXXX, emails @example.com).
 #
-# Ver docs/ROADMAP.md GåÆ "Pol+¡tica de datos" para el detalle completo.
+# Ver docs/ROADMAP.md Gï¿½ï¿½ "Pol+ï¿½tica de datos" para el detalle completo.
 /private-data/
 /datos-privados/
 /lista_*.xlsx
@@ -113,7 +114,7 @@ dev-*.log
 # --- Artefactos de presentaciones a socios (no van al repo) ---
 /junta-socios-*
 # --- Scripts temporales generados por sesiones Mavis (cookies, evals, etc.) ---
-# Patr+¦n: archivos en scripts/ que arrancan con tmp- (cookies, login JSON, etc.).
+# Patr+ï¿½n: archivos en scripts/ que arrancan con tmp- (cookies, login JSON, etc.).
 /scripts/tmp-*.json
 
 # --- Backups de .env.local creados durante cleanup de encoding (Mojibake fix) ---

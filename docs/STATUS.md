@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-04 ~15:20 (Sesión auditoría nocturna + 3 fixes (rate limit, tests gates, webhook refactor). 292/292 tests ✅, type-check ✅, lint ✅, build ✅. WABA "Qlick Marketing Digital" operativa con número MX real. Evento 10 jul.)
+> **Última actualización:** 2026-07-04 ~16:05 (Integration gate cerrado tras 3 fixes en paralelo: G-9 cursos LMS real `0493c10`, G-12 findLeadByPhone timeout `79b32b0`, G-10 UI handoffs admin `9998cb5` + `1d83bfa`. 348/348 tests ✅, type-check ✅, lint ✅, build ✅. **6 ahead of origin**, listo para push.)
 
 ---
 
@@ -21,9 +21,9 @@
 | **Production deploy ID** | (más reciente de los fixes 2026-07-04) |
 | **Production URL (auto)** | `qlick-three.vercel.app` |
 | **Branch** | `main` |
-| **Commit HEAD** | `14f9c7c` (revert del cron hard-fail, 13 commits de fixes nocturnos previos mergeados) |
-| **Commits ahead of origin** | (depende del último push de David) |
-| **Mensaje actual** | `Revert "fix(security): cron endpoints hard-fail when CRON_SECRET missing in prod"` |
+| **Commit HEAD** | `b8b6f24` (`chore(log): track G-9/G-10/G-12/G-15/G-16 in PROJECT-LOG`) — punta de la rama, 6 commits ahead of origin después de cerrar el integration gate |
+| **Commits ahead of origin** | **6** (G-9 `0493c10`, G-12 `79b32b0`, G-10 `9998cb5` + `1d83bfa`, docs/status `c7479a4`, log `b8b6f24`) — listo para push de David |
+| **Mensaje actual** | `chore(log): track G-9/G-10/G-12/G-15/G-16 in PROJECT-LOG` |
 | **Build status** | ✅ READY + PROMOTED + aliasAssigned |
 | **Build duration** | ~50s (con cache del deploy anterior) |
 
@@ -81,6 +81,7 @@ de bugs viejos + redeploys). Limpiados vía `DELETE /v13/deployments/{id}`:
 | **Admin Resumen** | ✅ | Métricas globales reales (de Supabase) |
 | **Admin Eventos** | ✅ | Lista eventos (de Supabase) |
 | **Admin Masterclasses** | ✅ | Lista masterclasses (de Supabase) |
+| **Admin Handoffs** | ✅ (commit `9998cb5`) | Server Component con `requireAdmin()` + tabla paginada + filtros URL-driven (status/from/to) + acciones "Marcar contacted/closed" con audit log. Procesa los leads que cliquean "Hablar con humano" desde el bot WhatsApp. |
 | **Admin System/audit-log** | ✅ | Tabla paginada con filtros URL + búsqueda libre `q` |
 | **Import .xlsx** | ✅ | Wizard en `/admin/eventos/[id]/import` — sube, parsea con SheetJS, importa a Supabase |
 | **WhatsApp status tracking** | ✅ | Dropdown en drawer del lead → server action `markWhatsAppStatus` → `lead_whatsapp_log` |
@@ -157,7 +158,7 @@ engine sigue mostrando al admin antes de enviar al lead.
 - 5 mensajes probados: David → "Hola" → Bot responde bienvenida → David → "Si" → Bot info evento → David → email → Bot registra email + QR → David → "Costo?" → Bot LLM responde.
 
 **Persistencia real:** ✅ **FUNCIONA**
-- `findLeadByPhone` query optimizada usa `phone_normalized` (índice UNIQUE) → resuelve lead real en <100ms (a veces 5s timeout intermitente).
+- `findLeadByPhone` query optimizada usa `phone_normalized` (índice UNIQUE) → resuelve lead real en <100ms. **Timeout 3s + 1 retry aplicado (commit `79b32b0`)** para matar el 5s timeout intermitente que aparecía bajo carga.
 - `createLeadFromWhatsApp` crea lead real con UUID (sin `whatsapp_status` para evitar PGRST204).
 - `buildResponsePlan` usa `phoneNormalized` directo (no `lead.phone` que podía venir undefined).
 - Confirmado en logs: `findLeadByPhone result { found: true, timedOut: false }` → `lead.phone: '+526532935492'`.
