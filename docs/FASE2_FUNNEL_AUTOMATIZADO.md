@@ -1,7 +1,7 @@
 # Fase 2 — Funnel WhatsApp Automatizado
 
 > **Inicio:** 2026-06-30 (cierre Hito C, decisión de Fase 2)
-> **Horizonte:** MVP para conferencia 6 de julio de 2026 (5 días)
+> **Horizonte:** MVP para conferencia **10 de julio de 2026** (~7 días desde 2026-07-03). Fecha corregida por David el 2026-07-03 — el original era 6 jul.
 > **Estado:** listo para arrancar, esperando luz verde de David
 
 ## Deseo (verbalizado por David 2026-06-30 ~03:22)
