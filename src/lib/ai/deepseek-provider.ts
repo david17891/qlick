@@ -28,10 +28,12 @@
  *   Si falta DEEPSEEK_API_KEY, el provider devuelve `ok=false` + `demo: true`
  *   y `note` lo explica. Esto evita que el bot rompa en dev sin credenciales.
  *
- * IMPORTANTE — modo sugerencia:
- *   El bot sigue operando en MODO SUGERENCIA por defecto. Este provider se usa
- *   para generar respuestas a preguntas abiertas del lead, pero el output se
- *   filtra por `validateAgentReply` (ver `guardrails.ts`) antes de enviarse.
+ * IMPORTANTE — modo AUTOMÁTICO con guardrails:
+ *   El bot responde automáticamente por WhatsApp Cloud API. Este provider se usa
+ *   para generar respuestas a preguntas abiertas del lead (intent=question), y
+ *   el output se filtra por `validateAgentReply` (ver `src/lib/ai/guardrails.ts`)
+ *   antes de enviarse. Tambien hay un safety net en `src/lib/whatsapp/safety-net.ts`
+ *   que strippea saludos redundantes en mensajes no-iniciales.
  *
  * Ver docs/AI_AGENT_GUARDRAILS.md.
  */

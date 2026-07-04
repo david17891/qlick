@@ -21,10 +21,12 @@
  *   - "provide_email"  → email detectado (template confirmación + QR token).
  *   - "question"       → todo lo demás (LLM o fallback).
  *
- * IMPORTANTE — privacidad y modo sugerencia:
+ * IMPORTANTE — privacidad y modo AUTOMÁTICO con guardrails:
  *   - Cero PII en logs (solo flags, IDs, contadores).
  *   - El LLM se usa solo en intent=question; el output se filtra por
  *     `validateAgentReply` antes de enviarse.
+ *   - Safety net post-process en `src/lib/whatsapp/safety-net.ts` strippea
+ *     saludos redundantes en mensajes no-iniciales (verificado por tests).
  *   - El bot nunca comparte descuentos, gratis, confirmaciones de pago, etc.
  *
  * Server-only. Importar solo desde Route Handlers / Server Actions.

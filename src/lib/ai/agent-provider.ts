@@ -4,15 +4,17 @@
  * Mismo principio que el resto de abstracciones (D-005/D-013): la UI/CRM no se
  * acoplan a un proveedor concreto de LLM.
  *
- * Hoy el único proveedor ACTIVO es `mock` (respuestas pre-escritas, sin llamada
- * a ninguna API). El proveedor `openrouter` es un STUB documentado para activar
- * modelos reales (GPT, Claude, Llama, etc.) en una fase futura.
+ * Hoy los providers activos son `deepseek` (default Flash con switch automático a Pro
+ * si Flash falla o devuelve baja confidence) y `mock` (fallback sin llamada a API).
+ * El provider `openrouter` es un STUB documentado para fase futura (GPT, Claude,
+ * Llama via OpenRouter como alternativa a DeepSeek directo).
  *
- * IMPORTANTE — modo sugerencia:
- * El agente está diseñado para operar en MODO SUGERENCIA: nunca envía
- * respuestas automáticamente. Devuelve propuestas que un humano revisa antes de
- * enviar por WhatsApp manual (wa.me). Esto reduce riesgo de alucinaciones y
- * commitments no autorizados.
+ * IMPORTANTE — modo AUTOMÁTICO con guardrails:
+ * El bot envía respuestas por WhatsApp Cloud API automáticamente. Para reducir el
+ * riesgo de alucinaciones y commitments no autorizados, el output se filtra por
+ * `validateAgentReply` (ver `src/lib/ai/guardrails.ts`) antes de enviarse al lead.
+ * Tambien hay un safety net post-process (`src/lib/whatsapp/safety-net.ts`) que
+ * strippea saludos redundantes cuando hay historial.
  *
  * Ver docs/AI_AGENT_GUARDRAILS.md y docs/WHATSAPP_AI_AGENT_STRATEGY.md.
  */

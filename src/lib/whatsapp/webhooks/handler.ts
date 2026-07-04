@@ -1,14 +1,18 @@
 /**
  * Handler del webhook de WhatsApp (flujo POST de Meta / BSP).
  *
- * PLACEHOLDER SEGURO: no persiste mensajes ni dispara automatizaciones reales.
- * Solo normaliza el payload a `IncomingWhatsAppMessage[]` para que en una fase
- * futura se conecte al CRM/agent.
+ * Este módulo SOLO parsea y normaliza el payload de Meta a `IncomingWhatsAppMessage[]`.
+ * NO persiste en DB ni dispara el bot directamente. Esa responsabilidad vive en
+ * `src/app/api/whatsapp/webhook/route.ts`, que es el route handler que orquesta:
+ *   1. Validación HMAC de la firma (si WHATSAPP_WEBHOOK_SECRET está seteada).
+ *   2. parseWebhookPayload() (este módulo).
+ *   3. Persistencia inbound en `lead_whatsapp_conversations` (con UNIQUE wamid).
+ *   4. Disparo del bot engine (fire-and-forget con Promise.race + 8s timeout).
  *
  * Riesgos a controlar al activar de verdad:
- *  - Validar la firma X-Hub-Signature-256 con el App Secret de Meta.
- *  - Idempotencia por wamid (Meta puede reenviar el mismo mensaje).
- *  - Rate-limit y timeouts (responder 200 rápido, procesar async).
+ *  - Validar la firma X-Hub-Signature-256 con el App Secret de Meta. ✅ (route.ts)
+ *  - Idempotencia por wamid (Meta puede reenviar el mismo mensaje). ✅ (UNIQUE constraint)
+ *  - Rate-limit y timeouts (responder 200 rápido, procesar async). ✅ (Promise.race 8s)
  *
  * Ver docs/WHATSAPP_OFFICIAL_INTEGRATION_PLAN.md.
  */

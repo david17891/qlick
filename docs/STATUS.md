@@ -316,14 +316,17 @@ Cierra el ciclo de vida del lead en el evento: registrar → recibe pase → rem
 
 ### Env vars requeridas (en Vercel production)
 
-Si no están seteadas, el job corre igual pero los emails se loggean en consola (modo dev). Para que los recordatorios lleguen a los asistentes:
+**⚠️ Documento legacy:** esta sección menciona Resend, pero el pipeline de email
+fue migrado a Brevo el 2026-07-02 (commit `7b0e271`). Las env vars activas son:
 
 | Key | Tipo | Default | Notas |
 |---|---|---|---|
-| `RESEND_API_KEY` | sensitive | (vacío) | Si vacío en prod, email NO se envía. |
-| `RESEND_FROM_ADDRESS` | plain | `notificaciones@qlick.marketing` | Debe estar validado en Resend (SPF/DKIM). |
-| `RESEND_REPLY_TO` | plain | `david17891@gmail.com` | Reply-to del email. |
-| `CRON_SECRET` | sensitive | (vacío) | Si seteado, Vercel Cron manda `Authorization: Bearer <secret>`. Si vacío, abierto (dev). |
+| `BREVO_API_KEY` | sensitive | (vacío) | Si vacío en prod, email NO se envía. **Seteada**. |
+| `BREVO_FROM_ADDRESS` | plain | `noreply@qlick.digital` | Dominio `qlick.digital` validado en Brevo (TXT + 2 DKIM CNAMEs + DMARC). **Seteada**. |
+| `BREVO_REPLY_TO` | plain | `david17891@gmail.com` | Reply-to del email. **Seteada**. |
+| `CRON_SECRET` | sensitive | (vacío) | Si seteado, Vercel Cron manda `Authorization: Bearer <secret>`. Si vacío, abierto (dev). **Seteada (post-recovery 14f9c7c)**. |
+
+(Variables RESEND_* deprecadas — mantenidas solo por compatibilidad con migrations SQL antiguas.)
 
 ### Limitación documentada
 
