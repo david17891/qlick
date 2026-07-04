@@ -24,7 +24,10 @@
 import type { Lead } from "@/types";
 import type { LeadEventLinkType } from "@/types/events";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import {
+  createSupabaseAdminClient,
+  type SupabaseAdminClient,
+} from "@/lib/supabase/admin";
 import {
   mapLeadRowToLead,
   type InsertLeadPayload,
@@ -154,6 +157,25 @@ export async function findLeadByEmail(
  *
  * Devuelve el lead más reciente si hay varios con el mismo phone.
  * `null` si no hay match o el input no se puede normalizar.
+ *
+ * FIX 2026-07-04 (G-12): el bot-engine envuelve la llamada en un
+ * `Promise.race` con timeout de 5s (route.ts). Cuando Vercel mata el
+ * container a los 10s y Supabase demora ~5s en responder en cargas
+ * altas, el webhook de Meta reintenta el envío → doble procesamiento
+ * (mitigado por UNIQUE `wamid` pero ensucia logs). Para reducir la
+ * ventana de riesgo, esta función ahora impone:
+ *   - timeout explícito de 3s vía `AbortController` + `.abortSignal()`
+ *     del cliente postgrest-js;
+ *   - 1 retry automático con backoff de 200ms SOLO si la falla fue por
+ *     timeout. Errores lógicos (23505, PGRST116, network errors
+ *     definitivos, etc.) NO se reintentan — son ruido, no transitorios;
+ *   - si el retry también falla por timeout, devuelve `null` + log
+ *     warning SIN PII (solo `attempts`, `timeoutMs`, `phoneLength` —
+ *     nunca el phone raw ni el normalizado).
+ *
+ * La firma pública `(phone: string) => Promise<Lead | null>` no cambia,
+ * así que los callers (bot-engine, promotion.ts) siguen funcionando
+ * sin modificación.
  */
 export async function findLeadByPhone(
   phone: string,
@@ -180,26 +202,152 @@ export async function findLeadByPhone(
   // esas columnas vienen de la migración `20260628000000_whatsapp_followup.sql`
   // que puede no estar aplicada en production. Las agregamos al SELECT
   // después de confirmar que la migración corrió (ver docs/OPEN_ITEMS.md).
-  const { data, error } = await supabase
-    .from("leads")
-    .select(
-      "id, name, email, phone, phone_normalized, status, source, intent, consent_to_contact, summary, course_of_interest, created_at, updated_at"
-    )
-    .eq("phone_normalized", normalized)
-    .maybeSingle();
+  //
+  // FIX 2026-07-04 (G-12): timeout + retry viven en `_findLeadByPhoneRaw`
+  // para mantener esta función delgada y poder testear la lógica con un
+  // mock chain de Supabase (ver `tests/leads-find-by-phone-timeout.test.mjs`).
+  const raw = await _findLeadByPhoneRaw(supabase, normalized);
 
-  if (error) {
+  if (raw.timedOut) {
+    // Warning SIN PII: solo flags y longitudes, nunca el phone (cumple
+    // política de datos del repo).
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[leads-server] findLeadByPhone timeout tras retry; devolviendo null",
+      {
+        attempts: raw.attempts,
+        timeoutMs: QUERY_TIMEOUT_MS,
+        retryBackoffMs: RETRY_BACKOFF_MS,
+        phoneLength: normalized.length,
+      },
+    );
+    return null;
+  }
+
+  if (raw.error) {
+    // Errores lógicos (no-timeout): log SIN PII para diagnóstico.
     // eslint-disable-next-line no-console
     console.error("[leads-server] findLeadByPhone falló", {
-      code: error.code,
-      message: error.message,
-      details: error.details,
+      code: raw.error.code,
+      message: raw.error.message,
+      attempts: raw.attempts,
+      phoneLength: normalized.length,
     });
     return null;
   }
-  if (!data) return null;
 
-  return mapLeadRowToLead(data as Parameters<typeof mapLeadRowToLead>[0]);
+  if (!raw.data) return null;
+
+  return mapLeadRowToLead(raw.data);
+}
+
+/**
+ * Constantes de timeout/retry para `findLeadByPhone`. Definidas a nivel
+ * de módulo (no exportadas) — si en el futuro hay que ajustar, están en
+ * un solo lugar visible.
+ *
+ * - QUERY_TIMEOUT_MS: 3s — más agresivo que los 5s del bot-engine para
+ *   dejar margen al handler completo sin pegarse al límite de Vercel
+ *   (10s en plan hobby).
+ * - RETRY_BACKOFF_MS: 200ms — backoff corto. Un timeout aislado suele
+ *   ser transitorio (connection pool, cold start de postgrest).
+ * - MAX_QUERY_ATTEMPTS: 2 (intento original + 1 retry). Más retries
+ *   consumen el budget del bot-engine sin mucho beneficio.
+ */
+const QUERY_TIMEOUT_MS = 3000;
+const RETRY_BACKOFF_MS = 200;
+const MAX_QUERY_ATTEMPTS = 2;
+
+/**
+ * Resultado crudo del query con timeout + retry. Tipo interno para el
+ * helper `_findLeadByPhoneRaw`. NO forma parte de la API pública — el
+ * caller (`findLeadByPhone`) lo desempaca.
+ */
+export interface FindLeadByPhoneRawResult {
+  data: Parameters<typeof mapLeadRowToLead>[0] | null;
+  error: { code?: string; message?: string; details?: string; hint?: string } | null;
+  timedOut: boolean;
+  attempts: number;
+}
+
+/**
+ * Helper interno de `findLeadByPhone` — ejecuta la query con timeout 3s
+ * y 1 retry selectivo (solo si fue timeout, NO si fue error lógico).
+ *
+ * Exportado (con underscore) SOLO para que el test
+ * `tests/leads-find-by-phone-timeout.test.mjs` pueda inyectar un mock
+ * de Supabase sin tocar la implementación real. NO se re-exporta desde
+ * `src/lib/crm/index.ts` — es detalle de implementación.
+ *
+ * Detección de timeout (doble check, ambos son equivalentes en la práctica):
+ *   1. `controller.signal.aborted === true` post-await → la señal fue
+ *      activada por nuestro `setTimeout` antes de que postgrest-js resolviera.
+ *   2. `error.message` contiene "abort" (case-insensitive) → postgrest-js
+ *      convirtió la AbortError del fetch en un error object con shape
+ *      `{message: "AbortError: The user aborted a request.", code: ""}`.
+ *
+ * El error 23505 (unique violation) NO aplica acá — es un SELECT — pero
+ * el helper está diseñado para respetar cualquier error lógico y NO
+ * reintentarlo, así que sirve también para futuros UPDATEs.
+ */
+export async function _findLeadByPhoneRaw(
+  supabase: SupabaseAdminClient,
+  normalized: string,
+): Promise<FindLeadByPhoneRawResult> {
+  for (let attempt = 1; attempt <= MAX_QUERY_ATTEMPTS; attempt++) {
+    const controller = new AbortController();
+    const timeoutHandle = setTimeout(
+      () => controller.abort(),
+      QUERY_TIMEOUT_MS,
+    );
+    try {
+      const { data, error } = await supabase
+        .from("leads")
+        .select(
+          "id, name, email, phone, phone_normalized, status, source, intent, consent_to_contact, summary, course_of_interest, created_at, updated_at",
+        )
+        .eq("phone_normalized", normalized)
+        .abortSignal(controller.signal)
+        .maybeSingle();
+
+      // Timeout: la señal se disparó O postgrest-js devolvió un error
+      // cuyo message indica abort (mismo evento, dos manifestaciones).
+      const wasAborted = controller.signal.aborted;
+      const errorSaysAbort =
+        error?.message?.toLowerCase().includes("abort") === true;
+
+      if (wasAborted || errorSaysAbort) {
+        if (attempt < MAX_QUERY_ATTEMPTS) {
+          // Backoff y reintento.
+          await new Promise((resolve) => setTimeout(resolve, RETRY_BACKOFF_MS));
+          continue;
+        }
+        // Ya gastamos el retry → timeout final (data null, error null,
+        // timedOut true). El caller emite el warning sin PII.
+        return { data: null, error: null, timedOut: true, attempts: attempt };
+      }
+
+      if (error) {
+        // Error lógico (no timeout): no reintentamos. El caller loggea
+        // con el código.
+        return { data: null, error, timedOut: false, attempts: attempt };
+      }
+
+      // Happy path.
+      return {
+        data: (data ?? null) as Parameters<typeof mapLeadRowToLead>[0] | null,
+        error: null,
+        timedOut: false,
+        attempts: attempt,
+      };
+    } finally {
+      clearTimeout(timeoutHandle);
+    }
+  }
+  // Inalcanzable: el loop siempre retorna. TS no lo infiere, así que
+  // devolvemos un shape defensivo.
+  /* c8 ignore next */
+  return { data: null, error: null, timedOut: true, attempts: MAX_QUERY_ATTEMPTS };
 }
 
 /* --------------------------- Escritura --------------------------- */
