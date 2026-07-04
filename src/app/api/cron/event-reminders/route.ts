@@ -24,9 +24,23 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
-  // 1. Auth: Vercel Cron manda Bearer con CRON_SECRET.
+  // FIX 2026-07-04 (auditoria nocturna, security gate): ver nota en
+  // /api/cron/cleanup-qr-tokens — antes si CRON_SECRET no estaba seteada,
+  // el cron corria sin auth. Ahora OBLIGATORIO en produccion.
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
+  if (!cronSecret) {
+    if (process.env.NODE_ENV === "production") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "CRON_SECRET no está configurado en producción. El endpoint no puede correr sin auth. Seteala en Vercel → Environment Variables."
+        },
+        { status: 503 }
+      );
+    }
+    // dev: skip auth (testing local).
+  } else {
     const auth = req.headers.get("authorization") ?? "";
     const expected = `Bearer ${cronSecret}`;
     if (auth !== expected) {

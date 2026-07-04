@@ -20,9 +20,29 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
-  // Auth: Vercel Cron manda Bearer con CRON_SECRET.
+  // FIX 2026-07-04 (auditoria nocturna, security gate):
+  // Antes: si CRON_SECRET no estaba seteada, el cron corría sin auth.
+  // Vercel manda Bearer pero el helper `if (cronSecret)` permitia skip
+  // total del check. En produccion eso = endpoint publico si olvidaste
+  // setear la env var.
+  //
+  // Nuevo: CRON_SECRET OBLIGATORIO en produccion. Si falta, 503 explicito
+  // (no 404, asi el operador sabe "falta env var" vs "no existe el endpoint").
+  // En dev, omitimos el gate para no romper pruebas locales.
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
+  if (!cronSecret) {
+    if (process.env.NODE_ENV === "production") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "CRON_SECRET no está configurado en producción. El endpoint no puede correr sin auth. Seteala en Vercel → Environment Variables."
+        },
+        { status: 503 }
+      );
+    }
+    // dev: continuamos sin auth (testing local).
+  } else {
     const auth = req.headers.get("authorization") ?? "";
     const expected = `Bearer ${cronSecret}`;
     if (auth !== expected) {
