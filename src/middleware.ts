@@ -110,6 +110,26 @@ function isProduction(): boolean {
   return process.env.NODE_ENV === "production";
 }
 
+/**
+ * FIX 2026-07-04 (auditoria nocturna, security headers):
+ * Aplica headers de seguridad a TODA response que sale del middleware.
+ * Sin CSP porque romperia los scripts inline de Next.js (Fase 7).
+ */
+function applySecurityHeaders(res: NextResponse): NextResponse {
+  res.headers.set(
+    "Strict-Transport-Security",
+    "max-age=31536000; includeSubDomains"
+  );
+  res.headers.set("X-Frame-Options", "SAMEORIGIN");
+  res.headers.set("X-Content-Type-Options", "nosniff");
+  res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.headers.set(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=()"
+  );
+  return res;
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const isApi = pathname.startsWith("/api/admin/");
@@ -133,18 +153,21 @@ export async function middleware(req: NextRequest) {
         pathname,
       );
       if (isApi) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error:
-              "Admin auth no configurada en produccion. Setee ADMIN_EMAIL_ALLOWLIST en las env vars de Vercel.",
-          },
-          { status: 503 },
+        return applySecurityHeaders(
+          NextResponse.json(
+            {
+              ok: false,
+              error:
+                "Admin auth no configurada en produccion. Setee ADMIN_EMAIL_ALLOWLIST en las env vars de Vercel.",
+            },
+            { status: 503 },
+          ),
         );
       }
       // Renderizar HTML explicativo (no redirigir a /admin/login porque
       // el login tambien esta roto sin allowlist).
-      return new NextResponse(
+      return applySecurityHeaders(
+        new NextResponse(
         `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -182,10 +205,11 @@ export async function middleware(req: NextRequest) {
           status: 503,
           headers: { "Content-Type": "text/html; charset=utf-8" },
         },
+      ),
       );
     }
     // Desarrollo: modo demo, deja pasar.
-    return NextResponse.next();
+    return applySecurityHeaders(NextResponse.next());
   }
   const allowlist = getAdminAllowlist();
 
@@ -206,6 +230,9 @@ export async function middleware(req: NextRequest) {
   let res = NextResponse.next({
     request: { headers: req.headers },
   });
+  // FIX 2026-07-04: aplicar security headers desde el origen — asi
+  // cualquier `return res` que ocurra despues los lleva implicitamente.
+  applySecurityHeaders(res);
 
   const supabase = createServerClient(
     supabaseConfig.url,
@@ -227,6 +254,9 @@ export async function middleware(req: NextRequest) {
           res = NextResponse.next({
             request: { headers: req.headers },
           });
+          // FIX 2026-07-04: re-aplicar security headers al nuevo `res`
+          // (la reasignacion destruye el anterior).
+          applySecurityHeaders(res);
           // 3) Adjuntar las cookies refrescadas al response para que el
           //    browser las reciba en el Set-Cookie.
           cookiesToSet.forEach(({ name, value, options }) => {
@@ -251,22 +281,25 @@ export async function middleware(req: NextRequest) {
       if (isAllowed) {
         const url = req.nextUrl.clone();
         url.pathname = "/admin";
-        return NextResponse.redirect(url);
+        return applySecurityHeaders(NextResponse.redirect(url));
       }
       return res; // sin sesión: mostrar el login.
     }
 
     // Rutas públicas de diagnóstico: dejar pasar.
     if (PUBLIC_ADMIN_PATHS.has(pathname)) {
-      return res;
-    }
+  return res;
+}
+
 
     // Resto de rutas admin: bloquear si no hay sesión o allowlist.
     if (!user) {
       if (isApi) {
-        return NextResponse.json(
-          { ok: false, error: "No autenticado." },
-          { status: 401 },
+        return applySecurityHeaders(
+          NextResponse.json(
+            { ok: false, error: "No autenticado." },
+            { status: 401 },
+          ),
         );
       }
       // FIX 2026-07-03 (sesion David): pasar returnUrl con la URL original
@@ -277,20 +310,22 @@ export async function middleware(req: NextRequest) {
       if (pathname.startsWith("/admin/") && !pathname.startsWith("//")) {
         url.searchParams.set("returnUrl", pathname + req.nextUrl.search);
       }
-      return NextResponse.redirect(url);
+      return applySecurityHeaders(NextResponse.redirect(url));
     }
 
     if (!isAllowed) {
       if (isApi) {
-        return NextResponse.json(
-          { ok: false, error: "No autorizado como admin." },
-          { status: 403 },
+        return applySecurityHeaders(
+          NextResponse.json(
+            { ok: false, error: "No autorizado como admin." },
+            { status: 403 },
+          ),
         );
       }
       const url = req.nextUrl.clone();
       url.pathname = "/admin/login";
       url.searchParams.set("error", "forbidden");
-      return NextResponse.redirect(url);
+      return applySecurityHeaders(NextResponse.redirect(url));
     }
 
     return res;
