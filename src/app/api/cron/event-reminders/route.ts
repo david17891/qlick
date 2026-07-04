@@ -11,6 +11,7 @@
  *
  * **Auth:** Vercel Cron manda `Authorization: Bearer <CRON_SECRET>`.
  * Si está seteado, validamos; si no, aceptamos (modo dev).
+ * Validación en `src/lib/api/cron-auth.ts`.
  *
  * **Response:** JSON con el resumen del run (sent/failed/skipped por
  * ventana y evento). Útil para debug en Vercel Logs.
@@ -18,23 +19,20 @@
 
 import { NextResponse } from "next/server";
 import { runEventRemindersJob } from "@/lib/cron/event-reminders";
+import { checkCronAuth } from "@/lib/api/cron-auth";
 
 export const dynamic = "force-dynamic";
 // No queremos que Next cachee el cron — cada ejecución debe ser fresca.
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
-  // 1. Auth: Vercel Cron manda Bearer con CRON_SECRET.
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const auth = req.headers.get("authorization") ?? "";
-    const expected = `Bearer ${cronSecret}`;
-    if (auth !== expected) {
-      return NextResponse.json(
-        { ok: false, error: "unauthorized" },
-        { status: 401 },
-      );
-    }
+  // 1. Auth gate (Bearer contra CRON_SECRET si está seteado).
+  const authResult = checkCronAuth(req);
+  if (!authResult.ok) {
+    return NextResponse.json(
+      { ok: false, error: authResult.error },
+      { status: authResult.status },
+    );
   }
 
   // 2. Run job.

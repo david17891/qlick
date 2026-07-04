@@ -7,6 +7,7 @@
  *
  * **Auth:** Vercel Cron manda `Authorization: Bearer <CRON_SECRET>`.
  * Si está seteado, validamos; si no, aceptamos (modo dev).
+ * Validación en `src/lib/api/cron-auth.ts`.
  *
  * **Response:** JSON con el resultado del run (ok, deletedCount, ranAt).
  *
@@ -15,22 +16,19 @@
 
 import { NextResponse } from "next/server";
 import { runCleanupQrTokensJob } from "@/lib/cron/cleanup-qr-tokens";
+import { checkCronAuth } from "@/lib/api/cron-auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
-  // Auth: Vercel Cron manda Bearer con CRON_SECRET.
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const auth = req.headers.get("authorization") ?? "";
-    const expected = `Bearer ${cronSecret}`;
-    if (auth !== expected) {
-      return NextResponse.json(
-        { ok: false, error: "unauthorized" },
-        { status: 401 },
-      );
-    }
+  // 1. Auth gate (Bearer contra CRON_SECRET si está seteado).
+  const authResult = checkCronAuth(req);
+  if (!authResult.ok) {
+    return NextResponse.json(
+      { ok: false, error: authResult.error },
+      { status: authResult.status },
+    );
   }
 
   try {

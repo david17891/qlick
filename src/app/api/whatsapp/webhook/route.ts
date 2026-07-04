@@ -21,7 +21,6 @@
  * @server
  */
 
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
@@ -30,6 +29,7 @@ import {
   handleWebhookPayload
 } from "../../../../lib/whatsapp/webhooks/handler";
 import { verifyWebhook } from "../../../../lib/whatsapp/webhooks/verify";
+import { checkWebhookSignatureGate } from "../../../../lib/whatsapp/webhooks/verify-signature";
 import type {
   IncomingWhatsAppMessage,
   WhatsAppMessageStatus
@@ -45,9 +45,6 @@ export const dynamic = "force-dynamic";
 /* ------------------------------------------------------------------ */
 /*  Constantes                                                          */
 /* ------------------------------------------------------------------ */
-
-const META_SIGNATURE_HEADER = "x-hub-signature-256";
-const SIGNATURE_PREFIX = "sha256=";
 
 const VALID_STATUSES: readonly WhatsAppMessageStatus[] = [
   "sent",
@@ -86,42 +83,24 @@ export async function POST(req: NextRequest) {
   // 1. Leer el body crudo (necesario para validar la firma HMAC).
   const rawBody = await req.text();
 
-  // 2. Validar firma si WHATSAPP_WEBHOOK_SECRET está seteada.
+  // 2. Validar firma / hard-fail gate (extraído a verify-signature.ts
+  //    para hacerlo testeable sin importar `next/server`).
   // FIX 2026-07-04 (auditoria nocturna, security gate): antes, si el
   // secret no estaba seteado, el webhook seguía procesando sin validar
   // firma (con solo un infoLog). En produccion esto = endpoint publico
   // y un atacante podria inyectar mensajes arbitrarios creando leads
   // falsos en DB. Misma remediacion que /api/cron/*: hard-fail 503 en
   // produccion si falta el secret. En dev permitimos skip.
-  const secret = process.env.WHATSAPP_WEBHOOK_SECRET;
-  if (!secret) {
-    if (process.env.NODE_ENV === "production") {
-      return NextResponse.json(
-        {
-          ok: false,
-          message:
-            "WHATSAPP_WEBHOOK_SECRET no está configurado en producción. La validación de firma es obligatoria para evitar inyecciones. Seteala en Vercel → Environment Variables."
-        },
-        { status: 503 }
-      );
+  const gate = checkWebhookSignatureGate(req, rawBody);
+  if (!gate.ok) {
+    if (gate.status === 503) {
+      // Solo loggeamos el 503 (es señal de config missing, no de ataque).
+      errorLog("[whatsapp/webhook] gate 503", { message: gate.message });
     }
-    infoLog(
-      "[whatsapp/webhook] WHATSAPP_WEBHOOK_SECRET no seteada en dev; saltando validación de firma.",
+    return NextResponse.json(
+      { ok: false, message: gate.message },
+      { status: gate.status }
     );
-  } else {
-    const provided = req.headers.get(META_SIGNATURE_HEADER);
-    if (!provided) {
-      return NextResponse.json(
-        { ok: false, message: "Falta X-Hub-Signature-256." },
-        { status: 401 }
-      );
-    }
-    if (!verifySignature(rawBody, provided, secret)) {
-      return NextResponse.json(
-        { ok: false, message: "Firma inválida." },
-        { status: 401 }
-      );
-    }
   }
 
   // 3. Parsear payload.
@@ -199,31 +178,6 @@ export async function POST(req: NextRequest) {
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
-
-/**
- * Verifica la firma `X-Hub-Signature-256: sha256=<hex>` con HMAC SHA256.
- * Usa `timingSafeEqual` para evitar timing attacks.
- */
-function verifySignature(
-  rawBody: string,
-  header: string,
-  secret: string
-): boolean {
-  if (!header.startsWith(SIGNATURE_PREFIX)) return false;
-  const providedHex = header.slice(SIGNATURE_PREFIX.length);
-  const computedHex = createHmac("sha256", secret)
-    .update(rawBody, "utf8")
-    .digest("hex");
-  if (providedHex.length !== computedHex.length) return false;
-  try {
-    return timingSafeEqual(
-      Buffer.from(providedHex, "hex"),
-      Buffer.from(computedHex, "hex")
-    );
-  } catch {
-    return false;
-  }
-}
 
 async function getSupabase(): Promise<SupabaseClient<Database> | null> {
   const { checkSupabaseConfig } = await import("../../../../lib/supabase/health");
