@@ -98,8 +98,8 @@ export const brandManifest = {
       original: {
         src: "/brand/original/03_qlick_logo_no_tagline_transparent.png",
         background: "transparent",
-        width: 500,
-        height: 300,
+        width: 2624,
+        height: 1632,
         recommendedUse: ["encabezados", "branding compacto"],
         avoidUse: ["fondos oscuros con bajo contraste"]
       },
