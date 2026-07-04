@@ -358,7 +358,10 @@ async function persistConversation(
 ): Promise<string | null> {
   const { data, error } = await supabase
     .from("lead_whatsapp_conversations" as never)
-    .insert(row as never)
+    .upsert(
+      row as never,
+      { onConflict: "whatsapp_message_id", ignoreDuplicates: true } as never
+    )
     .select("id")
     .maybeSingle();
   if (error) {
