@@ -1603,3 +1603,152 @@ David corrigio 2026-07-03 ~17:18: NO es 6 de julio, probablemente 10 de julio. D
 - WHATSAPP_WEBHOOK_SECRET (G-2): pendiente que David sincronice Meta UI.
 - Comprar numero MX real: lo hace David en Meta Business Manager durante la pausa.
 - Cron event-reminders `0 8 * * *` solo 1/dia: decision arquitectonica pendiente.
+
+
+## 2026-07-04 ~05:32 · Setup WABA Qlick Marketing Digital + bot operativo
+
+- **Pregunta:** El bot estaba en la WABA Test con número +1 555-201-7643
+  de sandbox. Para el primer evento real (10 jul) necesitamos un número
+  mexicano dedicado con display name aprobado.
+- **Decisión:** Crear nueva WABA "Qlick Marketing Digital" (ID
+  2083618983565979), comprar chip Telcel eSIM Amigo (+52 16634306074),
+  aprobar display name "Qlick" (cambiamos el footer del sitio a "Qlick"
+  y conectamos la página de Facebook "Qlick Marketing Digital" al perfil
+  del número), regenerar token permanente y subirlo a Vercel.
+- **Razón:** Display name tiene que coincidir con la marca externa (sitio
+  web + Facebook). Meta rechaza nombres genéricos ("Marketing Digital")
+  o muy cortos ("Qlick") sin la página de Facebook conectada al perfil.
+  El legal name "Negocio de Paul Velasquez" no contiene "Qlick", por
+  eso Meta exige la página como fuente de validación.
+- **Impacto:** Bot ahora responde a leads reales en número +52. Display
+  name "Qlick" es el que ve el lead en el chat. El bot de test
+  (WABA 1670509767335938) deja de contestar porque el código apunta
+  solo a la WABA nueva vía env vars.
+- **Trigger:** Conversación de 5+ horas con David armando setup completo
+  de Meta para el evento del 10 jul.
+
+### Lo que está OPERATIVO al cierre del día
+
+- WABA "Qlick Marketing Digital" con verificación de empresa aprobada
+- Display name "Qlick" aprobado (Meta tenía desfase, mostraba el viejo)
+- Chip Telcel +52 16634306074 conectado y verificado por SMS
+- Página de Facebook "Qlick Marketing Digital" vinculada al perfil
+  (Full control en business.facebook.com/settings/pages)
+- Método de pago Mastercard agregado a la WABA
+- Token permanente en Vercel production (reemplazado vía API v9 con
+  upsert porque v10 dio 404, luego DELETE por id + POST nuevo)
+- Webhook URL del bot responde a GET de verificación (devuelve 403 con
+  token vacío, 200 con token correcto)
+- Meta SÍ envía webhooks al endpoint cuando un lead escribe, y el bot
+  procesa el inbound (status 200, error en persistConversation con
+  unique_violation 23505)
+- Bot reconoce al lead y le dice "estás registrado" (probado por David
+  a las 05:05)
+
+### PENDIENTES para retomar mañana (2026-07-05)
+
+**Bloqueante para 10 jul (30-45 min de trabajo):**
+
+1. **Fix persistConversation** (10 min) — error 23505 unique_violation
+   en src/lib/whatsapp/bot-engine.ts línea ~360. El INSERT del
+   inbound falla porque el message_id ya existe (probablemente el
+   mismo wamid procesado dos veces por reintento). Fix: usar
+   onConflict: 'message_id' o upsert en lugar de INSERT directo.
+
+2. **Webhook subscribed oficial** (5 min) — Ir a
+   developers.facebook.com/apps/1532987041600498/whatsapp-business/
+   api-setup y verificar que los eventos messages y message_status
+   estén suscritos. PERO OJO: la WABA Test vieja tenía una app
+   fantasma 2202427980234937 subscripta (memoria del proyecto);
+   verificar que la nueva WABA no tenga ese problema.
+
+3. **4 templates de Meta** (15 min + 24-72h espera aprobación):
+   - conf_bienvenida (utility) — bienvenida al evento
+   - conf_info_evento (utility) — info del evento registrado
+   - conf_confirmacion_registro (utility) — recordatorio
+   - survey_invite (utility) — link a encuesta post-evento
+   Crear en WhatsApp Manager ? tu WABA ? Message Templates ? Create
+   Template. Texto basado en el código de Qlick (bot-engine.ts y
+   contact-form.ts).
+
+4. **App Qlick_wb apuntando a WABA nueva** (5 min) — Verificar en
+   developers.facebook.com que la app esté vinculada a la WABA
+   2083618983565979. David dijo que ya está hecho, validar.
+
+5. **Probar end-to-end completo** (10 min) — Mandar "hola" al
+   +52 16634306074 desde WhatsApp personal, verificar:
+   - Webhook llega a Vercel
+   - Bot responde
+   - Mensaje se guarda en lead_whatsapp_conversations
+   - Lead aparece en el admin
+
+**Costo de DeepSeek:** Quedan .28 USD. Si el bot usa el LLM en
+producción, se acaba rápido. Recargar en platform.deepseek.com.
+
+**No bloqueante para 10 jul (Fase 7 / post-evento):**
+
+6. **Inbox en admin de Qlick** (1-2 días código) — actualmente el
+   ConversationsView en src/components/crm/CRMView.tsx es data
+   demo (badges "mock", "Sugerencia IA (demo)"). Hay que reescribir
+   para leer de lead_whatsapp_conversations y permitir enviar
+   mensajes manuales.
+   **Parche rápido:** usar Meta Business Suite
+   (business.facebook.com/wa/manager/) como inbox temporal.
+
+7. **Logo del sitio** (? hecho hoy) — Footer y Navbar arreglados.
+   El asset  3_qlick_logo_no_tagline_transparent.png fue reemplazado
+   con una versión completa y transparente (1536x1024 RGBA, sin fondo
+   blanco). Commit 83330ed.
+
+8. **Footer del sitio** (? hecho hoy) — Cambiado de "Qlick Marketing
+   Integral" a "Qlick" en src/components/layout/Footer.tsx para
+   coincidir con el display name de Meta. Commit 64015cf.
+
+9. **Scripts creados hoy:**
+   - scripts/save-whatsapp-token.ps1 (en .gitignore) — guarda token
+     en .env.local Y lo sube a Vercel vía API REST con upsert
+     (reemplaza si existe).
+
+**Discusiones de estrategia (NO implementación, solo ideas para
+discutir con Paul):**
+
+- **Grupos de WhatsApp por evento** (David los está explorando). Patrón
+  válido: "registrate ? te paso link al grupo" con opt-in explícito
+  del usuario. NO agregar gente a grupo sin opt-in (baneo de Meta).
+  Paul crea los grupos manualmente.
+
+- **Eventos gratis** como primer evento. Flujo:
+  registro ? email con QR de check-in + link al grupo ? check-in el
+  día del evento ? encuesta post.
+
+- **Página real de Qlick** — tiene mucho demo todavía (masterclass,
+  eventos, cursos con datos de muestra). Hay que ajustar a contenido
+  real antes de campaña pública.
+
+- **Canal de WhatsApp** (channels) como alternativa a grupos para
+  broadcasts de un solo emisor a muchos suscriptores voluntarios.
+
+- **Costo de campañas:** utility ~.0085/msg MX, marketing
+  ~.0305-0.0500/msg MX. Para 100 leads en 4 crons = ~ MXN total.
+  Service window 24h = gratis.
+
+**Archivos modificados hoy:**
+
+- src/components/layout/Footer.tsx — footer "Q" ? "Qlick" (commit 64015cf)
+- src/components/brand/Logo.tsx — padding y alin. del logo (en 78b3703)
+- src/components/layout/Navbar.tsx — height 34?36 (en 78b3703)
+- src/lib/brand-manifest.ts — dimensiones del noTagline 500x300
+  ? 1536x1024 (en 83330ed)
+- public/brand/original/03_qlick_logo_no_tagline_transparent.png —
+  reemplazado con versión completa y transparente (en 83330ed)
+- scripts/save-whatsapp-token.ps1 — creado y actualizado (en
+  .gitignore)
+
+**Env vars actualizadas en Vercel production:**
+
+- WHATSAPP_CLOUD_WABA_ID = 2083618983565979
+- WHATSAPP_CLOUD_PHONE_NUMBER_ID = 1192725073924405
+- WHATSAPP_CLOUD_ACCESS_TOKEN = (reemplazado hoy, sha256
+  ac59c9a3614f867f, longitud 205)
+
+**Recargar DeepSeek en:** platform.deepseek.com (quedan .28 USD).
