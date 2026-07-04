@@ -57,6 +57,7 @@ import {
   recordAndCheckRateLimit
 } from "../ai";
 import { sendHumanHandoff } from "./human-handoff";
+import { stripGreetingIfHasHistory } from "./safety-net";
 import { getAIAgentProfile } from "../crm/agent-utils";
 import {
   loadManualContext,
@@ -1651,26 +1652,12 @@ case "interactive_event_inscribir": {
       // el window loader puede fallar silenciosamente con .catch(() => undefined).
       // El flag `isFirstMessage` (basado en `findOrCreateLead().created`) es
       // mucho más confiable.
+      //
+      // FIX 2026-07-04 (auditoria): lógica extraída a `src/lib/whatsapp/safety-net.ts`
+      // (función pura testeable). 19 tests en `tests/whatsapp-safety-net.test.mjs`
+      // cubren los 6 regex + edge cases.
       const hasHistory = !args.isFirstMessage;
-      if (hasHistory && content) {
-        const stripped = content
-          // "Hola, ..." o "Buen[oa]s, ..."
-          .replace(/^\s*(hola|buen[oa]s\s+(d[ií]as|tardes|noches)|qué tal|hi|hello)[,.\s]*/i, "")
-          // "Hola Por, ..." o "Hola David, ..." (presentacion con nombre)
-          .replace(/^\s*hola[,\s]+[^,.\n]{1,30}[,.\s]*/i, "")
-          // "Por, gracias por escribir a Qlick..." (sin Hola)
-          .replace(/^\s*[A-Z][a-záéíóú]+,\s*gracias por (escribir|contactarnos|comunicarte)[,.\s]*/i, "")
-          // "gracias por escribir a Qlick..." (sin nombre)
-          .replace(/^\s*gracias por (escribir|contactarnos|comunicarte)[,.\s]*/i, "")
-          // "Soy Qlick, asistente..." (presentacion del bot)
-          .replace(/^\s*soy\s+qlick[,\s]+asistente.*?[.\n]/i, "")
-          // "¡Hola Por!" (con admiracion al inicio, sin coma)
-          .replace(/^\s*¡?\s*hola[¡!.,\s]+[^¡!.,\n]{1,30}!?\s*/i, "")
-          .trim();
-        if (stripped && stripped !== content) {
-          content = stripped;
-        }
-      }
+      content = stripGreetingIfHasHistory(content, hasHistory);
       // Validar guardrails: si el LLM metió una frase prohibida, fallback.
       const validation = validateAgentReply(content);
       if (!validation.ok) {
