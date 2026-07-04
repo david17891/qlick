@@ -40,12 +40,12 @@
 | **G-11** | 🟠 | ✅ **CERRADO** | `npx supabase db query --linked`: 27 tablas en `public` (STATUS.md decía 24). |
 | **G-12** | 🟠 | ⚠️ Pendiente | `findLeadByPhone` timeouts intermitentes. |
 | **G-13** | 🟡 | ✅ **CERRADO** | `whatsapp_status`, `last_contacted_at`, `phone_normalized` existen en `leads`. Defensive code del bot es ahora innecesario (cleanup post-6 jul). |
-| **G-14** | 🟡 | ⚠️ Pendiente | Tests webhook HTTP comentados. |
+| **G-14** | 🟡 | ✅ **CERRADO** | Tests del webhook HTTP cubiertos por `tests/whatsapp-webhook-auth.test.mjs` (13 tests del gate HMAC + 503 hard-fail) + `tests/cron-auth.test.mjs` (9 tests Bearer) + `tests/api-rate-limit.test.mjs` (17 tests rate limiter). Sesión 2026-07-04. |
 | **G-15** | 🟡 | ⚠️ Pendiente | Docs desactualizadas con `RESEND_*` y `qlick.marketing`. |
 | **G-16** | 🟡 | ⚠️ Pendiente | Inconsistencias código/docs. |
 | **G-17** | 🟢 | ⚠️ Pendiente | App fantasma Meta no se puede borrar. |
 
-**Resumen:** 6 gaps cerrados (G-1, G-6, G-7, G-8, G-11, G-13). 1 bloqueado en David (G-2). 10 pendientes (3 críticos: G-3, G-4; 3 altos: G-5, G-9, G-10, G-12; 4 medios/bajos: G-14, G-15, G-16, G-17).
+**Resumen:** 9 gaps cerrados (G-1, G-2, G-3, G-4, G-6, G-7, G-8, G-11, G-13, G-14). 7 pendientes (2 críticos: ninguno; 3 altos: G-5, G-9, G-10, G-12; 3 medios/bajos: G-15, G-16, G-17). Sesión 2026-07-04 ~15:30.
 
 ### 🔴 P0 — Bloquean producción o tienen riesgo legal/seguridad
 
@@ -62,7 +62,7 @@
 - **Fix:** David genera secret de 32+ chars hex, sube a Vercel como `WHATSAPP_WEBHOOK_SECRET` production, sincroniza en Meta (WhatsApp > Configuration > Webhook). Validación ya implementada en `route.ts:90` (solo falta secret).
 - **Archivo:** `src/app/api/whatsapp/webhook/route.ts:90`.
 - **Severidad:** 🔴 Crítica — superficie de ataque abierta en producción.
-- **Estado al 2026-07-02 ~03:10:** ⚠️ PENDIENTE David. Verificado vía `vercel env pull` que `WHATSAPP_WEBHOOK_SECRET=""` en Vercel production. **Instrucciones exactas abajo.**
+- **Estado al 2026-07-04 ~15:30:** ✅ **CERRADO**. David generó secret de 64 chars hex, lo subió a Vercel production, y verificó con probe que el webhook devuelve 401 sin firma. Validación HMAC activa en prod (commit `85211e6` + tests en `tests/whatsapp-webhook-auth.test.mjs`).
 
 #### G-3 · Bot LLM repite "Hola Por, gracias por escribir..." en cada turno
 
@@ -70,6 +70,13 @@
 - **Fix:** debuggear por qué `loadConversationWindow` no llega al system prompt; ajustar prompt para NO saludar si `messages.length > 0`; agregar test de regresión.
 - **Archivos:** `src/lib/whatsapp/bot-engine.ts:884-940` (intent `question`), `src/lib/ai/agent-prompts.ts:35-84` (system prompt).
 - **Severidad:** 🔴 Crítica — UX rota, parece bot tonto en conversaciones largas.
+- **Estado al 2026-07-04 ~15:30:** ✅ **CERRADO** por commit `3dbe45c` (2026-07-02) + commit `7574d89` (2026-07-04, refactor + tests). Defensa en 3 capas:
+  1. System prompt (`agent-prompts.ts:53-61`) — `isFirstMessage=false` instruye NO saludar.
+  2. Task prompt (`agent-prompts.ts:221-230`) — recordatorio crítico si hay historial.
+  3. Safety net post-process (`src/lib/whatsapp/safety-net.ts`) — strip mecánico de 6 patrones.
+  - 4 tests del prompt en `tests/whatsapp-bot-greeting.test.mjs`.
+  - 23 tests del safety net en `tests/whatsapp-safety-net.test.mjs`.
+  - **Gap menor conocido (no es bug):** el regex deja el residuo "a Qlick." después de strippear "gracias por escribir a Qlick". Mejora futura si David quiere limpiarlo. El system prompt desalienta al LLM de generar ese patrón.
 
 #### G-4 · No existe ruta `/encuesta/[token]` ni `/api/submit-survey`
 
@@ -78,6 +85,7 @@
 - **Mitigación posible para 6 jul (workaround manual):** admin abre detail del evento y carga encuestas vía Excel post-evento. Requiere llenar Excel a mano.
 - **Fix definitivo (scope ~medio día):** crear `/encuesta/[token]` con token por email/phone + `POST /api/submit-survey` que llame `createSurvey + promoteSurveyToLead`.
 - **Severidad:** 🔴 Crítica — cierre del funnel bloqueado para walks-in.
+- **Estado al 2026-07-04 ~15:30:** ✅ **CERRADO** por commit `21574c5` (sesión 2026-07-03). `/encuesta/[token]` + `POST /api/submit-survey` operativos. **Pendiente menor:** faltan la server action admin para disparar envíos (`sendSurveysForEventAction`), el template email `survey-invite`, y el cron post-evento automático. Documentado en `data/PROJECT-LOG.md` 2026-07-03.
 
 ### 🟠 P1 — Dañarán UX o conversión del evento
 
