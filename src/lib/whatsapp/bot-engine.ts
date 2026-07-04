@@ -2101,7 +2101,9 @@ export async function processInboundMessage(
               error: err instanceof Error ? err.message : String(err)
             });
           }
-          if (supabase) {
+          // FIX 2026-07-04 (auditoria nocturna): no persistir si el send
+          // falló (phantom row). Ver commit 548acb7 (main flow).
+          if (supabase && sendResult.ok) {
             await persistConversation(supabase, {
               lead_id: lead.id,
               phone_normalized: phoneNormalized,
@@ -2188,7 +2190,9 @@ export async function processInboundMessage(
             error: err instanceof Error ? err.message : String(err)
           });
         }
-        if (supabase) {
+        // FIX 2026-07-04 (auditoria nocturna): no persistir si el send falló.
+        // Ver commit 548acb7 (main flow).
+        if (supabase && sendResult.ok) {
           await persistConversation(supabase, {
             lead_id: lead.id,
             phone_normalized: phoneNormalized,
@@ -2279,7 +2283,9 @@ export async function processInboundMessage(
                 error: err instanceof Error ? err.message : String(err)
               });
             }
-            if (supabase) {
+            // FIX 2026-07-04 (auditoria nocturna): no persistir si el send falló.
+            // Ver commit 548acb7 (main flow).
+            if (supabase && sendResult.ok) {
               await persistConversation(supabase, {
                 lead_id: lead.id,
                 phone_normalized: phoneNormalized,
