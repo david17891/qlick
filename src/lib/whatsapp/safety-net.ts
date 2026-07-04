@@ -42,6 +42,11 @@
  *
  * Si el strippeado queda VACÍO (content era 100% saludo), devolvemos el
  * original. Defensivo: nunca devolvemos string vacío al lead.
+ *
+ * FIX 2026-07-04 (auditoria, David pidió cubrir el residuo "a Qlick"):
+ * los regex 3 y 4 aceptan opcionalmente " a Qlick" / " al equipo" después
+ * del verbo. Esto cubre "gracias por escribir a Qlick" sin dejar el
+ * residuo "a Qlick." que quedaba antes.
  */
 const GREETING_PATTERNS: readonly RegExp[] = [
   // 1. "Hola, ..." / "Buenas tardes, ..." / "Qué tal, ..." / "Hi, ..." / "Hello, ..."
@@ -50,11 +55,13 @@ const GREETING_PATTERNS: readonly RegExp[] = [
   // 2. "Hola Por, ..." / "Hola David, ..." (presentación con nombre)
   /^\s*hola[,\s]+[^,.\n]{1,30}[,.\s]*/i,
 
-  // 3. "Por, gracias por escribir a Qlick..." (sin Hola, con nombre)
-  /^\s*[A-Z][a-záéíóú]+,\s*gracias por (escribir|contactarnos|comunicarte)[,.\s]*/i,
+  // 3. "Por, gracias por escribir a Qlick..." (sin Hola, con nombre).
+  // FIX 2026-07-04: aceptar opcionalmente " a Qlick" / " al equipo" después del verbo.
+  /^\s*[A-Z][a-záéíóú]+,\s*gracias por (escribir|contactarnos|comunicarte)(?:\s+(?:a|al)\s+\w+)?[,.\s]*/i,
 
-  // 4. "Gracias por escribir a Qlick..." (sin nombre)
-  /^\s*gracias por (escribir|contactarnos|comunicarte)[,.\s]*/i,
+  // 4. "gracias por escribir a Qlick..." (sin nombre).
+  // FIX 2026-07-04: aceptar opcionalmente " a Qlick" / " al equipo" después del verbo.
+  /^\s*gracias por (escribir|contactarnos|comunicarte)(?:\s+(?:a|al)\s+\w+)?[,.\s]*/i,
 
   // 5. "Soy Qlick, asistente..." (presentación del bot sin saludo)
   /^\s*soy\s+qlick[,\s]+asistente.*?[.\n]/i,

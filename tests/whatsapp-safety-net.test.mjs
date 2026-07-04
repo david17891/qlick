@@ -91,36 +91,55 @@ test("hasHistory=true + 'Hello, ...' → strip del saludo", () => {
   );
 });
 
-test("hasHistory=true + 'Hola Por, gracias por escribir a Qlick' → strip del saludo (residuo 'a Qlick.')", () => {
-  // El bug original reportado por David (2026-07-02).
-  // El código strippea 'Hola Por, ' + 'Por, gracias por escribir ' pero
-  // deja 'a Qlick.' (residuo después del verbo). El LLM en producción
-  // rara vez incluye 'a Qlick' después de 'gracias por escribir' — el
-  // system prompt lo desalienta. Mejora futura: regex más agresivo.
+test("hasHistory=true + 'Hola Por, gracias por escribir a Qlick' → strip completo", () => {
+  // El bug original reportado por David (2026-07-02). FIX 2026-07-04:
+  // regex 3 + 4 ahora aceptan ' a Qlick' / ' al equipo' opcional.
   const input = "Hola Por, gracias por escribir a Qlick. ¿Te interesa el evento?";
   assert.equal(
     stripGreetingIfHasHistory(input, true),
-    "a Qlick. ¿Te interesa el evento?"
+    "¿Te interesa el evento?"
   );
 });
 
-test("hasHistory=true + 'Por, gracias por escribir' → strip (residuo 'a Qlick.')", () => {
+test("hasHistory=true + 'Por, gracias por escribir a Qlick' → strip completo", () => {
   assert.equal(
     stripGreetingIfHasHistory(
       "Por, gracias por escribir a Qlick. El costo es $500.",
       true
     ),
-    "a Qlick. El costo es $500."
+    "El costo es $500."
   );
 });
 
-test("hasHistory=true + 'gracias por escribir' (sin nombre) → strip (residuo 'a Qlick.')", () => {
+test("hasHistory=true + 'gracias por escribir a Qlick' (sin nombre) → strip completo", () => {
   assert.equal(
     stripGreetingIfHasHistory(
       "gracias por escribir a Qlick. ¿Qué evento te interesa?",
       true
     ),
-    "a Qlick. ¿Qué evento te interesa?"
+    "¿Qué evento te interesa?"
+  );
+});
+
+test("hasHistory=true + 'gracias por escribir.' (sin 'a Qlick') → strip sin comer más", () => {
+  // Verifica que la mejora del regex no rompe el caso simple.
+  assert.equal(
+    stripGreetingIfHasHistory(
+      "gracias por escribir. ¿Te interesa?",
+      true
+    ),
+    "¿Te interesa?"
+  );
+});
+
+test("hasHistory=true + 'David, gracias por contactarnos al equipo' → strip completo", () => {
+  // Cubre el caso 'al equipo' (variante común en español mexicano).
+  assert.equal(
+    stripGreetingIfHasHistory(
+      "David, gracias por contactarnos al equipo. Te paso la info.",
+      true
+    ),
+    "Te paso la info."
   );
 });
 
