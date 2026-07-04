@@ -2582,8 +2582,14 @@ export async function processInboundMessage(
   }
 
   // 7. Persistir outbound.
+  // FIX 2026-07-04 (auditoria nocturna David): solo persistir si el send
+  // fue exitoso. Antes persistiamos SIEMPRE, lo cual generaba "phantom
+  // rows" — filas en `lead_whatsapp_conversations` que el usuario nunca
+  // recibió (Meta devolvió 5xx, timeout, error de token, etc.) y que el
+  // CRM mostraba como respuesta. Ahora: si el send falló, NO dejamos
+  // huella falsa en la DB; solo loggeamos el error para debugging.
   let outboundConvId: string | null = null;
-  if (supabase) {
+  if (supabase && sendResult.ok) {
     outboundConvId = await persistConversation(supabase, {
       lead_id: lead.id,
       phone_normalized: phoneNormalized,
@@ -2602,10 +2608,22 @@ export async function processInboundMessage(
         ...(plan.metadata ?? {})
       }
     });
+  } else if (!sendResult.ok) {
+    errorLog("[whatsapp/bot] outbound NO persistido (send falló)", {
+      intent,
+      leadId: lead.id,
+      phone: phoneNormalized,
+      demo: sendResult.demo ?? false,
+      note: sendResult.note
+    });
   }
 
   // 8. Tocar last_contacted_at + summary.
-  if (supabase) {
+  // FIX 2026-07-04: solo si el outbound fue OK. Antes tocábamos el lead
+  // aunque el usuario no hubiera recibido el mensaje (mentira sobre el
+  // estado de contacto). Ahora: si falló el send, dejamos last_contacted_at
+  // intacto — el contacto real no ocurrió.
+  if (supabase && sendResult.ok) {
     await touchLead(supabase, lead.id, {
       last_contacted_at: new Date().toISOString(),
       summary: intent === "question"
