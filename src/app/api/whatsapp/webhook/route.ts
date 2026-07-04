@@ -266,7 +266,15 @@ async function persistStatusUpdatesIfAny(
           timestamp: s.timestamp
         }
       } as never);
-    if (!error) count++;
+    if (!error) {
+      count++;
+    } else if ((error as { code?: string }).code === "23505") {
+      // FIX 2026-07-04 (auditoria nocturna): Meta reentrego el mismo wamid
+      // en un status update. El row ya existe (outbound del bot o status
+      // previo). Idempotente: contamos como procesado y seguimos. Mismo
+      // patron que persistInboundIfPossible (linea ~228).
+      count++;
+    }
   }
   return count;
 }
