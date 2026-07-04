@@ -87,8 +87,28 @@ export async function POST(req: NextRequest) {
   const rawBody = await req.text();
 
   // 2. Validar firma si WHATSAPP_WEBHOOK_SECRET está seteada.
+  // FIX 2026-07-04 (auditoria nocturna, security gate): antes, si el
+  // secret no estaba seteado, el webhook seguía procesando sin validar
+  // firma (con solo un infoLog). En produccion esto = endpoint publico
+  // y un atacante podria inyectar mensajes arbitrarios creando leads
+  // falsos en DB. Misma remediacion que /api/cron/*: hard-fail 503 en
+  // produccion si falta el secret. En dev permitimos skip.
   const secret = process.env.WHATSAPP_WEBHOOK_SECRET;
-  if (secret) {
+  if (!secret) {
+    if (process.env.NODE_ENV === "production") {
+      return NextResponse.json(
+        {
+          ok: false,
+          message:
+            "WHATSAPP_WEBHOOK_SECRET no está configurado en producción. La validación de firma es obligatoria para evitar inyecciones. Seteala en Vercel → Environment Variables."
+        },
+        { status: 503 }
+      );
+    }
+    infoLog(
+      "[whatsapp/webhook] WHATSAPP_WEBHOOK_SECRET no seteada en dev; saltando validación de firma.",
+    );
+  } else {
     const provided = req.headers.get(META_SIGNATURE_HEADER);
     if (!provided) {
       return NextResponse.json(
@@ -102,10 +122,6 @@ export async function POST(req: NextRequest) {
         { status: 401 }
       );
     }
-  } else {
-    infoLog(
-      "[whatsapp/webhook] WHATSAPP_WEBHOOK_SECRET no seteada; saltando validación de firma (NO recomendado en prod).",
-    );
   }
 
   // 3. Parsear payload.
