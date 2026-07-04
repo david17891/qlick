@@ -1621,9 +1621,9 @@ case "interactive_event_inscribir": {
           isFirstMessage: args.isFirstMessage
         });
       } else {
+        // Política del proyecto: cero PII en logs (solo flags/IDs/contadores).
         errorLog("[whatsapp/bot] LLM rate-limited (skipped DeepSeek call)", {
           leadId: lead.id,
-          phone: phoneNormalized,
           callCount: rateLimit.callCount,
           resetMs: rateLimit.resetMs
         });
@@ -2679,10 +2679,12 @@ export async function processInboundMessage(
       }
     });
   } else if (!sendResult.ok) {
+    // Política del proyecto: cero PII en logs (solo flags/IDs/contadores).
+    // No incluimos el phone aquí — el leadId es suficiente para correlacionar
+    // con la fila en `leads` si se necesita.
     errorLog("[whatsapp/bot] outbound NO persistido (send falló)", {
       intent,
       leadId: lead.id,
-      phone: phoneNormalized,
       demo: sendResult.demo ?? false,
       note: sendResult.note
     });
