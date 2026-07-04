@@ -942,7 +942,7 @@ async function findOrCreateLead(
 
 interface OutboundPlan {
   /** Lo que se va a enviar al provider. */
-  send: () => Promise<{ ok: boolean; externalId?: string; demo?: boolean }>;
+  send: () => Promise<{ ok: boolean; externalId?: string; demo?: boolean; note?: string }>;
   /** Tipo de respuesta (para la fila outbound). */
   kind: "template" | "text" | "interactive";
   /** Body que se persistirá en lead_whatsapp_conversations. */
@@ -2569,7 +2569,7 @@ export async function processInboundMessage(
     requestedEventSlug
   });
 
-  let sendResult: { ok: boolean; externalId?: string; demo?: boolean } = {
+  let sendResult: { ok: boolean; externalId?: string; demo?: boolean; note?: string } = {
     ok: false
   };
   try {
@@ -2577,7 +2577,8 @@ export async function processInboundMessage(
     sendResult = {
       ok: r.ok,
       externalId: r.externalId,
-      demo: r.demo
+      demo: r.demo,
+      note: r.note
     };
   } catch (err) {
     errorLog("[whatsapp/bot] send() lanzó excepción", {
