@@ -185,6 +185,26 @@ const PLACEHOLDER_NAMES = new Set([
   "(empty)"
 ]);
 
+/**
+ * Tipos de mensaje inbound que el CHECK constraint de
+ * `lead_whatsapp_conversations.message_type` acepta. Si llega un
+ * IncomingWhatsAppMessage.type fuera de este set (ej. 'button' legacy,
+ * 'sticker', 'voice', 'unsupported'), caemos a 'interactive' como
+ * fallback seguro en lugar de fallar el INSERT.
+ *
+ * FIX 2026-07-04 (auditoria nocturna): el bot antes mapeaba todo
+ * no-'text' a 'interactive', perdiendo fidelidad para image/audio/
+ * document. Ahora pasa el tipo real cuando es válido.
+ */
+const VALID_INBOUND_MESSAGE_TYPES: ReadonlySet<string> = new Set([
+  "text",
+  "template",
+  "image",
+  "document",
+  "audio",
+  "interactive"
+]);
+
 /** Helper: devuelve el firstName limpio (sin placeholders). */
 function cleanFirstName(rawName: string | null | undefined): string {
   const name = (rawName ?? "").toLowerCase().trim();
@@ -1860,7 +1880,18 @@ export async function processInboundMessage(
       lead_id: lead.id,
       phone_normalized: phoneNormalized,
       direction: "inbound",
-      message_type: message.type === "text" ? "text" : "interactive",
+      // FIX 2026-07-04 (auditoria nocturna): mapear el tipo real del
+      // mensaje al enum del CHECK constraint en
+      // lead_whatsapp_conversations (text|template|image|document|
+      // audio|interactive). Antes se forzaba 'interactive' para todo
+      // no-texto, lo cual perdía fidelidad (image/audio/document
+      // quedaban almacenados como interactive, rompiendo analytics
+      // futuras). Si llega un tipo fuera del enum (button legacy,
+      // sticker, voice, etc.), caemos a 'interactive' como fallback
+      // seguro — el CHECK constraint no rechaza estos valores.
+      message_type: VALID_INBOUND_MESSAGE_TYPES.has(message.type)
+        ? message.type
+        : "interactive",
       body,
       whatsapp_message_id: message.messageId,
       // FIX P1-2 (auditoria 2026-07-02): incluir buttonId en metadata.

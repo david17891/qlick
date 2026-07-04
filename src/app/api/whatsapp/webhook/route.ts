@@ -209,13 +209,29 @@ async function persistInboundIfPossible(
   if (!supabase) return null;
   const phone = normalizePhone(msg.from);
   if (!phone) return null;
+  // FIX 2026-07-04 (auditoria nocturna): mapear el tipo real del mensaje
+  // al enum del CHECK constraint (text|template|image|document|audio|
+  // interactive) en lugar de forzar 'interactive' para todo. Mismo fix que
+  // en bot-engine.ts:case 'question'. Para tipos fuera del enum (button
+  // legacy, sticker, voice, etc.) caemos a 'interactive' como fallback
+  // seguro — el constraint lo acepta.
+  const VALID_INBOUND_TYPES: ReadonlySet<string> = new Set([
+    "text",
+    "template",
+    "image",
+    "document",
+    "audio",
+    "interactive"
+  ]);
   const { error } = await supabase
     .from("lead_whatsapp_conversations" as never)
     .insert({
       lead_id: null, // se completa en el bot engine cuando se resuelve el lead
       phone_normalized: phone,
       direction: "inbound",
-      message_type: msg.type === "text" ? "text" : "interactive",
+      message_type: VALID_INBOUND_TYPES.has(msg.type)
+        ? msg.type
+        : "interactive",
       body: msg.text ?? null,
       whatsapp_message_id: msg.messageId,
       metadata: {
@@ -258,7 +274,14 @@ async function persistStatusUpdatesIfAny(
         lead_id: null,
         phone_normalized: phone,
         direction: "outbound",
-        message_type: "metadata",
+        // FIX 2026-07-04 (auditoria nocturna): el CHECK constraint de
+        // message_type NO acepta 'metadata' (cae en 23514 check_violation),
+        // asi que los status updates fallaban silenciosamente desde el
+        // inicio. Usamos 'interactive' como tipo neutral, y el campo
+        // `metadata.status` ya distingue el evento (sent/delivered/read/
+        // failed). TODO Fase 7: agregar tipo dedicado 'status_update' al
+        // enum si vale la pena semánticamente.
+        message_type: "interactive",
         body: null,
         whatsapp_message_id: s.id,
         metadata: {
