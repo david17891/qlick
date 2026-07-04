@@ -125,17 +125,39 @@ export async function POST(req: NextRequest) {
   const supabase = await getSupabase();
   const queued: string[] = [];
 
+  // Contadores para observabilidad del fix outbound idempotency.
+  let skippedDuplicates = 0;
+  let processedNew = 0;
+
   for (const msg of parsed.messages) {
-    const stored = await persistInboundIfPossible(supabase, msg);
-    if (stored) queued.push(stored);
+    const result = await persistInboundIfPossible(supabase, msg);
+    // FIX 2026-07-04 (auditoria nocturna, outbound idempotency):
+    // Si Meta reentrego este webhook (kind='duplicate'), NO corremos el
+    // bot de nuevo. Sin este check, el bot enviaba el mismo reply al
+    // usuario DOS veces (con el phantom row fix previo, persistiamos
+    // correctamente, pero el outbound a Meta NO estaba deduped).
+    //
+    // El bot SI corre en:
+    //  - kind='new'       → primera entrega de Meta
+    //  - kind='errored'   → no pudimos persistir (Supabase caido); falla
+    //                       silenciosa pero el bot intenta responder igual
+    //                       porque el inbound quedo sin registrar y el
+    //                       usuario todavia espera una respuesta.
+    if (result.kind === "duplicate") {
+      skippedDuplicates++;
+      infoLog(
+        "[whatsapp/webhook] idempotency: skip bot (duplicate wamid)",
+        { wamid: result.wamid }
+      );
+      continue;
+    }
+    if (result.kind === "new") {
+      processedNew++;
+      queued.push(result.wamid ?? msg.messageId);
+    }
     // Bloqueamos la respuesta hasta 8s para que el bot termine de mandar
     // el reply por la API de Meta antes de devolver 200. Margen < 10s
     // (umbral de retry de Meta).
-    //
-    // Trade-off: si el bot tarda >8s, Meta reintenta. La idempotencia por
-    // `whatsapp_message_id UNIQUE` evita persistencia duplicada del inbound;
-    // el bot corre de nuevo pero el outbound se deduplica por la unique key
-    // en la siguiente fase (cuando agreguemos tabla de outbound idempotency).
     //
     // Es preferible a `void` porque con `void` Vercel mata el container
     // post-response y el usuario nunca recibe respuesta.
@@ -151,7 +173,8 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     parsedMessages: parsed.messages.length,
-    persisted: queued.length,
+    persisted: processedNew,
+    duplicatesSkipped: skippedDuplicates,
     statusUpdates: statusCount,
     note: parsed.note
   });
@@ -198,23 +221,33 @@ async function getSupabase(): Promise<SupabaseClient<Database> | null> {
 }
 
 /**
- * Inserta el mensaje inbound en `lead_whatsapp_conversations`.
- * Si ya existe (23505 unique violation por wamid), es idempotente.
- * Devuelve el wamid en caso de éxito o null si no pudo persistir.
+ * Inserta el mensaje inbound en `lead_whatsapp_conversations` vía
+ * upsert idempotente, y reporta si era NUEVO o un DUPLICATE de Meta.
+ *
+ * Outbound idempotency fix (auditoria 2026-07-04): el caller usa
+ * `isDuplicate` para SKIPPEAR el bot en retries de Meta — si ya
+ * procesamos este wamid, el bot NO corre de nuevo (y por lo tanto
+ * NO envia otra respuesta al usuario).
+ *
+ * Retorna `{ kind: 'new' | 'duplicate' | 'errored' }`:
+ *  - 'new'       → row insertada, wamid es este msg.messageId
+ *  - 'duplicate' → row ya existia (ON CONFLICT DO NOTHING)
+ *  - 'errored'   → phone invalido, supabase null, o error real
  */
+type PersistResult = { kind: "new" | "duplicate" | "errored"; wamid: string | null };
+
 async function persistInboundIfPossible(
   supabase: SupabaseClient<Database> | null,
   msg: IncomingWhatsAppMessage
-): Promise<string | null> {
-  if (!supabase) return null;
+): Promise<PersistResult> {
+  if (!supabase) return { kind: "errored", wamid: null };
   const phone = normalizePhone(msg.from);
-  if (!phone) return null;
+  if (!phone) return { kind: "errored", wamid: null };
   // FIX 2026-07-04 (auditoria nocturna): mapear el tipo real del mensaje
   // al enum del CHECK constraint (text|template|image|document|audio|
-  // interactive) en lugar de forzar 'interactive' para todo. Mismo fix que
-  // en bot-engine.ts:case 'question'. Para tipos fuera del enum (button
-  // legacy, sticker, voice, etc.) caemos a 'interactive' como fallback
-  // seguro — el constraint lo acepta.
+  // interactive) en lugar de forzar 'interactive' para todo. Para tipos
+  // fuera del enum (button legacy, sticker, voice, etc.) caemos a
+  // 'interactive' como fallback seguro.
   const VALID_INBOUND_TYPES: ReadonlySet<string> = new Set([
     "text",
     "template",
@@ -223,32 +256,43 @@ async function persistInboundIfPossible(
     "audio",
     "interactive"
   ]);
-  const { error } = await supabase
+  // FIX 2026-07-04 (outbound idempotency): cambiar de .insert() a .upsert()
+  // con onConflict sobre whatsapp_message_id e ignoreDuplicates:true.
+  // - Si el row NO existe: se inserta y se devuelve (kind='new')
+  // - Si ya existe: ON CONFLICT DO NOTHING → no devuelve nada (kind='duplicate')
+  // Esto le permite al webhook distinguir 'Meta reentrega el mismo webhook'
+  // (skip bot) de 'mensaje nuevo' (correr bot).
+  const { data, error } = await supabase
     .from("lead_whatsapp_conversations" as never)
-    .insert({
-      lead_id: null, // se completa en el bot engine cuando se resuelve el lead
-      phone_normalized: phone,
-      direction: "inbound",
-      message_type: VALID_INBOUND_TYPES.has(msg.type)
-        ? msg.type
-        : "interactive",
-      body: msg.text ?? null,
-      whatsapp_message_id: msg.messageId,
-      metadata: {
-        timestamp: msg.timestamp,
-        contactName: msg.contactName
-      }
-    } as never);
+    .upsert(
+      {
+        lead_id: null, // se completa en el bot engine cuando se resuelve el lead
+        phone_normalized: phone,
+        direction: "inbound",
+        message_type: VALID_INBOUND_TYPES.has(msg.type)
+          ? msg.type
+          : "interactive",
+        body: msg.text ?? null,
+        whatsapp_message_id: msg.messageId,
+        metadata: {
+          timestamp: msg.timestamp,
+          contactName: msg.contactName
+        }
+      } as never,
+      { onConflict: "whatsapp_message_id", ignoreDuplicates: true } as never
+    )
+    .select("id")
+    .maybeSingle();
   if (error) {
-    // 23505 = unique_violation en whatsapp_message_id. Idempotente: OK.
-    if ((error as { code?: string }).code !== "23505") {
-      errorLog("[whatsapp/webhook] persistInbound falló", {
-        code: (error as { code?: string }).code
-      });
-    }
-    return null;
+    errorLog("[whatsapp/webhook] persistInbound falló", {
+      code: (error as { code?: string }).code
+    });
+    return { kind: "errored", wamid: msg.messageId };
   }
-  return msg.messageId;
+  // data presente → row insertada (nueva). data null → row ya existia (duplicate).
+  return data
+    ? { kind: "new", wamid: msg.messageId }
+    : { kind: "duplicate", wamid: msg.messageId };
 }
 
 /**

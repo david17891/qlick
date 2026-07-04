@@ -77,8 +77,19 @@ export function handleWebhookPayload(payload: unknown): WebhookHandleResult {
             msg.interactive?.button_reply?.title ??
             msg.interactive?.list_reply?.title;
 
+          // FIX 2026-07-04 (auditoria nocturna, outbound idempotency):
+          // Si Meta omite el wamid (msg.id), NO sintetizamos "unknown".
+          // Razon: ese string es constante y rompe idempotency porque dos
+          // mensajes distintos sin id chocarian en UNIQUE(wamid). Meta
+          // SIEMPRE envia wamid en payloads reales; si falta, preferimos
+          // log + skip antes que un placeholder que rompe la idempotencia.
+          if (!msg.id) {
+            // eslint-disable-next-line no-console
+            console.warn("[whatsapp/webhook] payload sin wamid; saltando mensaje");
+            continue;
+          }
           messages.push({
-            messageId: msg.id ?? "unknown",
+            messageId: msg.id,
             from: msg.from ?? "unknown",
             timestamp: msg.timestamp,
             type: (msg.type as IncomingWhatsAppMessage["type"]) ?? "unknown",
