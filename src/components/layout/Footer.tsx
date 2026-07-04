@@ -63,7 +63,7 @@ export function Footer() {
         </div>
         <div className="mt-12 pt-6 border-t border-white/10 flex flex-col sm:flex-row gap-3 justify-between text-xs text-white/50">
           <p>
-            © {new Date().getFullYear()} Qlick Marketing Integral. Hecho en México.
+            © {new Date().getFullYear()} Qlick. Hecho en México.
           </p>
           <p>
             Plataforma educativa — MVP con datos de demostración. Pagos simulados.
