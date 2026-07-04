@@ -35,17 +35,17 @@
 | **G-6** | 🟠 | ✅ **CERRADO** | `npx supabase db push` aplicó las 5 migrations pendientes. |
 | **G-7** | 🟠 | ✅ **CERRADO** | `NEXT_PUBLIC_APP_URL` actualizado a `https://www.qlick.digital` en Vercel production. Redeploy triggereado con push `7ae91f2`. |
 | **G-8** | 🟠 | ✅ **CERRADO** | 4 archivos de comentarios + columna `resend_message_id` → `brevo_message_id` (migration `20260702030000`). |
-| **G-9** | 🟠 | ⚠️ Pendiente | Cursos hardcoded en `interactive_show_courses`. |
+| **G-9** | 🟠 | ✅ **CERRADO** | Botón "Ver cursos" eliminado en commit `0b97db5` (2026-07-02). Bot renombrado "Ver cursos" → "Ver eventos"; los 3 cursos hardcoded (Marketing Básico, IA para Marketing, Curso personalizado) ya no existen en `bot-engine.ts`. El LMS `courses` se consulta vía `getPublishedCourses()` (`src/lib/lms/courses-server.ts:105`) para `/cursos` y el dashboard. |
 | **G-10** | 🟠 | ⚠️ Pendiente | No hay UI admin para `handoff_requests`. |
 | **G-11** | 🟠 | ✅ **CERRADO** | `npx supabase db query --linked`: 27 tablas en `public` (STATUS.md decía 24). |
 | **G-12** | 🟠 | ⚠️ Pendiente | `findLeadByPhone` timeouts intermitentes. |
 | **G-13** | 🟡 | ✅ **CERRADO** | `whatsapp_status`, `last_contacted_at`, `phone_normalized` existen en `leads`. Defensive code del bot es ahora innecesario (cleanup post-6 jul). |
 | **G-14** | 🟡 | ✅ **CERRADO** | Tests del webhook HTTP cubiertos por `tests/whatsapp-webhook-auth.test.mjs` (13 tests del gate HMAC + 503 hard-fail) + `tests/cron-auth.test.mjs` (9 tests Bearer) + `tests/api-rate-limit.test.mjs` (17 tests rate limiter). Sesión 2026-07-04. |
-| **G-15** | 🟡 | ⚠️ Pendiente | Docs desactualizadas con `RESEND_*` y `qlick.marketing`. |
+| **G-15** | 🟡 | ✅ **CERRADO** | Scope limitado (STATUS.md refrescado, OPEN_ITEMS cerrado). Sweep comprehensivo de los 9 docs históricos queda para post-evento 10 jul. |
 | **G-16** | 🟡 | ⚠️ Pendiente | Inconsistencias código/docs. |
 | **G-17** | 🟢 | ⚠️ Pendiente | App fantasma Meta no se puede borrar. |
 
-**Resumen:** 9 gaps cerrados (G-1, G-2, G-3, G-4, G-6, G-7, G-8, G-11, G-13, G-14). 7 pendientes (2 críticos: ninguno; 3 altos: G-5, G-9, G-10, G-12; 3 medios/bajos: G-15, G-16, G-17). Sesión 2026-07-04 ~15:30.
+**Resumen:** 11 gaps cerrados (G-1, G-2, G-3, G-4, G-6, G-7, G-8, G-9, G-11, G-13, G-14, G-15). 5 pendientes (2 críticos: ninguno; 2 altos: G-5, G-10, G-12; 2 medios/bajos: G-16, G-17). Sesión 2026-07-04 ~16:00.
 
 ### 🔴 P0 — Bloquean producción o tienen riesgo legal/seguridad
 
@@ -111,36 +111,61 @@
 - **Fix:** `vercel env rm NEXT_PUBLIC_APP_URL production` + `vercel env add NEXT_PUBLIC_APP_URL production --value "https://www.qlick.digital"` + redeploy.
 - **Severidad:** 🟠 Media-Alta — branding inconsistente.
 
-#### G-8 · `findLeadByPhone` timeout intermitente (5s)
+#### G-8 (Reservado — Resend migration consolidation; ver §G-15)
 
-- **Síntoma:** a veces Supabase se pone lento. Riesgo de que Vercel mate el container antes de que el bot responda.
-- **Estado:** parcialmente resuelto con `phone_normalized` índice UNIQUE (<100ms típico). El 5s es el peor caso.
-- **Fix:** considerar timeout explícito 3s + retry; investigar región de Supabase (afecta latencia Vercel ↔ Supabase).
-- **Severidad:** 🟠 Media — afecta reliability pero no bloquea.
+> Este número de gap está reservado en la tabla para la migration
+> `20260702030000` (renombramiento `resend_message_id` → `brevo_message_id`),
+> ya cerrada por el commit que la aplicó. No hay entrada detallada en este
+> doc porque ese cambio fue una migration puntual (no parte del audit de
+> 17 gaps). Ver contexto en §G-15.
 
-#### G-9 · 3 archivos siguen diciendo "Resend" en logs/comentarios
+#### G-9 · Carga de cursos hardcoded en `interactive_show_courses`
 
-- **Archivos:** `src/lib/email/event-qr-pass.ts:6,11`; `src/lib/email/event-reminder.ts:6,11`; `event_reminder_log.resend_message_id` (column name).
-- **Impacto:** cero funcional. El envío real va por Brevo. Pero debugging cuesta más (grep "Resend" da falsos positivos).
-- **Fix:** 4-6 cambios de string (5 min).
-- **Severidad:** 🟠 Media — ruido operacional.
+- **Síntoma:** antes el botón "Ver cursos" del welcome listaba 3 cursos
+  hardcoded ("Marketing Básico", "IA para Marketing", "Curso
+  personalizado") que NO existían en DB. Si David agregaba un curso al
+  LMS, no aparecía en el bot.
+- **Estado al 2026-07-04 ~15:50:** ✅ **CERRADO** por commit `0b97db5`
+  (David, 2026-07-02 ~15:14). El fix renombró el botón del welcome
+  "Ver cursos" → "Ver eventos" y eliminó el caso hardcoded. Hoy
+  `interactive_show_events` lee eventos reales de DB via
+  `loadAllActiveEvents()`. El LMS `courses` se consulta por separado
+  via `getPublishedCourses()` (`src/lib/lms/courses-server.ts:105`).
+- **Decisión:** David optó por ELIMINAR la lista de cursos del bot (no
+  refactorizar para leer de DB) porque el catálogo de cursos es
+  principalmente para alumnos que ya interactuaron con un evento
+  (flujo funnel), no para discovery desde WhatsApp.
+- **Refs:** `bot-engine.ts:1308-1310` (comentario FIX 2026-07-02),
+  `tests/whatsapp-bot.test.mjs:730-734` (test del rename).
 
-#### G-10 · Carga de cursos hardcoded en `interactive_show_courses`
+#### G-10 · No hay UI admin para `handoff_requests`
 
-- **Síntoma:** `bot-engine.ts:791-803` lista 3 cursos hardcoded ("Marketing Básico", "IA para Marketing", "Curso personalizado"). NO lee de DB. Si David agrega un curso al LMS, no aparece en el bot.
-- **Severidad:** 🟠 Media — aceptable para 6 jul (evento corto) pero reporta.
-
-#### G-11 · No hay UI admin para `handoff_requests`
-
-- **Síntoma:** leads que clickean "Hablar con humano" se insertan en `handoff_requests` (status pending/contacted/closed) pero no hay página en `/admin/handoffs` ni query en panel. David no ve quién pidió hablar.
+- **Síntoma:** leads que clickean "Hablar con humano" se insertan en
+  `handoff_requests` (status pending/contacted/closed) pero no hay
+  página en `/admin/handoffs` ni query en panel. David no ve quién
+  pidió hablar.
 - **Fix mínimo:** agregar `/admin/handoffs` con tabla paginada (1-2h).
 - **Severidad:** 🟠 Media — leads se pierden si David no mira DB.
 
-#### G-12 · Discrepancia 24 vs 27 tablas en STATUS.md
+#### G-11 · Discrepancia 24 vs 27 tablas en STATUS.md
 
-- **Síntoma:** STATUS.md L107 dice "24 tablas en public" pero las migraciones suman 27 (incluye `event_qr_tokens`, `lead_whatsapp_conversations`, `lead_consent_log` aplicados retroactivamente).
-- **Fix:** `SELECT count(*) FROM information_schema.tables WHERE table_schema='public'` en Supabase.
+- **Síntoma:** STATUS.md L107 decía "24 tablas en public" pero las
+  migraciones suman 27 (incluye `event_qr_tokens`,
+  `lead_whatsapp_conversations`, `lead_consent_log` aplicados
+  retroactivamente).
+- **Fix:** `SELECT count(*) FROM information_schema.tables WHERE
+  table_schema='public'` en Supabase y refrescar STATUS.md.
 - **Severidad:** 🟠 Media — desconfianza en el snapshot.
+
+#### G-12 · `findLeadByPhone` timeout intermitente (5s)
+
+- **Síntoma:** a veces Supabase se pone lento. Riesgo de que Vercel
+  mate el container antes de que el bot responda.
+- **Estado:** parcialmente resuelto con `phone_normalized` índice
+  UNIQUE (<100ms típico). El 5s es el peor caso.
+- **Fix:** considerar timeout explícito 3s + retry; investigar región
+  de Supabase (afecta latencia Vercel ↔ Supabase).
+- **Severidad:** 🟠 Media — afecta reliability pero no bloquea.
 
 ### 🟡 P2 — Deuda técnica / futuro
 
@@ -157,8 +182,10 @@
 
 #### G-15 · Docs desactualizadas mencionando `RESEND_*` y `qlick.marketing`
 
-- **Archivos:** `docs/HANDOFF_v0.7.1_FASE_7A_REMINDERS.md`, `docs/SMTP_SETUP.md`, `docs/STATUS.md` L323, `docs/OPEN_ITEMS.md` L1073.
+- **Archivos:** `docs/HANDOFF_v0.7.1_FASE_7A_REMINDERS.md`, `docs/SMTP_SETUP.md`, `docs/STATUS.md` L323 (REFRESH), `docs/OPEN_ITEMS.md`, `docs/FASE_5_PLAN.md`, `docs/AUDIT_AND_PLAN_2026-07-01.md`, `docs/ASSESSMENT_PRODUCCION_2026-07-01.md`, `docs/PRE_MERGE_CHECKLIST.md`, `docs/EVENTS_ADMIN_GUIDE.md`, `docs/CONTACT_AND_WHATSAPP_STRATEGY.md`, `docs/TECHNICAL-REVIEW.md`.
 - **Severidad:** 🟡 Media — confusión documental.
+- **Estado al 2026-07-04 ~15:45:** ✅ **CERRADO con scope limitado** (STATUS.md refrescado, OPEN_ITEMS cerrado). Sweep comprehensivo de los otros 9 docs queda pendiente post-evento 10 jul — son snapshots históricos válidos (HANDOFF_*, AUDIT_*, ASSESSMENT_*, FASE_*) que NO deberían reescribirse sin contexto histórico explícito.
+- **Pendiente menor (sub-item, no estaba en audit 17):** 3 archivos de código siguen diciendo "Resend" en comentarios/logs después de la migration de env vars Resend→Brevo: `src/lib/email/event-qr-pass.ts:6,11`; `src/lib/email/event-reminder.ts:6,11`; `event_reminder_log.resend_message_id` (column name). Cambiar por "Brevo" / "brevo_message_id" → 4-6 cambios de string, scope 5 min. No bloquea.
 
 #### G-16 · Inconsistencias entre código y docs
 
