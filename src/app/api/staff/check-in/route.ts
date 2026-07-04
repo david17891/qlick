@@ -38,6 +38,7 @@ import {
   recordStaffLinkUse,
   type EventStaffLink,
 } from "@/lib/staff/links";
+import { resolveConfirmationIdForCheckIn } from "@/lib/events/check-in-match";
 
 export const dynamic = "force-dynamic";
 
@@ -212,11 +213,22 @@ export async function POST(req: Request) {
 
   // 7. UPDATE o CREATE event_attendees (walk-in si no existe).
   // Misma lógica que el endpoint público, pero con checked_in_by = staff.
+  //
+  // FIX 2026-07-03 (sesion David "no se matcheo con el confirmado"):
+  // intentamos linkear el attendee con la confirmation previa del mismo
+  // (event_id, phone_normalized) si existe. Si la confirmation existe, el
+  // attendee se crea/actualiza con `confirmation_id = matched.id` en vez
+  // de null. Si no hay confirmation previa, queda como walk-in real.
+  const confirmationId = await resolveConfirmationIdForCheckIn(
+    supabase,
+    found.row.event_id,
+    found.row.attendee_phone_normalized,
+  );
   if (found.row.attendee_phone_normalized) {
     const phone = found.row.attendee_phone_normalized;
     const { data: attendeeRows, error: attErr } = await supabase
       .from("event_attendees")
-      .select("id, checked_in_at")
+      .select("id, checked_in_at, confirmation_id")
       .eq("event_id", found.row.event_id)
       .eq("phone_normalized", phone)
       .limit(1);
@@ -226,20 +238,34 @@ export async function POST(req: Request) {
         code: attErr.code,
       });
     } else if (attendeeRows && attendeeRows.length > 0) {
-      const target = attendeeRows[0] as { id: string; checked_in_at: string | null };
+      const target = attendeeRows[0] as {
+        id: string;
+        checked_in_at: string | null;
+        confirmation_id: string | null;
+      };
       if (!target.checked_in_at) {
+        // Update idempotente: solo escribimos check-in si no estaba.
+        // Si falta confirmation_id, lo backfileamos.
+        const updatePayload = {
+          checked_in_at: nowIso,
+          checked_in_by: staffActorEmail,
+          ...(confirmationId && !target.confirmation_id
+            ? { confirmation_id: confirmationId }
+            : {}),
+        };
         await supabase
           .from("event_attendees")
-          .update({ checked_in_at: nowIso, checked_in_by: staffActorEmail })
+          .update(updatePayload as never)
           .eq("id", target.id);
       }
     } else {
-      // Walk-in: crear attendee al vuelo.
+      // Walk-in: crear attendee al vuelo con confirmation_id matcheado
+      // si existe.
       const { error: insErr } = await supabase
         .from("event_attendees")
         .insert({
           event_id: found.row.event_id,
-          confirmation_id: null,
+          confirmation_id: confirmationId,
           name: found.row.attendee_name,
           email: found.row.attendee_email,
           phone_normalized: phone,

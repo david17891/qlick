@@ -1524,3 +1524,31 @@ equiresName=false (fallback).
 - **Validación:** type-check OK, lint OK, 233/233 tests OK, build OK.
 
 - **Trigger:** Sesión 2026-07-03 ~16:50, después de probar el fix `e210091` del escaneo con un QR ya cacheado.
+
+## 2026-07-03 ~17:05 · Auto-match attendee ↔ confirmation previa al check-in
+
+- **Pregunta / bug:** David probó el scanner de su propio QR (ya estaba confirmado y check-in). Reportó: "el código de asistentes no se matcheó automáticamente con el confirmado" — la fila de `event_attendees` quedaba con `confirmation_id: null` pese a existir una fila de `event_confirmations` del mismo (event_id, phone_normalized) creada cuando se registró.
+
+- **Diagnóstico:**
+  - `event_attendees.confirmation_id` es FK nullable a `event_confirmations.id`. Match manual existe vía `linkAttendeeToConfirmation` en `attendees-server.ts:232` (lo usa el admin CheckInTab).
+  - El scanner staff (`/api/staff/check-in`) y el check-in público (`/api/check-in/[token]`) insertaban walk-in `event_attendees` con `confirmation_id: null` literal en el INSERT, sin intentar resolver el match.
+  - El SELECT inicial del attendee traía solo `id, checked_in_at`, ni siquiera `confirmation_id`, así que aunque hubiera match no había forma de detectarlo para backfill.
+  - El admin ya hacía el match bien en `manualCheckInAction` (`_actions.ts:359` usa `findConfirmationByEmailOrPhone` antes del upsert). El scanner no replicaba esa lógica.
+
+- **Fix aplicado:**
+  - **Helper nuevo `resolveConfirmationIdForCheckIn(supabase, eventId, phoneNormalized)`** en `src/lib/events/check-in-match.ts`. Busca `event_confirmations` por (event_id, phone_normalized). Devuelve el id o null. Fail-safe: si DB falla, devuelve null en vez de tirar — no queremos bloquear el check-in por un lookup auxiliar.
+  - `/api/staff/check-in`: llama helper antes del bloque de attendees. Walk-in INSERT usa `confirmation_id: confirmationId` (puede ser null si no hay match). UPDATE existente backfilea `confirmation_id` si target lo tenía null.
+  - `/api/check-in/[token]` (público, mismo path): mismo fix simétrico.
+  - Ambos endpoints amplían el SELECT del attendee a `id, checked_in_at, confirmation_id` para poder decidir el backfill.
+
+- **Tests nuevos** en `tests/check-in-match.test.mjs` (7 casos):
+  - Match encontrado → devuelve id.
+  - Sin match (data null) → devuelve null.
+  - Phone null/undefined, eventId vacío → devuelve null sin tocar DB.
+  - Error de DB / excepción del cliente → devuelve null (fail-safe).
+
+- **Patrón reusable:** cualquier endpoint que haga INSERT walk-in de `event_attendees` debe intentar resolver el `confirmation_id` antes. Aplicable también a `/api/staff/register-walk-in` (que también crea walk-ins), pero ese es separado (walk-in es por definición sin confirmation previa, suele ser redundante — lo dejo como follow-up).
+
+- **Validación:** type-check OK, lint OK, 240/240 tests OK (233 antes + 7 nuevos), build OK.
+
+- **Trigger:** Sesión 2026-07-03 ~17:00, después de probar el scanner UI fix de `b957915` y notar que el attendee quedaba como walk-in en el admin.

@@ -38,6 +38,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { logAdminAction } from "@/lib/crm/audit-server";
+import { resolveConfirmationIdForCheckIn } from "@/lib/events/check-in-match";
 
 export const dynamic = "force-dynamic";
 
@@ -255,20 +256,31 @@ export async function POST(
   //
   // FIX 2026-07-03 (auditoria pre-scanner): si NO existe attendee previo
   // con este (event_id, phone), lo creamos al vuelo como walk-in
-  // (source='check_in', confirmation_id=null). Sin esto, el funnel
-  // post-evento (encuesta, promotion a lead) no podría encontrar al
-  // asistente que nunca confirmó pero llega con su QR pass.
+  // (source='check_in'). Sin esto, el funnel post-evento (encuesta,
+  // promotion a lead) no podría encontrar al asistente que nunca
+  // confirmó pero llega con su QR pass.
+  //
+  // FIX 2026-07-03 v2 (sesion David "no se matcheo con el confirmado"):
+  // intentamos resolver el confirmation_id previo del mismo (event_id,
+  // phone_normalized). Si existe, el attendee se crea/actualiza con
+  // `confirmation_id = matched.id` en vez de null — el lead que confirmo
+  // antes queda como attended matcheado, no como walk-in.
   //
   // El chequeo NO se filtra por `checked_in_at IS NULL` (como antes)
   // porque si ya hubo check-in previo del mismo (event_id, phone) — por
   // ej. el asistente perdió el primer QR y generamos uno nuevo — ese
   // attendee ya está. Lo dejamos como está (el evento ya quedó
   // registrado, no duplicamos).
+  const confirmationId = await resolveConfirmationIdForCheckIn(
+    supabase,
+    found.row.event_id,
+    found.row.attendee_phone_normalized,
+  );
   if (found.row.attendee_phone_normalized) {
     const phone = found.row.attendee_phone_normalized;
     const { data: attendeeRows, error: attErr } = await supabase
       .from("event_attendees")
-      .select("id, checked_in_at")
+      .select("id, checked_in_at, confirmation_id")
       .eq("event_id", found.row.event_id)
       .eq("phone_normalized", phone)
       .limit(1);
@@ -280,12 +292,23 @@ export async function POST(
         eventId: found.row.event_id,
       });
     } else if (attendeeRows && attendeeRows.length > 0) {
-      const target = attendeeRows[0] as { id: string; checked_in_at: string | null };
+      const target = attendeeRows[0] as {
+        id: string;
+        checked_in_at: string | null;
+        confirmation_id: string | null;
+      };
       // Solo UPDATE si checked_in_at es NULL (idempotencia).
       if (!target.checked_in_at) {
+        const updatePayload = {
+          checked_in_at: nowIso,
+          checked_in_by: PUBLIC_ACTOR.email,
+          ...(confirmationId && !target.confirmation_id
+            ? { confirmation_id: confirmationId }
+            : {}),
+        };
         const { error: updErr } = await supabase
           .from("event_attendees")
-          .update({ checked_in_at: nowIso, checked_in_by: PUBLIC_ACTOR.email })
+          .update(updatePayload as never)
           .eq("id", target.id);
         if (updErr) {
           // eslint-disable-next-line no-console
@@ -296,7 +319,8 @@ export async function POST(
         }
       }
     } else {
-      // Walk-in: no existe attendee previo. Crear al vuelo.
+      // Walk-in: no existe attendee previo. Crear al vuelo con
+      // confirmation_id matcheado si existe.
       // Si choca por UNIQUE(event_id, email) — caso raro donde el mismo
       // email se usó en otra confirmation con phone distinto — ignorar
       // el 23505 y seguir. El check-in en event_qr_tokens ya quedó.
@@ -304,7 +328,7 @@ export async function POST(
         .from("event_attendees")
         .insert({
           event_id: found.row.event_id,
-          confirmation_id: null,
+          confirmation_id: confirmationId,
           name: found.row.attendee_name,
           email: found.row.attendee_email,
           phone_normalized: phone,
