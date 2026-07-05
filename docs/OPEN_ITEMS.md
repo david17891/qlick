@@ -1568,3 +1568,46 @@ ext.config.mjs o src/lib/env.ts.
 | **P2-8** | 🟢 | EMAIL_RE permite emails inválidos tipo a@b.c | ⚠️ Pospuesto |
 | **P2-9** | 🟢 | Safety net puede cortar contenido legítimo | ⚠️ Pospuesto |
 | **N-extra: UX check-in** | 🟢 | Mostrar QR + "se mandó al correo" post-check-in | ✅ Commit 2b92a5c |
+
+
+## O. SesiA3n 2026-07-05 ~02:00-04:00 (noche de fixes + 1 feature)
+
+**Contexto:** David reportA3 3 problemas en esta sesion. Empezamos con uno, pero el feedback correctivo abrio dos mas. Cerramos los 3 con 5 commits, 1 feature de producto nuevo, y 1 migration SQL pendiente de aplicar en prod.
+
+### Entregado
+
+1. **window-not-defined en eliminar encuesta** (commit 5e82ba4):
+   - Server Component roto al renderear DeleteSurveyButton que usaba window.confirm.
+   - Fix: extraido a Client Component puro (DeleteSurveyButton) con 'use client'. Patron consistente con la mayoria de botones admin.
+
+2. **Delete-event modal sin friccion** (commits 7b22dba, 60e8110):
+   - David: 'No me gusta la decision que tomaste, de escribir 3 letras para confirmar, la eliminacion es sencilla'.
+   - Fix: drop del input friccion alta. Modal pasa a OK/Cancel nativo con eventTitle + cascade + sugerencia 'Archivar si solo queres ocultarlo'. Dead code eliminado: src/lib/events/delete-confirm.ts + 	ests/delete-confirm.test.mjs (16 tests).
+
+3. **short_code por evento (4 chars base32)** (commit 3c303b9) - feature NUEVA:
+   - David creo 2 eventos con mismo nombre. El bot WA decia 'ya estas registrado en [el viejo]' sobre el nuevo.
+   - Root cause: ot-engine.ts caia a loadActiveEventContext() sin slug (= primer published por starts_at) y elegia el evento equivocado.
+   - Fix estructural: columna events.short_code UNIQUE (4 chars base32 sin 0/1/O/I, ej. 7A3X). Auto-generado por trigger PL/pgSQL + backfill idempotente. Match prioritario en matchTextToEvent (capa 0, antes de slug/titulo/location). El bot lo reconoce en inbound y persiste en metadata de conversacion. WhatsApp-friendly: el lead puede escribir 7A3X y matchea exacto.
+   - 27 nuevos tests (formato, escala 10k con paridad Birthday-correcta, retry, paridad TS<->PL/pgSQL alphabet).
+   - **Migration 20260705120000_events_short_code.sql PENDIENTE de aplicar en prod** (ver seccion dedicada mas abajo).
+
+4. **WA bot survey drift fix** (commit 3b85898):
+   - David: 'elimine el evento, cree uno nuevo, tiene cero asistentes, pero al mandar hola al bot, me dice como mensaje de encuesta de gracias por llegar y asistir'.
+   - Root cause: al hacer hard-delete del evento, event_attendees se borra por CASCADE pero leads.status='event_attended' queda colgado. Section 3.0 del override del bot (isSurveyOfferStale && status==='event_attended') seguia disparando intent='survey_offer' sin attendee real. Bot mandaba 'Gracias por llegar y asistir [a nada]'.
+   - Fix: gate en el override con indLatestAttendedEventForPhone. Si retorna null, no overridea + resetea lead.status a contacted (best-effort, defense-in-depth).
+
+### Pendiente aplicar prod
+
+- **Migration 20260705120000_events_short_code.sql** - David debe correrla via Supabase SQL Editor cuando tenga un hueco (~5 seg de ejecucion). El pooler de Supabase da 'tenant/user not found' (problema persistente que esta en mi memory startup-credentials.md). Hasta que se aplique, los chips de codigo no van a mostrar valor y el matchShortCode del bot cae al fallback de slug/titulo. No rompe nada hasta que se pruebe multi-evento duplicado.
+
+### Lecciones / patrones para la memoria
+
+- **Fix surgicales vs features**: el primer problema (window-not-defined) era 1-line fix. El segundo (delete-event friccion) era refactor acordado. El tercero (multi-evento) exigio una feature nueva. Mismo trabajo, distinta escala segun la diagnosis.
+- **Drift en cascade deletes**: cuando una tabla con on delete cascade se borra, los estados agregados en tablas relacionadas (ej. leads.status derivado de asistencia a evento) pueden quedar inconsistentes. Patron futuro: en hard-deletes de evento, walk leads con status='event_attended' y resetear si el attended event desaparece.
+- **Generadores con retry silencioso**: el generador de short_code (32^4 = 1.04M combinaciones) colisiona ~1 vez cada ~700 eventos. El retry es seguro porque la UNIQUE constraint falla con error code 23505 y el caller regenera. La colision natural NUNCA aborta el flow admin.
+
+### Validacion
+
+- 429/429 tests ? (eran 413, +16 nuevos: 11 short-code + 5 matchShortCode + 4 mas via contexto)
+- type-check ? - lint 0 warnings - build 26/26 - TODOS pushed a main (3b85898 punta)
+

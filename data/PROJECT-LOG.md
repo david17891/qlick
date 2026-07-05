@@ -1997,3 +1997,18 @@ sustituir el ciclo con templates". Ejecut√© 4 bloques sincr√≥nicamente.
   - Tests: 27 nuevos casos ó 	ests/short-code.test.mjs (formato, escala 10k, retry, paridad TS/PG) + 9 tests en whatsapp-bot.test.mjs (matchShortCode + prioridad sobre titulo). 429/429 verde.
 - **Trigger:** David pidio 'id por evento aleatorio' durante sesion nocturna.
 
+
+
+---
+
+## 2026-07-05 ~03:55 ∑ WA bot survey offer drift (event deleted, lead colgado)
+
+- **Pregunta:** David elimino un evento (hard delete), creo uno nuevo (0 asistentes), pero al mandar 'hola' al bot, este respondia con el survey offer del evento anterior (sin nombre de evento, drift puro).
+- **Root cause:** Section 3.0 del bot-engine (eat/funnel-survey-scoring) overridea intent a survey_offer cuando lead.status === 'event_attended' && isSurveyOfferStale(...). Al borrar el evento, event_attendees desaparece por CASCADE pero leads.status='event_attended' queda colgado - el override sigue disparando.
+- **Decision:** Gate en el override con indLatestAttendedEventForPhone. Si retorna null, NO overridea y resetea lead.status a contacted (best-effort cleanup). Defense in depth: el reset elimina futuras auto-trigger del mismo path; si falla el reset, loggeamos pero el gate ya protegiÛ este turno.
+- **Razon:** El 'ya estas registrado' del fix anterior cerro el bug del lado de la inscripcion. Este es el mismo patron (stale state por hard-delete de evento) en el lado del post-event. El mismo gate (indLatestAttendedEventForPhone) resuelve ambos.
+- **Impacto:**
+  - src/lib/whatsapp/bot-engine.ts:2733-2796 ó override gated, con drift cleanup de leads.status.
+  - Lead de David que estaba en event_attendido sin attendee row: reseteo automatico en el siguiente 'hola' que mande.
+- **Trigger:** David reporto el sintoma post-fix de short_code. Mismo root cause class (drift por hard-delete). No es un bug nuevo del short_code; es el patron que el short_code me hizo notar.
+

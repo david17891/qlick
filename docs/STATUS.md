@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-04 ~16:05 (Integration gate cerrado tras 3 fixes en paralelo: G-9 cursos LMS real `0493c10`, G-12 findLeadByPhone timeout `79b32b0`, G-10 UI handoffs admin `9998cb5` + `1d83bfa`. 348/348 tests ✅, type-check ✅, lint ✅, build ✅. **6 ahead of origin**, listo para push.)
+> **Última actualización:** 2026-07-05 ~03:55 (Sesión nocturna: delete-event modal sin fricción, short_code por evento (feature + 27 tests), survey offer drift fix. HEAD `3b85898` pushed. 429/429 tests ✅, build 26/26 ✅. **Migration `20260705120000_events_short_code` pendiente de aplicar en prod** — David la corre via Supabase SQL Editor cuando tenga hueco.)
 
 ---
 
@@ -21,9 +21,9 @@
 | **Production deploy ID** | (más reciente de los fixes 2026-07-04) |
 | **Production URL (auto)** | `qlick-three.vercel.app` |
 | **Branch** | `main` |
-| **Commit HEAD** | `b8b6f24` (`chore(log): track G-9/G-10/G-12/G-15/G-16 in PROJECT-LOG`) — punta de la rama, 6 commits ahead of origin después de cerrar el integration gate |
-| **Commits ahead of origin** | **6** (G-9 `0493c10`, G-12 `79b32b0`, G-10 `9998cb5` + `1d83bfa`, docs/status `c7479a4`, log `b8b6f24`) — listo para push de David |
-| **Mensaje actual** | `chore(log): track G-9/G-10/G-12/G-15/G-16 in PROJECT-LOG` |
+| **Commit HEAD** | `3b85898` (`fix(wa-bot): no ofrecer encuesta cuando el evento fue deleteado`) |
+| **Último push** | `3c303b9..3b85898 main -> main` (5 commits esta sesión: 2 delete-modal, 1 short_code feature, 1 window-not-defined, 1 survey drift fix) |
+| **Commits ahead of origin** | **0** — working tree clean |
 | **Build status** | ✅ READY + PROMOTED + aliasAssigned |
 | **Build duration** | ~50s (con cache del deploy anterior) |
 
