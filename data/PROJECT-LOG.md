@@ -1919,3 +1919,64 @@ sustituir el ciclo con templates". Ejecuté 4 bloques sincrónicamente.
   el JSON resultante se pierda al guardar.
 - **Trigger:** Pre-deploy checklist de `feat/event-bot-rules`. Sesión
   nocturna antes del test E2E humano con WhatsApp real.
+
+---
+
+## 2026-07-05 ~00:20 · Hard delete de evento (cascade) — commit b8a613b sin log
+
+- **Pregunta:** El commit `b8a613b feat(events): hard delete con cascade
+  (admin only, no reversible)` se mergeó al branch activo pero **no se
+  registró en `PROJECT-LOG.md`** en su momento. Esto rompe la regla de
+  AGENTS.md §"Documentación operativa": todo cambio de comportamiento
+  visible al admin debe quedar trazado.
+- **Decisión:** Entrada retroactiva (esta). Además, el feature quedó
+  enterrado en el drawer (botón "Eliminar" al fondo del `EventDrawer`),
+  descubierto recién cuando David pidió "no tenemos borrar evento,
+  hay que agregarlo" — ver entry siguiente.
+- **Razón:** Trazabilidad append-only por proyecto (regla memory). El
+  commit tocó: `events-server.ts::deleteEvent` (cascade + audit log
+  `event_delete`), `api/admin/events/[id]/route.ts` (DELETE endpoint),
+  `ops-client.ts::deleteEvent` (wrapper cliente), `EventDrawer.tsx`
+  (botón al fondo) y `index.ts` (export).
+- **Impacto:** Permite al admin borrar eventos vía drawer. NO reversible
+  (cascade confirmado contra DB real).
+- **Trigger:** Sesión 2026-07-04 ~23:00. Mavis ejecutó el feature sin
+  loggear → descubierto en revisión nocturna por falta de entrada en
+  este archivo.
+
+---
+
+## 2026-07-05 ~00:25 · Botón Eliminar en card + modal compartido con fricción alta
+
+- **Pregunta:** David: "aprovechando, no tenemos borrar evento, hay que
+  agregarlo". El feature ya existía pero estaba escondido en el drawer.
+  Esto viola la regla de memory "funcionalidad real > demo pulido":
+  una acción destructiva que el admin no encuentra es como no tenerla.
+- **Decisión:** Agregar botón "🗑 Eliminar" en cada card de
+  `/admin/eventos`, refactor del modal de confirmación para usar fricción
+  alta (escribir las primeras 3 letras del título del evento antes de
+  habilitar "Sí, eliminar"). El componente se extrajo a
+  `ConfirmDeleteEventModal` y se reusó en card + drawer (consistencia
+  UX — un solo modal canónico para borrar evento).
+- **Razón:** Button-per-card mejora descubribilidad sin agregar pasos
+  al flow normal (Editar / Ver detalle siguen en la posición de siempre,
+  Eliminar en fila separada debajo). Fricción alta sigue el patrón
+  estándar de admin panels (Stripe, GitHub). Threshold "3 letras"
+  sugerido por David explícitamente (opción "B" sobre "A" simple click
+  y "C" título completo). Título < 3 letras (caso edge) requiere el
+  título completo.
+- **Impacto:**
+  - Card de `/admin/eventos` ahora tiene 3 acciones: Editar, Ver
+    detalle, Eliminar. El admin ya no tiene que abrir el drawer para
+    descubrir que existe el delete.
+  - Modal compartido en `src/components/events/ConfirmDeleteEventModal.tsx`
+    usado por card y drawer (mismo copy, misma fricción).
+  - Helper puro `canDeleteEventWith` + `deleteEventInputPlaceholder`
+    en `src/lib/events/delete-confirm.ts` (testeable, sin React).
+  - Tests: 16 nuevos casos en `tests/delete-confirm.test.mjs` (prefijo
+    case-insensitive, trim, edge case de título corto, acentos).
+  - Totales: 384/384 tests OK. Type-check + lint + build verdes
+    (26/26 páginas estáticas).
+- **Trigger:** David pidió borrar evento → Mavis descubrió que ya
+  existía (commit b8a613b) pero escondido → Mavis propuso opciones
+  01/02 → David eligió 02 con fricción B → ejecutado.
