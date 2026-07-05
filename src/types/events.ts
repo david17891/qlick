@@ -72,6 +72,20 @@ export interface Event {
   id: string;
   /** URL-safe identifier único. Base de la URL pública. */
   slug: string;
+  /**
+   * ID corto aleatorio (4 chars base32 sin 0/1/O/I, e.g. `7A3X`).
+   * Único por evento, distinto del slug (que se reutiliza vía `-copia`
+   * para duplicados). WhatsApp-friendly. Auto-generado por el trigger
+   * `events_set_short_code` si no se provee. Ver
+   * `src/lib/events/short-code.ts` y migration
+   * `20260705120000_events_short_code.sql`.
+   *
+   * El bot WA lo usa como identificador canónico para desambiguar
+   * eventos con título similar (e.g. dos "Pinguinos" consecutivos):
+   * si el lead escribe `7A3X`, matchea exacto, no cae al fallback
+   * de "primer published por start_at".
+   */
+  shortCode?: string;
   /** Título visible. */
   title: string;
   description?: string;

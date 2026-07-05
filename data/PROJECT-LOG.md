@@ -1980,3 +1980,20 @@ sustituir el ciclo con templates". Ejecuté 4 bloques sincrónicamente.
 - **Trigger:** David pidió borrar evento → Mavis descubrió que ya
   existía (commit b8a613b) pero escondido → Mavis propuso opciones
   01/02 → David eligió 02 con fricción B → ejecutado.
+
+---
+
+## 2026-07-05 ~03:30 � short_code por evento (fix bot multi-evento)
+
+- **Pregunta:** David creo 2 eventos con el mismo nombre. El bot WA le dijo 'ya estas registrado en [el viejo]' cuando escribia sobre el nuevo. El path del bug: ot-engine.ts:2762 caia a loadActiveEventContext() sin slug, que retorna el primer published por starts_at � sin importar a cual evento le hablaba.
+- **Decision:** Agregar events.short_code (4 chars base32 sin 0/1/O/I, e.g. 7A3X, Q9K2). UNIQUE por evento. Auto-generado en DB via trigger + backfill idempotente. Match prioritario en matchTextToEvent (capa 0, antes de slug/titulo/location).
+- **Razon:** Slug se reutiliza con sufijo -copia para duplicados, asi que no es identificador canonico. short_code resuelve la ambiguedad multi-evento a nivel conceptual (WhatsApp-friendly, un solo token identifica cualquier evento). Encaja con la decision del usuario de 'sistemas genericos sobre especificos a una marca' (memory).
+- **Impacto:**
+  - supabase/migrations/20260705120000_events_short_code.sql � columna + UNIQUE + CHECK regex + funcion generadora + trigger + backfill PL/pgSQL.
+  - src/lib/events/short-code.ts � generateShortCode, isValidShortCode, generateUniqueShortCode. Paridad exacta con el alphabet del trigger PG.
+  - Bot: matchShortCode (nuevo) en ot-engine.ts, regex case-insensitive con word boundaries. Mensajes WA 'ya estas registrado' / 'tu lugar esta apartado' ahora incluyen '(codigo 7A3X)' para que el lead pueda referenciar futuros eventos por codigo.
+  - 'Ya estas registrado' reescrito: prioridad uttonId ? requestedSlug ? findEventInConversation (matchea short_code/slug/titulo) ? 1 evento unico ? ambiguity list. Ambiguo (2+ publicados sin contexto) -> lista interactiva con codigo y boton por evento.
+  - UI: code como chip copiable en admin (lista + drawer) + landing publica. Generado client-side en createEvent() con retry en s never (typegen stale).
+  - Tests: 27 nuevos casos � 	ests/short-code.test.mjs (formato, escala 10k, retry, paridad TS/PG) + 9 tests en whatsapp-bot.test.mjs (matchShortCode + prioridad sobre titulo). 429/429 verde.
+- **Trigger:** David pidio 'id por evento aleatorio' durante sesion nocturna.
+

@@ -44,6 +44,11 @@ export function mapEventRowToEvent(row: EventRow): Event {
   return {
     id: row.id,
     slug: row.slug,
+    // FIX 2026-07-05 (sesión David, ya-esta-registrado por nombre duplicado):
+    // `short_code` agregado en migration 20260705120000. El typegen puede no
+    // incluirlo todavía (se regenera con `npx supabase gen types`); casteamos
+    // con `as never` para no romper builds mientras el typegen queda stale.
+    shortCode: (row as unknown as { short_code?: string | null }).short_code ?? undefined,
     title: row.title,
     description: row.description ?? undefined,
     startsAt: row.starts_at,

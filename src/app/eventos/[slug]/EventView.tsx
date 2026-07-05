@@ -138,6 +138,19 @@ export function EventView({ event, pastEvent }: Props) {
           <h1 className="mt-4 text-4xl sm:text-5xl font-bold text-ink leading-tight">
             {event.title}
           </h1>
+          {/* FIX 2026-07-05 (sesión David, ya-estas-registrado con nombre
+              duplicado): mostramos el short_code en la landing pública.
+              Si el lead contacta al bot por WhatsApp mencionando el
+              código del evento, el bot matchea exacto (no ambiguo) y
+              lo asocia al evento correcto. */}
+          {event.shortCode && (
+            <p className="mt-3 text-sm text-ink-soft">
+              Código del evento:{" "}
+              <span className="font-mono font-semibold tracking-wider bg-ink/5 px-2 py-0.5 rounded">
+                {event.shortCode}
+              </span>
+            </p>
+          )}
           <ul className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm text-ink-soft">
             <li>
               📅 <strong>Cuándo:</strong> {startsAtFormatted}

@@ -22,6 +22,19 @@ import type { Database } from "@/types/supabase";
 export interface ActiveEventContext {
   id: string;
   slug: string;
+  /**
+   * FIX 2026-07-05 (sesión David, "ya estás registrado" con nombre
+   * duplicado): ID corto aleatorio (4 chars base32 sin 0/1/O/I, e.g.
+   * `7A3X`) UNIQUE por evento. El bot lo usa como match prioritario
+   * en `matchTextToEvent` para desambiguar eventos con título
+   * similar (e.g. dos "Pinguinos" consecutivos). Es la primera
+   * capa del fallback chain, antes de slug/título/location.
+   *
+   * Si es null (evento legacy pre-migration), el bot usa el resto
+   * del chain. La migration 20260705120000 backfillea todos los
+   * eventos existentes, así que en práctica nunca debería ser null.
+   */
+  shortCode: string | null;
   title: string;
   description: string | null;
   startsAt: Date;
@@ -92,7 +105,11 @@ function fallbackFromEnv(): ActiveEventContext {
     // si requiere nombre. False por default; si el evento real lo
     // requiere, lo lee de DB.
     requiresName: false,
-    eventRules: { personality: "", rules: [] }
+    eventRules: { personality: "", rules: [] },
+    // FIX 2026-07-05: el placeholder NO tiene short_code real (es ficticio).
+    // El bot cae al fallback chain sin esta capa, pero al ser placeholder
+    // no debería recibir WhatsApps reales — es solo safety net para tests.
+    shortCode: null
   };
 }
 
@@ -262,11 +279,15 @@ export async function loadActiveEventContext(
   try {
     // FIX 2026-07-02: dos branches separados para evitar lios con el
     // tipo de retorno de la query (PostgrestBuilder vs PostgrestFilterBuilder).
+    //
+    // FIX 2026-07-05 (sesión David, "ya estás registrado" con nombre duplicado):
+    // incluimos `short_code` (4 chars base32) en el SELECT para que el bot
+    // pueda desambiguar eventos por código único, no por título.
     const { data, error } = slug
       ? await supabase
           .from("events" as never)
           .select(
-            "id, slug, title, description, starts_at, ends_at, location, status, requires_name, event_rules"
+            "id, slug, short_code, title, description, starts_at, ends_at, location, status, requires_name, event_rules"
           )
           .eq("status", "published")
           .eq("slug", slug)
@@ -275,7 +296,7 @@ export async function loadActiveEventContext(
       : await supabase
           .from("events" as never)
           .select(
-            "id, slug, title, description, starts_at, ends_at, location, status, requires_name, event_rules"
+            "id, slug, short_code, title, description, starts_at, ends_at, location, status, requires_name, event_rules"
           )
           .eq("status", "published")
           .order("starts_at", { ascending: true })
@@ -289,6 +310,7 @@ export async function loadActiveEventContext(
     const evt = data as {
       id: string;
       slug: string;
+      short_code?: string | null;
       title: string;
       description: string | null;
       starts_at: string;
@@ -315,6 +337,7 @@ export async function loadActiveEventContext(
     return {
       id: evt.id,
       slug: evt.slug,
+      shortCode: (evt.short_code ?? null) as string | null,
       title: evt.title,
       description: evt.description,
       startsAt: new Date(evt.starts_at),
@@ -361,7 +384,7 @@ export async function loadAllActiveEvents(): Promise<ActiveEventContext[]> {
     const { data, error } = await supabase
       .from("events" as never)
       .select(
-        "id, slug, title, description, starts_at, ends_at, location, status, requires_name, event_rules"
+        "id, slug, short_code, title, description, starts_at, ends_at, location, status, requires_name, event_rules"
       )
       .eq("status", "published")
       .order("starts_at", { ascending: true });
@@ -374,6 +397,7 @@ export async function loadAllActiveEvents(): Promise<ActiveEventContext[]> {
     return (data as Array<{
       id: string;
       slug: string;
+      short_code?: string | null;
       title: string;
       description: string | null;
       starts_at: string;
@@ -397,6 +421,7 @@ export async function loadAllActiveEvents(): Promise<ActiveEventContext[]> {
       return {
         id: evt.id,
         slug: evt.slug,
+        shortCode: (evt.short_code ?? null) as string | null,
         title: evt.title,
         description: evt.description,
         startsAt: new Date(evt.starts_at),

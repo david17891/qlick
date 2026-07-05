@@ -139,7 +139,7 @@ export interface BotProcessResult {
   conversationId?: string;
   outboundMessageId?: string;
   /** Si el bot respondió con template o con texto libre. */
-  responseKind: "template" | "text" | "interactive" | "none";
+  responseKind: "template" | "text" | "interactive" | "list" | "none";
   /** Mensaje que se le envió al lead (para logging / debug). */
   responsePreview?: string;
   /** Si fue demo (sin provider real configurado). */
@@ -884,15 +884,77 @@ export function _findEventInConversationForTest(
 }
 
 /**
+ * Funcion exportada solo para tests. Ver matchShortCode arriba.
+ * FIX 2026-07-05.
+ */
+export function _matchShortCodeForTest(
+  text: string,
+  allEvents: ActiveEventContext[]
+): { event: ActiveEventContext; reason: string } | null {
+  return matchShortCode(text, allEvents);
+}
+
+/**
+ * Matchea un short_code de 4 chars base32 sin 0/1/O/I (e.g. "7A3X", "q9k1")
+ * con case-insensitive. Devuelve el evento si hay match único.
+ *
+ * FIX 2026-07-05 (sesión David, "ya estás registrado" con título duplicado):
+ * el short_code es el match más fuerte — gana sobre slug/título/location.
+ * Si el lead escribe "7A3X", "7a3x", o "el 7A3X por favor", matchea
+ * exacto contra ese evento y resuelve la ambigüedad sin caer al
+ * fallback de "primer published por start_at".
+ */
+function matchShortCode(
+  text: string,
+  allEvents: ActiveEventContext[]
+): { event: ActiveEventContext; reason: string } | null {
+  // Buscar el primer token que matchee el formato 4 chars del alphabet.
+  // Regex case-insensitive pero comparamos contra shortCode normalizado
+  // a uppercase (que es como se guarda).
+  const regex = /\b([A-HJ-NP-Z2-9]{4})\b/gi;
+  const matches = [...text.matchAll(regex)];
+  if (matches.length === 0) return null;
+
+  // Mapear eventos por shortCode (uppercased) para lookup O(1).
+  const byCode = new Map<string, ActiveEventContext>();
+  for (const evt of allEvents) {
+    if (evt.shortCode) byCode.set(evt.shortCode.toUpperCase(), evt);
+  }
+
+  // Si hay múltiples códigos en el texto (caso raro), matchear el primero
+  // que exista en el catálogo. Si ninguno matchea, dev null.
+  for (const m of matches) {
+    const code = m[1].toUpperCase();
+    const evt = byCode.get(code);
+    if (evt) return { event: evt, reason: `short_code(${code})` };
+  }
+  return null;
+}
+
+/**
  * Helper interno: intenta matchear un texto contra los eventos
  * disponibles. Usado tanto para inbound del lead como para outbound
- * del bot. Misma jerarquia: slug > [N] > "el N-ésimo" > title > location.
+ * del bot.
+ *
+ * Jerarquía de prioridad (cada capa cae a la siguiente si no matchea):
+ *   0. short_code (FIX 2026-07-05) — más fuerte: 4 chars únicos
+ *   1. indice del catalogo: [N] o "el primero/segundo/..."
+ *   2. slug textual
+ *   3. titulo (palabras >3 chars)
+ *   4. location (palabras >3 chars)
  */
 function matchTextToEvent(
   text: string,
   allEvents: ActiveEventContext[]
 ): { event: ActiveEventContext; reason: string } | null {
   const body = text.toLowerCase();
+
+  // 0) FIX 2026-07-05: short_code del evento (4 chars base32).
+  // Matchea ANTES que cualquier otra heurística porque es el único
+  // identificador canónico (no ambiguo) que sobrevive renames y
+  // duplicados de título.
+  const codeMatch = matchShortCode(text, allEvents);
+  if (codeMatch) return codeMatch;
 
   // 1) Indice del catalogo: [N] o "el primero/segundo/tercero".
   const allIndices = [...body.matchAll(/\[(\d+)\]/g)];
@@ -1376,11 +1438,19 @@ async function buildResponsePlan(args: {
       const sections = [
         {
           title: "Próximos eventos",
-          rows: allEvents.slice(0, 10).map((evt) => ({
-            id: `evt_info_${evt.slug}`,
-            title: evt.title.slice(0, 24),
-            description: `${evt.humanStartsAt} · ${evt.location}`.slice(0, 72)
-          }))
+          rows: allEvents.slice(0, 10).map((evt) => {
+            // FIX 2026-07-05 (sesión David, ya-estas-registrado por título
+            // duplicado): incluimos el short_code (4 chars) en la
+            // descripción del row para que el lead pueda identificar el
+            // evento sin ambigüedad si hay títulos similares. Formato:
+            // "<fecha> · <lugar> · <código>".
+            const codePart = evt.shortCode ? ` · ${evt.shortCode}` : "";
+            return {
+              id: `evt_info_${evt.slug}`,
+              title: evt.title.slice(0, 24),
+              description: `${evt.humanStartsAt} · ${evt.location}${codePart}`.slice(0, 72)
+            };
+          })
         }
       ];
       const interactive = {
@@ -1450,10 +1520,15 @@ async function buildResponsePlan(args: {
       const evtLoc = evt?.location ?? evtFallback.location;
       const evtDur = evt?.humanDuration ?? evtFallback.duration;
       const evtSlug = evt?.slug ?? evtFallback.name.toLowerCase().replace(/\s+/g, "_");
+      // FIX 2026-07-05 (sesión David, ya-estas-registrado por título duplicado):
+      // mostramos el short_code en el detalle del evento. Si el lead
+      // tiene varios eventos "Pinguinos" y quiere uno específico, puede
+      // decir "el 7A3X" en vez del nombre largo.
+      const codePart = evt?.shortCode ? ` · código ${evt.shortCode}` : "";
       const interactive = {
         type: "button" as const,
         body: {
-          text: `📅 ${evtName}\n🗓 ${evtDate} · 📍 ${evtLoc} · ⏱ ${evtDur}\n\n¿Listo para inscribirte?`
+          text: `📅 ${evtName}${codePart}\n🗓 ${evtDate} · 📍 ${evtLoc} · ⏱ ${evtDur}\n\n¿Listo para inscribirte?`
         },
         action: {
           buttons: [
@@ -2750,17 +2825,119 @@ export async function processInboundMessage(
     lead.id
   ) {
     // Determinar el slug del evento que el lead quiere inscribir.
-    // Prioridad:
-    //   1. requestedEventSlug (afirmative corto tras pregunta cerrada)
-    //   2. activeEvent.slug (evento activo si solo hay 1)
-    //   3. slug del botón (buttonId startsWith "evt_inscribir_")
-    let targetSlug: string | null = requestedEventSlug;
-    if (!targetSlug && buttonId?.startsWith("evt_inscribir_")) {
+    //
+    // FIX 2026-07-05 (sesión David, "ya estás registrado" con nombre
+    // duplicado): la prioridad anterior caía a
+    // `loadActiveEventContext()` sin args (= primer published por
+    // starts_at) cuando no había `requestedEventSlug` ni botón. Eso
+    // generaba falsos positivos: si David creaba 2 "Pinguinos" y le
+    // escribía al nuevo, lo mandábamos al viejo y decíamos "ya estás
+    // registrado en Pinguinos [el viejo]".
+    //
+    // Nueva prioridad (cada capa más fuerte que la siguiente):
+    //   1. buttonId `evt_inscribir_<slug>` (lead clickeó botón explícito)
+    //   2. requestedEventSlug (affirmative corto tras pregunta cerrada del LLM)
+    //   3. **findEventInConversation** — matchea short_code/slug/título en
+    //      los últimos mensajes. Si hay match, ESE evento (no el primero).
+    //   4. SOLO si 3 falla y hay UN solo evento publicado → ese.
+    //   5. Ambiguo (2+ publicados sin contexto) → pedido de clarificación
+    //      al lead con catálogo `[1]/[2]/shortcode`.
+    let targetSlug: string | null = null;
+    if (buttonId?.startsWith("evt_inscribir_")) {
       targetSlug = buttonId.slice("evt_inscribir_".length);
     }
+    if (!targetSlug) targetSlug = requestedEventSlug;
     if (!targetSlug) {
-      const activeEvt = await loadActiveEventContext().catch(() => null);
-      targetSlug = activeEvt?.slug ?? null;
+      // Capa 3: buscar por short_code/slug/título en la conversación
+      // reciente del lead. Es la capa que mata el bug de "ya estás
+      // registrado en el equivocado".
+      try {
+        const conv = await loadConversationWindow(phoneNormalized, 8).catch(
+          () => undefined
+        );
+        const allEventsForMatch = await loadAllActiveEvents().catch(
+          () => [] as ActiveEventContext[]
+        );
+        const matchedByText = findEventInConversation(
+          conv,
+          allEventsForMatch
+        );
+        if (matchedByText) {
+          targetSlug = matchedByText.slug;
+        }
+      } catch {
+        // Silencioso: caemos al siguiente fallback.
+      }
+    }
+    if (!targetSlug) {
+      // Capa 4: si solo hay 1 evento publicado, usarlo (back-compat
+      // con el flow viejo del bot de un solo evento).
+      const allEventsForFallback = await loadAllActiveEvents().catch(
+        () => [] as ActiveEventContext[]
+      );
+      if (allEventsForFallback.length === 1) {
+        targetSlug = allEventsForFallback[0].slug;
+      } else if (allEventsForFallback.length > 1) {
+        // Capa 5: ambiguo. Mandamos catálogo y cortamos el flow acá
+        // (no seguimos con provide_email hasta que el lead aclare).
+        const providerAmbig = getActiveWhatsAppProvider();
+        const cleanAmbig = cleanFirstName(lead.name);
+        const saludoAmbig = cleanAmbig ? `¡Hola ${cleanAmbig}!` : "¡Hola!";
+        const codeNote =
+          "Si sabés el código corto del evento (ej. 7A3X), mandámelo así.";
+        const bodyTextAmbig =
+          `${saludoAmbig} Tenemos varios eventos publicados y necesito saber a cuál te inscribís.\n\n` +
+          `¿Me confirmás cuál? Respondé con el número [1]–[${
+            Math.min(allEventsForFallback.length, 9)
+          }] del catálogo anterior o con el código del evento (ej. \`7A3X\`). ` +
+          codeNote;
+        const sectionsAmbig = [
+          {
+            title: "Eventos publicados",
+            rows: allEventsForFallback.slice(0, 9).map((evt) => ({
+              id: `evt_inscribir_${evt.slug}`,
+              title: evt.title.slice(0, 24),
+              description: `${evt.humanStartsAt} · ${evt.location}${
+                evt.shortCode ? ` · ${evt.shortCode}` : ""
+              }`.slice(0, 72)
+            }))
+          }
+        ];
+        const interactiveAmbig = {
+          type: "list" as const,
+          body: { text: bodyTextAmbig },
+          action: {
+            button: "Elegir evento",
+            sections: sectionsAmbig
+          }
+        };
+        try {
+          await providerAmbig.send({
+            to: phoneNormalized,
+            body: bodyTextAmbig,
+            interactive: interactiveAmbig
+          });
+        } catch (err) {
+          errorLog("[whatsapp/bot] ambiguous_event: send failed", {
+            leadId: lead.id,
+            error: err instanceof Error ? err.message : String(err)
+          });
+        }
+        return {
+          ok: true,
+          intent,
+          leadId: lead.id,
+          responseKind: "list",
+          responsePreview: bodyTextAmbig,
+          demo: false,
+          note: "ambiguous_event: requested clarificación"
+        };
+      } else {
+        // Cero publicados (raro, modo demo o DB caída). Caemos al
+        // placeholder de env vars para no romper el flow.
+        const activeEvt = await loadActiveEventContext().catch(() => null);
+        targetSlug = activeEvt?.slug ?? null;
+      }
     }
     if (targetSlug) {
       const existing = await findActiveQrTokenForLead(
@@ -2807,8 +2984,11 @@ export async function processInboundMessage(
           const priceDisplay = priceMatch[0].replace(/\s+/g, " ").trim();
           const clean = cleanFirstName(lead.name);
           const saludo = clean ? `¡Hola ${clean}!` : "¡Hola!";
+          // FIX 2026-07-05: incluir el short_code para que el lead
+          // pueda refirse a este evento en futuros mensajes sin ambigüedad.
+          const evtCodeLabel = evt?.shortCode ? ` (código ${evt.shortCode})` : "";
           const bodyText =
-            `${saludo} Ya estás registrado en *${evtName}* (${priceDisplay}). ` +
+            `${saludo} Ya estás registrado en *${evtName}*${evtCodeLabel} (${priceDisplay}). ` +
             `\n\n⚠️ *Método de pago por implementar.* Te avisamos cuando esté ` +
             `listo para que completes el registro.` +
             `\n\nSi querés acelerar, escribinos a hola@qlick.marketing.`;
@@ -2893,11 +3073,15 @@ export async function processInboundMessage(
         }
         const clean = cleanFirstName(lead.name);
         const saludo = clean ? `¡Hola ${clean}!` : "¡Hola!";
+        // FIX 2026-07-05: incluir el short_code en el mensaje "ya estás
+        // registrado" para que el lead pueda referenciar este evento
+        // por código en futuras conversaciones (ej. "el otro 7A3X").
+        const evtCodeLabel = evt?.shortCode ? ` (código ${evt.shortCode})` : "";
         const emailLine = lead.email && !lead.email.endsWith("@placeholder.local")
           ? `\n📧 Te lo reenviamos a tu correo ${lead.email} por si lo perdiste.`
           : "";
         const bodyText =
-          `${saludo} Ya estás registrado en *${evtName}*. ` +
+          `${saludo} Ya estás registrado en *${evtName}*${evtCodeLabel}. ` +
           `Tu QR actual (link de check-in) es:\n\n${existing.url}` +
           `\n\nMuéstralo en la entrada del evento. El staff lo va a escanear.` +
           emailLine;
@@ -2987,10 +3171,14 @@ export async function processInboundMessage(
           if (priceMatch && !isFree) {
             const priceDisplay = priceMatch[0].replace(/\s+/g, " ").trim();
             const evtName = evtForPayment?.title ?? targetSlug;
+            // FIX 2026-07-05: incluir short_code en el mensaje post-
+            // registro para que el lead pueda continuar la conversación
+            // por código, no por título ambiguo.
+            const evtCodeLabel = evtForPayment?.shortCode ? ` (código ${evtForPayment.shortCode})` : "";
             const clean = cleanFirstName(lead.name);
             const saludo = clean ? `¡Listo ${clean}!` : "¡Listo!";
             const bodyText =
-              `${saludo} Tu lugar para *${evtName}* (${priceDisplay}) está apartado. ` +
+              `${saludo} Tu lugar para *${evtName}*${evtCodeLabel} (${priceDisplay}) está apartado. ` +
               `\n\n⚠️ *Método de pago por implementar.* Te avisamos por acá cuando ` +
               `esté listo para que completes el registro.` +
               `\n\nSi querés acelerar, escribinos a hola@qlick.marketing.`;

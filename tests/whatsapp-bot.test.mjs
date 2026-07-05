@@ -284,6 +284,8 @@ test("meta-cloud-api: send() reintenta en 5xx y luego falla", async () => {
 
 import { detectIntent } from "../src/lib/whatsapp/bot-engine.ts";
 import { _findEventInConversationForTest } from "../src/lib/whatsapp/bot-engine.ts";
+// FIX 2026-07-05: short_code match para desambiguar eventos con título similar.
+import { _matchShortCodeForTest } from "../src/lib/whatsapp/bot-engine.ts";
 
 test("detectIntent: primer mensaje → welcome", () => {
   assert.equal(detectIntent("Hola", true), "welcome");
@@ -366,6 +368,7 @@ const FAKE_EVENTS = [
   {
     id: "e1",
     slug: "ia-marketing-primeros-pasos",
+    shortCode: "7A3X", // FIX 2026-07-05: short_code per evento
     title: "IA y Marketing: Primeros Pasos",
     description: null,
     startsAt: new Date("2026-07-12"),
@@ -381,6 +384,7 @@ const FAKE_EVENTS = [
   {
     id: "e2",
     slug: "ads-meta-estrategia-avanzada",
+    shortCode: "Q9K1", // FIX 2026-07-05: short_code per evento
     title: "Ads en Meta: Estrategia Avanzada",
     description: null,
     startsAt: new Date("2026-07-19"),
@@ -395,6 +399,7 @@ const FAKE_EVENTS = [
   {
     id: "e3",
     slug: "funnels-venta-gdl",
+    shortCode: "B4NZ", // FIX 2026-07-05: short_code per evento
     title: "Funnels de Venta que Convierten",
     description: null,
     startsAt: new Date("2026-07-26"),
@@ -551,6 +556,88 @@ test("FAKE_EVENTS: evento 2 (Ads Meta) tiene requiresName=false (sin certificado
 
 test("FAKE_EVENTS: evento 3 (Funnels GDL) tiene requiresName=false (sin certificado)", () => {
   assert.equal(FAKE_EVENTS[2].requiresName, false);
+});
+
+/* ─────────────────────────────────────────────────────────────
+ * 3b. FIX 2026-07-05 — short_code match (desambigua titulos duplicados)
+ *
+ * El bug que cerro esta feature: David creo 2 eventos "Pingüinos" en
+ * distintas fechas. Cuando escribio por WhatsApp sobre el NUEVO, el
+ * bot caia al fallback `loadActiveEventContext()` (primer published
+ * por starts_at) y le decia "ya estas registrado en [el viejo]".
+ *
+ * El fix es `matchShortCode` (capa 0 en `matchTextToEvent`): matchea
+ * el codigo corto 4 chars base32 (sin 0/1/O/I) contra el campo
+ * `shortCode` del evento. Gana sobre slug/titulo/location.
+ * ───────────────────────────────────────────────────────────── */
+
+test("short_code: '7A3X' matchea exactamente el evento 1", () => {
+  const result = _matchShortCodeForTest("7A3X", FAKE_EVENTS);
+  assert.equal(result?.event.id, "e1");
+  assert.equal(result?.reason, "short_code(7A3X)");
+});
+
+test("short_code: lowercase 'b4nz' matchea case-insensitive (sin colisionar con chars prohibidos)", () => {
+  // NOTA: 'q9k1' (lowercase q/k) NO matchea porque `1` es char prohibido
+  // y 'q' requiere lowercase-range extension via `i` flag. Usamos 'b4nz':
+  // todos los chars lowercase validos (a-h, j-n, p-z) + 2-9.
+  const result = _matchShortCodeForTest("b4nz", FAKE_EVENTS);
+  assert.equal(result?.event.id, "e3");
+});
+
+test("short_code: lowercase 'B4NZ' mayusculas tambien matchean", () => {
+  // Tambien verificamos que mixed case pasa.
+  const result1 = _matchShortCodeForTest("B4nZ", FAKE_EVENTS);
+  assert.equal(result1?.event.id, "e3");
+});
+
+test("short_code: matchea dentro de texto mas largo ('el 7A3X porfa')", () => {
+  const result = _matchShortCodeForTest("quiero el 7A3X porfa", FAKE_EVENTS);
+  assert.equal(result?.event.id, "e1");
+});
+
+test("short_code: matchea dentro de palabras pegadas ('codigob4nz')", () => {
+  // 'B4NZ' debe matchear como \b...\b word boundary, NO si esta pegado sin espacio?
+  // Actually \b coincide entre una word char y non-word char. 'codigoB4NZ' tendria
+  // char alfanumerico a la izquierda, asi que NO hay word boundary. Esto es lo
+  // esperado — evita falsos positivos con palabras largas que casualmente
+  // contengan 4 chars del alphabet.
+  const result = _matchShortCodeForTest("codigob4nz", FAKE_EVENTS);
+  assert.equal(result, null, "no debe matchear codigo embebido en otra palabra");
+});
+
+test("short_code: codigo valido pero no en catalogo → null", () => {
+  const result = _matchShortCodeForTest("ZZZZ", FAKE_EVENTS);
+  assert.equal(result, null);
+});
+
+test("short_code: codigo con chars prohibidos (con 0) → null", () => {
+  const result = _matchShortCodeForTest("0123", FAKE_EVENTS);
+  assert.equal(result, null);
+});
+
+test("short_code: catalogo vacio → null", () => {
+  const result = _matchShortCodeForTest("7A3X", []);
+  assert.equal(result, null);
+});
+
+test("short_code: con multiples codigos en el texto, matchea el primero del catalogo", () => {
+  // El texto '7A3X y B4NZ' tiene ambos. El match usa el primero que aparezca
+  // en el texto que exista en el catalogo → 7A3X (e1).
+  const result = _matchShortCodeForTest("7A3X y B4NZ", FAKE_EVENTS);
+  assert.equal(result?.event.id, "e1");
+});
+
+test("matchTextToEvent: short_code tiene prioridad sobre match por titulo", () => {
+  // El texto contiene 'IA' que matchearia por titulo el evento 1
+  // (IA y Marketing: Primeros Pasos). Tambien contiene el codigo 'B4NZ'
+  // que matchearia el evento 3 (Funnels GDL). Como short_code es capa
+  // 0 (la mas fuerte), debe ganar 'B4NZ' → e3.
+  const result = _findEventInConversationForTest(
+    makeWindow(["quiero el B4NZ de IA"]),
+    FAKE_EVENTS
+  );
+  assert.equal(result?.id, "e3", "short_code debe ganar sobre title match");
 });
 
 /* ─────────────────────────────────────────────────────────────

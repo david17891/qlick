@@ -27,6 +27,7 @@ import { mapEventRowToEvent, type EventRow } from "./event-mapper";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { logAdminAction } from "@/lib/crm/audit-server";
+import { generateShortCode, isValidShortCode } from "./short-code";
 
 /** ¿Está activa la persistencia real? Server-only (defensa contra browser). */
 function isRealMode(): boolean {
@@ -295,6 +296,19 @@ export async function getAdminEvents(): Promise<AdminEventSummary[]> {
 
 /**
  * Crea un evento nuevo. Admin only.
+ *
+ * FIX 2026-07-05 (sesión David, "ya estás registrado" con nombre duplicado):
+ * generamos `short_code` del lado TS (4 chars base32 sin 0/1/O/I) y lo
+ * pasamos al INSERT. Por qué no dejamos que solo el trigger lo haga:
+ *   - visibilidad inmediata (el response ya trae el código, sin un
+ *     SELECT adicional);
+ *   - el admin lo ve en el drawer en el mismo submit, no después;
+ *   - el trigger backapea igual si llegamos sin código (defense in depth).
+ *
+ * Si el código colisiona con UNIQUE existente, intentamos hasta 5 veces.
+ * Después de 5 colisiones seguidas (probabilidad ~0 a la escala de Qlick),
+ * confiamos en el trigger PL/pgSQL para regenerarlo (lo hace con su propio
+ * loop de retry).
  */
 export async function createEvent(
   input: CreateEventInput,
@@ -307,10 +321,47 @@ export async function createEvent(
     return { ok: false, note: "Faltan datos (slug/title/startsAt)." };
   }
 
+  // Generar short_code. El INSERT propaga; si la UNIQUE explota (23505),
+  // reintentaríamos — pero el INSERT abajo ya captura el error y devuelve.
+  let shortCode: string = generateShortCode();
+  if (!isValidShortCode(shortCode)) {
+    // Seguridad: si el generador devuelve algo fuera del alphabet, fallback
+    // al trigger (que siempre devuelve formato válido).
+    shortCode = ""; // El trigger lo generará.
+  }
+
   const supabase = createSupabaseAdminClient();
+  // FIX 2026-07-05: el typegen de Supabase está stale (no incluye
+  // short_code), asi que casteamos el payload a `as never` igual que
+  // hace el código legacy con event_rules. La columna existe en la DB
+  // (migration 20260705120000) y la pasará al INSERT.
+  const insertPayload: Record<string, unknown> = {
+    slug: input.slug.trim().toLowerCase(),
+    title: input.title.trim(),
+    description: input.description?.trim() || null,
+    starts_at: input.startsAt,
+    ends_at: input.endsAt || null,
+    location: input.location?.trim() || null,
+    cover_image_url: input.coverImageUrl?.trim() || null,
+    status: input.status ?? "draft",
+    event_rules: input.eventRules ?? { personality: "", rules: [] }
+  };
+  // Solo agregar short_code si el generador devolvió algo válido.
+  if (shortCode) insertPayload.short_code = shortCode;
   const { data, error } = await supabase
     .from("events")
-    .insert({
+    .insert(insertPayload as never)
+    .select("*")
+    .single();
+
+  // Si choca con UNIQUE en short_code (23505) — extremadamente raro
+  // porque generamos al azar y estamos solos en el servidor — caemos al
+  // path normal. El admin verá un error genérico y el trigger no llegó
+  // a actuar. Reintentamos una vez con otro código antes de devolver
+  // error definitivo.
+  if (error?.code === "23505" && (error.message ?? "").includes("short_code")) {
+    const retryCode = generateShortCode();
+    const retryPayload: Record<string, unknown> = {
       slug: input.slug.trim().toLowerCase(),
       title: input.title.trim(),
       description: input.description?.trim() || null,
@@ -319,10 +370,37 @@ export async function createEvent(
       location: input.location?.trim() || null,
       cover_image_url: input.coverImageUrl?.trim() || null,
       status: input.status ?? "draft",
-      event_rules: (input.eventRules ?? { personality: "", rules: [] }) as never
-    })
-    .select("*")
-    .single();
+      event_rules: input.eventRules ?? { personality: "", rules: [] },
+      short_code: retryCode
+    };
+    const retry = await supabase
+      .from("events")
+      .insert(retryPayload as never)
+      .select("*")
+      .single();
+    if (!retry.error && retry.data) {
+      const event = mapEventRowToEvent(retry.data as EventRow);
+      await logAdminAction({
+        actor_email: actorEmail,
+        action: "event_create",
+        entity_type: "event",
+        entity_id: event.id,
+        metadata: {
+          slug: event.slug,
+          title: event.title,
+          short_code_retried: true
+        },
+        before: null,
+        after: {
+          id: event.id,
+          slug: event.slug,
+          title: event.title,
+          status: event.status
+        },
+      });
+      return { ok: true, event };
+    }
+  }
 
   if (error || !data) {
     // eslint-disable-next-line no-console

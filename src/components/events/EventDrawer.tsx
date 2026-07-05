@@ -426,7 +426,30 @@ export function EventDrawer({
               {mode === "create" ? "Crear evento" : form.title || "Sin título"}
             </h2>
             {mode === "edit" && event && (
-              <p className="text-xs text-ink-muted mt-0.5">/{event.slug}</p>
+              <p className="text-xs text-ink-muted mt-0.5 flex items-center gap-2">
+                <span>/{event.slug}</span>
+                {/* FIX 2026-07-05 (sesión David, ya-estas-registrado con
+                    nombre duplicado): mostramos el short_code al lado del
+                    slug en el header del drawer. Es la identidad canónica
+                    que el bot y el staff usan para noambigüedad. Copiable
+                    al click. */}
+                {event.shortCode && (
+                  <button
+                    type="button"
+                    title="Copiar código"
+                    onClick={() => {
+                      if (typeof navigator !== "undefined" && navigator.clipboard) {
+                        navigator.clipboard
+                          .writeText(event.shortCode ?? "")
+                          .catch(() => {});
+                      }
+                    }}
+                    className="font-mono px-1.5 py-0.5 rounded bg-ink/5 hover:bg-ink/10 text-ink transition-colors"
+                  >
+                    {event.shortCode}
+                  </button>
+                )}
+              </p>
             )}
           </div>
           <button

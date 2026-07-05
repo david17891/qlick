@@ -241,7 +241,7 @@ export function AdminEventosClient({
               </div>
             </div>
             <div className="p-5 flex flex-col flex-1">
-              <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center justify-between mb-2 gap-2">
                 <Badge
                   tone={
                     s.event.status === "published"
@@ -257,7 +257,29 @@ export function AdminEventosClient({
                       ? "Borrador"
                       : "Archivado"}
                 </Badge>
-                <span className="text-xs text-ink-muted">/{s.event.slug}</span>
+                <div className="flex items-center gap-2">
+                  {/* FIX 2026-07-05 (sesión David, ya-estas-registrado con
+                      nombre duplicado): mostramos el short_code (4 chars)
+                      como chip discreto copiable. Lo usa el bot WA y el
+                      staff para desambiguar eventos con título similar. */}
+                  {s.event.shortCode && (
+                    <button
+                      type="button"
+                      title="Copiar código"
+                      onClick={() => {
+                        if (typeof navigator !== "undefined" && navigator.clipboard) {
+                          navigator.clipboard
+                            .writeText(s.event.shortCode ?? "")
+                            .catch(() => {});
+                        }
+                      }}
+                      className="font-mono text-xs px-2 py-0.5 rounded bg-ink/5 hover:bg-ink/10 text-ink-soft transition-colors"
+                    >
+                      {s.event.shortCode}
+                    </button>
+                  )}
+                  <span className="text-xs text-ink-muted">/{s.event.slug}</span>
+                </div>
               </div>
               {/* El título ya está en el cover del card (gradient + h3).
                   No lo duplicamos acá. */}
