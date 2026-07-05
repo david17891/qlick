@@ -42,6 +42,12 @@ export interface ActiveEventContext {
    * Default false (eventos sin certificado, solo email basta).
    */
   requiresName: boolean;
+  /**
+   * FIX 2026-07-05 (Fase 7b, feat/event-bot-rules): reglas de comportamiento
+   * del bot para este evento (personalidad + reglas libres). Inyectado
+   * al system prompt via `promptBlock`. Default: empty.
+   */
+  eventRules: import("@/types/events").EventBotRules;
 }
 
 type SupabaseAdmin = SupabaseClient<Database>;
@@ -78,13 +84,15 @@ function fallbackFromEnv(): ActiveEventContext {
       humanStartsAt: date,
       humanDuration: duration,
       location,
-      description: null
+      description: null,
+      eventRules: { personality: "", rules: [] }
     }),
     source: process.env.EVENT_NAME ? "env" : "placeholder",
     // FIX 2026-07-02: fallback conservador — el placeholder no sabe
     // si requiere nombre. False por default; si el evento real lo
     // requiere, lo lee de DB.
-    requiresName: false
+    requiresName: false,
+    eventRules: { personality: "", rules: [] }
   };
 }
 
@@ -143,6 +151,9 @@ export function formatHumanDuration(
  * FIX 2026-07-02 (sesion David): ahora incluye `description` (donde van precio,
  * modalidad, cupo, etc., porque el schema no tiene columnas dedicadas). Asi
  * el LLM tiene el precio/costo disponible y no tiene que inventar.
+ *
+ * FIX 2026-07-05 (Fase 7b): incluye `eventRules` (personalidad + reglas del
+ * admin). El LLM DEBE responder siguiendo estas reglas.
  */
 function formatPromptBlock(args: {
   title: string;
@@ -150,6 +161,7 @@ function formatPromptBlock(args: {
   humanDuration: string;
   location: string;
   description: string | null;
+  eventRules: import("@/types/events").EventBotRules;
 }): string {
   const lines: string[] = [
     "=== EVENTO ACTIVO ===",
@@ -161,7 +173,23 @@ function formatPromptBlock(args: {
   if (args.description) {
     lines.push("", "Detalles:", args.description);
   }
-  lines.push("======================");
+  if (args.eventRules.personality || args.eventRules.rules.length > 0) {
+    lines.push("", "=== REGLAS DEL BOT (OBLIGATORIAS) ===");
+    if (args.eventRules.personality) {
+      lines.push(`Personalidad: ${args.eventRules.personality}`);
+    }
+    if (args.eventRules.rules.length > 0) {
+      args.eventRules.rules.forEach((r) => lines.push(`- ${r}`));
+    }
+    lines.push("");
+    lines.push(
+      "⚠️ REGLA DURA: Si te preguntan algo que NO está en el contexto del evento",
+      "o en estas reglas, NO INVENTES. Responde:",
+      '"No tengo esa información, te derivo con el equipo."',
+      "No derives por tu cuenta — solo deriva si el admin lo configura."
+    );
+    lines.push("======================");
+  }
   return lines.join("\n");
 }
 
@@ -238,7 +266,7 @@ export async function loadActiveEventContext(
       ? await supabase
           .from("events" as never)
           .select(
-            "id, slug, title, description, starts_at, ends_at, location, status, requires_name"
+            "id, slug, title, description, starts_at, ends_at, location, status, requires_name, event_rules"
           )
           .eq("status", "published")
           .eq("slug", slug)
@@ -247,7 +275,7 @@ export async function loadActiveEventContext(
       : await supabase
           .from("events" as never)
           .select(
-            "id, slug, title, description, starts_at, ends_at, location, status, requires_name"
+            "id, slug, title, description, starts_at, ends_at, location, status, requires_name, event_rules"
           )
           .eq("status", "published")
           .order("starts_at", { ascending: true })
@@ -267,17 +295,21 @@ export async function loadActiveEventContext(
       ends_at: string | null;
       location: string | null;
       requires_name?: boolean;
+      event_rules?: unknown;
     };
 
     const humanStartsAt = formatHumanDate(evt.starts_at);
     const humanDuration = formatHumanDuration(evt.starts_at, evt.ends_at);
     const location = evt.location?.trim() || "Por confirmar";
+    const { normalizeEventRules } = await import("../events/event-mapper");
+    const eventRules = normalizeEventRules(evt.event_rules);
     const promptBlock = formatPromptBlock({
       title: evt.title,
       humanStartsAt,
       humanDuration,
       location,
-      description: evt.description
+      description: evt.description,
+      eventRules
     });
 
     return {
@@ -292,7 +324,8 @@ export async function loadActiveEventContext(
       humanDuration,
       promptBlock,
       source: "db",
-      requiresName: Boolean(evt.requires_name)
+      requiresName: Boolean(evt.requires_name),
+      eventRules
     };
   } catch {
     return fallbackFromEnv();
@@ -328,7 +361,7 @@ export async function loadAllActiveEvents(): Promise<ActiveEventContext[]> {
     const { data, error } = await supabase
       .from("events" as never)
       .select(
-        "id, slug, title, description, starts_at, ends_at, location, status, requires_name"
+        "id, slug, title, description, starts_at, ends_at, location, status, requires_name, event_rules"
       )
       .eq("status", "published")
       .order("starts_at", { ascending: true });
@@ -337,6 +370,7 @@ export async function loadAllActiveEvents(): Promise<ActiveEventContext[]> {
       return [];
     }
 
+    const { normalizeEventRules } = await import("../events/event-mapper");
     return (data as Array<{
       id: string;
       slug: string;
@@ -346,16 +380,19 @@ export async function loadAllActiveEvents(): Promise<ActiveEventContext[]> {
       ends_at: string | null;
       location: string | null;
       requires_name?: boolean;
+      event_rules?: unknown;
     }>).map((evt) => {
       const humanStartsAt = formatHumanDate(evt.starts_at);
       const humanDuration = formatHumanDuration(evt.starts_at, evt.ends_at);
       const location = evt.location?.trim() || "Por confirmar";
+      const eventRules = normalizeEventRules(evt.event_rules);
       const promptBlock = formatPromptBlock({
         title: evt.title,
         humanStartsAt,
         humanDuration,
         location,
-        description: evt.description
+        description: evt.description,
+        eventRules
       });
       return {
         id: evt.id,
@@ -369,7 +406,8 @@ export async function loadAllActiveEvents(): Promise<ActiveEventContext[]> {
         humanDuration,
         promptBlock,
         source: "db" as const,
-        requiresName: Boolean(evt.requires_name)
+        requiresName: Boolean(evt.requires_name),
+        eventRules
       };
     });
   } catch {

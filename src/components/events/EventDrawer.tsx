@@ -36,6 +36,9 @@ interface FormState {
   location: string;
   coverImageUrl: string;
   status: EventStatus;
+  /** Fase 7b: reglas del bot para este evento. */
+  botPersonality: string;
+  botRulesText: string; // textarea: 1 regla por linea
 }
 
 function eventToForm(e: Event): FormState {
@@ -48,6 +51,8 @@ function eventToForm(e: Event): FormState {
     location: e.location ?? "",
     coverImageUrl: e.coverImageUrl ?? "",
     status: e.status,
+    botPersonality: e.eventRules?.personality ?? "",
+    botRulesText: (e.eventRules?.rules ?? []).join("\n")
   };
 }
 
@@ -61,6 +66,8 @@ function emptyForm(): FormState {
     location: "",
     coverImageUrl: "",
     status: "draft",
+    botPersonality: "",
+    botRulesText: ""
   };
 }
 
@@ -115,6 +122,7 @@ export function EventDrawer({
   const [fieldErrors, setFieldErrors] = useState<
     Partial<Record<keyof FormState, string>>
   >({});
+  const [prefillingRules, setPrefillingRules] = useState(false);
 
   // Si cambia el evento/modo desde fuera, resetea el form.
   useEffect(() => setForm(initial), [initial]);
@@ -172,6 +180,11 @@ export function EventDrawer({
     }
     setFieldErrors({});
 
+    const rulesArr = form.botRulesText
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+
     setSaving(true);
     try {
       if (mode === "create") {
@@ -186,6 +199,10 @@ export function EventDrawer({
           location: form.location.trim() || undefined,
           coverImageUrl: form.coverImageUrl.trim() || undefined,
           status: form.status,
+          eventRules: {
+            personality: form.botPersonality.trim(),
+            rules: rulesArr
+          }
         });
         setSuccess("Evento creado.");
         onSaved(created);
@@ -198,6 +215,10 @@ export function EventDrawer({
             ? datetimeLocalToIso(form.endsAtLocal)
             : undefined,
           location: form.location.trim() || undefined,
+          eventRules: {
+            personality: form.botPersonality.trim(),
+            rules: rulesArr
+          },
           coverImageUrl: form.coverImageUrl.trim() || undefined,
         });
         setSuccess("Cambios guardados.");
@@ -232,6 +253,57 @@ export function EventDrawer({
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error cambiando status.");
       setStatusChanging(null);
+    }
+  }
+
+  /**
+   * Llama al endpoint /api/admin/events/[id]/prefill-rules y aplica
+   * las reglas devueltas al form. El admin puede revisar/editar antes
+   * de guardar.
+   *
+   * Solo funciona en modo edit (necesita event.id). En modo create
+   * no hay id todavía — el admin tendría que guardar primero y luego
+   * editar.
+   */
+  async function handlePrefillRules() {
+    if (!event) {
+      setError("Guarda el evento primero, luego prellena las reglas del bot.");
+      return;
+    }
+    setError(null);
+    setSuccess(null);
+    setPrefillingRules(true);
+    try {
+      const res = await fetch(`/api/admin/events/${event.id}/prefill-rules`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          existingPersonality: form.botPersonality
+        })
+      });
+      const data = (await res.json()) as {
+        ok: boolean;
+        rules?: { personality: string; rules: string[] };
+        error?: string;
+      };
+      if (!data.ok || !data.rules) {
+        setError(data.error ?? "No se pudo prellenar las reglas.");
+        return;
+      }
+      setForm((prev) => ({
+        ...prev,
+        botPersonality: data.rules!.personality ?? prev.botPersonality,
+        botRulesText: (data.rules!.rules ?? []).join("\n")
+      }));
+      setSuccess(
+        "Reglas prellenadas. Revisa, edita si quieres, y guarda el evento."
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Error llamando al prefill."
+      );
+    } finally {
+      setPrefillingRules(false);
     }
   }
 
@@ -441,6 +513,83 @@ export function EventDrawer({
               </select>
             </Field>
           )}
+
+          {/* ────── Reglas del bot (Fase 7b) ────── */}
+          <fieldset className="border-t border-brand-100 pt-4 mt-2 space-y-3">
+            <legend className="text-xs font-bold uppercase tracking-wider text-brand-600 px-2">
+              🤖 Reglas del bot
+            </legend>
+            <p className="text-xs text-ink-muted px-1">
+              Personalidad y reglas que el bot sigue al responder preguntas
+              sobre este evento. La <strong>description</strong> de arriba
+              ya es el contexto principal; estas reglas afinan el tono y
+              los límites.
+            </p>
+
+            <Field
+              label="Personalidad"
+              htmlFor="evt-bot-personality"
+              hint="Sugeridas: seria, casual, con humor, supervendedor. O escribe una custom."
+            >
+              <Input
+                id="evt-bot-personality"
+                value={form.botPersonality}
+                onChange={(e) => set("botPersonality", e.target.value)}
+                placeholder="casual"
+                disabled={saving}
+                list="bot-personality-suggestions"
+                maxLength={50}
+              />
+              <datalist id="bot-personality-suggestions">
+                <option value="seria" />
+                <option value="casual" />
+                <option value="con humor" />
+                <option value="supervendedor" />
+              </datalist>
+            </Field>
+
+            <Field
+              label="Reglas (una por línea)"
+              htmlFor="evt-bot-rules"
+              hint="Lo que el bot DEBE o NO DEBE hacer. Edita libremente."
+            >
+              <Textarea
+                id="evt-bot-rules"
+                rows={5}
+                value={form.botRulesText}
+                onChange={(e) => set("botRulesText", e.target.value)}
+                placeholder={
+                  "Si preguntan descuentos, decir 'No manejo descuentos'.\n" +
+                  "Si no se la respuesta, decir que no tiene la info.\n" +
+                  "Mencionar precio solo si preguntan."
+                }
+                disabled={saving}
+              />
+            </Field>
+
+            {mode === "edit" && event && (
+              <div className="flex items-center justify-between gap-2 px-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handlePrefillRules}
+                  disabled={saving || prefillingRules}
+                  aria-label="Prellenar reglas con DeepSeek"
+                >
+                  {prefillingRules ? "Prellenando…" : "✨ Prellenar con IA"}
+                </Button>
+                <p className="text-[10px] text-ink-muted italic">
+                  DeepSeek sugiere personalidad + reglas desde la descripción.
+                </p>
+              </div>
+            )}
+            {mode === "create" && (
+              <p className="text-xs text-ink-muted italic px-1">
+                Guarda el evento primero para poder prellenar con IA.
+              </p>
+            )}
+          </fieldset>
         </form>
 
         <footer className="border-t border-brand-100 px-6 py-4 flex flex-col gap-3 bg-brand-50/30">

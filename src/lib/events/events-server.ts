@@ -61,6 +61,11 @@ export interface CreateEventInput {
   coverImageUrl?: string;
   /** Si no se pasa, default a 'draft'. */
   status?: EventStatus;
+  /**
+   * Reglas de comportamiento del bot para este evento (Fase 7b).
+   * Si no se pasa, default a { personality: '', rules: [] }.
+   */
+  eventRules?: import("@/types/events").EventBotRules;
 }
 
 /** Input para editar un evento (admin). Todos los campos opcionales salvo los requeridos. */
@@ -71,6 +76,7 @@ export interface UpdateEventInput {
   endsAt?: string | null;
   location?: string | null;
   coverImageUrl?: string | null;
+  eventRules?: import("@/types/events").EventBotRules | null;
 }
 
 /** Resultado de operaciones admin sobre eventos. */
@@ -313,6 +319,7 @@ export async function createEvent(
       location: input.location?.trim() || null,
       cover_image_url: input.coverImageUrl?.trim() || null,
       status: input.status ?? "draft",
+      event_rules: (input.eventRules ?? { personality: "", rules: [] }) as never
     })
     .select("*")
     .single();
@@ -368,7 +375,9 @@ export async function updateEvent(
     ends_at?: string | null;
     location?: string | null;
     cover_image_url?: string | null;
+    event_rules?: unknown;
   } = {};
+  // Patch se construye arriba; al final hacemos `as never` para el .update().
   const changes: Record<string, { from: string | null; to: string | null }> = {};
 
   if (input.title !== undefined) {
@@ -389,6 +398,18 @@ export async function updateEvent(
   }
   if (input.coverImageUrl !== undefined) {
     patch.cover_image_url = input.coverImageUrl?.trim() || null;
+  }
+  if (input.eventRules !== undefined) {
+    if (input.eventRules === null) {
+      patch.event_rules = null;
+    } else {
+      // Normalizamos para serializar limpio (solo campos validos).
+      const personality = input.eventRules.personality?.trim() ?? "";
+      const rules = (input.eventRules.rules ?? [])
+        .map((r) => r.trim())
+        .filter((r) => r.length > 0);
+      patch.event_rules = { personality, rules } as never;
+    }
   }
 
   if (Object.keys(patch).length === 0) {
@@ -413,7 +434,7 @@ export async function updateEvent(
 
   const { data, error } = await supabase
     .from("events")
-    .update(patch)
+    .update(patch as never)
     .eq("id", eventId)
     .select("*")
     .maybeSingle();

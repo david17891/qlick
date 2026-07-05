@@ -201,6 +201,14 @@ export interface EventFormInput {
   coverImageUrl?: string;
   /** Solo usado al crear; al editar se manda por updateEventStatus. */
   status?: EventStatus;
+  /**
+   * Reglas de comportamiento del bot (Fase 7b). Se inyecta al prompt
+   * del bot cuando el evento está activo.
+   */
+  eventRules?: {
+    personality: string;
+    rules: string[];
+  };
 }
 
 /** POST /api/admin/events → crea un evento. */

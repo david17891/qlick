@@ -50,6 +50,24 @@ export type EventImportType = "confirmation" | "attendee" | "survey";
 /* Evento (catálogo)                                                   */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Reglas de comportamiento del bot para este evento.
+ *
+ * `personality`: tono del bot (predefinido o custom string).
+ * `rules`: array de strings — cada uno es una regla libre que el admin
+ * escribe (o que DeepSeek pre-llena desde la description).
+ *
+ * El bot inyecta esto en el system prompt antes de responder.
+ * Regla dura built-in (no almacenada): "Solo responde con info del
+ * contexto. Si no sabes, di que no tienes la info."
+ */
+export interface EventBotRules {
+  /** Tono del bot. Sugeridos: "seria", "casual", "con humor", "supervendedor". */
+  personality: string;
+  /** Lista de reglas. Una por línea en la UI. */
+  rules: string[];
+}
+
 export interface Event {
   id: string;
   /** URL-safe identifier único. Base de la URL pública. */
@@ -69,6 +87,11 @@ export interface Event {
   status: EventStatus;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Reglas de comportamiento del bot (Fase 7b, 2026-07-05).
+   * Editable desde `/admin/eventos/[id]`. Inyectado al prompt del bot.
+   */
+  eventRules?: EventBotRules;
 }
 
 /* ------------------------------------------------------------------ */

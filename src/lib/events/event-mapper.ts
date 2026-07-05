@@ -12,6 +12,7 @@
 import type { Database } from "@/types/supabase";
 import type {
   Event,
+  EventBotRules,
   EventConfirmation,
   EventAttendee,
   EventSurvey,
@@ -52,6 +53,26 @@ export function mapEventRowToEvent(row: EventRow): Event {
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    eventRules: normalizeEventRules(row.event_rules)
+  };
+}
+
+/**
+ * Normaliza el jsonb de `event_rules` al shape `EventBotRules`.
+ * Si la DB tiene null, {} o un shape raro, devolvemos defaults seguros.
+ */
+export function normalizeEventRules(
+  raw: unknown,
+): EventBotRules {
+  if (!raw || typeof raw !== "object") {
+    return { personality: "", rules: [] };
+  }
+  const obj = raw as { personality?: unknown; rules?: unknown };
+  return {
+    personality: typeof obj.personality === "string" ? obj.personality : "",
+    rules: Array.isArray(obj.rules)
+      ? obj.rules.filter((r) => typeof r === "string" && r.trim().length > 0)
+      : []
   };
 }
 
