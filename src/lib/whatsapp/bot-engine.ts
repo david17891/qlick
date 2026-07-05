@@ -2738,6 +2738,14 @@ export async function processInboundMessage(
   // ni si el wizard nativo está en curso (Fase 7d), ni si el último
   // outbound fue un thank-you de wizard recién completado
   // (`survey_completed: true`).
+  //
+  // FIX 2026-07-05 (sesión David, "bot dice gracias por llegar al mandar hola"):
+  // si el evento al que el lead asistió fue DELETEADO (cascade borra
+  // `event_attendees`), `findLatestAttendedEventForPhone()` retorna null.
+  // Sin el guard de abajo, el override seguía disparando `survey_offer`
+  // y el bot mandaba "gracias por llegar y asistir [a ningún evento]".
+  // Gateamos con un lookup de `findLatestAttendedEventForPhone` — si no
+  // hay evento válido para ofrecer la encuesta, NO overridear.
   if (
     !message.buttonId &&
     lead.status === "event_attended" &&
@@ -2746,7 +2754,36 @@ export async function processInboundMessage(
       wizardStateGlobal?.awaiting_survey_step === undefined) &&
     !lastSurveyCompleted
   ) {
-    intent = "survey_offer";
+    const currentAttendedEvent = await findLatestAttendedEventForPhone(
+      phoneNormalized
+    ).catch(() => null);
+    if (currentAttendedEvent) {
+      intent = "survey_offer";
+    } else {
+      // FIX 2026-07-05: drift defensivo. Lead status quedó colgado en
+      // "event_attended" pero no hay attendee row (evento borrado / data
+      // inconsistency). Limpiamos el status a "contactado" best-effort
+      // para que futuros mensajes NO re-intenten este override.
+      if (supabase && lead.id) {
+        const { error: statusResetErr } = await supabase
+          .from("leads")
+          .update({ status: "contacted" })
+          .eq("id", lead.id);
+        if (statusResetErr) {
+          errorLog(
+            "[whatsapp/bot] survey_offer drift: reset lead.status a contacted falló",
+            { leadId: lead.id, code: (statusResetErr as { code?: string }).code }
+          );
+        } else {
+          debugLog(
+            "[whatsapp/bot] survey_offer drift: lead.status colgado en event_attended sin attendee row — reseteado a contacted",
+            { leadId: lead.id }
+          );
+          // Actualizamos el lead en memoria para el resto del flow.
+          lead.status = "contacted";
+        }
+      }
+    }
   }
 
   // 4. Actualizar whatsapp_status según intent (best-effort).
