@@ -32,6 +32,7 @@ import { calculateEventMetrics } from "@/lib/events/event-metrics";
 import { CampaignsTab } from "./_components/CampaignsTab";
 import { CheckInTab } from "./_components/CheckInTab";
 import { DeleteRowButton } from "./_components/DeleteRowButton";
+import { SendSurveyOffersButton } from "@/components/events/SendSurveyOffersButton";
 
 interface Props {
   params: { id: string };
@@ -198,6 +199,16 @@ export default async function AdminEventoDetailPage({
     (s) => s.consentToContact,
   ).length;
   const leadsPromoted = leadsWithLinks.length;
+
+  // Conteos para el botón "Enviar encuesta por WhatsApp" (Fase 7c).
+  // El endpoint cae a confirmados si no hay asistentes con teléfono,
+  // así que ambos números son relevantes.
+  const attendeesWithPhone = attendees.filter(
+    (a) => !!a.phoneNormalized
+  ).length;
+  const confirmationsWithPhone = confirmations.filter(
+    (c) => !!c.phoneNormalized
+  ).length;
 
   // Metricas de conversion (Sub-bloque 1C). Calculadas en server-side,
   // no se rerenderizan con la interaccion del cliente.
@@ -781,6 +792,19 @@ export default async function AdminEventoDetailPage({
               title="Encuestas"
               subtitle={`${surveysCount} respuestas · ${surveysWithConsent} con consentimiento comercial · ${surveysCount - surveysWithConsent} sin consentimiento (visibilidad, no se promovieron a lead).`}
             >
+            {/* Toolbar de acción para simular/ofrecer encuesta. Botón
+                manda WhatsApp interactivo (Sí / Ahora no) a los destinatarios
+                del evento. Por ahora la encuesta en sí no está parametrizada
+                — el flujo cierra igual porque el botón "Sí" del WhatsApp
+                genera el survey token via el bot-engine. */}
+            <div className="p-5 border-b border-brand-50 bg-brand-50/20">
+              <SendSurveyOffersButton
+                eventId={event.id}
+                eventTitle={event.title}
+                attendeesWithPhone={attendeesWithPhone}
+                confirmationsWithPhone={confirmationsWithPhone}
+              />
+            </div>
             {surveys.length === 0 ? (
               <EmptyState
                 icon="📭"
