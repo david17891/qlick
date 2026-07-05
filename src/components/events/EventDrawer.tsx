@@ -124,8 +124,24 @@ export function EventDrawer({
   >({});
   const [prefillingRules, setPrefillingRules] = useState(false);
 
-  // Si cambia el evento/modo desde fuera, resetea el form.
-  useEffect(() => setForm(initial), [initial]);
+  // Si cambia el evento/modo desde fuera, resetea el form — pero SOLO
+  // si no hay cambios locales sin guardar. Si `prev !== initial`, el
+  // usuario tocó algo, preservar (puede ser que un `router.refresh()`
+  // del padre haya disparado este useEffect con un initial "fresco"
+  // mientras el admin editaba). Fix 04 — 2026-07-04.
+  useEffect(() => {
+    setForm((prev) =>
+      JSON.stringify(prev) === JSON.stringify(initial) ? initial : prev
+    );
+  }, [initial]);
+
+  /** true si el form tiene cambios locales vs el initial hidratado.
+   *  Se usa para señalar "tienes cambios sin guardar" en el botón Guardar.
+   *  Fix 01 — 2026-07-04. */
+  const isDirty = useMemo(
+    () => JSON.stringify(form) !== JSON.stringify(initial),
+    [form, initial],
+  );
 
   // Auto-genera slug del título en modo create si el admin lo deja vacío.
   useEffect(() => {
@@ -693,7 +709,7 @@ export function EventDrawer({
               onClick={(e) => handleSubmit(e as unknown as React.FormEvent)}
               disabled={saving || !!statusChanging || cloning}
             >
-              {saving ? "Guardando…" : mode === "create" ? "Crear evento" : "Guardar cambios"}
+              {saving ? "Guardando…" : mode === "create" ? "Crear evento" : isDirty ? "Guardar cambios •" : "Guardar cambios"}
             </Button>
           </div>
         </footer>
