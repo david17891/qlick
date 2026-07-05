@@ -90,8 +90,21 @@ import {
   buildSurveyDeclineMessage,
   SURVEY_OFFER_BUTTON_IDS
 } from "./survey-messages";
+import {
+  buildSurveyQ1,
+  buildSurveyQ2,
+  buildSurveyQ3,
+  buildSurveyQ4,
+  buildSurveyThankYou,
+  detectSurveyButton,
+  calculateSurveyScore,
+  getQualificationFromScore,
+  cleanBusinessText,
+  isSurveySkip,
+  SURVEY_BUTTON_IDS,
+  type SurveyAnswers
+} from "./survey-wizard";
 import { findLatestAttendedEventForPhone } from "../events/attendees-server";
-import { getOrCreateSurveyTokenForContact } from "../events/survey-tokens";
 import { markSurveyOfferSent } from "../crm/leads-server";
 
 /* ------------------------------------------------------------------ */
@@ -113,6 +126,11 @@ export type BotIntent =
   | "survey_offer"
   | "interactive_survey_yes"
   | "interactive_survey_no"
+  | "survey_q1_continue"
+  | "survey_q2_continue"
+  | "survey_q3_continue"
+  | "survey_q4_text"
+  | "survey_q4_skip"
   | "question";
 
 /** Resultado del procesamiento de un mensaje entrante. */
@@ -242,6 +260,104 @@ function isSurveyOfferStale(lastOfferIso: string | null | undefined): boolean {
   const ts = new Date(lastOfferIso).getTime();
   if (Number.isNaN(ts)) return true;
   return Date.now() - ts > 24 * 60 * 60 * 1000;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Wizard helpers (Fase 7d, survey-wizard-native)                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Devuelve un plan de respuesta "nudge" cuando el handler del wizard
+ * se dispara fuera de orden (e.g. clickeó un botón de Q2 cuando
+ * estábamos esperando Q1). Mensaje neutro: "toca un botón de los que
+ * te mandé" sin perder el flujo.
+ */
+function nudgeToResendWizard(
+  provider: ReturnType<typeof getActiveWhatsAppProvider>,
+  phoneNormalized: string,
+  _leadName: string | null | undefined,
+) {
+  const bodyText =
+    `Ups, parece que hubo un clic fuera de orden. Te re-mando la pregunta ` +
+    `que estabas respondiendo — tocá uno de los botones. ` +
+    `Si querés empezar de nuevo, decí "reiniciar".`;
+  return {
+    kind: "text" as const,
+    body: bodyText,
+    send: () =>
+      provider.send({ to: phoneNormalized, body: bodyText })
+  };
+}
+
+interface PersistWizardArgs {
+  eventId: string | null;
+  leadId: string | null;
+  leadEmail: string | null;
+  phoneNormalized: string;
+  responses: SurveyAnswers;
+  score: number;
+  qualification: ReturnType<typeof getQualificationFromScore>;
+  consentFromBusiness: boolean;
+  // El cliente de supabase service-role. Si es null, no persistimos
+  // (caso modo demo).
+  supabase: SupabaseAdmin | null;
+}
+
+/**
+ * Persiste el resultado del wizard: insert a `event_surveys` con las
+ * respuestas en `responses` jsonb. La columna `consent_to_contact`
+ * se setea al booleano `consentFromBusiness` (true solo si el lead
+ * dió info de su negocio — convención: respuesta libre = opt-in
+ * implícito al canal comercial).
+ *
+ * Retorna `{ ok, note }`. Errores se loggean y se devuelven para que
+ * el caller decida si continúa con el thank-you o aborta.
+ */
+async function persistWizardSurvey(
+  args: PersistWizardArgs,
+): Promise<{ ok: boolean; note: string }> {
+  if (!args.supabase) {
+    return { ok: false, note: "supabase no disponible (modo demo)." };
+  }
+  if (!args.eventId) {
+    return { ok: false, note: "No hay eventId, no se persiste la encuesta." };
+  }
+  try {
+    const { error: insErr } = await args.supabase
+      .from("event_surveys" as never)
+      .insert({
+        event_id: args.eventId,
+        // Sin confirmation/attendee por ahora — la encuesta del wizard
+        // es post-asistencia pero no requiere matchear un record
+        // específico (la vista admin la agrupa por evento).
+        // FIX: si más adelante se quiere atar la encuesta al attendee,
+        //       agregar attendee_id acá.
+        respondent_email: args.leadEmail,
+        respondent_phone: args.phoneNormalized,
+        phone_normalized: args.phoneNormalized,
+        responses: args.responses as unknown as never,
+        consent_to_contact: args.consentFromBusiness,
+        // FIX: si consentFromBusiness, podríamos también tomar el texto
+        // como commercial_interest — pero ya lo guardamos en leads
+        // (commercial_interest) en el caller, así que acá lo dejamos
+        // null para no duplicar.
+        commercial_interest: null
+      } as never);
+    if (insErr) {
+      errorLog("[whatsapp/bot] persistWizardSurvey insert falló", {
+        code: insErr.code,
+        eventId: args.eventId,
+        phoneNormalized: args.phoneNormalized
+      });
+      return { ok: false, note: `DB error ${insErr.code ?? "unknown"}` };
+    }
+    return { ok: true, note: "Encuesta persistida." };
+  } catch (err) {
+    errorLog("[whatsapp/bot] persistWizardSurvey threw", {
+      error: err instanceof Error ? err.message : String(err)
+    });
+    return { ok: false, note: "Excepción al persistir." };
+  }
 }
 
 /** URL base pública (para QR check-in). Re-exportada desde ../utils. */
@@ -1041,13 +1157,27 @@ async function buildResponsePlan(args: {
    * NULL para mensajes de texto libres. */
   buttonId?: string | null;
   /** Slug del evento sobre el que el bot preguntó "¿Te gustaría...?". Lo
-   * seteamos desde processInboundMessage cuando detectamos que el último
-   * outbound del bot fue una pregunta cerrada de inscripción
-   * (awaiting_confirmation_for_event_slug en metadata) y el lead respondió
-   * con un affirmative corto. Asi el handler `interactive_event_inscribir`
-   * sabe a qué evento inscribir sin tener que re-preguntar. NULL si el
-   * flow no viene de un affirmative corto. */
+   *  seteamos desde processInboundMessage cuando detectamos que el último
+   *  outbound del bot fue una pregunta cerrada de inscripción
+   *  (awaiting_confirmation_for_event_slug en metadata) y el lead respondió
+   *  con un affirmative corto. Asi el handler `interactive_event_inscribir`
+   *  sabe a qué evento inscribir sin tener que re-preguntar. NULL si el
+   *  flow no viene de un affirmative corto. */
   requestedEventSlug?: string | null;
+  /** Estado del wizard nativo de encuesta (Fase 7d). Extraído por
+   *  processInboundMessage del metadata del último outbound. Los handlers
+   *  `survey_qN_*` lo usan para saber dónde quedó el wizard y continuar
+   *  desde ahi sin re-leer DB. */
+  surveyState?: {
+    step: number;
+    eventId: string | null;
+    eventTitle: string | null;
+    answers: SurveyAnswers;
+  } | null;
+  /** Cliente supabase service-role. Lo pasamos para que los handlers
+   *  wizard_qN_* puedan persistir (insert en event_surveys + update
+   *  leads) sin tener que re-crear la conexión. NULL en modo demo. */
+  supabase?: SupabaseAdmin | null;
 }): Promise<OutboundPlan> {
   const { intent, lead, body, phoneNormalized, buttonId } = args;
   const provider = getActiveWhatsAppProvider();
@@ -1501,59 +1631,60 @@ case "interactive_event_inscribir": {
       };
     }
     case "interactive_survey_yes": {
-      // FIX 2026-07-04 (feat/funnel-survey-scoring): el lead clickeó
-      // "Sí, dejar feedback". Buscamos el evento mas reciente al que
-      // hizo check-in, generamos (o reusamos) un survey token, y le
-      // mandamos el link.
+      // FIX 2026-07-05 (feat/survey-wizard-native): el lead clickeó "Sí,
+      // dejar feedback". Arrancamos el wizard nativo de WhatsApp (4
+      // preguntas con opciones) en vez del legacy token+form HTML
+      // (que tenía un race condition en `event_survey_tokens` que
+      // provocaba "Tuve un problema técnico" al usuario en cuanto había
+      // un insert concurrente).
+      //
+      // Estado del wizard se persiste en el `metadata` del último
+      // outbound del bot (`awaiting_survey_step: N`) y se continúa en
+      // las próximas interactivas / respuestas de texto.
       const evt = await findLatestAttendedEventForPhone(phoneNormalized)
         .catch(() => null);
       if (!evt) {
-        // Caso raro: el lead está en event_attended pero no hay
-        // event_attendees para su telefono (drift). Le pedimos email
-        // para generarle el link manualmente.
+        // Drift: el lead está en event_attended pero no hay attendees.
+        // Pedimos el slug manualmente para no romper el flow.
         const bodyText =
-          `¡Gracias por querer dejar feedback! Necesito tu correo para ` +
-          `mandarte el link privado. ¿Me lo pasás?`;
+          `¡Gracias por querer dejar feedback! Para identificar el evento, ` +
+          `¿me pasás el título o el slug del evento? Ej: "pingüinos" o "vender-hielo-pinguino".`;
         return {
           kind: "text",
           body: bodyText,
-          metadata: { awaiting_field: "email_for_survey" },
+          metadata: {
+            awaiting_survey_event_lookup: "title_or_slug"
+          },
           send: () =>
             provider.send({ to: phoneNormalized, body: bodyText })
         };
       }
-      const tokenRes = await getOrCreateSurveyTokenForContact({
-        eventId: evt.eventId,
-        email: lead.email ?? null,
-        phoneNormalized,
-        baseUrl: appBaseUrl()
-      }).catch(() => null);
-      if (!tokenRes?.ok || !tokenRes.url) {
-        const bodyText =
-          `Tuve un problema técnico generando tu link. ¿Me lo pedís de ` +
-          `nuevo en un rato? Si persiste, escribinos a ` +
-          `hola@qlick.marketing.`;
-        return {
-          kind: "text",
-          body: bodyText,
-          send: () =>
-            provider.send({ to: phoneNormalized, body: bodyText })
-        };
-      }
-      // Tambien marcamos el offer como enviado para no re-ofrecer.
+      // Arrancamos el wizard en Q1.
+      const q1Built = buildSurveyQ1({
+        leadName: lead.name,
+        eventTitle: evt.eventTitle
+      });
+      const q1BodyText = q1Built.text;
+      // Marcamos offer como enviado para no re-ofrecer.
       markSurveyOfferSent(lead.id).catch(() => {
         /* best-effort */
       });
-      const built = buildSurveyLinkMessage({
-        leadName: lead.name,
-        surveyUrl: tokenRes.url
-      });
-      const bodyText = built.text;
       return {
-        kind: "text",
-        body: bodyText,
+        kind: "interactive",
+        body: q1BodyText,
+        interactive: q1Built.interactive,
+        metadata: {
+          awaiting_survey_step: 1,
+          survey_event_id: evt.eventId,
+          survey_event_title: evt.eventTitle,
+          survey_answers: {}
+        },
         send: () =>
-          provider.send({ to: phoneNormalized, body: bodyText })
+          provider.send({
+            to: phoneNormalized,
+            body: q1BodyText,
+            interactive: q1Built.interactive
+          })
       };
     }
     case "interactive_survey_no": {
@@ -1570,6 +1701,252 @@ case "interactive_event_inscribir": {
         body: bodyText,
         send: () =>
           provider.send({ to: phoneNormalized, body: bodyText })
+      };
+    }
+    // ───────────────────────────────────────────────────────────
+    // Survey wizard nativo (Fase 7d, 2026-07-05). Reemplaza el flow
+    // legacy token+form HTML (que tenía un race condition en el
+    // insert de `event_survey_tokens` que provocaba "Tuve un
+    // problema técnico"). 4 pasos: Q1/Q2/Q3 con botones + Q4 con
+    // texto libre opcional ("contanos de tu negocio" o "saltar").
+    //
+    // Estado del wizard persiste en `metadata.awaiting_survey_step`
+    // del último outbound + `survey_answers` jsonb. Las transiciones
+    // se manejan acá leyendo ese state (pasado por `args.surveyState`).
+    // ───────────────────────────────────────────────────────────
+    case "survey_q1_continue": {
+      if (
+        !args.surveyState ||
+        args.surveyState.step !== 1 ||
+        !args.buttonId
+      ) {
+        // Defensa: si llega este intent fuera de orden, mandamos un
+        // nudge en vez de tirar el flow.
+        return nudgeToResendWizard(provider, phoneNormalized, lead.name);
+      }
+      const detected = detectSurveyButton(args.buttonId);
+      if (!detected || detected.step !== 1) {
+        return nudgeToResendWizard(provider, phoneNormalized, lead.name);
+      }
+      const nextAnswers: SurveyAnswers = {
+        ...args.surveyState.answers,
+        q1: detected.value as SurveyAnswers["q1"]
+      };
+      // Enviar Q2.
+      const q2 = buildSurveyQ2();
+      return {
+        kind: "interactive",
+        body: q2.text,
+        interactive: q2.interactive,
+        metadata: {
+          awaiting_survey_step: 2,
+          survey_event_id: args.surveyState.eventId,
+          survey_event_title: args.surveyState.eventTitle,
+          survey_answers: nextAnswers
+        },
+        send: () =>
+          provider.send({
+            to: phoneNormalized,
+            body: q2.text,
+            interactive: q2.interactive
+          })
+      };
+    }
+    case "survey_q2_continue": {
+      if (
+        !args.surveyState ||
+        args.surveyState.step !== 2 ||
+        !args.buttonId
+      ) {
+        return nudgeToResendWizard(provider, phoneNormalized, lead.name);
+      }
+      const detected = detectSurveyButton(args.buttonId);
+      if (!detected || detected.step !== 2) {
+        return nudgeToResendWizard(provider, phoneNormalized, lead.name);
+      }
+      const nextAnswers: SurveyAnswers = {
+        ...args.surveyState.answers,
+        q2: detected.value as SurveyAnswers["q2"]
+      };
+      const q3 = buildSurveyQ3();
+      return {
+        kind: "interactive",
+        body: q3.text,
+        interactive: q3.interactive,
+        metadata: {
+          awaiting_survey_step: 3,
+          survey_event_id: args.surveyState.eventId,
+          survey_event_title: args.surveyState.eventTitle,
+          survey_answers: nextAnswers
+        },
+        send: () =>
+          provider.send({
+            to: phoneNormalized,
+            body: q3.text,
+            interactive: q3.interactive
+          })
+      };
+    }
+    case "survey_q3_continue": {
+      if (
+        !args.surveyState ||
+        args.surveyState.step !== 3 ||
+        !args.buttonId
+      ) {
+        return nudgeToResendWizard(provider, phoneNormalized, lead.name);
+      }
+      const detected = detectSurveyButton(args.buttonId);
+      if (!detected || detected.step !== 3) {
+        return nudgeToResendWizard(provider, phoneNormalized, lead.name);
+      }
+      const nextAnswers: SurveyAnswers = {
+        ...args.surveyState.answers,
+        q3: detected.value as SurveyAnswers["q3"]
+      };
+      const q4 = buildSurveyQ4({ leadName: lead.name });
+      return {
+        kind: "interactive",
+        body: q4.text,
+        interactive: q4.interactive,
+        metadata: {
+          awaiting_survey_step: 4,
+          survey_event_id: args.surveyState.eventId,
+          survey_event_title: args.surveyState.eventTitle,
+          survey_answers: nextAnswers
+        },
+        send: () =>
+          provider.send({
+            to: phoneNormalized,
+            body: q4.text,
+            interactive: q4.interactive
+          })
+      };
+    }
+    case "survey_q4_text": {
+      // El lead mandó texto libre en respuesta a la Q4. Limpiamos y
+      // guardamos (o lo descartamos si es "saltar" / vacío).
+      if (
+        !args.surveyState ||
+        args.surveyState.step !== 4
+      ) {
+        return nudgeToResendWizard(provider, phoneNormalized, lead.name);
+      }
+      const cleanedBusiness = cleanBusinessText(body) ?? null;
+      const finalAnswers: SurveyAnswers = {
+        ...args.surveyState.answers,
+        q4_business: cleanedBusiness ?? undefined
+      };
+      const score = calculateSurveyScore(finalAnswers);
+      const qualification = getQualificationFromScore(score);
+      // 1) Insertar event_surveys row.
+      const persistResult = await persistWizardSurvey({
+        eventId: args.surveyState.eventId,
+        leadId: lead.id,
+        leadEmail: lead.email ?? null,
+        phoneNormalized,
+        responses: finalAnswers,
+        score,
+        qualification,
+        consentFromBusiness: !!cleanedBusiness,
+        supabase: args.supabase ?? null
+      });
+      // 2) Actualizar leads.score + leads.qualification.
+      if (args.supabase && persistResult.ok) {
+        try {
+          await args.supabase
+            .from("leads")
+            .update({
+              score,
+              qualification,
+              // FIX 2026-07-05 (Fase 7d): si el lead dio info de su negocio,
+              // guardamos en commercial_interest para que aparezca en el
+              // CRM. Si no dio, NO tocamos commercial_interest (puede
+              // tener otro valor previo).
+              ...(cleanedBusiness
+                ? { commercial_interest: cleanedBusiness }
+                : {})
+            } as never)
+            .eq("id", lead.id);
+        } catch (err) {
+          errorLog("[whatsapp/bot] survey_q4_text: update lead falló", {
+            leadId: lead.id,
+            error: err instanceof Error ? err.message : String(err)
+          });
+        }
+      }
+      const thank = buildSurveyThankYou({
+        leadName: lead.name,
+        score,
+        qualification,
+        businessCaptured: !!cleanedBusiness
+      });
+      const thankBody = thank.text;
+      return {
+        kind: "text",
+        body: thankBody,
+        metadata: {
+          // Limpiamos el state del wizard — el flow terminó.
+          awaiting_survey_step: null,
+          survey_event_id: null,
+          survey_event_title: null,
+          survey_answers: null
+        },
+        send: () =>
+          provider.send({ to: phoneNormalized, body: thankBody })
+      };
+    }
+    case "survey_q4_skip": {
+      if (
+        !args.surveyState ||
+        args.surveyState.step !== 4
+      ) {
+        return nudgeToResendWizard(provider, phoneNormalized, lead.name);
+      }
+      const finalAnswers: SurveyAnswers = args.surveyState.answers;
+      const score = calculateSurveyScore(finalAnswers);
+      const qualification = getQualificationFromScore(score);
+      await persistWizardSurvey({
+        eventId: args.surveyState.eventId,
+        leadId: lead.id,
+        leadEmail: lead.email ?? null,
+        phoneNormalized,
+        responses: finalAnswers,
+        score,
+        qualification,
+        consentFromBusiness: false,
+        supabase: args.supabase ?? null
+      });
+      if (args.supabase) {
+        try {
+          await args.supabase
+            .from("leads")
+            .update({ score, qualification })
+            .eq("id", lead.id);
+        } catch (err) {
+          errorLog("[whatsapp/bot] survey_q4_skip: update lead falló", {
+            leadId: lead.id,
+            error: err instanceof Error ? err.message : String(err)
+          });
+        }
+      }
+      const thank = buildSurveyThankYou({
+        leadName: lead.name,
+        score,
+        qualification,
+        businessCaptured: false
+      });
+      const thankBody = thank.text;
+      return {
+        kind: "text",
+        body: thankBody,
+        metadata: {
+          awaiting_survey_step: null,
+          survey_event_id: null,
+          survey_event_title: null,
+          survey_answers: null
+        },
+        send: () =>
+          provider.send({ to: phoneNormalized, body: thankBody })
       };
     }
     case "provide_name": {
@@ -2037,6 +2414,26 @@ export async function processInboundMessage(
   // outbound + AFFIRMATIVE_RE matchea. Se pasa a `buildResponsePlan`
   // para que `interactive_event_inscribir` sepa a qué evento inscribir.
   let requestedEventSlug: string | null = null;
+
+  // FIX 2026-07-05 (feat/survey-wizard-native): hoisted state del wizard
+  // nativo de encuesta. Carga temprano el lastOutbound del bot para que
+  // tanto la rama `if (message.buttonId)` como el override 3.0 (fuera
+  // del if/else) tengan acceso. No leemos del await de completion (lo
+  // hace cada handler con `args.surveyState`).
+  const earlyWindowGlobal = await loadConversationWindow(phoneNormalized, 4).catch(
+    () => undefined
+  );
+  const lastOutboundGlobal = earlyWindowGlobal?.messages
+    .filter((m) => m.direction === "outbound")
+    .slice(-1)[0];
+  const wizardStateGlobal =
+    (lastOutboundGlobal?.metadata as {
+      awaiting_survey_step?: number | null;
+      survey_event_id?: string | null;
+      survey_event_title?: string | null;
+      survey_answers?: SurveyAnswers | null;
+    } | null) ?? null;
+
   if (message.buttonId) {
     if (message.buttonId === "evt_yes_next" || message.buttonId.startsWith("evt_yes_")) {
       // FIX 2026-07-02: el boton del welcome ahora es "evt_yes_next"
@@ -2071,6 +2468,35 @@ export async function processInboundMessage(
       intent = "interactive_survey_yes";
     } else if (message.buttonId === SURVEY_OFFER_BUTTON_IDS.no) {
       intent = "interactive_survey_no";
+    } else if (message.buttonId.startsWith("survey_q")) {
+      // Wizard nativo de encuesta (Fase 7d). Detectamos el paso por
+      // buttonId (survey_q1_*, survey_q2_*, survey_q3_*, survey_q4_skip).
+      // Mapeo específico en buildResponsePlan con `wizardStep` para
+      // validar que el bot está esperando ese step (defensa contra
+      // clicks fuera de orden).
+      if (message.buttonId === SURVEY_BUTTON_IDS.q4_skip) {
+        intent = "survey_q4_skip";
+      } else if (
+        message.buttonId === SURVEY_BUTTON_IDS.q1_very_clear ||
+        message.buttonId === SURVEY_BUTTON_IDS.q1_clear ||
+        message.buttonId === SURVEY_BUTTON_IDS.q1_confusing
+      ) {
+        intent = "survey_q1_continue";
+      } else if (
+        message.buttonId === SURVEY_BUTTON_IDS.q2_yes ||
+        message.buttonId === SURVEY_BUTTON_IDS.q2_maybe ||
+        message.buttonId === SURVEY_BUTTON_IDS.q2_no
+      ) {
+        intent = "survey_q2_continue";
+      } else if (
+        message.buttonId === SURVEY_BUTTON_IDS.q3_meta ||
+        message.buttonId === SURVEY_BUTTON_IDS.q3_referred ||
+        message.buttonId === SURVEY_BUTTON_IDS.q3_other
+      ) {
+        intent = "survey_q3_continue";
+      } else {
+        intent = "question";
+      }
     } else {
       intent = "question";
     }
@@ -2080,15 +2506,24 @@ export async function processInboundMessage(
     // el evento requiere nombre) Y el lead mandó texto que NO es email,
     // es `provide_name` (no `question`). El LLM no debe intervenir
     // porque el flow es estricto.
-    const earlyWindow = await loadConversationWindow(phoneNormalized, 4).catch(
-      () => undefined
-    );
-    const lastOutbound = earlyWindow?.messages
-      .filter((m) => m.direction === "outbound")
-      .slice(-1)[0];
+    // FIX 2026-07-05: reutilizamos el earlyWindow/lastOutbound hoisted
+    // más arriba (cargado antes del if/else para que el wizardState
+    // esté disponible para el override 3.0 también).
+    const earlyWindow = earlyWindowGlobal;
+    const lastOutbound = lastOutboundGlobal;
     const awaitingField =
       (lastOutbound?.metadata as { awaiting_field?: string | null } | null)
         ?.awaiting_field ?? null;
+    // FIX 2026-07-05 (feat/survey-wizard-native): reutilizamos el
+    // wizardState hoisted (computed arriba).
+    const wizardStep =
+      typeof wizardStateGlobal?.awaiting_survey_step === "number"
+        ? wizardStateGlobal.awaiting_survey_step
+        : null;
+    const wizardEventId = wizardStateGlobal?.survey_event_id ?? null;
+    const wizardEventTitle = wizardStateGlobal?.survey_event_title ?? null;
+    const wizardAnswers: SurveyAnswers =
+      (wizardStateGlobal?.survey_answers as SurveyAnswers | null) ?? {};
     const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body);
     // FIX 2026-07-02 (sesion David, "Si tras pregunta cerrada"): si el
     // último outbound del bot marcó awaiting_confirmation_for_event_slug
@@ -2139,15 +2574,31 @@ export async function processInboundMessage(
     }
   }
 
+  // 3.0 wizard nativo (Fase 7d): si el último outbound del bot está
+  // esperando la Q4 del wizard (texto libre), cualquier reply de texto
+  // del lead es la respuesta de Q4. Tomamos el intent ANTES del
+  // survey_offer override para no robarlo.
+  if (
+    !message.buttonId &&
+    body &&
+    typeof wizardStateGlobal?.awaiting_survey_step === "number" &&
+    wizardStateGlobal.awaiting_survey_step === 4
+  ) {
+    intent = "survey_q4_text";
+  }
+
   // 3.0 FIX 2026-07-04 (feat/funnel-survey-scoring): si el lead está en
   // `event_attended` y NO hemos ofrecido la encuesta en las últimas 24h,
   // override del intent a `survey_offer`. Esto cierra el ciclo del funnel
   // (asistió → encuesta → scoring). No aplica si el usuario clickeó un
-  // botón (otro flow en curso — el survey offer es para texto libre).
+  // botón (otro flow en curso — el survey offer es para texto libre),
+  // ni si el wizard nativo está en curso (Fase 7d).
   if (
     !message.buttonId &&
     lead.status === "event_attended" &&
-    isSurveyOfferStale(lead.surveyOfferSentAt)
+    isSurveyOfferStale(lead.surveyOfferSentAt) &&
+    (wizardStateGlobal?.awaiting_survey_step === null ||
+      wizardStateGlobal?.awaiting_survey_step === undefined)
   ) {
     intent = "survey_offer";
   }
@@ -2768,7 +3219,24 @@ export async function processInboundMessage(
     // el slug del evento cuando el handler `interactive_event_inscribir`
     // se invoca desde un affirmative corto tras una pregunta cerrada
     // del bot. Asi inscribimos al evento correcto sin re-preguntar.
-    requestedEventSlug
+    requestedEventSlug,
+    // FIX 2026-07-05 (feat/survey-wizard-native): pasamos el estado del
+    // wizard de encuesta (extraído del metadata del último outbound) y el
+    // cliente supabase service-role (para que los handlers wizard_qN
+    // puedan persistir sin re-crear conexiones).
+    surveyState: wizardStateGlobal
+      ? {
+          step:
+            typeof wizardStateGlobal.awaiting_survey_step === "number"
+              ? wizardStateGlobal.awaiting_survey_step
+              : 1,
+          eventId: wizardStateGlobal.survey_event_id ?? null,
+          eventTitle: wizardStateGlobal.survey_event_title ?? null,
+          answers:
+            (wizardStateGlobal.survey_answers as SurveyAnswers | null) ?? {}
+        }
+      : null,
+    supabase
   });
 
   let sendResult: { ok: boolean; externalId?: string; demo?: boolean; note?: string } = {
