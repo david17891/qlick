@@ -83,10 +83,32 @@ function formatPromptBlock(messages: ConversationMessage[]): string {
     const body = (m.body ?? "").slice(0, 300).replace(/\n+/g, " ");
     return `[${hh}:${mm}] ${actor}: ${body}`;
   });
+
+  // FIX 2026-07-05 (feat/survey-wizard-native): si el ULTIMO mensaje del
+  // bot tiene `survey_completed: true` en metadata (thank-you de wizard
+  // recien terminado), inyectamos una nota explicita al LLM para que NO
+  // re-ofrezca la encuesta cuando el lead diga "gracias" u otra cosa.
+  // Ver cases `survey_q4_text` / `survey_q4_skip` en bot-engine.ts.
+  const lastOutbound = [...messages]
+    .reverse()
+    .find((m) => m.direction === "outbound");
+  const surveyCompleted =
+    (lastOutbound?.metadata as { survey_completed?: boolean } | null)
+      ?.survey_completed === true;
+  const trailingNotes: string[] = [];
+  if (surveyCompleted) {
+    trailingNotes.push(
+      "[SYSTEM NOTE] El usuario acaba de completar la encuesta del " +
+        "evento. NO ofrezcas la encuesta de nuevo. Responde solo con " +
+        "amabilidad o cambia de tema si pregunta otra cosa."
+    );
+  }
+
   return [
-    "=== HISTORIAL DE CONVERSACIÓN ===",
+    "=== HISTORIAL DE CONVERSACION ===",
     ...lines,
-    "================================="
+    "=================================",
+    ...(trailingNotes.length ? ["", ...trailingNotes] : [])
   ].join("\n");
 }
 

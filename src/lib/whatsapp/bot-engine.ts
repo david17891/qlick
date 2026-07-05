@@ -1889,7 +1889,12 @@ case "interactive_event_inscribir": {
           awaiting_survey_step: null,
           survey_event_id: null,
           survey_event_title: null,
-          survey_answers: null
+          survey_answers: null,
+          // FIX 2026-07-05: marca este último outbound como "wizard recién
+          // completado". El override 3.0 (survey_offer) lo usa para
+          // no re-ofrecer. La inyección en el prompt del LLM también lo
+          // lee para decirle "no ofrezcas la encuesta de nuevo".
+          survey_completed: true
         },
         send: () =>
           provider.send({ to: phoneNormalized, body: thankBody })
@@ -1943,7 +1948,9 @@ case "interactive_event_inscribir": {
           awaiting_survey_step: null,
           survey_event_id: null,
           survey_event_title: null,
-          survey_answers: null
+          survey_answers: null,
+          // FIX 2026-07-05: ver caso homónimo en `survey_q4_text` arriba.
+          survey_completed: true
         },
         send: () =>
           provider.send({ to: phoneNormalized, body: thankBody })
@@ -2587,18 +2594,29 @@ export async function processInboundMessage(
     intent = "survey_q4_text";
   }
 
+  // FIX 2026-07-05: si el último outbound del bot fue un thank-you de
+  // encuesta recién completada (flag `survey_completed: true` en
+  // metadata), NO re-ofrecemos la encuesta. Defensa contra el LLM
+  // que ofrezca de nuevo cuando el lead dice "gracias".
+  const lastSurveyCompleted =
+    (lastOutboundGlobal?.metadata as { survey_completed?: boolean } | null)
+      ?.survey_completed === true;
+
   // 3.0 FIX 2026-07-04 (feat/funnel-survey-scoring): si el lead está en
   // `event_attended` y NO hemos ofrecido la encuesta en las últimas 24h,
   // override del intent a `survey_offer`. Esto cierra el ciclo del funnel
   // (asistió → encuesta → scoring). No aplica si el usuario clickeó un
   // botón (otro flow en curso — el survey offer es para texto libre),
-  // ni si el wizard nativo está en curso (Fase 7d).
+  // ni si el wizard nativo está en curso (Fase 7d), ni si el último
+  // outbound fue un thank-you de wizard recién completado
+  // (`survey_completed: true`).
   if (
     !message.buttonId &&
     lead.status === "event_attended" &&
     isSurveyOfferStale(lead.surveyOfferSentAt) &&
     (wizardStateGlobal?.awaiting_survey_step === null ||
-      wizardStateGlobal?.awaiting_survey_step === undefined)
+      wizardStateGlobal?.awaiting_survey_step === undefined) &&
+    !lastSurveyCompleted
   ) {
     intent = "survey_offer";
   }
