@@ -51,6 +51,7 @@ export {
   getSurveysByEventId,
   getSurveyById,
   createSurvey,
+  deleteEventSurvey,
   type CreateSurveyInput,
   type CreateSurveyResult,
 } from "./surveys-server";

@@ -288,3 +288,75 @@ export async function markSurveyReviewed(
   }
   return { ok: true, note: "Encuesta marcada como revisada." };
 }
+
+/**
+ * Elimina una encuesta (event_surveys) por ID. Admin-only.
+ *
+ * Caso de uso: limpiar registros duplicados que pasaron antes de que el
+ * dedupe del wizard estuviera activo (Fase 7d.1). NO es para uso normal
+ * — un admin debería preferir "Marcar revisada" o promover a lead.
+ *
+ * Side-effects:
+ *  - Quita la fila de `event_surveys`.
+ *  - Si la encuesta ya fue promovida a lead (`promoted_to_lead_id`),
+ *    la relación se pierde (el lead sobrevive — promotion.ts creó
+ *    un lead nuevo o activó uno existente, no tiene FK desde la
+ *    encuesta).
+ *  - No toca `leads` ni `events`. Solo borra este row.
+ *
+ * Audit log emite `survey_delete` con metadata del row eliminado.
+ */
+export async function deleteEventSurvey(
+  surveyId: string,
+): Promise<{ ok: boolean; note: string }> {
+  if (!isRealMode() || !surveyId) {
+    return { ok: false, note: "Supabase no configurado o falta surveyId." };
+  }
+  const supabase = createSupabaseAdminClient();
+  // Capturamos el row antes de borrar para el audit log.
+  const { data: prev, error: prevErr } = await supabase
+    .from("event_surveys")
+    .select("id, event_id, respondent_email, phone_normalized, promoted_to_lead_id, consent_to_contact")
+    .eq("id", surveyId)
+    .maybeSingle();
+  if (prevErr || !prev) {
+    return { ok: false, note: "Encuesta no encontrada." };
+  }
+  const { error: delErr } = await supabase
+    .from("event_surveys")
+    .delete()
+    .eq("id", surveyId);
+  if (delErr) {
+    // eslint-disable-next-line no-console
+    console.error("[surveys-server] deleteEventSurvey falló", {
+      code: delErr.code,
+      surveyId,
+    });
+    return { ok: false, note: `No se pudo eliminar (${delErr.code ?? "unknown"}).` };
+  }
+  // Audit log: reutilizamos el logAdminAction genérico del CRM.
+  const { logAdminAction } = await import("@/lib/crm/audit-server");
+  await logAdminAction({
+    actor_email: "admin", // placeholder — el caller puede sobreescribir via el ctx
+    action: "survey_delete",
+    entity_type: "event_survey",
+    entity_id: surveyId,
+    metadata: {
+      event_id: (prev as { event_id: string }).event_id,
+      respondent_email: (prev as { respondent_email: string | null })
+        .respondent_email,
+      phone_normalized: (prev as { phone_normalized: string | null })
+        .phone_normalized,
+      promoted_to_lead_id: (prev as { promoted_to_lead_id: string | null })
+        .promoted_to_lead_id,
+      consent_to_contact: (prev as { consent_to_contact: boolean })
+        .consent_to_contact
+    },
+    before: prev,
+    after: null
+  });
+  return {
+    ok: true,
+    note: "Encuesta eliminada (admin manual cleanup)."
+  };
+}

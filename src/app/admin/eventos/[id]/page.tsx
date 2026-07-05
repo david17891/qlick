@@ -24,6 +24,8 @@ import {
   markWhatsAppStatusAction,
   deleteAttendeeAction,
   deleteConfirmationAction,
+  deleteSurveyAction,
+  promoteSurveyAction,
 } from "./_actions";
 import { WHATSAPP_STATUSES, WHATSAPP_STATUS_LABEL, WHATSAPP_STATUS_TONE, type WhatsAppStatus } from "@/lib/leads/whatsapp-status";
 import { buildEventBroadcast } from "@/lib/contact/whatsapp";
@@ -33,6 +35,7 @@ import { CampaignsTab } from "./_components/CampaignsTab";
 import { CheckInTab } from "./_components/CheckInTab";
 import { DeleteRowButton } from "./_components/DeleteRowButton";
 import { SendSurveyOffersButton } from "@/components/events/SendSurveyOffersButton";
+import { formatSurveyResponses } from "@/lib/events/survey-display";
 
 interface Props {
   params: { id: string };
@@ -809,72 +812,143 @@ export default async function AdminEventoDetailPage({
               <EmptyState
                 icon="📭"
                 title="Aun no hay encuestas"
-                description="Cuando alguien complete la encuesta post-evento, va a aparecer aca. Las que tienen consent=true se promueven automaticamente a lead."
+                description="Cuando alguien complete la encuesta post-evento, va a aparecer aca. Las que tienen consent=true + vos las promueve, entran al CRM."
               />
             ) : (
               <Table
-                headers={["Email", "Teléfono", "Consent", "Interés", "Promovido a lead", "Revisada"]}
+                headers={["Email", "Teléfono", "Consent", "Respuestas", "Promovido a lead", "Revisada", ""]}
               >
-                {surveys.map((s) => (
-                  <tr key={s.id} className="hover:bg-brand-50/30">
-                    <td className="px-5 py-3 text-ink-muted">
-                      {s.respondentEmail ?? "—"}
-                    </td>
-                    <td className="px-5 py-3 text-ink-muted">
-                      {s.phoneNormalized ?? s.respondentPhone ?? "—"}
-                    </td>
-                    <td className="px-5 py-3">
-                      {s.consentToContact ? (
-                        <Badge tone="success">Sí</Badge>
-                      ) : (
-                        <Badge tone="danger">No</Badge>
-                      )}
-                    </td>
-                    <td className="px-5 py-3 text-ink-soft text-sm">
-                      {s.commercialInterest ?? "—"}
-                    </td>
-                    <td className="px-5 py-3 text-xs">
-                      {s.promotedToLeadId ? (
-                        <span className="text-emerald-700 font-semibold">
-                          ✓ {s.promotedAt && formatDate(s.promotedAt)}
-                        </span>
-                      ) : (
-                        <span className="text-ink-muted">—</span>
-                      )}
-                    </td>
-                    <td className="px-5 py-3 text-xs">
-                      {s.reviewedAt ? (
-                        <div className="flex flex-col gap-0.5">
-                          <Badge tone="success">Revisada</Badge>
-                          <span className="text-ink-muted text-[10px]">
-                            {formatDate(s.reviewedAt)}
-                            {s.reviewedBy && ` · ${s.reviewedBy}`}
-                          </span>
-                          <form action={unmarkSurveyReviewedAction.bind(null, null)} className="mt-1">
+                {surveys.map((s) => {
+                  // FIX 2026-07-05 (Fase 7d.1 cleanup): formatear las respuestas
+                  // del wizard nativo (o legacy) en una lista legible.
+                  const formatted = formatSurveyResponses(s.responses);
+                  return (
+                    <tr key={s.id} className="hover:bg-brand-50/30 align-top">
+                      <td className="px-5 py-3 text-ink-muted text-sm">
+                        {s.respondentEmail ?? "—"}
+                      </td>
+                      <td className="px-5 py-3 text-ink-muted text-sm">
+                        {s.phoneNormalized ?? s.respondentPhone ?? "—"}
+                      </td>
+                      <td className="px-5 py-3">
+                        {s.consentToContact ? (
+                          <Badge tone="success">Sí</Badge>
+                        ) : (
+                          <Badge tone="danger">No</Badge>
+                        )}
+                      </td>
+                      <td className="px-5 py-3 text-ink-soft text-xs">
+                        {/* Acordeón para no saturar la tabla con texto largo.
+                            Default cerrado para mantener la tabla scannable. */}
+                        <details className="cursor-pointer">
+                          <summary className="text-brand-700 hover:underline font-medium select-none">
+                            Ver respuestas ({formatted.lines.length})
+                          </summary>
+                          <ul className="mt-2 space-y-1 text-ink-soft list-disc list-inside">
+                            {formatted.lines.map((line, i) => (
+                              <li key={i}>{line}</li>
+                            ))}
+                          </ul>
+                          <p className="mt-1 text-[10px] text-ink-muted italic">
+                            Formato: {formatted.shape} · {formatDate(s.submittedAt)}
+                          </p>
+                        </details>
+                      </td>
+                      <td className="px-5 py-3 text-xs">
+                        {s.promotedToLeadId ? (
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-emerald-700 font-semibold">
+                              ✓ Promovido
+                            </span>
+                            <span className="text-ink-muted text-[10px]">
+                              {s.promotedAt && formatDate(s.promotedAt)}
+                            </span>
+                          </div>
+                        ) : s.consentToContact ? (
+                          // FIX 2026-07-05: botón manual de promover. Antes era
+                          // automático en submit-survey; ahora lo decide el admin.
+                          <form
+                            action={promoteSurveyAction.bind(null, null)}
+                            className="flex flex-col gap-1"
+                          >
                             <input type="hidden" name="surveyId" value={s.id} />
                             <input type="hidden" name="eventId" value={event.id} />
                             <SubmitButton
-                              variant="ghost"
+                              variant="primary"
                               size="sm"
-                              pendingLabel="..."
-                              className="text-[10px] text-ink-muted hover:text-ink underline !p-0 !bg-transparent"
+                              pendingLabel="Promoviendo..."
                             >
-                              des-marcar
+                              ⤴ Promover a lead
                             </SubmitButton>
                           </form>
-                        </div>
-                      ) : (
-                        <form action={markSurveyReviewedAction.bind(null, null)}>
+                        ) : (
+                          <span className="text-ink-muted text-[10px] italic">
+                            (sin consent)
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3 text-xs">
+                        {s.reviewedAt ? (
+                          <div className="flex flex-col gap-0.5">
+                            <Badge tone="success">Revisada</Badge>
+                            <span className="text-ink-muted text-[10px]">
+                              {formatDate(s.reviewedAt)}
+                              {s.reviewedBy && ` · ${s.reviewedBy}`}
+                            </span>
+                            <form action={unmarkSurveyReviewedAction.bind(null, null)} className="mt-1">
+                              <input type="hidden" name="surveyId" value={s.id} />
+                              <input type="hidden" name="eventId" value={event.id} />
+                              <SubmitButton
+                                variant="ghost"
+                                size="sm"
+                                pendingLabel="..."
+                                className="text-[10px] text-ink-muted hover:text-ink underline !p-0 !bg-transparent"
+                              >
+                                des-marcar
+                              </SubmitButton>
+                            </form>
+                          </div>
+                        ) : (
+                          <form action={markSurveyReviewedAction.bind(null, null)}>
+                            <input type="hidden" name="surveyId" value={s.id} />
+                            <input type="hidden" name="eventId" value={event.id} />
+                            <SubmitButton pendingLabel="Marcando...">
+                              ✓ Marcar revisada
+                            </SubmitButton>
+                          </form>
+                        )}
+                      </td>
+                      <td className="px-5 py-3 text-right">
+                        {/* FIX 2026-07-05 (Fase 7d.1 cleanup): botón Eliminar
+                            con confirm nativo. Uso admin-only para limpiar
+                            duplicados manualmente. */}
+                        <form
+                          action={deleteSurveyAction.bind(null, null)}
+                          onSubmit={(e) => {
+                            const ident =
+                              s.respondentEmail ??
+                              s.phoneNormalized ??
+                              s.id.slice(0, 8);
+                            const ok = window.confirm(
+                              `¿Eliminar la encuesta de "${ident}"?\n\nEsto borra el row de event_surveys. NO toca leads ni eventos. Si ya fue promovida, el lead sobrevive.`
+                            );
+                            if (!ok) e.preventDefault();
+                          }}
+                        >
                           <input type="hidden" name="surveyId" value={s.id} />
                           <input type="hidden" name="eventId" value={event.id} />
-                          <SubmitButton pendingLabel="Marcando...">
-                            ✓ Marcar revisada
-                          </SubmitButton>
+                          <button
+                            type="submit"
+                            className="text-xs px-2 py-1 rounded bg-rose-100 text-rose-700 hover:bg-rose-200 transition"
+                            title="Eliminar este row de event_surveys"
+                          >
+                            Eliminar
+                          </button>
                         </form>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                    </tr>
+                  );
+                })}
               </Table>
             )}
           </Section>

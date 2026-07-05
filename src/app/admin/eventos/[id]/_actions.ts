@@ -18,12 +18,13 @@
 
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth/session";
-import { markSurveyReviewed } from "@/lib/events/surveys-server";
+import { markSurveyReviewed, deleteEventSurvey } from "@/lib/events/surveys-server";
 import { linkAttendeeToConfirmation, deleteAttendee } from "@/lib/events/attendees-server";
 import { deleteConfirmation } from "@/lib/events/confirmations-server";
 import { markWhatsAppStatus, isValidWhatsAppStatus, type WhatsAppStatus } from "@/lib/leads/whatsapp-status";
 import { generateEventQrTokens, getEventQrTokens } from "@/lib/qr/event-tokens";
 import { logAdminAction } from "@/lib/crm/audit-server";
+import { promoteSurveyToLead } from "@/lib/events/promotion";
 
 export interface FormState {
   ok: boolean;
@@ -97,6 +98,78 @@ export async function unmarkSurveyReviewedAction(
   }
   revalidatePath(`/admin/eventos/${eventId}`);
   return { ok: true, note: "Encuesta des-marcada como revisada." };
+}
+
+/**
+ * FIX 2026-07-05 (Fase 7d.1 cleanup): elimina una encuesta por ID. Solo
+ * para uso admin — limpia registros duplicados que pasaron antes del
+ * dedupe. NO es para uso normal; el flujo principal es "Marcar
+ * revisada" o "Promover a lead".
+ *
+ * FormData: surveyId, eventId.
+ */
+export async function deleteSurveyAction(
+  _prev: FormState | null,
+  formData: FormData,
+): Promise<FormState> {
+  const admin = await requireAdmin();
+  if (!admin) {
+    return { ok: false, note: "No autenticado como admin." };
+  }
+  const surveyId = formData.get("surveyId");
+  const eventId = formData.get("eventId");
+  if (typeof surveyId !== "string" || typeof eventId !== "string") {
+    return { ok: false, note: "Faltan parámetros." };
+  }
+  if (!surveyId || !eventId) {
+    return { ok: false, note: "surveyId o eventId vacíos." };
+  }
+  const result = await deleteEventSurvey(surveyId);
+  if (result.ok) {
+    revalidatePath(`/admin/eventos/${eventId}`);
+  }
+  return result;
+}
+
+/**
+ * FIX 2026-07-05 (Fase 7d.1 cleanup): promoción manual de una encuesta a
+ * lead. Reemplaza el flujo auto-promote del wizard — ahora el admin
+ * decide desde esta tab Encuestas cuando una encuesta con
+ * `consentToContact=true` debe promoverse.
+ *
+ * Reusa `promoteSurveyToLead` (Fase 4 funnel-survey) que aplica las 3
+ * reglas del concept §5: lead_id existente, score, qualification.
+ * Idempotente: si ya estaba promovida, devuelve ok:true con nota.
+ *
+ * FormData: surveyId, eventId.
+ */
+export async function promoteSurveyAction(
+  _prev: FormState | null,
+  formData: FormData,
+): Promise<FormState> {
+  const admin = await requireAdmin();
+  if (!admin) {
+    return { ok: false, note: "No autenticado como admin." };
+  }
+  const surveyId = formData.get("surveyId");
+  const eventId = formData.get("eventId");
+  if (typeof surveyId !== "string" || typeof eventId !== "string") {
+    return { ok: false, note: "Faltan parámetros." };
+  }
+  if (!surveyId || !eventId) {
+    return { ok: false, note: "surveyId o eventId vacíos." };
+  }
+  const result = await promoteSurveyToLead(surveyId, {
+    actorEmail: admin.email
+  });
+  if (result.ok) {
+    revalidatePath(`/admin/eventos/${eventId}`);
+    revalidatePath("/admin");
+  }
+  return {
+    ok: result.ok,
+    note: result.note
+  };
 }
 
 /**
