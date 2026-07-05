@@ -34,7 +34,8 @@ interface FormState {
   slug: string;
   description: string;
   startsAtLocal: string; // YYYY-MM-DDTHH:mm (datetime-local)
-  endsAtLocal: string;
+  /** Duración en horas (decimal). Vacío = sin hora de fin. */
+  durationHours: string;
   location: string;
   coverImageUrl: string;
   status: EventStatus;
@@ -44,12 +45,23 @@ interface FormState {
 }
 
 function eventToForm(e: Event): FormState {
+  // Calculamos duración = endsAt - startsAt en horas (decimal). "" si falta.
+  let durationHours = "";
+  if (e.endsAt && e.startsAt) {
+    const start = Date.parse(e.startsAt);
+    const end = Date.parse(e.endsAt);
+    if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+      const hours = (end - start) / (1000 * 60 * 60);
+      // Quitar trailing zeros: 1.5 en vez de 1.50, 2 en vez de 2.0
+      durationHours = Number(hours.toFixed(2)).toString();
+    }
+  }
   return {
     title: e.title ?? "",
     slug: e.slug ?? "",
     description: e.description ?? "",
     startsAtLocal: isoToLocalInput(e.startsAt),
-    endsAtLocal: e.endsAt ? isoToLocalInput(e.endsAt) : "",
+    durationHours,
     location: e.location ?? "",
     coverImageUrl: e.coverImageUrl ?? "",
     status: e.status,
@@ -64,7 +76,7 @@ function emptyForm(): FormState {
     slug: "",
     description: "",
     startsAtLocal: "",
-    endsAtLocal: "",
+    durationHours: "",
     location: "",
     coverImageUrl: "",
     status: "draft",
@@ -195,6 +207,17 @@ export function EventDrawer({
       errs.slug =
         "El slug es obligatorio (se autogenra del título, editalo si hace falta).";
     }
+    // duración: si está, debe ser número positivo
+    let durationParsed: number | null = null;
+    const durStr = form.durationHours.trim();
+    if (durStr) {
+      const n = Number(durStr);
+      if (!Number.isFinite(n) || n <= 0) {
+        errs.durationHours = "La duración debe ser un número positivo (ej. 1, 1.5, 2).";
+      } else {
+        durationParsed = n;
+      }
+    }
     if (Object.keys(errs).length > 0) {
       setFieldErrors(errs);
       return;
@@ -206,6 +229,16 @@ export function EventDrawer({
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
 
+    // Calculamos endsAt a partir de startsAt + durationHours. Si no hay
+    // duración, no se envía endsAt (el evento queda sin hora de cierre).
+    const startsAtIso = datetimeLocalToIso(form.startsAtLocal);
+    let endsAtIso: string | undefined;
+    if (durationParsed !== null) {
+      const start = new Date(startsAtIso).getTime();
+      const end = new Date(start + durationParsed * 60 * 60 * 1000).toISOString();
+      endsAtIso = end;
+    }
+
     setSaving(true);
     try {
       if (mode === "create") {
@@ -213,10 +246,8 @@ export function EventDrawer({
           slug: form.slug.trim(),
           title: form.title.trim(),
           description: form.description.trim() || undefined,
-          startsAt: datetimeLocalToIso(form.startsAtLocal),
-          endsAt: form.endsAtLocal
-            ? datetimeLocalToIso(form.endsAtLocal)
-            : undefined,
+          startsAt: startsAtIso,
+          endsAt: endsAtIso,
           location: form.location.trim() || undefined,
           coverImageUrl: form.coverImageUrl.trim() || undefined,
           status: form.status,
@@ -231,10 +262,8 @@ export function EventDrawer({
         const updated = await updateEvent(event.id, {
           title: form.title.trim(),
           description: form.description.trim() || undefined,
-          startsAt: datetimeLocalToIso(form.startsAtLocal),
-          endsAt: form.endsAtLocal
-            ? datetimeLocalToIso(form.endsAtLocal)
-            : undefined,
+          startsAt: startsAtIso,
+          endsAt: endsAtIso ?? null,
           location: form.location.trim() || undefined,
           eventRules: {
             personality: form.botPersonality.trim(),
@@ -521,12 +550,21 @@ export function EventDrawer({
                 disabled={saving}
               />
             </Field>
-            <Field label="Fin (opcional)" htmlFor="evt-end">
+            <Field
+              label="Duración (horas)"
+              htmlFor="evt-duration"
+              hint="Opcional. Decimal: 1, 1.5, 2, 3…"
+              error={fieldErrors.durationHours}
+            >
               <Input
-                id="evt-end"
-                type="datetime-local"
-                value={form.endsAtLocal}
-                onChange={(e) => set("endsAtLocal", e.target.value)}
+                id="evt-duration"
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="0.25"
+                value={form.durationHours}
+                onChange={(e) => set("durationHours", e.target.value)}
+                placeholder="1.5"
                 disabled={saving}
               />
             </Field>
@@ -576,23 +614,37 @@ export function EventDrawer({
             <p className="text-xs text-ink-muted px-1">
               Personalidad y reglas que el bot sigue al responder preguntas
               sobre este evento. La <strong>description</strong> de arriba
-              ya es el contexto principal; estas reglas afinan el tono y
-              los límites.
+              ya es el contexto principal; estas reglas afinan el tono y los
+              límites.
             </p>
+            {/* Banner si el evento aún no tiene reglas: ahorra confusión
+                cuando el admin abre un evento viejo que nunca las tuvo. */}
+            {!form.botPersonality.trim() && !form.botRulesText.trim() && (
+              <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+                Este evento aún no tiene reglas del bot. Completá personalidad
+                y reglas abajo para que responda con el tono correcto.
+              </div>
+            )}
 
             <Field
               label="Personalidad"
               htmlFor="evt-bot-personality"
-              hint="Sugeridas: seria, casual, con humor, supervendedor. O escribe una custom."
+              hint={
+                "Sugeridas: seria, casual, con humor, supervendedor. O escribí una custom " +
+                "(puede ser multi-línea, hasta 500 chars)."
+              }
             >
-              <Input
+              <Textarea
                 id="evt-bot-personality"
+                rows={3}
                 value={form.botPersonality}
                 onChange={(e) => set("botPersonality", e.target.value)}
-                placeholder="casual"
+                placeholder={
+                  "casual\n\nO una descripción más rica, ej:\nBot mexicano con humor " +
+                  "e ingenio, se burla de sí mismo y de las modas de marketing."
+                }
                 disabled={saving}
-                list="bot-personality-suggestions"
-                maxLength={50}
+                maxLength={500}
               />
               <datalist id="bot-personality-suggestions">
                 <option value="seria" />

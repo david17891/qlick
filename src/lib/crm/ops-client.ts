@@ -196,7 +196,11 @@ export interface EventFormInput {
   title: string;
   description?: string;
   startsAt: string; // ISO (datetime-local → new Date().toISOString())
-  endsAt?: string;
+  /**
+   * Fin del evento (ISO). En update: `null` lo limpia, undefined lo deja igual.
+   * Equivale a quitar la duración del evento.
+   */
+  endsAt?: string | null;
   location?: string;
   coverImageUrl?: string;
   /** Solo usado al crear; al editar se manda por updateEventStatus. */
