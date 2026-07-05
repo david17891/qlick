@@ -390,7 +390,12 @@ export function EventDrawer({
         onClick={() => !saving && !statusChanging && !cloning && onClose()}
         className="fixed inset-0 bg-ink/40 z-40 cursor-default"
       />
-      {/* Drawer */}
+      {/* Drawer — envuelto en <form> para que `type="submit"` del botón
+          Guardar funcione correctamente. Antes el form solo cubría los
+          campos y el botón quedaba en el <footer> fuera del form, así
+          que type="submit" no submiteaba nada y dependía de un cast
+          (e as unknown as React.FormEvent) que no funcionaba. Fix 05 — 2026-07-04. */}
+      <form onSubmit={handleSubmit} noValidate>
       <aside
         className="fixed top-0 right-0 h-full w-full max-w-xl bg-white shadow-2xl z-50 flex flex-col"
         role="dialog"
@@ -419,7 +424,7 @@ export function EventDrawer({
           </button>
         </header>
 
-        <form onSubmit={handleSubmit} noValidate className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
           {error && (
             <div role="alert" className="rounded-xl bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
               {error}
@@ -606,7 +611,7 @@ export function EventDrawer({
               </p>
             )}
           </fieldset>
-        </form>
+        </div>
 
         <footer className="border-t border-brand-100 px-6 py-4 flex flex-col gap-3 bg-brand-50/30">
           {/* Acciones de status en modo edit */}
@@ -706,7 +711,6 @@ export function EventDrawer({
             </Button>
             <Button
               type="submit"
-              onClick={(e) => handleSubmit(e as unknown as React.FormEvent)}
               disabled={saving || !!statusChanging || cloning}
             >
               {saving ? "Guardando…" : mode === "create" ? "Crear evento" : isDirty ? "Guardar cambios •" : "Guardar cambios"}
@@ -714,6 +718,7 @@ export function EventDrawer({
           </div>
         </footer>
       </aside>
+      </form>
 
       {/* Modal de confirmación para cambio de status */}
       {pendingStatusChange && (
