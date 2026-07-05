@@ -34,6 +34,7 @@ import { calculateEventMetrics } from "@/lib/events/event-metrics";
 import { CampaignsTab } from "./_components/CampaignsTab";
 import { CheckInTab } from "./_components/CheckInTab";
 import { DeleteRowButton } from "./_components/DeleteRowButton";
+import { DeleteSurveyButton } from "./_components/DeleteSurveyButton";
 import { SendSurveyOffersButton } from "@/components/events/SendSurveyOffersButton";
 import { formatSurveyResponses } from "@/lib/events/survey-display";
 
@@ -921,30 +922,19 @@ export default async function AdminEventoDetailPage({
                       <td className="px-5 py-3 text-right">
                         {/* FIX 2026-07-05 (Fase 7d.1 cleanup): botón Eliminar
                             con confirm nativo. Uso admin-only para limpiar
-                            duplicados manualmente. */}
-                        <form
+                            duplicados manualmente. Encapsulado en un
+                            Client Component porque el onSubmit con
+                            window.confirm() rompe Server Components. */}
+                        <DeleteSurveyButton
                           action={deleteSurveyAction.bind(null, null)}
-                          onSubmit={(e) => {
-                            const ident =
-                              s.respondentEmail ??
-                              s.phoneNormalized ??
-                              s.id.slice(0, 8);
-                            const ok = window.confirm(
-                              `¿Eliminar la encuesta de "${ident}"?\n\nEsto borra el row de event_surveys. NO toca leads ni eventos. Si ya fue promovida, el lead sobrevive.`
-                            );
-                            if (!ok) e.preventDefault();
-                          }}
-                        >
-                          <input type="hidden" name="surveyId" value={s.id} />
-                          <input type="hidden" name="eventId" value={event.id} />
-                          <button
-                            type="submit"
-                            className="text-xs px-2 py-1 rounded bg-rose-100 text-rose-700 hover:bg-rose-200 transition"
-                            title="Eliminar este row de event_surveys"
-                          >
-                            Eliminar
-                          </button>
-                        </form>
+                          surveyId={s.id}
+                          eventId={event.id}
+                          identifier={
+                            s.respondentEmail ??
+                            s.phoneNormalized ??
+                            s.id.slice(0, 8)
+                          }
+                        />
                       </td>
                     </tr>
                   );
