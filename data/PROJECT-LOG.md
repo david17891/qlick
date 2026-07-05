@@ -1890,3 +1890,32 @@ sustituir el ciclo con templates". Ejecuté 4 bloques sincrónicamente.
 - **Scoring thresholds intencionalmente altos**: MQL requiere 60+ points
   para que "llenar la encuesta tibiamente" no promueva automáticamente.
   El admin debe filtrar por qualification, no solo por status.
+
+---
+
+## 2026-07-04 ~22:58 · Migration `event_rules` aplicada en producción
+
+- **Pregunta:** El branch `feat/funnel-survey-scoring` introduce la columna
+  `events.event_rules jsonb` (migration `20260705000000_event_rules.sql`)
+  pero la DB de Supabase todavía no la tenía — el código nuevo de la UI
+  `/admin/eventos` y el endpoint `/api/admin/events/[id]/prefill-rules`
+  reventarían en runtime si se hacía deploy sin la columna.
+- **Decisión:** David aplicó la migration manualmente vía Supabase Studio
+  SQL Editor (`https://supabase.com/dashboard/project/ugpejblymtbwtsoiykyj/sql/new`).
+  Verificado post-aplicación con `information_schema.columns` →
+  `event_rules | jsonb | '{}'::jsonb | NO`. Receta exacta provista por
+  Mavis en sesión (paso 1: URL Studio; paso 2: pegar 24 líneas del SQL;
+  paso 3: Run; paso 4: SELECT de verificación).
+- **Razón:** La DB password en `~/.mavis/api-box.env` (`X+!5_rW+aUX4+,@`)
+  no autentica contra `db.ugpejblymtbwtsoiykyj.supabase.co:5432` —
+  es de OTRO proyecto Supabase (probablemente rotada). Mavis intentó
+  aplicar vía `pg` con pooler (DNS fail, gotcha documentado) y luego
+  vía direct connection (password rechazado). Studio fue el path más
+  rápido para David sin esperar reset de credenciales.
+- **Impacto:** `events.event_rules` listo en prod. UI `/admin/eventos`
+  puede leer/escribir reglas del bot sin error 500. Endpoint
+  `/api/admin/events/[id]/prefill-rules` puede llamar DeepSeek (key
+  ya estaba en Vercel Production desde 2026-07-02, 2d ago) sin que
+  el JSON resultante se pierda al guardar.
+- **Trigger:** Pre-deploy checklist de `feat/event-bot-rules`. Sesión
+  nocturna antes del test E2E humano con WhatsApp real.
