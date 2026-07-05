@@ -13,6 +13,12 @@ import {
   datetimeLocalToIso,
 } from "@/lib/crm/ops-client";
 import { ConfirmDeleteEventModal } from "./ConfirmDeleteEventModal";
+import {
+  PERSONALITY_PRESETS,
+  PERSONALITY_CUSTOM_VALUE,
+  matchPersonalityPreset,
+  type PersonalityPreset,
+} from "@/lib/events/bot-personality-templates";
 
 /**
  * Drawer (panel lateral) para crear o editar un evento del admin.
@@ -136,7 +142,6 @@ export function EventDrawer({
   const [fieldErrors, setFieldErrors] = useState<
     Partial<Record<keyof FormState, string>>
   >({});
-  const [prefillingRules, setPrefillingRules] = useState(false);
   /** true = modal de confirmación de eliminación abierto. */
   const [pendingDelete, setPendingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -303,57 +308,6 @@ export function EventDrawer({
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error cambiando status.");
       setStatusChanging(null);
-    }
-  }
-
-  /**
-   * Llama al endpoint /api/admin/events/[id]/prefill-rules y aplica
-   * las reglas devueltas al form. El admin puede revisar/editar antes
-   * de guardar.
-   *
-   * Solo funciona en modo edit (necesita event.id). En modo create
-   * no hay id todavía — el admin tendría que guardar primero y luego
-   * editar.
-   */
-  async function handlePrefillRules() {
-    if (!event) {
-      setError("Guarda el evento primero, luego prellena las reglas del bot.");
-      return;
-    }
-    setError(null);
-    setSuccess(null);
-    setPrefillingRules(true);
-    try {
-      const res = await fetch(`/api/admin/events/${event.id}/prefill-rules`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          existingPersonality: form.botPersonality
-        })
-      });
-      const data = (await res.json()) as {
-        ok: boolean;
-        rules?: { personality: string; rules: string[] };
-        error?: string;
-      };
-      if (!data.ok || !data.rules) {
-        setError(data.error ?? "No se pudo prellenar las reglas.");
-        return;
-      }
-      setForm((prev) => ({
-        ...prev,
-        botPersonality: data.rules!.personality ?? prev.botPersonality,
-        botRulesText: (data.rules!.rules ?? []).join("\n")
-      }));
-      setSuccess(
-        "Reglas prellenadas. Revisa, edita si quieres, y guarda el evento."
-      );
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Error llamando al prefill."
-      );
-    } finally {
-      setPrefillingRules(false);
     }
   }
 
@@ -626,75 +580,43 @@ export function EventDrawer({
               </div>
             )}
 
-            <Field
-              label="Personalidad"
-              htmlFor="evt-bot-personality"
-              hint={
-                "Sugeridas: seria, casual, con humor, supervendedor. O escribí una custom " +
-                "(puede ser multi-línea, hasta 500 chars)."
-              }
-            >
-              <Textarea
-                id="evt-bot-personality"
-                rows={3}
-                value={form.botPersonality}
-                onChange={(e) => set("botPersonality", e.target.value)}
-                placeholder={
-                  "casual\n\nO una descripción más rica, ej:\nBot mexicano con humor " +
-                  "e ingenio, se burla de sí mismo y de las modas de marketing."
+            <PersonalitySelect
+              value={form.botPersonality}
+              onChange={(value, preset) => {
+                // Si eligió un preset: pisamos personalidad (texto largo
+                // del system prompt) Y prellenamos reglas con el template.
+                // Si eligió Custom (freeform existente o vacío): mantenemos
+                // personalidad tal cual y reglas tal cual.
+                if (preset) {
+                  setForm((p) => ({
+                    ...p,
+                    botPersonality: preset.personality,
+                    botRulesText: preset.rules.join("\n")
+                  }));
+                } else {
+                  set("botPersonality", value);
                 }
-                disabled={saving}
-                maxLength={500}
-              />
-              <datalist id="bot-personality-suggestions">
-                <option value="seria" />
-                <option value="casual" />
-                <option value="con humor" />
-                <option value="supervendedor" />
-              </datalist>
-            </Field>
+              }}
+              disabled={saving}
+            />
 
             <Field
               label="Reglas (una por línea)"
               htmlFor="evt-bot-rules"
-              hint="Lo que el bot DEBE o NO DEBE hacer. Edita libremente."
+              hint="Lo que el bot DEBE o NO DEBE hacer. Editá libremente. Si inventar precios / fechas / cupos que no estén en la descripción del evento está explícitamente prohibido."
             >
               <Textarea
                 id="evt-bot-rules"
-                rows={5}
+                rows={8}
                 value={form.botRulesText}
                 onChange={(e) => set("botRulesText", e.target.value)}
                 placeholder={
-                  "Si preguntan descuentos, decir 'No manejo descuentos'.\n" +
-                  "Si no se la respuesta, decir que no tiene la info.\n" +
-                  "Mencionar precio solo si preguntan."
+                  "Las reglas se prellenan al elegir una personalidad arriba.\n" +
+                  "Editá las que necesites y guardá."
                 }
                 disabled={saving}
               />
             </Field>
-
-            {mode === "edit" && event && (
-              <div className="flex items-center justify-between gap-2 px-1">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handlePrefillRules}
-                  disabled={saving || prefillingRules}
-                  aria-label="Prellenar reglas con DeepSeek"
-                >
-                  {prefillingRules ? "Prellenando…" : "✨ Prellenar con IA"}
-                </Button>
-                <p className="text-[10px] text-ink-muted italic">
-                  DeepSeek sugiere personalidad + reglas desde la descripción.
-                </p>
-              </div>
-            )}
-            {mode === "create" && (
-              <p className="text-xs text-ink-muted italic px-1">
-                Guarda el evento primero para poder prellenar con IA.
-              </p>
-            )}
           </fieldset>
         </div>
 
@@ -848,6 +770,74 @@ export function EventDrawer({
 }
 
 /* ----------------------- Sub-componentes ----------------------- */
+
+/**
+ * Selector de personalidad del bot (Fase 7c, 2026-07-05).
+ *
+ * Modela los 4 presets de `bot-personality-templates.ts` como `<option>`
+ * de un `<select>` + un sentinel "__custom__" para personalidades
+ * freeform existentes (eventos viejos que tenían texto custom).
+ *
+ * Comportamiento:
+ * - Si el `value` actual matchea un preset (por `value` corto o por
+ *   `personality` completa), ese preset aparece seleccionado.
+ * - Si no matchea pero tiene texto → opción "Personalizado (custom)"
+ *   deshabilitada, para que el admin sepa que no es uno de los 4.
+ * - Si está vacío → placeholder "Elegí una personalidad para empezar".
+ *
+ * onChange recibe el nuevo valor y el preset seleccionado (o undefined
+ * si fue Custom). El padre decide qué hacer — típicamente si hay preset,
+ * prellenar las reglas; si no, dejar libre.
+ */
+function PersonalitySelect({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (newValue: string, preset: PersonalityPreset | undefined) => void;
+  disabled?: boolean;
+}) {
+  const matched = matchPersonalityPreset(value);
+  const isCustom = !matched && value.trim().length > 0;
+  const selectValue = matched?.value ?? (isCustom ? PERSONALITY_CUSTOM_VALUE : "");
+
+  return (
+    <Field
+      label="Personalidad"
+      htmlFor="evt-bot-personality"
+      hint="Elegí una para empezar. Las reglas se pre-llenan con defaults de venta; edítalas abajo."
+    >
+      <select
+        id="evt-bot-personality"
+        value={selectValue}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v === PERSONALITY_CUSTOM_VALUE) return; // opción disabled
+          if (v === "") return; // placeholder
+          const preset = PERSONALITY_PRESETS.find((p) => p.value === v);
+          onChange(v, preset);
+        }}
+        disabled={disabled}
+        className="w-full rounded-xl border border-brand-100 bg-white px-4 py-3 text-ink focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+      >
+        <option value="" disabled>
+          Elegí una personalidad…
+        </option>
+        {PERSONALITY_PRESETS.map((p) => (
+          <option key={p.value} value={p.value}>
+            {p.description}
+          </option>
+        ))}
+        {isCustom && (
+          <option value={PERSONALITY_CUSTOM_VALUE} disabled>
+            Personalizado (custom) — elegí un preset para reemplazar
+          </option>
+        )}
+      </select>
+    </Field>
+  );
+}
 
 /**
  * Modal de confirmación pequeño para cambios de status.
