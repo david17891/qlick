@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requireAdmin } from "@/lib/auth/session";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
-import { updateEvent, type UpdateEventInput } from "@/lib/events/events-server";
+import { updateEvent, deleteEvent, type UpdateEventInput } from "@/lib/events/events-server";
 
 /**
  * CRUD admin de eventos — item.
@@ -10,6 +10,9 @@ import { updateEvent, type UpdateEventInput } from "@/lib/events/events-server";
  *   body: UpdateEventInput (cualquier subset de title, description,
  *                            startsAt, endsAt, location, coverImageUrl)
  *   -> { ok: true, event }
+ *
+ * DELETE /api/admin/events/[id]
+ *   -> { ok: true, note }
  *
  * No se permite cambiar slug ni status (eso va por POST /events o
  * PATCH /events/[id]/status).
@@ -55,4 +58,33 @@ export async function PATCH(
   }
 
   return NextResponse.json({ ok: true, event: result.event });
+}
+
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: { id: string } },
+) {
+  if (!checkSupabaseConfig().configured) {
+    return NextResponse.json(
+      { ok: false, error: "Supabase no configurado (modo demo)." },
+      { status: 501 },
+    );
+  }
+  const admin = await requireAdmin();
+  if (!admin) {
+    return NextResponse.json(
+      { ok: false, error: "No autenticado como admin." },
+      { status: 401 },
+    );
+  }
+
+  const result = await deleteEvent(params.id, admin.email);
+
+  if (!result.ok) {
+    const note = result.note ?? "No se pudo eliminar el evento.";
+    const status = note === "Evento no existe." ? 404 : 400;
+    return NextResponse.json({ ok: false, error: note }, { status });
+  }
+
+  return NextResponse.json({ ok: true, note: result.note });
 }

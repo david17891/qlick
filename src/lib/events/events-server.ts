@@ -566,6 +566,75 @@ export async function updateEventStatus(
   return { ok: true, event };
 }
 
+/**
+ * Elimina un evento (hard delete). Admin only.
+ *
+ * - Cascade: las tablas con `on delete cascade` (event_confirmations,
+ *   event_attendees, event_surveys, lead_event_links, event_qr_tokens,
+ *   event_email_log, etc.) se borran automáticamente.
+ * - Las tablas con `on delete set null` (lead_whatsapp_log,
+ *   lead_whatsapp_conversations.related_event_id) mantienen el row pero
+ *   ponen event_id=NULL — OK porque esas columnas son nullable.
+ * - Audit log: registra `event_delete` con before=evento, after=null.
+ * - NO reversible. El caller debe pedir confirmación al admin antes.
+ */
+export async function deleteEvent(
+  eventId: string,
+  actorEmail: string,
+): Promise<AdminEventOpResult> {
+  if (!isRealMode()) {
+    return { ok: false, note: "Supabase no configurado." };
+  }
+  if (!eventId || !actorEmail) {
+    return { ok: false, note: "Faltan datos (eventId/actor)." };
+  }
+
+  const supabase = createSupabaseAdminClient();
+
+  // Capturar estado previo para audit log (slug, title, status).
+  const { data: prev, error: prevErr } = await supabase
+    .from("events")
+    .select("id, slug, title, status")
+    .eq("id", eventId)
+    .maybeSingle();
+
+  if (prevErr || !prev) {
+    return {
+      ok: false,
+      note: prevErr ? "Error leyendo evento." : "Evento no existe.",
+    };
+  }
+
+  // DELETE — las FK cascadeadas borran dependencias automáticamente.
+  const { error } = await supabase.from("events").delete().eq("id", eventId);
+
+  if (error) {
+    // eslint-disable-next-line no-console
+    console.error("[events-server] deleteEvent falló", {
+      code: error.code,
+      eventId,
+    });
+    return { ok: false, note: "No se pudo eliminar el evento." };
+  }
+
+  await logAdminAction({
+    actor_email: actorEmail,
+    action: "event_delete",
+    entity_type: "event",
+    entity_id: eventId,
+    metadata: { slug: prev.slug, title: prev.title },
+    before: {
+      id: prev.id,
+      slug: prev.slug,
+      title: prev.title,
+      status: prev.status
+    },
+    after: null,
+  });
+
+  return { ok: true, note: `Evento "${prev.title}" eliminado.` };
+}
+
 // ─────────────────────────────────────────────────────────────
 // Helpers de import (para el importador CLI y los server libs de Fase 3)
 // ─────────────────────────────────────────────────────────────

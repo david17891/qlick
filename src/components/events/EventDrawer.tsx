@@ -7,6 +7,7 @@ import {
   createEvent,
   updateEvent,
   updateEventStatus,
+  deleteEvent,
   cloneEvent,
   slugifyTitle,
   datetimeLocalToIso,
@@ -123,6 +124,9 @@ export function EventDrawer({
     Partial<Record<keyof FormState, string>>
   >({});
   const [prefillingRules, setPrefillingRules] = useState(false);
+  /** true = modal de confirmación de eliminación abierto. */
+  const [pendingDelete, setPendingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Si cambia el evento/modo desde fuera, resetea el form — pero SOLO
   // si no hay cambios locales sin guardar. Si `prev !== initial`, el
@@ -376,6 +380,34 @@ export function EventDrawer({
       );
     } finally {
       setCloning(false);
+    }
+  }
+
+  /**
+   * Confirmación de eliminación (hard delete). Cascade borra todas las
+   * dependencias (confirmations, attendees, surveys, lead_event_links).
+   * NO reversible — el modal debe pedir confirmación al admin.
+   */
+  async function confirmDelete() {
+    if (!event) return;
+    setError(null);
+    setSuccess(null);
+    setDeleting(true);
+    try {
+      const note = await deleteEvent(event.id);
+      setSuccess(note);
+      // Notificar al padre (refresh) y cerrar el drawer en el mismo tick.
+      onSaved(event);
+      onClose();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? `No se pudo eliminar: ${err.message}`
+          : "No se pudo eliminar el evento.",
+      );
+    } finally {
+      setDeleting(false);
+      setPendingDelete(false);
     }
   }
 
@@ -681,21 +713,34 @@ export function EventDrawer({
             </div>
           )}
 
-          {/* Fila de acciones secundarias: Clonar (Fase 5 Paquete D) */}
+          {/* Fila de acciones secundarias: Clonar (Fase 5 Paquete D) + Eliminar */}
           {mode === "edit" && event && (
             <div className="flex items-center justify-between border-t border-brand-100 pt-3">
-              <Button
-                size="sm"
-                variant="ghost"
-                type="button"
-                disabled={saving || !!statusChanging || !!pendingStatusChange || cloning}
-                onClick={handleClone}
-                aria-label="Clonar este evento (crea una copia en borrador)"
-              >
-                {cloning ? "Clonando…" : "📋 Clonar evento"}
-              </Button>
+              <div className="flex items-center gap-3">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  type="button"
+                  disabled={saving || !!statusChanging || !!pendingStatusChange || cloning || deleting}
+                  onClick={handleClone}
+                  aria-label="Clonar este evento (crea una copia en borrador)"
+                >
+                  {cloning ? "Clonando…" : "📋 Clonar evento"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  type="button"
+                  disabled={saving || !!statusChanging || !!pendingStatusChange || cloning || deleting}
+                  onClick={() => setPendingDelete(true)}
+                  aria-label="Eliminar este evento permanentemente"
+                  className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                >
+                  🗑️ Eliminar
+                </Button>
+              </div>
               <p className="text-[10px] text-ink-muted italic">
-                La copia queda en borrador.
+                Clonar queda en borrador · Eliminar es permanente.
               </p>
             </div>
           )}
@@ -705,13 +750,13 @@ export function EventDrawer({
               type="button"
               variant="outline"
               onClick={onClose}
-              disabled={saving || !!statusChanging || cloning}
+              disabled={saving || !!statusChanging || cloning || deleting}
             >
               Cancelar
             </Button>
             <Button
               type="submit"
-              disabled={saving || !!statusChanging || cloning}
+              disabled={saving || !!statusChanging || cloning || deleting}
             >
               {saving ? "Guardando…" : mode === "create" ? "Crear evento" : isDirty ? "Guardar cambios •" : "Guardar cambios"}
             </Button>
@@ -729,6 +774,16 @@ export function EventDrawer({
           onCancel={() => setPendingStatusChange(null)}
           onConfirm={confirmStatusChange}
           pending={!!statusChanging}
+        />
+      )}
+
+      {/* Modal de confirmación para eliminación (hard delete, no reversible) */}
+      {pendingDelete && (
+        <DeleteEventConfirm
+          eventTitle={form.title}
+          onCancel={() => setPendingDelete(false)}
+          onConfirm={confirmDelete}
+          pending={deleting}
         />
       )}
     </>
@@ -821,6 +876,61 @@ function StatusChangeConfirm({
             </Button>
             <Button variant={tone} onClick={onConfirm} disabled={pending}>
               {pending ? "Aplicando…" : confirmLabel}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/**
+ * Modal de confirmación para eliminación de evento (hard delete).
+ * NO reversible: el cascade borra confirmations, attendees, surveys y
+ * lead_event_links. El admin debe confirmar explícitamente.
+ */
+function DeleteEventConfirm({
+  eventTitle,
+  onCancel,
+  onConfirm,
+  pending,
+}: {
+  eventTitle: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+  pending: boolean;
+}) {
+  return (
+    <>
+      <button
+        type="button"
+        aria-label="Cerrar modal"
+        onClick={() => !pending && onCancel()}
+        className="fixed inset-0 bg-ink/60 z-[60] cursor-default"
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="fixed inset-0 z-[70] flex items-center justify-center p-4 pointer-events-none"
+      >
+        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 pointer-events-auto">
+          <h3 className="text-lg font-bold text-red-700 mb-2">🗑️ ¿Eliminar este evento?</h3>
+          <p className="text-sm text-ink-soft mb-1">
+            Evento: <span className="font-semibold text-ink">{eventTitle || "(sin título)"}</span>
+          </p>
+          <p className="text-sm text-ink-soft mb-3">
+            Esta acción <strong className="text-red-700">NO se puede deshacer</strong>. Se
+            eliminarán también los confirmados, asistentes, encuestas y links asociados.
+          </p>
+          <p className="text-xs text-ink-muted italic mb-5">
+            Si solo querés ocultarlo temporalmente, usá <strong>Archivar</strong> en su lugar.
+          </p>
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="outline" onClick={onCancel} disabled={pending}>
+              Cancelar
+            </Button>
+            <Button variant="danger" onClick={onConfirm} disabled={pending}>
+              {pending ? "Eliminando…" : "Sí, eliminar"}
             </Button>
           </div>
         </div>

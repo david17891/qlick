@@ -18,6 +18,7 @@ export {
   createEvent,
   updateEvent,
   updateEventStatus,
+  deleteEvent,
   cloneEvent,
   listPublishedEventSlugs,
   listPublishedEvents,

@@ -250,6 +250,17 @@ export async function updateEventStatus(
   return data.event;
 }
 
+/** DELETE /api/admin/events/[id] → hard delete del evento.
+ *  Cascade borra confirmations, attendees, surveys, lead_event_links, etc.
+ *  NO reversible — el caller debe pedir confirmación al admin antes. */
+export async function deleteEvent(eventId: string): Promise<string> {
+  const res = await fetch(`/api/admin/events/${eventId}`, {
+    method: "DELETE",
+  });
+  const data = await parseEnvelope<{ ok: true; note: string }>(res);
+  return data.note;
+}
+
 /**
  * POST /api/admin/events/[id]/clone → clona un evento.
  * Devuelve el evento nuevo y el sourceEvent original (para mostrar
