@@ -377,3 +377,149 @@ export async function markSurveyTokenSent(token: string): Promise<boolean> {
     .is("sent_at" as never, null);
   return !error;
 }
+
+/* ------------------------------------------------------------------ */
+/* Single-token helpers (feat/funnel-survey-scoring, 2026-07-04)      */
+/* ------------------------------------------------------------------ */
+
+export interface GetOrCreateSurveyTokenInput {
+  eventId: string;
+  email: string | null;
+  phoneNormalized: string | null;
+  baseUrl?: string;
+}
+
+export interface GetOrCreateSurveyTokenResult {
+  ok: boolean;
+  url?: string;
+  reused: boolean;
+  note: string;
+}
+
+/**
+ * Busca un survey token valido (no usado, no expirado) para
+ * (event_id, email) y lo reutiliza; si no existe, crea uno nuevo.
+ *
+ * Usado por el bot engine cuando el lead hace click en "Sí" del
+ * survey offer post-check-in. Mantiene el contrato: cada (evento,
+ * contacto) tiene UN solo token activo a la vez.
+ *
+ * Si email viene vacio, busca por phone_normalized. Si ambos vienen
+ * vacios, devuelve ok:false (caso raro — caller deberia haber pedido
+ * el email primero).
+ */
+export async function getOrCreateSurveyTokenForContact(
+  input: GetOrCreateSurveyTokenInput,
+): Promise<GetOrCreateSurveyTokenResult> {
+  if (!isRealMode()) {
+    return { ok: false, reused: false, note: "Supabase no configurado." };
+  }
+  if (!input.eventId) {
+    return { ok: false, reused: false, note: "Falta eventId." };
+  }
+  const email = input.email?.trim().toLowerCase() || null;
+  const phone = input.phoneNormalized?.trim() || null;
+  if (!email && !phone) {
+    return {
+      ok: false,
+      reused: false,
+      note: "Falta email o phone para generar token.",
+    };
+  }
+
+  const supabase = createSupabaseAdminClient();
+
+  // 1) Buscar token existente valido.
+  let existingQuery = supabase
+    .from("event_survey_tokens" as never)
+    .select("*")
+    .eq("event_id" as never, input.eventId)
+    .is("submitted_survey_id" as never, null);
+  if (email) {
+    existingQuery = existingQuery.eq("email" as never, email);
+  } else if (phone) {
+    existingQuery = existingQuery.eq("phone_normalized" as never, phone);
+  }
+  const { data: existingRows, error: exErr } = await existingQuery
+    .order("created_at" as never, { ascending: false })
+    .limit(1);
+  if (exErr) {
+    return {
+      ok: false,
+      reused: false,
+      note: `Error buscando token: ${exErr.code ?? "unknown"}`,
+    };
+  }
+  const existing = (existingRows ?? [])[0] as TokenRow | undefined;
+  if (existing && !isSurveyTokenExpired(existing.expires_at)) {
+    const baseUrl =
+      input.baseUrl ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    return {
+      ok: true,
+      url: buildSurveyUrl(baseUrl, existing.token),
+      reused: true,
+      note: "Token existente reutilizado.",
+    };
+  }
+
+  // 2) Traer evento para TTL.
+  const { data: event, error: evErr } = await supabase
+    .from("events")
+    .select("ends_at")
+    .eq("id", input.eventId)
+    .maybeSingle();
+  if (evErr || !event) {
+    return { ok: false, reused: false, note: "Evento no encontrado." };
+  }
+  const evRow = event as { ends_at: string | null };
+  const baseIso = evRow.ends_at ?? new Date().toISOString();
+  const expiresAt = new Date(
+    new Date(baseIso).getTime() + 30 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const baseUrl =
+    input.baseUrl ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+
+  // 3) Crear token nuevo.
+  const token = generateRandomToken();
+  const { error: insErr } = await supabase
+    .from("event_survey_tokens" as never)
+    .insert({
+      event_id: input.eventId,
+      token,
+      email,
+      phone_normalized: phone,
+      expires_at: expiresAt,
+    } as never);
+  if (insErr) {
+    // Race: alguien inserto a la vez. Buscar de nuevo y usar ese.
+    if (insErr.code === "23505") {
+      const { data: raced } = await supabase
+        .from("event_survey_tokens" as never)
+        .select("token")
+        .eq("event_id" as never, input.eventId)
+        .eq("email" as never, email ?? "")
+        .limit(1);
+      const racedToken = (raced ?? [])[0] as { token: string } | undefined;
+      if (racedToken) {
+        return {
+          ok: true,
+          url: buildSurveyUrl(baseUrl, racedToken.token),
+          reused: true,
+          note: "Token creado por otra request (race resuelta).",
+        };
+      }
+    }
+    return {
+      ok: false,
+      reused: false,
+      note: `No se pudo crear token: ${insErr.code ?? "unknown"}`,
+    };
+  }
+
+  return {
+    ok: true,
+    url: buildSurveyUrl(baseUrl, token),
+    reused: false,
+    note: "Token nuevo creado.",
+  };
+}

@@ -32,7 +32,9 @@ import {
   intentTone,
   calculateLeadResponseRisk,
   riskTone,
-  riskLabel
+  riskLabel,
+  qualificationLabel,
+  qualificationTone
 } from "@/lib/crm/lead-utils";
 import {
   getAIAgentProfile,
@@ -711,7 +713,19 @@ function LeadsTable({
                   </td>
                   <td className="px-4 py-3 text-ink-soft">{l.courseOfInterest ?? "—"}</td>
                   <td className="px-4 py-3">
-                    <Badge tone={statusTone[l.status]}>{leadStatusLabel[l.status]}</Badge>
+                    <div className="flex flex-col gap-1 items-start">
+                      <Badge tone={statusTone[l.status]}>{leadStatusLabel[l.status]}</Badge>
+                      {/* feat/funnel-survey-scoring: badge de qualification
+                          aparece cuando el lead lleno la encuesta post-evento. */}
+                      {l.qualification && typeof l.score === "number" && (
+                        <Badge
+                          tone={qualificationTone[l.qualification]}
+                          title={`Score ${l.score}/100`}
+                        >
+                          🌡 {qualificationLabel[l.qualification]}
+                        </Badge>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <Badge tone={intentTone[l.intent]}>{leadIntentLabel[l.intent]}</Badge>

@@ -8,6 +8,7 @@
 import type {
   Lead,
   LeadStatus,
+  LeadQualification,
   LeadSource,
   LeadIntent
 } from "@/types";
@@ -23,6 +24,7 @@ export const leadStatusLabel: Record<LeadStatus, string> = {
   enrolled: "Inscrito",
   active_student: "Alumno activo",
   event_attended: "Asistió al evento",
+  survey_completed: "Encuesta completada",
   lost: "Perdido",
   archived: "Archivado"
 };
@@ -64,8 +66,28 @@ export const statusTone: Record<
   enrolled: "success",
   active_student: "success",
   event_attended: "success",
+  survey_completed: "success",
   lost: "danger",
   archived: "neutral"
+};
+
+/* --------------------- Qualification (post-survey) --------------------- */
+
+export const qualificationLabel: Record<LeadQualification, string> = {
+  cold: "Frío",
+  warm: "Tibio",
+  hot: "Caliente",
+  mql: "MQL"
+};
+
+export const qualificationTone: Record<
+  LeadQualification,
+  "neutral" | "warning" | "accent" | "success"
+> = {
+  cold: "neutral",
+  warm: "warning",
+  hot: "accent",
+  mql: "success"
 };
 
 /** Tono para el badge de intención. */

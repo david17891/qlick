@@ -26,8 +26,12 @@ export type LeadStatus =
   | "enrolled"
   | "active_student"
   | "event_attended"
+  | "survey_completed"
   | "lost"
   | "archived";
+
+/** Bucketed score derivado de la encuesta post-evento. */
+export type LeadQualification = "cold" | "warm" | "hot" | "mql";
 
 /** Canal por el que entró el lead al CRM. */
 export type LeadSource =
@@ -142,6 +146,17 @@ export interface Lead {
   whatsappStatus?: "no_contactado" | "contactado" | "interested" | "lost";
   /** Timestamp del ultimo contacto por WhatsApp. */
   lastContactedAt?: string;
+  /**
+   * Score 0-100 derivado de la encuesta post-evento.
+   * NULL hasta que el lead contesta la encuesta. Actualizado por
+   * `lib/crm/lead-scoring.ts` cuando `surveys-server.ts` persiste
+   * una nueva respuesta.
+   */
+  score?: number;
+  /** Bucketed score. Se setea junto con `score`. */
+  qualification?: LeadQualification;
+  /** Timestamp del ultimo survey offer que mando el bot. Anti-spam. */
+  surveyOfferSentAt?: string;
 }
 
 /* ------------------------------------------------------------------ */

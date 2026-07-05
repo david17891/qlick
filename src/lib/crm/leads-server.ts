@@ -1221,3 +1221,152 @@ export async function getEventContextForLead(
 
   return result;
 }
+
+/* ------------------------------------------------------------------ */
+/* Scoring (feat/funnel-survey-scoring, 2026-07-04)                    */
+/* ------------------------------------------------------------------ */
+
+import { calculateLeadScore, type SurveyScoreInput } from "./lead-scoring";
+
+export interface UpdateLeadScoringInput {
+  leadId: string;
+  rating: number;
+  liked?: string | null;
+  commercialInterest?: string | null;
+  consentToContact: boolean;
+}
+
+export interface UpdateLeadScoringResult {
+  ok: boolean;
+  score?: number;
+  qualification?: import("@/types/crm").LeadQualification;
+  statusChanged: boolean;
+  note: string;
+}
+
+/**
+ * Aplica score + qualification + status a un lead después de que llena
+ * una encuesta post-evento. Llamado por `surveys-server.ts:createSurvey`
+ * como post-hook.
+ *
+ * Reglas:
+ *   - Score + qualification siempre se actualizan (sobrescriben el valor
+ *     previo). Si el lead lleno 2 encuestas, gana la última.
+ *   - Status pasa a `survey_completed` SOLO si actualmente está en
+ *     `event_attended` o `survey_completed`. Si el lead ya avanzó a
+ *     `interested` / `enrolled` / etc., NO lo degradamos.
+ *   - Si el lead está en `lost` / `archived`, NO lo reactivamos (la
+ *     reactivación es responsabilidad de `createLeadFromEvent`).
+ *   - Si el lead no existe, devuelve ok:false (best-effort, no fallar
+ *     la encuesta por esto).
+ */
+export async function updateLeadScoring(
+  input: UpdateLeadScoringInput,
+): Promise<UpdateLeadScoringResult> {
+  if (!isRealMode()) {
+    return {
+      ok: false,
+      statusChanged: false,
+      note: "Supabase no configurado.",
+    };
+  }
+  if (!input.leadId) {
+    return {
+      ok: false,
+      statusChanged: false,
+      note: "Falta leadId.",
+    };
+  }
+
+  const scoreInput: SurveyScoreInput = {
+    rating: input.rating,
+    liked: input.liked,
+    commercialInterest: input.commercialInterest,
+    consentToContact: input.consentToContact,
+  };
+  const { score, qualification } = calculateLeadScore(scoreInput);
+
+  const supabase = createSupabaseAdminClient();
+
+  // 1) Leer status actual para decidir si mover a survey_completed.
+  const { data: current, error: readErr } = await supabase
+    .from("leads")
+    .select("status")
+    .eq("id", input.leadId)
+    .maybeSingle();
+  if (readErr || !current) {
+    return {
+      ok: false,
+      statusChanged: false,
+      note: `No se pudo leer lead: ${readErr?.code ?? "not_found"}`,
+    };
+  }
+
+  const currentStatus = current.status as string;
+  const allowStatusChange =
+    currentStatus === "event_attended" || currentStatus === "survey_completed";
+  const newStatus: Database["public"]["Enums"]["lead_status"] = allowStatusChange
+    ? "survey_completed"
+    : (currentStatus as Database["public"]["Enums"]["lead_status"]);
+
+  const { error: updateErr } = await supabase
+    .from("leads")
+    .update({
+      score,
+      qualification,
+      status: newStatus
+    })
+    .eq("id", input.leadId);
+
+  if (updateErr) {
+    // eslint-disable-next-line no-console
+    console.error("[leads-server] updateLeadScoring falló", {
+      code: updateErr.code,
+      leadId: input.leadId,
+    });
+    return {
+      ok: false,
+      statusChanged: false,
+      note: `No se pudo actualizar: ${updateErr.code ?? "unknown"}`,
+    };
+  }
+
+  return {
+    ok: true,
+    score,
+    qualification,
+    statusChanged: newStatus !== currentStatus,
+    note: allowStatusChange
+      ? `Score=${score} (${qualification}); status: ${currentStatus} → ${newStatus}`
+      : `Score=${score} (${qualification}); status preservado (${currentStatus})`,
+  };
+}
+
+/**
+ * Marca el timestamp del survey offer enviado al lead. Anti-spam:
+ * el bot no re-ofrece dentro de 24h. Llamado desde el bot engine
+ * cuando se envía el mensaje con los botones Sí/No.
+ *
+ * Best-effort: si falla, no rompe el flujo del bot.
+ */
+export async function markSurveyOfferSent(
+  leadId: string,
+): Promise<{ ok: boolean; note: string }> {
+  if (!isRealMode() || !leadId) {
+    return { ok: false, note: "no-op (demo o sin leadId)" };
+  }
+  const supabase = createSupabaseAdminClient();
+  const { error } = await supabase
+    .from("leads")
+    .update({ survey_offer_sent_at: new Date().toISOString() })
+    .eq("id", leadId);
+  if (error) {
+    // eslint-disable-next-line no-console
+    console.error("[leads-server] markSurveyOfferSent falló", {
+      code: error.code,
+      leadId,
+    });
+    return { ok: false, note: `Error: ${error.code ?? "unknown"}` };
+  }
+  return { ok: true, note: "OK" };
+}

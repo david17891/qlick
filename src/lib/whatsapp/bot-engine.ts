@@ -81,6 +81,18 @@ import { createConfirmation } from "../events/confirmations-server";
 import { sendEventQrPassEmail } from "../email/event-qr-pass";
 import { generateQrDataUrl } from "../qr/generate";
 import { appBaseUrl } from "../utils";
+// FIX 2026-07-04 (feat/funnel-survey-scoring): imports para el flujo
+// de survey offer post-event-attended. Ver seccion 3.0 en
+// processInboundMessage y cases nuevos en buildResponsePlan.
+import {
+  buildSurveyOfferMessage,
+  buildSurveyLinkMessage,
+  buildSurveyDeclineMessage,
+  SURVEY_OFFER_BUTTON_IDS
+} from "./survey-messages";
+import { findLatestAttendedEventForPhone } from "../events/attendees-server";
+import { getOrCreateSurveyTokenForContact } from "../events/survey-tokens";
+import { markSurveyOfferSent } from "../crm/leads-server";
 
 /* ------------------------------------------------------------------ */
 /*  Tipos                                                              */
@@ -98,6 +110,9 @@ export type BotIntent =
   | "interactive_event_inscribir"
   | "interactive_show_events"
   | "interactive_talk_human"
+  | "survey_offer"
+  | "interactive_survey_yes"
+  | "interactive_survey_no"
   | "question";
 
 /** Resultado del procesamiento de un mensaje entrante. */
@@ -213,6 +228,20 @@ function cleanFirstName(rawName: string | null | undefined): string {
   const name = (rawName ?? "").toLowerCase().trim();
   if (PLACEHOLDER_NAMES.has(name)) return "";
   return rawName?.trim() ?? "";
+}
+
+/**
+ * FIX 2026-07-04 (feat/funnel-survey-scoring): anti-spam del survey offer.
+ * Devuelve true si debemos ofrecer la encuesta al lead. Reglas:
+ *   - Sin offer previo → ofrecer.
+ *   - Offer > 24h → re-ofrecer (puede haber olvidado).
+ *   - Offer < 24h → no re-ofrecer (no spamear).
+ */
+function isSurveyOfferStale(lastOfferIso: string | null | undefined): boolean {
+  if (!lastOfferIso) return true;
+  const ts = new Date(lastOfferIso).getTime();
+  if (Number.isNaN(ts)) return true;
+  return Date.now() - ts > 24 * 60 * 60 * 1000;
 }
 
 /** URL base pública (para QR check-in). Re-exportada desde ../utils. */
@@ -1439,6 +1468,110 @@ case "interactive_event_inscribir": {
           })
       };
     }
+    case "survey_offer": {
+      // FIX 2026-07-04 (feat/funnel-survey-scoring): el lead está en
+      // event_attended y no hemos ofrecido la encuesta en 24h+. Le
+      // mandamos el interactive con Sí / Ahora no. Marcamos el
+      // timestamp del offer para anti-spam (best-effort).
+      const evt = await findLatestAttendedEventForPhone(phoneNormalized)
+        .catch(() => null);
+      const built = buildSurveyOfferMessage({
+        leadName: lead.name,
+        eventTitle: evt?.eventTitle ?? null
+      });
+      // Best-effort: marcamos el offer como enviado. No bloqueamos el
+      // send del provider si esto falla.
+      markSurveyOfferSent(lead.id).catch((err) => {
+        errorLog("[whatsapp/bot] survey_offer: markSurveyOfferSent falló", {
+          leadId: lead.id,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      });
+      const interactive = built.interactive;
+      return {
+        kind: "interactive",
+        body: built.text,
+        interactive,
+        send: () =>
+          provider.send({
+            to: phoneNormalized,
+            body: built.text,
+            interactive
+          })
+      };
+    }
+    case "interactive_survey_yes": {
+      // FIX 2026-07-04 (feat/funnel-survey-scoring): el lead clickeó
+      // "Sí, dejar feedback". Buscamos el evento mas reciente al que
+      // hizo check-in, generamos (o reusamos) un survey token, y le
+      // mandamos el link.
+      const evt = await findLatestAttendedEventForPhone(phoneNormalized)
+        .catch(() => null);
+      if (!evt) {
+        // Caso raro: el lead está en event_attended pero no hay
+        // event_attendees para su telefono (drift). Le pedimos email
+        // para generarle el link manualmente.
+        const bodyText =
+          `¡Gracias por querer dejar feedback! Necesito tu correo para ` +
+          `mandarte el link privado. ¿Me lo pasás?`;
+        return {
+          kind: "text",
+          body: bodyText,
+          metadata: { awaiting_field: "email_for_survey" },
+          send: () =>
+            provider.send({ to: phoneNormalized, body: bodyText })
+        };
+      }
+      const tokenRes = await getOrCreateSurveyTokenForContact({
+        eventId: evt.eventId,
+        email: lead.email ?? null,
+        phoneNormalized,
+        baseUrl: appBaseUrl()
+      }).catch(() => null);
+      if (!tokenRes?.ok || !tokenRes.url) {
+        const bodyText =
+          `Tuve un problema técnico generando tu link. ¿Me lo pedís de ` +
+          `nuevo en un rato? Si persiste, escribinos a ` +
+          `hola@qlick.marketing.`;
+        return {
+          kind: "text",
+          body: bodyText,
+          send: () =>
+            provider.send({ to: phoneNormalized, body: bodyText })
+        };
+      }
+      // Tambien marcamos el offer como enviado para no re-ofrecer.
+      markSurveyOfferSent(lead.id).catch(() => {
+        /* best-effort */
+      });
+      const built = buildSurveyLinkMessage({
+        leadName: lead.name,
+        surveyUrl: tokenRes.url
+      });
+      const bodyText = built.text;
+      return {
+        kind: "text",
+        body: bodyText,
+        send: () =>
+          provider.send({ to: phoneNormalized, body: bodyText })
+      };
+    }
+    case "interactive_survey_no": {
+      // FIX 2026-07-04 (feat/funnel-survey-scoring): el lead clickeó
+      // "Ahora no". Acknowledge respetuoso y marcamos timestamp para
+      // no re-ofrecer inmediatamente.
+      const built = buildSurveyDeclineMessage({ leadName: lead.name });
+      markSurveyOfferSent(lead.id).catch(() => {
+        /* best-effort */
+      });
+      const bodyText = built.text;
+      return {
+        kind: "text",
+        body: bodyText,
+        send: () =>
+          provider.send({ to: phoneNormalized, body: bodyText })
+      };
+    }
     case "provide_name": {
       // FIX 2026-07-02 (Commit A): el lead mandó un texto libre cuando
       // el último outbound del bot tenía metadata.awaiting_field='name'
@@ -1934,6 +2067,10 @@ export async function processInboundMessage(
       intent = "interactive_show_events";
     } else if (message.buttonId === "talk_human") {
       intent = "interactive_talk_human";
+    } else if (message.buttonId === SURVEY_OFFER_BUTTON_IDS.yes) {
+      intent = "interactive_survey_yes";
+    } else if (message.buttonId === SURVEY_OFFER_BUTTON_IDS.no) {
+      intent = "interactive_survey_no";
     } else {
       intent = "question";
     }
@@ -2000,6 +2137,19 @@ export async function processInboundMessage(
     } else {
       intent = detectIntent(body, isFirstMessage);
     }
+  }
+
+  // 3.0 FIX 2026-07-04 (feat/funnel-survey-scoring): si el lead está en
+  // `event_attended` y NO hemos ofrecido la encuesta en las últimas 24h,
+  // override del intent a `survey_offer`. Esto cierra el ciclo del funnel
+  // (asistió → encuesta → scoring). No aplica si el usuario clickeó un
+  // botón (otro flow en curso — el survey offer es para texto libre).
+  if (
+    !message.buttonId &&
+    lead.status === "event_attended" &&
+    isSurveyOfferStale(lead.surveyOfferSentAt)
+  ) {
+    intent = "survey_offer";
   }
 
   // 4. Actualizar whatsapp_status según intent (best-effort).

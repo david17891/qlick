@@ -417,6 +417,63 @@ export async function deleteAttendee(
   return { ok: true, note: "Asistente eliminado." };
 }
 
+/* ------------------------------------------------------------------ */
+/* Lookup por telefono (feat/funnel-survey-scoring, 2026-07-04)       */
+/* ------------------------------------------------------------------ */
+
+export interface LatestAttendedEventInfo {
+  eventId: string;
+  eventSlug: string;
+  eventTitle: string;
+  checkedInAt: string;
+}
+
+/**
+ * Devuelve el evento mas reciente al que el telefono hizo check-in.
+ *
+ * Usado por el bot engine cuando un lead en `event_attended` responde
+ * "Si" al survey offer post-evento: necesitamos el event_id para
+ * generar el survey token sin re-preguntar.
+ *
+ * Devuelve `null` si el telefono no tiene check-ins (caso raro — el
+ * status event_attended pudo haber sido seteado por otro path).
+ */
+export async function findLatestAttendedEventForPhone(
+  phoneNormalized: string | null | undefined,
+): Promise<LatestAttendedEventInfo | null> {
+  if (!isRealMode() || !phoneNormalized) return null;
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("event_attendees")
+    .select(
+      `
+      checked_in_at,
+      event:events (id, slug, title)
+    `,
+    )
+    .eq("phone_normalized", phoneNormalized)
+    .order("checked_in_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  const row = data as {
+    checked_in_at: string | null;
+    event:
+      | { id: string; slug: string; title: string }
+      | Array<{ id: string; slug: string; title: string }>
+      | null;
+  };
+  const evRaw = row.event;
+  const ev = Array.isArray(evRaw) ? evRaw[0] ?? null : evRaw;
+  if (!ev || !row.checked_in_at) return null;
+  return {
+    eventId: ev.id,
+    eventSlug: ev.slug,
+    eventTitle: ev.title,
+    checkedInAt: row.checked_in_at
+  };
+}
+
 // ─────────────────────────────────────────────────────────────
 // Re-export para importador CLI
 // ─────────────────────────────────────────────────────────────

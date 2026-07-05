@@ -1605,77 +1605,77 @@ David corrigio 2026-07-03 ~17:18: NO es 6 de julio, probablemente 10 de julio. D
 - Cron event-reminders `0 8 * * *` solo 1/dia: decision arquitectonica pendiente.
 
 
-## 2026-07-04 ~05:32 · Setup WABA Qlick Marketing Digital + bot operativo
+## 2026-07-04 ~05:32 ï¿½ Setup WABA Qlick Marketing Digital + bot operativo
 
-- **Pregunta:** El bot estaba en la WABA Test con número +1 555-201-7643
-  de sandbox. Para el primer evento real (10 jul) necesitamos un número
+- **Pregunta:** El bot estaba en la WABA Test con nï¿½mero +1 555-201-7643
+  de sandbox. Para el primer evento real (10 jul) necesitamos un nï¿½mero
   mexicano dedicado con display name aprobado.
-- **Decisión:** Crear nueva WABA "Qlick Marketing Digital" (ID
+- **Decisiï¿½n:** Crear nueva WABA "Qlick Marketing Digital" (ID
   2083618983565979), comprar chip Telcel eSIM Amigo (+52 16634306074),
   aprobar display name "Qlick" (cambiamos el footer del sitio a "Qlick"
-  y conectamos la página de Facebook "Qlick Marketing Digital" al perfil
-  del número), regenerar token permanente y subirlo a Vercel.
-- **Razón:** Display name tiene que coincidir con la marca externa (sitio
-  web + Facebook). Meta rechaza nombres genéricos ("Marketing Digital")
-  o muy cortos ("Qlick") sin la página de Facebook conectada al perfil.
+  y conectamos la pï¿½gina de Facebook "Qlick Marketing Digital" al perfil
+  del nï¿½mero), regenerar token permanente y subirlo a Vercel.
+- **Razï¿½n:** Display name tiene que coincidir con la marca externa (sitio
+  web + Facebook). Meta rechaza nombres genï¿½ricos ("Marketing Digital")
+  o muy cortos ("Qlick") sin la pï¿½gina de Facebook conectada al perfil.
   El legal name "Negocio de Paul Velasquez" no contiene "Qlick", por
-  eso Meta exige la página como fuente de validación.
-- **Impacto:** Bot ahora responde a leads reales en número +52. Display
+  eso Meta exige la pï¿½gina como fuente de validaciï¿½n.
+- **Impacto:** Bot ahora responde a leads reales en nï¿½mero +52. Display
   name "Qlick" es el que ve el lead en el chat. El bot de test
-  (WABA 1670509767335938) deja de contestar porque el código apunta
-  solo a la WABA nueva vía env vars.
-- **Trigger:** Conversación de 5+ horas con David armando setup completo
+  (WABA 1670509767335938) deja de contestar porque el cï¿½digo apunta
+  solo a la WABA nueva vï¿½a env vars.
+- **Trigger:** Conversaciï¿½n de 5+ horas con David armando setup completo
   de Meta para el evento del 10 jul.
 
-### Lo que está OPERATIVO al cierre del día
+### Lo que estï¿½ OPERATIVO al cierre del dï¿½a
 
-- WABA "Qlick Marketing Digital" con verificación de empresa aprobada
-- Display name "Qlick" aprobado (Meta tenía desfase, mostraba el viejo)
+- WABA "Qlick Marketing Digital" con verificaciï¿½n de empresa aprobada
+- Display name "Qlick" aprobado (Meta tenï¿½a desfase, mostraba el viejo)
 - Chip Telcel +52 16634306074 conectado y verificado por SMS
-- Página de Facebook "Qlick Marketing Digital" vinculada al perfil
+- Pï¿½gina de Facebook "Qlick Marketing Digital" vinculada al perfil
   (Full control en business.facebook.com/settings/pages)
-- Método de pago Mastercard agregado a la WABA
-- Token permanente en Vercel production (reemplazado vía API v9 con
+- Mï¿½todo de pago Mastercard agregado a la WABA
+- Token permanente en Vercel production (reemplazado vï¿½a API v9 con
   upsert porque v10 dio 404, luego DELETE por id + POST nuevo)
-- Webhook URL del bot responde a GET de verificación (devuelve 403 con
-  token vacío, 200 con token correcto)
-- Meta SÍ envía webhooks al endpoint cuando un lead escribe, y el bot
+- Webhook URL del bot responde a GET de verificaciï¿½n (devuelve 403 con
+  token vacï¿½o, 200 con token correcto)
+- Meta Sï¿½ envï¿½a webhooks al endpoint cuando un lead escribe, y el bot
   procesa el inbound (status 200, error en persistConversation con
   unique_violation 23505)
-- Bot reconoce al lead y le dice "estás registrado" (probado por David
+- Bot reconoce al lead y le dice "estï¿½s registrado" (probado por David
   a las 05:05)
 
-### PENDIENTES para retomar mañana (2026-07-05)
+### PENDIENTES para retomar maï¿½ana (2026-07-05)
 
 **Bloqueante para 10 jul (30-45 min de trabajo):**
 
-1. **Fix persistConversation** (10 min) — error 23505 unique_violation
-   en src/lib/whatsapp/bot-engine.ts línea ~360. El INSERT del
+1. **Fix persistConversation** (10 min) ï¿½ error 23505 unique_violation
+   en src/lib/whatsapp/bot-engine.ts lï¿½nea ~360. El INSERT del
    inbound falla porque el message_id ya existe (probablemente el
    mismo wamid procesado dos veces por reintento). Fix: usar
    onConflict: 'message_id' o upsert en lugar de INSERT directo.
 
-2. **Webhook subscribed oficial** (5 min) — Ir a
+2. **Webhook subscribed oficial** (5 min) ï¿½ Ir a
    developers.facebook.com/apps/1532987041600498/whatsapp-business/
    api-setup y verificar que los eventos messages y message_status
-   estén suscritos. PERO OJO: la WABA Test vieja tenía una app
+   estï¿½n suscritos. PERO OJO: la WABA Test vieja tenï¿½a una app
    fantasma 2202427980234937 subscripta (memoria del proyecto);
    verificar que la nueva WABA no tenga ese problema.
 
-3. **4 templates de Meta** (15 min + 24-72h espera aprobación):
-   - conf_bienvenida (utility) — bienvenida al evento
-   - conf_info_evento (utility) — info del evento registrado
-   - conf_confirmacion_registro (utility) — recordatorio
-   - survey_invite (utility) — link a encuesta post-evento
+3. **4 templates de Meta** (15 min + 24-72h espera aprobaciï¿½n):
+   - conf_bienvenida (utility) ï¿½ bienvenida al evento
+   - conf_info_evento (utility) ï¿½ info del evento registrado
+   - conf_confirmacion_registro (utility) ï¿½ recordatorio
+   - survey_invite (utility) ï¿½ link a encuesta post-evento
    Crear en WhatsApp Manager ? tu WABA ? Message Templates ? Create
-   Template. Texto basado en el código de Qlick (bot-engine.ts y
+   Template. Texto basado en el cï¿½digo de Qlick (bot-engine.ts y
    contact-form.ts).
 
-4. **App Qlick_wb apuntando a WABA nueva** (5 min) — Verificar en
-   developers.facebook.com que la app esté vinculada a la WABA
-   2083618983565979. David dijo que ya está hecho, validar.
+4. **App Qlick_wb apuntando a WABA nueva** (5 min) ï¿½ Verificar en
+   developers.facebook.com que la app estï¿½ vinculada a la WABA
+   2083618983565979. David dijo que ya estï¿½ hecho, validar.
 
-5. **Probar end-to-end completo** (10 min) — Mandar "hola" al
+5. **Probar end-to-end completo** (10 min) ï¿½ Mandar "hola" al
    +52 16634306074 desde WhatsApp personal, verificar:
    - Webhook llega a Vercel
    - Bot responde
@@ -1683,65 +1683,65 @@ David corrigio 2026-07-03 ~17:18: NO es 6 de julio, probablemente 10 de julio. D
    - Lead aparece en el admin
 
 **Costo de DeepSeek:** Quedan .28 USD. Si el bot usa el LLM en
-producción, se acaba rápido. Recargar en platform.deepseek.com.
+producciï¿½n, se acaba rï¿½pido. Recargar en platform.deepseek.com.
 
 **No bloqueante para 10 jul (Fase 7 / post-evento):**
 
-6. **Inbox en admin de Qlick** (1-2 días código) — actualmente el
+6. **Inbox en admin de Qlick** (1-2 dï¿½as cï¿½digo) ï¿½ actualmente el
    ConversationsView en src/components/crm/CRMView.tsx es data
    demo (badges "mock", "Sugerencia IA (demo)"). Hay que reescribir
    para leer de lead_whatsapp_conversations y permitir enviar
    mensajes manuales.
-   **Parche rápido:** usar Meta Business Suite
+   **Parche rï¿½pido:** usar Meta Business Suite
    (business.facebook.com/wa/manager/) como inbox temporal.
 
-7. **Logo del sitio** (? hecho hoy) — Footer y Navbar arreglados.
+7. **Logo del sitio** (? hecho hoy) ï¿½ Footer y Navbar arreglados.
    El asset  3_qlick_logo_no_tagline_transparent.png fue reemplazado
-   con una versión completa y transparente (1536x1024 RGBA, sin fondo
+   con una versiï¿½n completa y transparente (1536x1024 RGBA, sin fondo
    blanco). Commit 83330ed.
 
-8. **Footer del sitio** (? hecho hoy) — Cambiado de "Qlick Marketing
+8. **Footer del sitio** (? hecho hoy) ï¿½ Cambiado de "Qlick Marketing
    Integral" a "Qlick" en src/components/layout/Footer.tsx para
    coincidir con el display name de Meta. Commit 64015cf.
 
 9. **Scripts creados hoy:**
-   - scripts/save-whatsapp-token.ps1 (en .gitignore) — guarda token
-     en .env.local Y lo sube a Vercel vía API REST con upsert
+   - scripts/save-whatsapp-token.ps1 (en .gitignore) ï¿½ guarda token
+     en .env.local Y lo sube a Vercel vï¿½a API REST con upsert
      (reemplaza si existe).
 
-**Discusiones de estrategia (NO implementación, solo ideas para
+**Discusiones de estrategia (NO implementaciï¿½n, solo ideas para
 discutir con Paul):**
 
-- **Grupos de WhatsApp por evento** (David los está explorando). Patrón
-  válido: "registrate ? te paso link al grupo" con opt-in explícito
+- **Grupos de WhatsApp por evento** (David los estï¿½ explorando). Patrï¿½n
+  vï¿½lido: "registrate ? te paso link al grupo" con opt-in explï¿½cito
   del usuario. NO agregar gente a grupo sin opt-in (baneo de Meta).
   Paul crea los grupos manualmente.
 
 - **Eventos gratis** como primer evento. Flujo:
   registro ? email con QR de check-in + link al grupo ? check-in el
-  día del evento ? encuesta post.
+  dï¿½a del evento ? encuesta post.
 
-- **Página real de Qlick** — tiene mucho demo todavía (masterclass,
+- **Pï¿½gina real de Qlick** ï¿½ tiene mucho demo todavï¿½a (masterclass,
   eventos, cursos con datos de muestra). Hay que ajustar a contenido
-  real antes de campaña pública.
+  real antes de campaï¿½a pï¿½blica.
 
 - **Canal de WhatsApp** (channels) como alternativa a grupos para
   broadcasts de un solo emisor a muchos suscriptores voluntarios.
 
-- **Costo de campañas:** utility ~.0085/msg MX, marketing
+- **Costo de campaï¿½as:** utility ~.0085/msg MX, marketing
   ~.0305-0.0500/msg MX. Para 100 leads en 4 crons = ~ MXN total.
   Service window 24h = gratis.
 
 **Archivos modificados hoy:**
 
-- src/components/layout/Footer.tsx — footer "Q" ? "Qlick" (commit 64015cf)
-- src/components/brand/Logo.tsx — padding y alin. del logo (en 78b3703)
-- src/components/layout/Navbar.tsx — height 34?36 (en 78b3703)
-- src/lib/brand-manifest.ts — dimensiones del noTagline 500x300
+- src/components/layout/Footer.tsx ï¿½ footer "Q" ? "Qlick" (commit 64015cf)
+- src/components/brand/Logo.tsx ï¿½ padding y alin. del logo (en 78b3703)
+- src/components/layout/Navbar.tsx ï¿½ height 34?36 (en 78b3703)
+- src/lib/brand-manifest.ts ï¿½ dimensiones del noTagline 500x300
   ? 1536x1024 (en 83330ed)
-- public/brand/original/03_qlick_logo_no_tagline_transparent.png —
-  reemplazado con versión completa y transparente (en 83330ed)
-- scripts/save-whatsapp-token.ps1 — creado y actualizado (en
+- public/brand/original/03_qlick_logo_no_tagline_transparent.png ï¿½
+  reemplazado con versiï¿½n completa y transparente (en 83330ed)
+- scripts/save-whatsapp-token.ps1 ï¿½ creado y actualizado (en
   .gitignore)
 
 **Env vars actualizadas en Vercel production:**
@@ -1752,3 +1752,141 @@ discutir con Paul):**
   ac59c9a3614f867f, longitud 205)
 
 **Recargar DeepSeek en:** platform.deepseek.com (quedan .28 USD).
+
+---
+
+## 2026-07-04 ~20:30 Â· feat/funnel-survey-scoring â€” ciclo E2E del funnel con scoring
+
+### Pregunta
+
+David pidiÃ³ cerrar el ciclo completo del funnel de eventos:
+reset registro â†’ register â†’ check-in â†’ survey offer (botones SÃ­/No) â†’
+contestar encuesta â†’ scoring â†’ mover en CRM. Quiere poder testear
+aprovechando la ventana de 24h (sin templates todavÃ­a) y estar preparado
+para hacer swap a templates cuando Meta los apruebe.
+
+### DecisiÃ³n: 4 bloques en una rama (`feat/funnel-survey-scoring`)
+
+**Bloque 1 â€” Survey offer desde el bot.**
+- 3 nuevos intents en `BotIntent`: `survey_offer`, `interactive_survey_yes`,
+  `interactive_survey_no`.
+- Trigger en `processInboundMessage` (lÃ­nea ~2030): si el lead estÃ¡ en
+  `event_attended` y `survey_offer_sent_at` estÃ¡ stale (>24h o null),
+  override del intent a `survey_offer`. No aplica si el usuario clickeÃ³
+  un botÃ³n (otro flow en curso).
+- Handlers en `buildResponsePlan`:
+  - `survey_offer`: construye interactive SÃ­/No via `buildSurveyOfferMessage`.
+    Marca `survey_offer_sent_at` (anti-spam).
+  - `interactive_survey_yes`: busca el Ãºltimo `event_attendees` por
+    `phone_normalized` (`findLatestAttendedEventForPhone`), genera/recupera
+    survey token via `getOrCreateSurveyTokenForContact`, manda link.
+  - `interactive_survey_no`: ack via `buildSurveyDeclineMessage`.
+
+**Bloque 2 â€” Scoring de encuesta.**
+- `lib/crm/lead-scoring.ts` (nuevo, puro): `calculateLeadScore(input)`
+  devuelve `{ score, qualification, reasons }`. Reglas:
+  - rating 5 â†’ +30, 4 â†’ +20, 3 â†’ +10, â‰¤2 â†’ 0
+  - liked no vacÃ­o â†’ +10
+  - commercial_interest no vacÃ­o â†’ +25
+  - consent_to_contact â†’ +10
+  - Max teÃ³rico con campos actuales: 75
+  - Thresholds: cold <20, warm 20-39, hot 40-59, mql 60+
+- Post-hook en `surveys-server.ts:createSurvey`: despuÃ©s de persistir la
+  encuesta, busca lead por email/phone y llama `updateLeadScoring`.
+  Best-effort â€” si falla el lookup, NO falla la encuesta.
+- `lib/crm/leads-server.ts` (nuevo): `updateLeadScoring(leadId, rating, ...)`
+  â€” solo cambia status a `survey_completed` si el lead estaba en
+  `event_attended` o `survey_completed`. Preserva status si ya avanzÃ³
+  a `interested`/`enrolled`. NO reactiva `lost`/`archived`.
+- `markSurveyOfferSent(leadId)` â€” best-effort anti-spam.
+
+**Bloque 3 â€” Nuevo lead_status: `survey_completed`.**
+- Migration `20260704200000_lead_scoring_and_survey_completed.sql`:
+  - `ALTER TABLE leads ADD COLUMN score int CHECK (0..100)`
+  - `ALTER TABLE leads ADD COLUMN qualification text CHECK IN (cold/warm/hot/mql)`
+  - `ALTER TABLE leads ADD COLUMN survey_offer_sent_at timestamptz`
+  - `ALTER TYPE lead_status ADD VALUE 'survey_completed' AFTER 'event_attended'`
+  - 2 Ã­ndices parciales (qualification, survey_offer_sent_at)
+- `types/crm.ts`: agrega `survey_completed` al union `LeadStatus`,
+  nuevo tipo `LeadQualification`, agrega campos `score`, `qualification`,
+  `surveyOfferSentAt` a la interfaz `Lead`.
+- `lib/crm/lead-utils.ts`: agrega `qualificationLabel` (FrÃ­o/Tibio/Caliente/MQL)
+  y `qualificationTone` (neutral/warning/accent/success).
+- `lib/crm/leads-server.ts`: helper `updateLeadScoring` (importa
+  `calculateLeadScore`).
+- Patch manual de `types/supabase.ts` (lead_status enum + 3 columnas nuevas
+  en Row/Insert/Update) â€” workaround para M1 (typegen regen requiere
+  supabase CLI + login). PrÃ³xima sesiÃ³n: regenerar typegen y remover
+  este patch.
+- `components/crm/CRMView.tsx`: badge ðŸŒ¡ Hot/Warm/MQL debajo del status
+  badge cuando `qualification && score != null`.
+
+**Bloque 4 â€” Reset script + wrappers template-ready.**
+- `scripts/reset-test-lead.mjs` (nuevo): `--phone=+52XXXXXXXXXX [--dry-run]`.
+  Borra por phone: leads, lead_profile, lead_whatsapp_log/conversations,
+  handoff_requests, event_confirmations/attendees/survey_tokens/surveys,
+  lead_event_links. Lee `.env.local` para SUPABASE_URL + SUPABASE_SECRET_KEY.
+  Imprime conteo pre-reset. DiseÃ±ado para correr entre tests E2E.
+- `lib/whatsapp/survey-messages.ts` (nuevo): builders puros para
+  `buildSurveyOfferMessage`, `buildSurveyLinkMessage`,
+  `buildSurveyDeclineMessage`. TEMPLATE-READY: cada funciÃ³n devuelve
+  `{ text, interactive? }` para que cuando Meta apruebe los 3 templates
+  el swap sea trivial (agregar `template?: {name, language}` al envelope).
+- `lib/events/attendees-server.ts`: helper `findLatestAttendedEventForPhone`.
+- `lib/events/survey-tokens.ts`: helper `getOrCreateSurveyTokenForContact`
+  (lookup + create por (event_id, email) con idempotencia).
+
+### RazÃ³n
+
+David quiere cerrar el ciclo del funnel antes del 10 jul (evento de
+prueba). El scoring es la pieza que faltaba: sin Ã©l, los leads
+cualificados se mezclan con los curiosos en `event_attended`. El
+template-ready wrapper es para no reescribir cuando Meta apruebe.
+
+### Impacto
+
+- Bot ofrece encuesta automÃ¡ticamente cuando el lead vuelve a escribir
+  despuÃ©s de check-in (sin intervenciÃ³n manual).
+- Score 0-100 + qualification (cold/warm/hot/mql) persiste en el lead.
+- UI muestra el badge en `/admin/crm` sin cÃ³digo nuevo del admin.
+- Reset script permite testear E2E sin arrastrar state.
+- Tests: 348 â†’ 359 (11 nuevos del scoring lib puro).
+
+### Trigger
+
+SesiÃ³n 2026-07-04 ~20:00. David dijo: "hagamos el ciclo completo...
+registro, check-in, mover en el funnel, mandar encuesta, contestar,
+scoring... aunque no tengamos templates, y estar preparados para
+sustituir el ciclo con templates". EjecutÃ© 4 bloques sincrÃ³nicamente.
+
+### ValidaciÃ³n
+
+- `npm run type-check` âœ…
+- `npm run lint` âœ… (0 warnings/errors)
+- `npm test` âœ… 359/359
+- `npm run build` âœ… 26/26 pÃ¡ginas estÃ¡ticas
+
+### Pendiente David
+
+1. `npx supabase db push` para aplicar la migration 20260704200000.
+2. Push del branch `feat/funnel-survey-scoring` (no lo hago yo â€” mi
+   sesiÃ³n no tiene `gh` auth; ver AGENTS.md Â§PR & commit conventions).
+3. Test E2E manual con WhatsApp real: reset â†’ register â†’ check-in â†’
+   "Hola" â†’ bot ofrece encuesta â†’ click SÃ­ â†’ bot manda link â†’ abrir
+   link â†’ llenar encuesta â†’ verificar en /admin/crm que score + ðŸŒ¡ badge
+   aparecen.
+
+### Lecciones
+
+- **Bot pattern**: cuando agregÃ¡s intents nuevos al bot-engine, el punto
+  mÃ¡s limpio para el trigger es ANTES del `if (message.buttonId)` block
+  en `processInboundMessage` â€” asÃ­ no peleÃ¡s con la detecciÃ³n de botones.
+- **Typegen drift**: con cada migration que agrega columnas o enum values,
+  el typegen queda stale. Parchear manualmente `types/supabase.ts` es
+  feo pero funciona; el fix real es regenerar (M1 de OPEN_ITEMS).
+- **Anti-spam timestamp**: para triggers basados en estado del lead
+  (como ofrecer encuesta), un `survey_offer_sent_at` + `isStale()` helper
+  es 5 lÃ­neas y evita spamear al lead cada mensaje.
+- **Scoring thresholds intencionalmente altos**: MQL requiere 60+ points
+  para que "llenar la encuesta tibiamente" no promueva automÃ¡ticamente.
+  El admin debe filtrar por qualification, no solo por status.

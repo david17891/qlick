@@ -167,6 +167,65 @@ export async function createSurvey(
     };
   }
 
+  // Post-hook (feat/funnel-survey-scoring, 2026-07-04): aplicar score al
+  // lead asociado. Best-effort: si falla el lookup o el UPDATE del lead,
+  // NO fallamos la encuesta (ya está persistida). Solo loggeamos.
+  // Esto cierra el ciclo: lead llena encuesta → score + qualification +
+  // status='survey_completed' en el CRM.
+  try {
+    const responses = input.responses as Record<string, unknown>;
+    const rating = Number(responses.rating ?? 0);
+    if (rating >= 1 && rating <= 5) {
+      const liked = typeof responses.liked === "string" ? responses.liked : null;
+      const { findLeadByEmail, findLeadByPhone, updateLeadScoring } = await import(
+        "../crm/leads-server"
+      );
+      let leadId: string | null = null;
+      if (input.respondentEmail) {
+        const lead = await findLeadByEmail(input.respondentEmail).catch(() => null);
+        if (lead) leadId = lead.id;
+      }
+      if (!leadId && input.phoneNormalized) {
+        const lead = await findLeadByPhone(input.phoneNormalized).catch(() => null);
+        if (lead) leadId = lead.id;
+      }
+      if (leadId) {
+        await updateLeadScoring({
+          leadId,
+          rating,
+          liked,
+          commercialInterest: input.commercialInterest ?? null,
+          consentToContact: input.consentToContact,
+        });
+      } else {
+        // Sin lead linkeado todavía (caso raro: encuesta antes de check-in).
+        // El lead se va a crear/activar via promoteSurveyToLead cuando el
+        // admin corra la promotion. El score se puede re-asignar despues.
+        // eslint-disable-next-line no-console
+        console.info(
+          "[surveys-server] createSurvey post-hook: no se encontró lead linkeado a la encuesta",
+          {
+            surveyId: (data as { id: string }).id,
+            hasEmail: !!input.respondentEmail,
+            hasPhone: !!input.phoneNormalized,
+          },
+        );
+      }
+    }
+  } catch (postHookErr) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[surveys-server] createSurvey post-hook (scoring) falló — la encuesta YA está persistida",
+      {
+        code: (postHookErr as { code?: string })?.code,
+        err:
+          postHookErr instanceof Error
+            ? postHookErr.message
+            : String(postHookErr),
+      },
+    );
+  }
+
   return {
     ok: true,
     survey: mapEventSurveyRowToEventSurvey(data as EventSurveyRow),
