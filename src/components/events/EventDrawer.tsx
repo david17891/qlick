@@ -12,6 +12,7 @@ import {
   slugifyTitle,
   datetimeLocalToIso,
 } from "@/lib/crm/ops-client";
+import { ConfirmDeleteEventModal } from "./ConfirmDeleteEventModal";
 
 /**
  * Drawer (panel lateral) para crear o editar un evento del admin.
@@ -777,9 +778,13 @@ export function EventDrawer({
         />
       )}
 
-      {/* Modal de confirmación para eliminación (hard delete, no reversible) */}
+      {/* Modal de confirmación para eliminación (hard delete, no reversible).
+          Misma fricción alta (primeras 3 letras del título) que el modal
+          de la card — componente compartido en `ConfirmDeleteEventModal.tsx`.
+          Cuando el evento se está creando, `form.title` puede estar vacío:
+          en ese caso el modal pide el título completo. */}
       {pendingDelete && (
-        <DeleteEventConfirm
+        <ConfirmDeleteEventModal
           eventTitle={form.title}
           onCancel={() => setPendingDelete(false)}
           onConfirm={confirmDelete}
@@ -876,61 +881,6 @@ function StatusChangeConfirm({
             </Button>
             <Button variant={tone} onClick={onConfirm} disabled={pending}>
               {pending ? "Aplicando…" : confirmLabel}
-            </Button>
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}
-
-/**
- * Modal de confirmación para eliminación de evento (hard delete).
- * NO reversible: el cascade borra confirmations, attendees, surveys y
- * lead_event_links. El admin debe confirmar explícitamente.
- */
-function DeleteEventConfirm({
-  eventTitle,
-  onCancel,
-  onConfirm,
-  pending,
-}: {
-  eventTitle: string;
-  onCancel: () => void;
-  onConfirm: () => void;
-  pending: boolean;
-}) {
-  return (
-    <>
-      <button
-        type="button"
-        aria-label="Cerrar modal"
-        onClick={() => !pending && onCancel()}
-        className="fixed inset-0 bg-ink/60 z-[60] cursor-default"
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        className="fixed inset-0 z-[70] flex items-center justify-center p-4 pointer-events-none"
-      >
-        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 pointer-events-auto">
-          <h3 className="text-lg font-bold text-red-700 mb-2">🗑️ ¿Eliminar este evento?</h3>
-          <p className="text-sm text-ink-soft mb-1">
-            Evento: <span className="font-semibold text-ink">{eventTitle || "(sin título)"}</span>
-          </p>
-          <p className="text-sm text-ink-soft mb-3">
-            Esta acción <strong className="text-red-700">NO se puede deshacer</strong>. Se
-            eliminarán también los confirmados, asistentes, encuestas y links asociados.
-          </p>
-          <p className="text-xs text-ink-muted italic mb-5">
-            Si solo querés ocultarlo temporalmente, usá <strong>Archivar</strong> en su lugar.
-          </p>
-          <div className="flex items-center justify-end gap-2">
-            <Button variant="outline" onClick={onCancel} disabled={pending}>
-              Cancelar
-            </Button>
-            <Button variant="danger" onClick={onConfirm} disabled={pending}>
-              {pending ? "Eliminando…" : "Sí, eliminar"}
             </Button>
           </div>
         </div>

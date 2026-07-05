@@ -7,8 +7,9 @@ import type { Event } from "@/types/events";
 import { Card, Badge, Button, EmptyState } from "@/components/ui";
 import { formatDate } from "@/lib/utils";
 import { EventDrawer } from "./EventDrawer";
+import { ConfirmDeleteEventModal } from "./ConfirmDeleteEventModal";
 import type { AdminEventSummary } from "@/lib/events/events-server";
-import { updateEventStatus } from "@/lib/crm/ops-client";
+import { updateEventStatus, deleteEvent } from "@/lib/crm/ops-client";
 
 /**
  * Wrapper Client para /admin/eventos.
@@ -33,6 +34,14 @@ export function AdminEventosClient({
   const router = useRouter();
   const [drawerMode, setDrawerMode] = useState<"create" | "edit" | null>(null);
   const [drawerEvent, setDrawerEvent] = useState<Event | null>(null);
+  /**
+   * Evento pendiente de confirmación para eliminar (hard delete).
+   * `null` = no hay modal abierto. La confirmación de fricción alta vive
+   * en `ConfirmDeleteEventModal` (primeras 3 letras del título).
+   */
+  const [eventToDelete, setEventToDelete] = useState<Event | null>(null);
+  /** true mientras el `deleteEvent` está en vuelo (spinner en el modal). */
+  const [deleting, setDeleting] = useState(false);
 
   /** Toast genérico (success / info / undo). null = no toast visible. */
   const [toast, setToast] = useState<ToastState | null>(null);
@@ -136,6 +145,36 @@ export function AdminEventosClient({
     });
   }
 
+  /**
+   * Hard delete del evento. Llamado desde el modal de confirmación
+   * (botón "Sí, eliminar"). Cascade borra confirmaciones, asistentes,
+   * encuestas y links asociados (event_delete audit log lo deja
+   * trazado). NO reversible — el modal de confirmación ya pidió las
+   * primeras 3 letras del título como fricción.
+   */
+  async function confirmDeleteEvent() {
+    if (!eventToDelete) return;
+    setDeleting(true);
+    const target = eventToDelete;
+    try {
+      await deleteEvent(target.id);
+      setEventToDelete(null);
+      router.refresh();
+      showToast({
+        kind: "info",
+        title: `“${target.title}” eliminado.`,
+      });
+    } catch (err) {
+      showToast({
+        kind: "error",
+        title: "No se pudo eliminar el evento.",
+        detail: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   if (initialSummaries.length === 0) {
     return (
       <>
@@ -156,6 +195,14 @@ export function AdminEventosClient({
             onSaved={handleSaved}
             onCloned={handleCloned}
             onArchived={handleArchived}
+          />
+        )}
+        {eventToDelete && (
+          <ConfirmDeleteEventModal
+            eventTitle={eventToDelete.title}
+            onCancel={() => setEventToDelete(null)}
+            onConfirm={confirmDeleteEvent}
+            pending={deleting}
           />
         )}
         {toast && <ToastView toast={toast} onDismiss={dismissToast} />}
@@ -270,6 +317,20 @@ export function AdminEventosClient({
                 </Button>
               </Link>
             </div>
+            {/* Fila de acción destructiva: separada del grid primario para no
+                competir visualmente con Editar/Ver detalle. Discovery ↑ vs
+                dejarlo enterrado en el drawer. */}
+            <div className="mt-2">
+              <button
+                type="button"
+                onClick={() => setEventToDelete(s.event)}
+                className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-full text-xs font-semibold border border-red-200 text-red-700 hover:bg-red-50 hover:border-red-300 transition"
+                title="Eliminar este evento (hard delete, no reversible)"
+                aria-label={`Eliminar evento ${s.event.title}`}
+              >
+                🗑 Eliminar
+              </button>
+            </div>
             </div>
           </Card>
         ))}
@@ -282,6 +343,14 @@ export function AdminEventosClient({
           onSaved={handleSaved}
           onCloned={handleCloned}
           onArchived={handleArchived}
+        />
+      )}
+      {eventToDelete && (
+        <ConfirmDeleteEventModal
+          eventTitle={eventToDelete.title}
+          onCancel={() => setEventToDelete(null)}
+          onConfirm={confirmDeleteEvent}
+          pending={deleting}
         />
       )}
       {toast && <ToastView toast={toast} onDismiss={dismissToast} />}
