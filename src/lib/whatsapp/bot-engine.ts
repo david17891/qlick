@@ -97,8 +97,6 @@ import {
   buildSurveyQ4,
   buildSurveyThankYou,
   detectSurveyButton,
-  calculateSurveyScore,
-  getQualificationFromScore,
   cleanBusinessText,
   isSurveySkip,
   SURVEY_BUTTON_IDS,
@@ -291,13 +289,17 @@ function nudgeToResendWizard(
 
 interface PersistWizardArgs {
   eventId: string | null;
-  leadId: string | null;
   leadEmail: string | null;
   phoneNormalized: string;
   responses: SurveyAnswers;
-  score: number;
-  qualification: ReturnType<typeof getQualificationFromScore>;
-  consentFromBusiness: boolean;
+  /**
+   * Si el lead describió su negocio en la Q4, marcamos
+   * consent_to_contact=true como convención: escribir de su
+   * negocio = opt-in implícito al canal comercial. El admin
+   * decide desde la tab Encuestas si promueve o no.
+   * Fase 7d.1 — tope al wizard: NUNCA auto-promovemos.
+   */
+  businessCaptured: boolean;
   // El cliente de supabase service-role. Si es null, no persistimos
   // (caso modo demo).
   supabase: SupabaseAdmin | null;
@@ -305,10 +307,16 @@ interface PersistWizardArgs {
 
 /**
  * Persiste el resultado del wizard: insert a `event_surveys` con las
- * respuestas en `responses` jsonb. La columna `consent_to_contact`
- * se setea al booleano `consentFromBusiness` (true solo si el lead
- * dió info de su negocio — convención: respuesta libre = opt-in
- * implícito al canal comercial).
+ * respuestas en `responses` jsonb. Esa es la ÚNICA persistencia.
+ *
+ * Fase 7d.1 (2026-07-05): tope al wizard. NO actualizamos leads.score /
+ * leads.qualification / leads.commercial_interest, NO hacemos
+ * promotion. El admin decide desde la tab Encuestas qué hacer con
+ * cada respuesta.
+ *
+ * Si businessCaptured=true, marcamos consent_to_contact=true
+ * como convención: responder con info del negocio = opt-in
+ * implícito al canal comercial. El admin decide después.
  *
  * Retorna `{ ok, note }`. Errores se loggean y se devuelven para que
  * el caller decida si continúa con el thank-you o aborta.
@@ -336,14 +344,19 @@ async function persistWizardSurvey(
         respondent_phone: args.phoneNormalized,
         phone_normalized: args.phoneNormalized,
         responses: args.responses as unknown as never,
-        consent_to_contact: args.consentFromBusiness,
-        // FIX: si consentFromBusiness, podríamos también tomar el texto
-        // como commercial_interest — pero ya lo guardamos en leads
-        // (commercial_interest) en el caller, así que acá lo dejamos
-        // null para no duplicar.
+        consent_to_contact: args.businessCaptured,
+        // Fase 7d.1: NO tocamos leads.commercial_interest ni nada del
+        // lead — el admin revisa desde la tab Encuestas.
         commercial_interest: null
       } as never);
     if (insErr) {
+      // FIX 2026-07-05 (Fase 7d.1): si el error es unique violation,
+      // significa que el lead ya completó la encuesta para este evento.
+      // Tratamos como OK para no spamear al usuario. El admin puede ver
+      // el row existente en la tab Encuestas.
+      if (insErr.code === "23505" || /duplicate/i.test(String(insErr.message ?? ""))) {
+        return { ok: true, note: "Encuesta ya existía (dedupe DB level)." };
+      }
       errorLog("[whatsapp/bot] persistWizardSurvey insert falló", {
         code: insErr.code,
         eventId: args.eventId,
@@ -357,6 +370,63 @@ async function persistWizardSurvey(
       error: err instanceof Error ? err.message : String(err)
     });
     return { ok: false, note: "Excepción al persistir." };
+  }
+}
+
+/**
+ * FIX 2026-07-05 (Fase 7d.1): state-tracking — el bot ya NO permite
+ * re-tomar el wizard si el lead ya completó la encuesta para el evento.
+ *
+ * Lookup contra `event_surveys` por (event_id, phone_normalized OR
+ * respondent_email). Si hay match, NO entramos al wizard — enviamos un
+ * thank-you corto y cerramos el flow.
+ *
+ * Necesita que `event_surveys` tenga UNIQUE constraint sobre
+ * (event_id, phone_normalized) o (event_id, respondent_email) para que el
+ * dedupe sea a nivel DB. Ver `supabase/migrations/20260705000000_...`.
+ */
+async function hasCompletedWizardSurvey(args: {
+  supabase: SupabaseAdmin | null;
+  eventId: string;
+  phoneNormalized: string;
+  leadEmail: string | null;
+}): Promise<boolean> {
+  if (!args.supabase) return false; // modo demo: permitimos entrar (no hay DB)
+  try {
+    // Buscar por phone_normalized.
+    const phoneQuery = args.supabase
+      .from("event_surveys" as never)
+      .select("id" as never)
+      .eq("event_id" as never, args.eventId)
+      .eq("phone_normalized" as never, args.phoneNormalized)
+      .limit(1);
+    const { data: phoneRows, error: phoneErr } = await phoneQuery;
+    if (!phoneErr && phoneRows && (phoneRows as unknown[]).length > 0) {
+      return true;
+    }
+    // Buscar por email si tenemos uno (y no es el placeholder synthetic).
+    if (
+      args.leadEmail &&
+      !args.leadEmail.endsWith("@placeholder.local")
+    ) {
+      const emailQuery = args.supabase
+        .from("event_surveys" as never)
+        .select("id" as never)
+        .eq("event_id" as never, args.eventId)
+        .eq("respondent_email" as never, args.leadEmail.toLowerCase())
+        .limit(1);
+      const { data: emailRows, error: emailErr } = await emailQuery;
+      if (!emailErr && emailRows && (emailRows as unknown[]).length > 0) {
+        return true;
+      }
+    }
+    return false;
+  } catch (err) {
+    // Si falla el lookup, dejamos entrar al wizard (best-effort).
+    errorLog("[whatsapp/bot] hasCompletedWizardSurvey threw", {
+      error: err instanceof Error ? err.message : String(err)
+    });
+    return false;
   }
 }
 
@@ -1659,6 +1729,38 @@ case "interactive_event_inscribir": {
             provider.send({ to: phoneNormalized, body: bodyText })
         };
       }
+      // FIX 2026-07-05 (Fase 7d.1, "registro doble"): dedupe — si el lead
+      // ya completó la encuesta de este evento (mismo event_id +
+      // phone_normalized OR respondent_email), NO re-entramos al
+      // wizard. Devolvemos un thank-you corto en su lugar.
+      const alreadyDone = await hasCompletedWizardSurvey({
+        supabase: args.supabase ?? null,
+        eventId: evt.eventId,
+        phoneNormalized,
+        leadEmail: lead.email ?? null
+      });
+      if (alreadyDone) {
+        markSurveyOfferSent(lead.id).catch(() => {
+          /* best-effort */
+        });
+        const alreadyBody =
+          `¡Gracias! Ya tenemos tu feedback de "${evt.eventTitle}" ` +
+          `— no hace falta que la vuelvas a completar. ` +
+          `Si hay algo más en lo que te pueda ayudar, decime.`;
+        return {
+          kind: "text",
+          body: alreadyBody,
+          metadata: {
+            awaiting_survey_step: null,
+            survey_event_id: null,
+            survey_event_title: null,
+            survey_answers: null,
+            survey_completed: true
+          },
+          send: () =>
+            provider.send({ to: phoneNormalized, body: alreadyBody })
+        };
+      }
       // Arrancamos el wizard en Q1.
       const q1Built = buildSurveyQ1({
         leadName: lead.name,
@@ -1836,48 +1938,18 @@ case "interactive_event_inscribir": {
         ...args.surveyState.answers,
         q4_business: cleanedBusiness ?? undefined
       };
-      const score = calculateSurveyScore(finalAnswers);
-      const qualification = getQualificationFromScore(score);
-      // 1) Insertar event_surveys row.
-      const persistResult = await persistWizardSurvey({
+      // Insertar event_surveys row (única persistencia, Fase 7d.1 — sin
+      // score ni promotion, el admin decide desde la tab Encuestas).
+      await persistWizardSurvey({
         eventId: args.surveyState.eventId,
-        leadId: lead.id,
         leadEmail: lead.email ?? null,
         phoneNormalized,
         responses: finalAnswers,
-        score,
-        qualification,
-        consentFromBusiness: !!cleanedBusiness,
+        businessCaptured: !!cleanedBusiness,
         supabase: args.supabase ?? null
       });
-      // 2) Actualizar leads.score + leads.qualification.
-      if (args.supabase && persistResult.ok) {
-        try {
-          await args.supabase
-            .from("leads")
-            .update({
-              score,
-              qualification,
-              // FIX 2026-07-05 (Fase 7d): si el lead dio info de su negocio,
-              // guardamos en commercial_interest para que aparezca en el
-              // CRM. Si no dio, NO tocamos commercial_interest (puede
-              // tener otro valor previo).
-              ...(cleanedBusiness
-                ? { commercial_interest: cleanedBusiness }
-                : {})
-            } as never)
-            .eq("id", lead.id);
-        } catch (err) {
-          errorLog("[whatsapp/bot] survey_q4_text: update lead falló", {
-            leadId: lead.id,
-            error: err instanceof Error ? err.message : String(err)
-          });
-        }
-      }
       const thank = buildSurveyThankYou({
         leadName: lead.name,
-        score,
-        qualification,
         businessCaptured: !!cleanedBusiness
       });
       const thankBody = thank.text;
@@ -1908,36 +1980,17 @@ case "interactive_event_inscribir": {
         return nudgeToResendWizard(provider, phoneNormalized, lead.name);
       }
       const finalAnswers: SurveyAnswers = args.surveyState.answers;
-      const score = calculateSurveyScore(finalAnswers);
-      const qualification = getQualificationFromScore(score);
+      // Insertar event_surveys row (sin business).
       await persistWizardSurvey({
         eventId: args.surveyState.eventId,
-        leadId: lead.id,
         leadEmail: lead.email ?? null,
         phoneNormalized,
         responses: finalAnswers,
-        score,
-        qualification,
-        consentFromBusiness: false,
+        businessCaptured: false,
         supabase: args.supabase ?? null
       });
-      if (args.supabase) {
-        try {
-          await args.supabase
-            .from("leads")
-            .update({ score, qualification })
-            .eq("id", lead.id);
-        } catch (err) {
-          errorLog("[whatsapp/bot] survey_q4_skip: update lead falló", {
-            leadId: lead.id,
-            error: err instanceof Error ? err.message : String(err)
-          });
-        }
-      }
       const thank = buildSurveyThankYou({
         leadName: lead.name,
-        score,
-        qualification,
         businessCaptured: false
       });
       const thankBody = thank.text;

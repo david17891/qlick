@@ -12,12 +12,14 @@
  * - Q3 (3 botones): fuente de descubrimiento
  * - Q4 (texto libre, opcional): descripción del negocio — 'saltar' lo omite
  *
- * Score 0-100 → qualification: cold (0-25), warm (26-50), hot (51-75),
- * mql (76-100). Se persiste a `leads.score` + `leads.qualification`.
+ * HACIA ADELANTE (Fase 7d.1): tope al wizard. NO se calculan scores, NO
+ * se promueven leads, NO se actualiza el commercial_interest. El admin
+ * decide desde la tab Encuestas qué hacer con cada respuesta. El
+ * state-tracking de "ya completó" se hace con `hasCompletedWizardSurvey`
+ * (lookup a event_surveys en bot-engine).
  *
  * Estado del wizard vive en `lead_whatsapp_log.metadata` del último
- * outbound del bot-engine (mismo patrón que `awaiting_field`). NO requiere
- * schema change.
+ * outbound del bot-engine (mismo patrón que `awaiting_field`).
  */
 
 import type { InteractiveMessage } from "./providers/whatsapp-provider";
@@ -57,8 +59,6 @@ export interface SurveyState {
   step: SurveyStep;
   answers: SurveyAnswers;
 }
-
-export type SurveyQualification = "cold" | "warm" | "hot" | "mql";
 
 /** Detecta si un buttonId es de survey. Si sí, devuelve { step, value }. */
 export function detectSurveyButton(
@@ -235,86 +235,23 @@ export function buildSurveyQ4(args: {
   };
 }
 
-/** Mensaje de cierre post-encuesta. Incluye score como pista del backstage. */
+/**
+ * Mensaje de cierre post-encuesta. Sin scoring / calificación.
+ * Si el lead describió su negocio, mencionamos que lo anotamos
+ * (admin lo verá en la tab Encuestas).
+ */
 export function buildSurveyThankYou(args: {
   leadName?: string | null;
-  score: number;
-  qualification: SurveyQualification;
   businessCaptured: boolean;
 }): { text: string } {
   const base = `${greeting(args.leadName)}¡Gracias por tu feedback! ` +
     `Tu opinión nos ayuda a mejorar los próximos eventos. ` +
     `Si querés estar al tanto de próximos encuentros, escribinos por acá y te avisamos.`;
   const businessLine = args.businessCaptured
-    ? ` Tomamos nota de tu negocio — si llega a haber algo que te sirva, te contactamos.`
-    : ` Cuando quieras podés pasarnos info de tu negocio por acá.`;
+    ? ` Tomamos nota de tu negocio — si hay algo que te sirva, te contactamos.`
+    : "";
   return { text: base + businessLine };
 }
-
-/* ------------------------------------------------------------------ */
-/* Scoring                                                             */
-/* ------------------------------------------------------------------ */
-
-/**
- * Mapea respuestas a score 0-100.
- *
- * Reglas (el "porque sí" — David ajustará):
- * - Q1 "Muy claro" → 40 pts (señal fuerte de calidad)
- *   Q1 "Claro" → 20 pts
- *   Q1 "Confuso" → 0 pts
- * - Q2 "Sí" → 25 pts (intención de compra/uso)
- *   Q2 "Tal vez" → 10 pts
- *   Q2 "No" → 0 pts
- * - Q3 "Referido" → 10 pts (social proof = más confianza)
- *   Q3 "Meta" → 5 pts
- *   Q3 "Otro" → 5 pts
- * - Q4 business capturado (texto libre no-vacío) → 5 pts (engagement)
- *
- * Total máximo: 80. Mapeamos a 0-100 con regla de piso:
- *   score < 25 → cold
- *   25 ≤ score < 50 → warm
- *   50 ≤ score < 75 → hot
- *   score ≥ 75 → mql
- * Si el "natural max" es 80, normalizamos multiplicando por 1.25
- * (capped a 100). Eso da: 80 → 100, 60 → 75, 40 → 50 — buena
- * distribución para el Umbral (mql empieza en 76, hot en 51).
- */
-export function calculateSurveyScore(answers: SurveyAnswers): number {
-  let raw = 0;
-  if (answers.q1 === "very_clear") raw += 40;
-  else if (answers.q1 === "clear") raw += 20;
-
-  if (answers.q2 === "yes") raw += 25;
-  else if (answers.q2 === "maybe") raw += 10;
-
-  if (answers.q3 === "referred") raw += 10;
-  else if (answers.q3 === "meta") raw += 5;
-  else if (answers.q3 === "other") raw += 5;
-
-  if (answers.q4_business && answers.q4_business.trim().length > 0) {
-    raw += 5;
-  }
-
-  // Normalizar a 0-100 (max raw = 80).
-  const normalized = Math.min(100, Math.round(raw * 1.25));
-  return normalized;
-}
-
-export function getQualificationFromScore(
-  score: number,
-): SurveyQualification {
-  if (score >= 76) return "mql";
-  if (score >= 51) return "hot";
-  if (score >= 26) return "warm";
-  return "cold";
-}
-
-export const QUALIFICATION_LABEL: Record<SurveyQualification, string> = {
-  cold: "Cold",
-  warm: "Warm",
-  hot: "Hot",
-  mql: "MQL"
-};
 
 /* ------------------------------------------------------------------ */
 /* Free-text parsing                                                   */

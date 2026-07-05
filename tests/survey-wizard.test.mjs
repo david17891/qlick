@@ -8,22 +8,21 @@ import {
   buildSurveyQ3,
   buildSurveyQ4,
   buildSurveyThankYou,
-  calculateSurveyScore,
-  getQualificationFromScore,
-  QUALIFICATION_LABEL,
   isSurveySkip,
   cleanBusinessText,
 } from "../src/lib/whatsapp/survey-wizard.ts";
 
 /**
- * Tests del wizard nativo de encuesta (Fase 7d).
+ * Tests del wizard nativo de encuesta (Fase 7d / 7d.1).
  *
  * Cubre:
  * - Detectores de buttonId (todas las IDs)
  * - Builders (shape correcta: text + interactive)
- * - Scoring 0-100 con reglas documentadas
- * - Qualification (cold/warm/hot/mql) por score
  * - Skip detection + cleanBusinessText (filtros de ruido)
+ *
+ * Fase 7d.1 (2026-07-05): tope al wizard. El score/qualification/
+ * commercial_interest se quitaron del flow — el admin decide desde
+ * la tab Encuestas. Tests de scoring removidos.
  */
 
 test("detectSurveyButton: Q1 → step 1, valores very_clear/clear/confusing", () => {
@@ -138,81 +137,20 @@ test("buildSurveyQ4: 1 botón (Saltar) + texto libre esperado del lead", () => {
   }
 });
 
-test("scoring: max score con respuestas óptimas (very_clear+yes+referred+negocio)", () => {
-  const best = {
-    q1: "very_clear",
-    q2: "yes",
-    q3: "referred",
-    q4_business: "Vendo café de especialidad"
-  };
-  // raw = 40 + 25 + 10 + 5 = 80 → normalizado 80 * 1.25 = 100
-  assert.equal(calculateSurveyScore(best), 100);
-});
-
-test("scoring: answers vacíos → 0", () => {
-  assert.equal(calculateSurveyScore({}), 0);
-});
-
-test("scoring: Q1 confuso + Q2 no dan 0 pts de substance, pero Q3=other suma 5 raw", () => {
-  // q1 confusing (0) + q2 no (0) + q3 other (5 raw) = 5 raw → 5 * 1.25 = 6
-  assert.equal(
-    calculateSurveyScore({ q1: "confusing", q2: "no", q3: "other" }),
-    6
-  );
-});
-
-test("scoring: Q1 clear + Q2 maybe + Q3 meta → 20+10+5 = 35 → 44", () => {
-  // raw = 35 → 35 * 1.25 = 43.75 → round → 44
-  assert.equal(
-    calculateSurveyScore({ q1: "clear", q2: "maybe", q3: "meta" }),
-    44
-  );
-});
-
-test("scoring: Q4_business corta pero válida cuenta como engagement", () => {
-  const ans = {
-    q1: "very_clear",
-    q2: "yes",
-    q3: "meta",
-    q4_business: "x" // 1 char → cleanBusinessText lo descarta, pero aquí va directo al score
-  };
-  // raw = 40 + 25 + 5 + 5 = 75 → 75 * 1.25 = 93.75 → 94
-  // (test del score puro: el filtro de "x" vive en cleanBusinessText)
-  assert.equal(calculateSurveyScore(ans), 94);
-});
-
-test("scoring: q4_business undefined no suma", () => {
-  const withBiz = calculateSurveyScore({
-    q1: "very_clear",
-    q2: "yes",
-    q3: "meta",
-    q4_business: "Tengo un negocio de ropa"
+test("buildSurveyThankYou: cierra con frase de gracias + mención business solo si fue capturado", () => {
+  const withBiz = buildSurveyThankYou({
+    leadName: "David",
+    businessCaptured: true
   });
-  const withoutBiz = calculateSurveyScore({
-    q1: "very_clear",
-    q2: "yes",
-    q3: "meta"
+  assert.ok(withBiz.text.includes("Gracias"));
+  assert.ok(withBiz.text.includes("David"));
+  assert.ok(withBiz.text.includes("Tomamos nota"));
+
+  const withoutBiz = buildSurveyThankYou({
+    leadName: "David",
+    businessCaptured: false
   });
-  // diff crudo: 5 pts. Normalizado (× 1.25 = 6.25 → round 6).
-  assert.equal(withBiz - withoutBiz, 6);
-});
-
-test("qualification ranges: 0-25 cold, 26-50 warm, 51-75 hot, 76-100 mql", () => {
-  assert.equal(getQualificationFromScore(0), "cold");
-  assert.equal(getQualificationFromScore(25), "cold");
-  assert.equal(getQualificationFromScore(26), "warm");
-  assert.equal(getQualificationFromScore(50), "warm");
-  assert.equal(getQualificationFromScore(51), "hot");
-  assert.equal(getQualificationFromScore(75), "hot");
-  assert.equal(getQualificationFromScore(76), "mql");
-  assert.equal(getQualificationFromScore(100), "mql");
-});
-
-test("QUALIFICATION_LABEL: cubre los 4 valores", () => {
-  const expected = ["cold", "warm", "hot", "mql"];
-  for (const q of expected) {
-    assert.ok(QUALIFICATION_LABEL[q], `falta label para ${q}`);
-  }
+  assert.ok(!withoutBiz.text.includes("Tomamos nota"));
 });
 
 test("isSurveySkip: acepta variantes lowercase/uppercase", () => {
@@ -258,24 +196,4 @@ test("cleanBusinessText: trunca a 500 chars máximo", () => {
   const longText = "a".repeat(1000);
   const trimmed = cleanBusinessText(longText);
   assert.ok(trimmed && trimmed.length === 500);
-});
-
-test("buildSurveyThankYou: cierra con frase de gracias + mención business si fue capturado", () => {
-  const withBiz = buildSurveyThankYou({
-    leadName: "David",
-    score: 85,
-    qualification: "mql",
-    businessCaptured: true
-  });
-  assert.ok(withBiz.text.includes("Gracias"));
-  assert.ok(withBiz.text.includes("David"));
-  assert.ok(withBiz.text.includes("Tomamos nota"));
-
-  const withoutBiz = buildSurveyThankYou({
-    leadName: "David",
-    score: 30,
-    qualification: "warm",
-    businessCaptured: false
-  });
-  assert.ok(!withoutBiz.text.includes("Tomamos nota"));
 });
