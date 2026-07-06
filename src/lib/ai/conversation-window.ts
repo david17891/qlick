@@ -173,6 +173,13 @@ export async function loadConversationWindow(
         "id, direction, message_type, body, created_at, metadata, lead_id" as never
       )
       .eq("phone_normalized", phoneNormalized)
+      // FIX 2026-07-06 (debug David "david martinez" ignorado):
+      // excluir status updates de Meta (sent/delivered/read) que se
+      // persisten con metadata.status y body=null. Si los dejamos,
+      // contaminan el lastOutbound (no tiene body, no tiene
+      // awaiting_field) y rompen el flow provide_name / provide_email.
+      // PostgREST syntax: metadata->>'status' IS NULL filtra por key.
+      .is("metadata->>status" as never, null)
       .order("created_at", { ascending: false })
       .limit(safeLimit);
 

@@ -1805,7 +1805,7 @@ async function buildResponsePlan(args: {
           ]
         },
         footer: {
-          text: "Inscribirme te pide email por acá"
+          text: "Inscribirme te pide tu email por aquí"
         }
       };
       const bodyText = interactive.body.text;
@@ -3985,7 +3985,7 @@ export async function processInboundMessage(
             const saludo = clean ? `¡Listo ${clean}!` : "¡Listo!";
             const bodyText =
               `${saludo} Tu lugar para *${evtName}*${evtCodeLabel} (${priceDisplay}) está apartado. ` +
-              `\n\n⚠️ *Método de pago por implementar.* Te avisamos por acá cuando ` +
+              `\n\n⚠️ *Método de pago por implementar.* Te avisamos por aquí cuando ` +
               `esté listo para que completes el registro.` +
               `\n\nSi querés acelerar, escribinos a hola@qlick.marketing.`;
             const provider = getActiveWhatsAppProvider();
