@@ -146,8 +146,9 @@ export type BotIntent =
   | "survey_q1_continue"
   | "survey_q2_continue"
   | "survey_q3_continue"
-  | "survey_q4_text"
+  | "survey_q_consent_continue"
   | "survey_q4_skip"
+  | "survey_q4_text"
   | "question";
 
 /** Resultado del procesamiento de un mensaje entrante. */
@@ -2425,28 +2426,217 @@ case "interactive_event_inscribir": {
             : provider.send({ to: phoneNormalized, body: nextText })
       };
     }
+    case "survey_q_consent_continue": {
+      // FIX 2026-07-06 (audit G-15 r3, "q_consent no se persiste + wizard
+      // skip q_business"): el lead hizo click "Sí" o "No" en q_consent
+      // (step 4). Persistimos la respuesta y:
+      //   - "Sí" → avanzamos al q_business (step 5, texto libre).
+      //   - "No" → cerramos wizard, persist + thank-you con consent_to_contact=false.
+      //
+      // Antes del fix (c120c47 + anteriores), este branch caía a
+      // `intent="question"` (LLM respondía con follow-up bucket sin
+      // persistir q_consent). Eso rompía el contrato comercial del
+      // wizard: el lead dijo "Sí quiero info" y el sistema no lo
+      // registraba en event_surveys.responses.q_consent, derivando
+      // consent_to_contact=false.
+      if (
+        !args.surveyState ||
+        args.surveyState.step !== 4 ||
+        !args.buttonId
+      ) {
+        return nudgeToResendWizard(provider, phoneNormalized, lead.name, args.surveyState ?? undefined);
+      }
+      const dynamicQuestions = args.surveyState.questions;
+      let consentAnswer: "yes" | "no" | null = null;
+      let nextAnswers: SurveyAnswers = args.surveyState.answers as SurveyAnswers;
+      let nextStepInteractive: InteractiveMessage | undefined;
+      let nextStepText = "";
+      let nextStep: number | null = null;
+
+      // Detectar respuesta (Sí/No) por buttonId. Aceptamos tanto formato
+      // dinámico (`survey_q_consent_yes`) como legacy (si existiera un
+      // día `survey_q4_yes`).
+      if (args.buttonId.startsWith("survey_q_consent_yes") || args.buttonId === "survey_q4_yes") {
+        consentAnswer = "yes";
+      } else if (
+        args.buttonId.startsWith("survey_q_consent_no") ||
+        args.buttonId === "survey_q4_no"
+      ) {
+        consentAnswer = "no";
+      }
+      if (!consentAnswer) {
+        return nudgeToResendWizard(provider, phoneNormalized, lead.name, args.surveyState ?? undefined);
+      }
+      // Capturar la respuesta de q_consent en el answers jsonb. Usamos el
+      // questionId real (q_consent) para mantener el contrato dinámico.
+      const consentQuestionId = "q_consent";
+      nextAnswers = {
+        ...args.surveyState.answers,
+        [consentQuestionId]: consentAnswer
+      } as unknown as SurveyAnswers;
+
+      if (consentAnswer === "yes" && dynamicQuestions && dynamicQuestions.length >= 5) {
+        // Hay q_business (step 5). Avanzamos el wizard.
+        const q5Built = buildDynamicSurveyStep({
+          eventTitle: args.surveyState.eventTitle ?? "",
+          question: dynamicQuestions[4], // q_business
+          leadName: lead.name
+        });
+        nextStepText = q5Built.text;
+        nextStepInteractive = q5Built.interactive;
+        nextStep = 5;
+      } else {
+        // No hay q_business, o el lead dijo "No". Cerramos wizard.
+        nextStep = null;
+      }
+
+      if (nextStep !== null) {
+        // Avanzamos al q_business (text libre con botón Saltar).
+        return {
+          kind: nextStepInteractive ? "interactive" : "text",
+          body: nextStepText,
+          interactive: nextStepInteractive,
+          metadata: {
+            awaiting_survey_step: nextStep,
+            survey_event_id: args.surveyState.eventId,
+            survey_event_title: args.surveyState.eventTitle,
+            survey_answers: nextAnswers,
+            survey_questions: dynamicQuestions ?? []
+          },
+          send: () =>
+            nextStepInteractive
+              ? provider.send({
+                  to: phoneNormalized,
+                  body: nextStepText,
+                  interactive: nextStepInteractive
+                })
+              : provider.send({ to: phoneNormalized, body: nextStepText })
+        };
+      }
+      // Cierre: persist + thank-you + promotion engine. Reutilizamos la
+      // lógica de survey_q4_skip para no duplicar código (mismo path de
+      // cierre con consent capturado en answers).
+      debugLog("[whatsapp/bot] survey_q_consent closed wizard", {
+        leadId: lead.id,
+        consent: consentAnswer,
+        answersCount: Object.keys(nextAnswers).length
+      });
+      let consentToContact = consentAnswer === "yes";
+      let commercialInterest: string | null = null;
+      let scoreResult: any = null;
+      if (args.supabase && lead.id && dynamicQuestions) {
+        try {
+          scoreResult = calculateLeadScoreFromConfig(
+            nextAnswers as unknown as Record<string, string>,
+            { questions: dynamicQuestions, followUps: undefined }
+          );
+          // consentDetected puede venir del scoring si detecta "Sí" en
+          // otras respuestas, pero acá priorizamos la respuesta explícita.
+          consentToContact = consentToContact || (scoreResult.consentDetected ?? false);
+          commercialInterest = scoreResult.commercialInterestDetected ?? null;
+        } catch (err) {
+          errorLog("[whatsapp/bot] scoring before persist failed (consent close path)", { error: err });
+        }
+      }
+      await persistWizardSurvey({
+        eventId: args.surveyState.eventId,
+        leadEmail: lead.email ?? null,
+        phoneNormalized,
+        responses: nextAnswers,
+        businessCaptured: false,
+        supabase: args.supabase ?? null,
+        leadId: lead.id,
+        consentToContact,
+        commercialInterest
+      });
+      if (args.supabase && lead.id && dynamicQuestions && scoreResult) {
+        try {
+          await applyPromotionRules(lead.id, scoreResult, {
+            supabase: args.supabase,
+            actorEmail: "wizard-bot@qlick",
+            leadEmail: lead.email ?? null,
+            leadName: lead.name ?? null,
+            eventTitle: args.surveyState.eventTitle ?? "(sin título)"
+          });
+          const surveyConfigFull = await loadSurveyConfigForEvent(
+            args.supabase,
+            args.surveyState.eventId ?? ""
+          ).catch(() => null);
+          const followUps = surveyConfigFull?.followUps;
+          if (followUps) {
+            const bucket = selectFollowUpBucket(scoreResult.score);
+            const followUp = followUps[bucket];
+            if (followUp?.text) {
+              const personalized = substituteTemplateVars(followUp.text, {
+                "1": lead.name?.trim() || "ahí"
+              });
+              try {
+                const provider2 = getActiveWhatsAppProvider();
+                await provider2.send({ to: phoneNormalized, body: personalized });
+              } catch (whatsappErr) {
+                errorLog("[whatsapp/bot] follow-up WhatsApp falló (consent close path)", {
+                  leadId: lead.id,
+                  error: whatsappErr instanceof Error ? whatsappErr.message : String(whatsappErr)
+                });
+              }
+            }
+          }
+        } catch (err) {
+          errorLog("[whatsapp/bot] promotion engine falló (consent close path)", {
+            leadId: lead.id,
+            error: err instanceof Error ? err.message : String(err)
+          });
+        }
+      }
+      const thankBody = buildSurveyThankYou({
+        leadName: lead.name,
+        businessCaptured: false
+      }).text;
+      return {
+        kind: "text",
+        body: thankBody,
+        metadata: {
+          awaiting_survey_step: null,
+          survey_event_id: null,
+          survey_event_title: null,
+          survey_answers: null,
+          survey_questions: [],
+          survey_completed: true
+        },
+        send: () => provider.send({ to: phoneNormalized, body: thankBody })
+      };
+    }
     case "survey_q4_text": {
-      // El lead mandó texto libre en respuesta a la Q4. Limpiamos y
+      // El lead mandó texto libre en respuesta a q_business (step 5 en
+      // config dinámico, o step 4 en legacy de 4 preguntas). Limpiamos y
       // guardamos (o lo descartamos si es "saltar" / vacío).
       if (
         !args.surveyState ||
-        args.surveyState.step !== 4
+        (args.surveyState.step !== 4 && args.surveyState.step !== 5)
       ) {
         return nudgeToResendWizard(provider, phoneNormalized, lead.name, args.surveyState ?? undefined);
       }
       const cleanedBusiness = cleanBusinessText(body) ?? null;
-      // FIX 2026-07-05 (feat/funnel-dynamic-surveys-crm): si la 4ta
-      // pregunta es dinámica, la key en answers es el questionId, no
-      // "q4_business". Mantenemos retrocompat con legacy.
+      // FIX 2026-07-05 (feat/funnel-dynamic-surveys-crm): la pregunta
+      // dinámica es q_business (index 4 del array, NO index 3 que es
+      // q_consent). Antes del fix r3, `lastQuestion = dynamicQuestions[3]`
+      // apuntaba a q_consent y sobrescribía su respuesta con el texto
+      // libre. Ahora capturamos q_consent del state (ya guardado por
+      // survey_q_consent_continue) y guardamos el text en q_business.
       const dynamicQuestions = args.surveyState.questions;
-      const lastQuestion = dynamicQuestions?.[3];
-      const businessKey = lastQuestion?.id ?? "q4_business";
+      const businessQuestion = dynamicQuestions?.find((q) => q.id === "q_business")
+        ?? dynamicQuestions?.[4];
+      const businessKey = businessQuestion?.id ?? "q4_business";
       const finalAnswers: SurveyAnswers = {
         ...args.surveyState.answers,
         [businessKey]: cleanedBusiness ?? undefined
       } as unknown as SurveyAnswers;
-      // Calculate score & dynamic fields first so we can persist them correctly linked
-      let consentToContact = !!cleanedBusiness;
+      // FIX 2026-07-06 (audit G-15 r3): consent_to_contact debe derivarse
+      // de q_consent (Sí/No), NO de businessCaptured. Si q_consent="yes",
+      // consent=true. Si q_consent="no" o ausente, fallback a businessCaptured.
+      const qConsentAnswer = (finalAnswers as Record<string, unknown>)["q_consent"];
+      let consentToContact =
+        qConsentAnswer === "yes" ? true : qConsentAnswer === "no" ? false : !!cleanedBusiness;
       let commercialInterest: string | null = null;
       let scoreResult: any = null;
 
@@ -2579,7 +2769,11 @@ case "interactive_event_inscribir": {
         answersCount: Object.keys(finalAnswers).length,
       });
       // Calculate score & dynamic fields first so we can persist them correctly linked
-      let consentToContact = false;
+      // FIX 2026-07-06 (audit G-15 r3): consent_to_contact se deriva de
+      // q_consent (Sí/No). Si "yes" → true; si "no"/ausente → false
+      // (porque el lead skipeó business = no quiere compartir nada).
+      const qConsentAnswerSkip = (finalAnswers as Record<string, unknown>)["q_consent"];
+      let consentToContact = qConsentAnswerSkip === "yes";
       let commercialInterest: string | null = null;
       let scoreResult: any = null;
 
@@ -2589,7 +2783,11 @@ case "interactive_event_inscribir": {
             finalAnswers as unknown as Record<string, string>,
             { questions: dynamicQuestions, followUps: undefined },
           );
-          consentToContact = scoreResult.consentDetected ?? consentToContact;
+          // Si q_consent ya dio "yes", no sobreescribir con el scoring
+          // (que podría no detectarlo correctamente en otros paths).
+          if (!consentToContact) {
+            consentToContact = scoreResult.consentDetected ?? false;
+          }
           commercialInterest = scoreResult.commercialInterestDetected ?? null;
         } catch (err) {
           errorLog("[whatsapp/bot] scoring before persist failed (skip path)", { error: err });
@@ -3281,10 +3479,14 @@ export async function processInboundMessage(
         | undefined)?.map((q) => q.id) ?? [];
       const detected = detectSurveyButtonAny(message.buttonId, wizardQuestionIds);
       if (detected) {
-        // step 4 (q_consent buttons) o step 5 (q_business text) con
-        // optionId="skip" → cierra wizard sin texto libre.
+        // step 4 (q_consent buttons) con optionId='skip' (Saltar) →
+        // cierra wizard sin texto libre.
+        // step 5 (q_business text) con optionId='skip' → cierra wizard.
+        // step 4 (q_consent) Sí/No → avanza wizard (q_business si "Sí",
+        // cierre si "No").
         // step 1-3 → continue.
         if (detected.optionId === "skip") {
+          // "Saltar" en q_business (text) o legacy q4_skip. Cierra wizard.
           intent = "survey_q4_skip";
         } else if (detected.step >= 1 && detected.step <= 3) {
           intent =
@@ -3293,10 +3495,13 @@ export async function processInboundMessage(
               : detected.step === 2
                 ? "survey_q2_continue"
                 : "survey_q3_continue";
+        } else if (detected.step === 4) {
+          // q_consent Sí/No: handler dedicado que persiste la respuesta
+          // y avanza al q_business (text) o cierra el wizard.
+          intent = "survey_q_consent_continue";
         } else {
-          // q_consent Sí/No (step 4 buttons): el flow del wizard ya
-          // completó Q1-Q3; dejamos que el override 3.0 o el LLM
-          // manejen (q_consent es opcional, no persiste por sí solo).
+          // step 5 buttons inesperado (no debería pasar — q_business es
+          // texto). Caemos a LLM por seguridad.
           intent = "question";
         }
       } else {
@@ -3519,14 +3724,20 @@ export async function processInboundMessage(
   }
 
   // 3.0 wizard nativo (Fase 7d): si el último outbound del bot está
-  // esperando la Q4 del wizard (texto libre), cualquier reply de texto
-  // del lead es la respuesta de Q4. Tomamos el intent ANTES del
-  // survey_offer override para no robarlo.
+  // esperando una pregunta de texto libre del wizard, cualquier reply
+  // de texto del lead es esa respuesta. FIX 2026-07-06 (audit G-15 r3):
+  // el wizard tiene DOS preguntas de texto libre (q_business SIEMPRE,
+  // y text q4 legacy). En el flow actual de 5 preguntas:
+  //   - step 4 (q_consent buttons): no aplica (es buttons).
+  //   - step 5 (q_business text): el texto libre del lead es la respuesta
+  //     de q_business → persist + cierre.
+  // Compat con config legacy de 4 preguntas donde q_business era step 4.
   if (
     !message.buttonId &&
     body &&
     typeof wizardStateGlobal?.awaiting_survey_step === "number" &&
-    wizardStateGlobal.awaiting_survey_step === 4
+    (wizardStateGlobal.awaiting_survey_step === 4 ||
+      wizardStateGlobal.awaiting_survey_step === 5)
   ) {
     intent = "survey_q4_text";
   }
