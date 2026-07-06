@@ -1370,7 +1370,14 @@ async function createLeadFromWhatsApp(
   phoneNormalized: string,
   contactName?: string
 ): Promise<Lead | null> {
-  const safeName = contactName?.trim() || "";
+  // FIX 2026-07-06 (debug David "david martinez" ignorado): la migration
+  // leads_name_length_check exige name >= 2 chars (o NULL). Antes este
+  // helper insertaba name="" cuando WhatsApp no provee nombre, lo que
+  // viola el check (23514) y hace que el bot caiga al fallback con
+  // lead.id=null (el flow entero queda roto). Ahora usamos un placeholder
+  // que pasa el check. El handler provide_name lo actualiza al nombre
+  // real cuando el lead lo da.
+  const safeName = contactName?.trim() || "WhatsApp Lead";
   const syntheticEmail = `wa.${createHash("sha256")
     .update(phoneNormalized)
     .digest("hex")
