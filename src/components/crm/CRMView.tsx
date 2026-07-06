@@ -632,6 +632,148 @@ function LeadsTable({
   const [intent, setIntent] = useState<LeadIntent | "all">("all");
   const [eventFilter, setEventFilter] = useState<string>("all");
 
+  // Memoizar `filtered` (declarado antes del bulk state para que
+  // `allVisibleSelected` lo pueda usar sin TDZ).
+  const filtered = useMemo(() => leads.filter((l) => {
+    if (status !== "all" && l.status !== status) return false;
+    if (source !== "all" && l.source !== source) return false;
+    if (course !== "all" && l.courseOfInterest !== course) return false;
+    if (ownerFilter !== "all" && l.ownerId !== ownerFilter) return false;
+    if (intent !== "all" && l.intent !== intent) return false;
+    if (eventFilter !== "all") {
+      const tagPrefix = `event:${eventFilter}`;
+      const matchesEvent = l.tags?.some((tag) => tag.startsWith(tagPrefix)) ?? false;
+      if (!matchesEvent) return false;
+    }
+    if (q.trim()) {
+      const hay = `${l.name} ${l.email} ${l.phone ?? ""}`.toLowerCase();
+      if (!hay.includes(q.toLowerCase())) return false;
+    }
+    return true;
+  }), [leads, status, source, course, ownerFilter, intent, eventFilter, q]);
+
+  // =========================================================================
+  // FASE 1 CRM — Bulk select + Bulk bar + Export CSV
+  // =========================================================================
+  // selectedIds: Set de lead IDs seleccionados. Solo se mantienen IDs que
+  // están en `leads` (el padre los refresca). El reset on filter change
+  // (ver useEffect abajo) previene bulk archive accidental sobre leads
+  // ocultos por el filtro.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Reset de selección cuando CUALQUIER filtro cambia. Esto es OBLIGATORIO
+  // por seguridad: si el admin seleccionó 10 leads con filtro "Todos" y
+  // luego cambia a "Contactados" (visibles 3), sin reset los 7 ocultos
+  // también se archivarían al disparar bulk action. Ver peer review R7.
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [q, status, source, course, ownerFilter, intent, eventFilter]);
+
+  // Estado del modal de confirmación (type-the-word ARCHIVAR N).
+  const [confirmArchiveOpen, setConfirmArchiveOpen] = useState(false);
+  const [confirmArchiveText, setConfirmArchiveText] = useState("");
+
+  // Resultado del último bulk (para mostrar feedback al admin).
+  const [bulkFeedback, setBulkFeedback] = useState<
+    | null
+    | {
+        kind: "running";
+      }
+    | {
+        kind: "done";
+        succeeded: number;
+        conflicted: number;
+        failed: number;
+        note?: string;
+      }
+    | {
+        kind: "error";
+        message: string;
+      }
+  >(null);
+
+  const allVisibleSelected =
+    filtered.length > 0 &&
+    filtered.every((l) => selectedIds.has(l.id));
+  const someVisibleSelected =
+    filtered.length > 0 &&
+    filtered.some((l) => selectedIds.has(l.id)) &&
+    !allVisibleSelected;
+
+  function toggleAllVisible() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        // Deseleccionar todos los visibles.
+        filtered.forEach((l) => next.delete(l.id));
+      } else {
+        // Seleccionar todos los visibles.
+        filtered.forEach((l) => next.add(l.id));
+      }
+      return next;
+    });
+  }
+
+  function toggleOne(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function executeBulkArchive() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setBulkFeedback({ kind: "running" });
+    try {
+      const res = await fetch("/api/admin/leads/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadIds: ids, action: "archive" }),
+      });
+      const data = (await res.json()) as {
+        ok: boolean;
+        succeeded: number;
+        conflicted: number;
+        failed: number;
+        note?: string;
+        error?: string;
+      };
+      if (!res.ok || !data.ok) {
+        setBulkFeedback({
+          kind: "error",
+          message: data.error ?? data.note ?? `HTTP ${res.status}`,
+        });
+        return;
+      }
+      setBulkFeedback({
+        kind: "done",
+        succeeded: data.succeeded,
+        conflicted: data.conflicted,
+        failed: data.failed,
+        note: data.note,
+      });
+      setSelectedIds(new Set());
+      setConfirmArchiveOpen(false);
+      setConfirmArchiveText("");
+    } catch (err) {
+      setBulkFeedback({
+        kind: "error",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  function exportCsv() {
+    // Por Fase 1 exportamos TODOS los leads con consentimiento.
+    // El admin es responsable de aplicar filtros adicionales desde el
+    // Dashboard de Supabase si los necesita. Server-side paginación +
+    // filtros del export endpoint es trabajo de Fase 2.
+    window.location.href = "/api/admin/leads/export";
+  }
+
   const courses = useMemo(
     () => Array.from(new Set(leads.map((l) => l.courseOfInterest).filter(Boolean))) as string[],
     [leads]
@@ -660,24 +802,6 @@ function LeadsTable({
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
       .join(" ");
   };
-
-  const filtered = leads.filter((l) => {
-    if (status !== "all" && l.status !== status) return false;
-    if (source !== "all" && l.source !== source) return false;
-    if (course !== "all" && l.courseOfInterest !== course) return false;
-    if (ownerFilter !== "all" && l.ownerId !== ownerFilter) return false;
-    if (intent !== "all" && l.intent !== intent) return false;
-    if (eventFilter !== "all") {
-      const tagPrefix = `event:${eventFilter}`;
-      const matchesEvent = l.tags?.some((tag) => tag.startsWith(tagPrefix)) ?? false;
-      if (!matchesEvent) return false;
-    }
-    if (q.trim()) {
-      const hay = `${l.name} ${l.email} ${l.phone ?? ""}`.toLowerCase();
-      if (!hay.includes(q.toLowerCase())) return false;
-    }
-    return true;
-  });
 
   return (
     <Card className="overflow-hidden">
@@ -711,7 +835,75 @@ function LeadsTable({
           onChange={(v) => setIntent(v as LeadIntent | "all")}
           options={[{ value: "all", label: "Toda intención" }, ...intentOptions()]}
         />
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={exportCsv}
+          title="Descarga todos los leads con consentimiento a CSV"
+        >
+          📥 Exportar CSV
+        </Button>
       </div>
+      {/* Bulk Action Bar — visible solo cuando hay selección */}
+      {selectedIds.size > 0 && (
+        <div
+          className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 bg-brand-50 border-b border-brand-100"
+          role="region"
+          aria-label="Acciones en masa"
+        >
+          <div className="flex items-center gap-2 text-sm">
+            <span className="font-semibold text-ink">
+              {selectedIds.size} lead{selectedIds.size === 1 ? "" : "s"} seleccionado{selectedIds.size === 1 ? "" : "s"}
+            </span>
+            {selectedIds.size !== filtered.length && (
+              <span className="text-xs text-ink-muted">
+                ({filtered.length} visible{filtered.length === 1 ? "" : "s"})
+              </span>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setSelectedIds(new Set())}
+              disabled={bulkFeedback?.kind === "running"}
+            >
+              Limpiar selección
+            </Button>
+            <Button
+              size="sm"
+              variant="danger"
+              onClick={() => setConfirmArchiveOpen(true)}
+              disabled={bulkFeedback?.kind === "running"}
+            >
+              🗄️ Archivar Seleccionados
+            </Button>
+          </div>
+        </div>
+      )}
+      {/* Feedback del último bulk */}
+      {bulkFeedback && bulkFeedback.kind !== "running" && (
+        <div
+          className={
+            "px-4 py-2 text-xs " +
+            (bulkFeedback.kind === "error"
+              ? "bg-rose-50 text-rose-800"
+              : "bg-emerald-50 text-emerald-800")
+          }
+          role={bulkFeedback.kind === "error" ? "alert" : "status"}
+        >
+          {bulkFeedback.kind === "error"
+            ? `Error: ${bulkFeedback.message}`
+            : `Archivado OK: ${bulkFeedback.succeeded} | Conflictos: ${bulkFeedback.conflicted} | Fallos: ${bulkFeedback.failed}${bulkFeedback.note ? ` (${bulkFeedback.note})` : ""}`}
+          <button
+            type="button"
+            className="ml-3 underline"
+            onClick={() => setBulkFeedback(null)}
+          >
+            cerrar
+          </button>
+        </div>
+      )}
       <p className="px-4 py-2 text-xs text-ink-muted bg-brand-50/30">
         {filtered.length} de {leads.length} leads
       </p>
@@ -720,6 +912,18 @@ function LeadsTable({
         <table className="w-full text-sm">
           <thead className="bg-brand-50/50 text-ink-muted text-xs uppercase">
             <tr>
+              <th className="text-left px-4 py-3 font-semibold w-10">
+                <input
+                  type="checkbox"
+                  aria-label="Seleccionar todos los leads visibles"
+                  checked={allVisibleSelected}
+                  ref={(el) => {
+                    if (el) el.indeterminate = someVisibleSelected;
+                  }}
+                  onChange={toggleAllVisible}
+                  className="h-4 w-4 cursor-pointer"
+                />
+              </th>
               <th className="text-left px-4 py-3 font-semibold">Lead</th>
               <th className="text-left px-4 py-3 font-semibold">Curso</th>
               <th className="text-left px-4 py-3 font-semibold">Estado</th>
@@ -734,7 +938,22 @@ function LeadsTable({
               const risk = calculateLeadResponseRisk(l);
               const owner = owners.find((o) => o.id === l.ownerId);
               return (
-                <tr key={l.id} className="hover:bg-brand-50/30">
+                <tr
+                  key={l.id}
+                  className={
+                    "hover:bg-brand-50/30 " +
+                    (selectedIds.has(l.id) ? "bg-brand-50/50 " : "")
+                  }
+                >
+                  <td className="px-4 py-3 w-10">
+                    <input
+                      type="checkbox"
+                      aria-label={`Seleccionar a ${l.name}`}
+                      checked={selectedIds.has(l.id)}
+                      onChange={() => toggleOne(l.id)}
+                      className="h-4 w-4 cursor-pointer"
+                    />
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <span className="h-7 w-7 rounded-full bg-brand-gradient text-white text-[10px] font-bold flex items-center justify-center">
@@ -798,6 +1017,67 @@ function LeadsTable({
           </div>
         )}
       </div>
+      {/* Modal de confirmación type-the-word (peer review R13) */}
+      {confirmArchiveOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirm-archive-title"
+        >
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+            <h2 id="confirm-archive-title" className="text-lg font-bold text-ink mb-2">
+              ⚠️ Archivar {selectedIds.size} lead{selectedIds.size === 1 ? "" : "s"}
+            </h2>
+            <p className="text-sm text-ink-soft mb-4">
+              Esta acción cambia el status de los leads seleccionados a{" "}
+              <strong>archived</strong>. NO se borran de la base de datos, pero
+              dejarán de aparecer en el CRM activo. La prueba de consentimiento
+              (LGPD/LFPDPPP) se preserva.
+            </p>
+            <p className="text-sm text-ink-soft mb-2">
+              Para confirmar, escribe exactamente{" "}
+              <code className="px-2 py-1 bg-brand-50 rounded text-ink font-mono">
+                ARCHIVAR {selectedIds.size}
+              </code>
+              :
+            </p>
+            <input
+              type="text"
+              value={confirmArchiveText}
+              onChange={(e) => setConfirmArchiveText(e.target.value)}
+              placeholder={`ARCHIVAR ${selectedIds.size}`}
+              className="w-full px-3 py-2 border border-brand-100 rounded mb-4 font-mono text-sm"
+              autoFocus
+              aria-label="Confirmación type-the-word"
+            />
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setConfirmArchiveOpen(false);
+                  setConfirmArchiveText("");
+                }}
+                disabled={bulkFeedback?.kind === "running"}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="danger"
+                onClick={executeBulkArchive}
+                disabled={
+                  confirmArchiveText.trim() !== `ARCHIVAR ${selectedIds.size}` ||
+                  bulkFeedback?.kind === "running"
+                }
+              >
+                {bulkFeedback?.kind === "running"
+                  ? "Archivando..."
+                  : "Confirmar archivado"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

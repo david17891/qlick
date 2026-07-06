@@ -68,6 +68,21 @@ export async function patchLeadStatus(
   return data.lead;
 }
 
+/**
+ * DELETE /api/admin/leads/[id] → archiva el lead (soft delete).
+ *
+ * NO soporta `?mode=hard` por compliance LGPD/LFPDPPP (ver peer review R1).
+ * Devuelve el Lead actualizado con `status='archived'`. Si el server
+ * devuelve 409 (conflicto de optimistic lock), `parseEnvelope` lanza.
+ */
+export async function archiveLeadClient(leadId: string): Promise<Lead> {
+  const res = await fetch(`/api/admin/leads/${leadId}`, {
+    method: "DELETE",
+  });
+  const data = await parseEnvelope<{ ok: true; lead: Lead }>(res);
+  return data.lead;
+}
+
 /** GET /api/admin/leads/[id]/notes → lista de notas (snake_case). */
 export async function fetchLeadNotes(leadId: string): Promise<CrmNoteRow[]> {
   const res = await fetch(`/api/admin/leads/${leadId}/notes`, {

@@ -23,6 +23,7 @@ import { getAISuggestionsForLead, getAgentReplyTemplate } from "@/lib/crm/agent-
 import { getWhatsAppConfigStatus } from "@/lib/contact/whatsapp";
 import {
   patchLeadStatus,
+  archiveLeadClient,
   fetchLeadNotes,
   createLeadNote,
   fetchLeadTasks,
@@ -89,6 +90,8 @@ export function LeadDetailDrawer({
   // --- Estado de operaciones (máquina idle/loading/success/error) ---
   const [statusNote, setStatusNote] = useState<string | null>(null);
   const [statusState, setStatusState] = useState<OpStatus>("idle");
+  const [archiveState, setArchiveState] = useState<OpStatus>("idle");
+  const [archiveMsg, setArchiveMsg] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [noteText, setNoteText] = useState("");
   const [noteState, setNoteState] = useState<OpStatus>("idle");
@@ -193,6 +196,41 @@ export function LeadDetailDrawer({
       setCurrentLead((c) => ({ ...c, status: prevStatus }));
       setStatusState("error");
       setStatusMsg(err instanceof Error ? err.message : "No se pudo actualizar.");
+    }
+  }
+
+  /**
+   * Archiva el lead actual (soft delete). Confirmación nativa vía
+   * window.confirm. Llama a `archiveLeadClient` que pega contra
+   * `DELETE /api/admin/leads/[id]`. El endpoint hace optimistic lock.
+   */
+  async function handleArchive() {
+    if (archiveState === "loading") return;
+    if (currentLead.status === "archived") {
+      setArchiveState("error");
+      setArchiveMsg("Este lead ya está archivado.");
+      return;
+    }
+    const ok = window.confirm(
+      `¿Archivar a ${currentLead.name}? El lead NO se borra, solo cambia su status a "archived". El consentimiento (LGPD) se preserva.`,
+    );
+    if (!ok) return;
+    const prevStatus = currentLead.status;
+    const optimistic = { ...currentLead, status: "archived" as LeadStatus };
+    setCurrentLead(optimistic);
+    setArchiveState("loading");
+    setArchiveMsg(null);
+    try {
+      const updated = await archiveLeadClient(currentLead.id);
+      setCurrentLead(updated);
+      onLeadChanged?.(updated);
+      setArchiveState("success");
+      setArchiveMsg("Lead archivado.");
+      setTimeout(() => setArchiveState("idle"), 2500);
+    } catch (err) {
+      setCurrentLead((c) => ({ ...c, status: prevStatus }));
+      setArchiveState("error");
+      setArchiveMsg(err instanceof Error ? err.message : "No se pudo archivar.");
     }
   }
 
@@ -445,7 +483,30 @@ export function LeadDetailDrawer({
                 </select>
                 {statusState === "loading" && <Spinner className="h-4 w-4" />}
                 {statusState === "success" && <Badge tone="success">guardado</Badge>}
+                <Button
+                  size="sm"
+                  variant={currentLead.status === "archived" ? "outline" : "danger"}
+                  onClick={handleArchive}
+                  disabled={archiveState === "loading" || currentLead.status === "archived"}
+                  title="Archivar este lead (soft delete)"
+                >
+                  {archiveState === "loading"
+                    ? "Archivando..."
+                    : currentLead.status === "archived"
+                    ? "Archivado"
+                    : "🗄️ Archivar"}
+                </Button>
               </div>
+              {archiveState === "error" && archiveMsg && (
+                <p className="mt-2 text-xs text-red-700 bg-red-50 rounded-lg p-2">
+                  {archiveMsg}
+                </p>
+              )}
+              {archiveState === "success" && archiveMsg && (
+                <p className="mt-2 text-xs text-emerald-700 bg-emerald-50 rounded-lg p-2">
+                  {archiveMsg}
+                </p>
+              )}
               {statusState === "error" && statusMsg && (
                 <p className="mt-2 text-xs text-red-700 bg-red-50 rounded-lg p-2">
                   {statusMsg}
