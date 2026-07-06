@@ -13,7 +13,7 @@ import {
   getUnmatchedConfirmations,
 } from "@/lib/events";
 import { getLeadsForEvent } from "@/lib/crm";
-import { formatDate } from "@/lib/utils";
+import { formatDate, appBaseUrl } from "@/lib/utils";
 import { filterConfirmations, resolveConfirmationSource } from "@/lib/events/confirmation-filter";
 import { PipelineColumn } from "./_components/PipelineColumn";
 import { PipelineCard } from "./_components/PipelineCard";
@@ -29,7 +29,7 @@ import {
 } from "./_actions";
 import { WHATSAPP_STATUSES, WHATSAPP_STATUS_LABEL, WHATSAPP_STATUS_TONE, type WhatsAppStatus } from "@/lib/leads/whatsapp-status";
 import { buildEventBroadcast } from "@/lib/contact/whatsapp";
-import { buildDirectWhatsAppLink, buildLeadOutreachMessage } from "@/lib/contact/whatsapp";
+import { buildDirectWhatsAppLink, buildLeadOutreachMessage, buildEventReminderMessage } from "@/lib/contact/whatsapp";
 import { calculateEventMetrics } from "@/lib/events/event-metrics";
 import { CampaignsTab } from "./_components/CampaignsTab";
 import { CheckInTab } from "./_components/CheckInTab";
@@ -261,9 +261,15 @@ export default async function AdminEventoDetailPage({
         <Container size="wide">
           {/* Breadcrumb */}
           <div className="mb-4 text-xs text-ink-muted flex items-center justify-between gap-2">
-            <Link href="/admin/eventos" className="hover:text-ink">
-              ← Eventos
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link href="/admin" className="hover:text-ink">
+                ← Panel principal
+              </Link>
+              <span>·</span>
+              <Link href="/admin/eventos" className="hover:text-ink">
+                Eventos
+              </Link>
+            </div>
             <Link
               href={`/admin/eventos/${event.id}/import`}
               className="inline-flex items-center gap-1 text-brand-700 hover:text-brand-800 font-semibold"
@@ -673,8 +679,32 @@ export default async function AdminEventoDetailPage({
                       <tr key={c.id} className="hover:bg-brand-50/30">
                         <td className="px-5 py-3 font-medium text-ink">{c.name}</td>
                         <td className="px-5 py-3 text-ink-muted">{c.email ?? "—"}</td>
-                        <td className="px-5 py-3 text-ink-muted">
-                          {c.phoneNormalized ?? c.phoneRaw ?? "—"}
+                        <td className="px-5 py-3 text-ink-muted flex items-center gap-1.5">
+                          <span>{c.phoneNormalized ?? c.phoneRaw ?? "—"}</span>
+                          {(() => {
+                            const phone = c.phoneNormalized ?? c.phoneRaw;
+                            if (!phone) return null;
+                            const message = buildEventReminderMessage({
+                              name: c.name,
+                              eventTitle: event.title,
+                              eventDate: event.startsAt ? formatDate(event.startsAt) : undefined,
+                              eventLocation: event.location ?? undefined,
+                              eventUrl: `${appBaseUrl()}/eventos/${event.slug}`,
+                            });
+                            const link = buildDirectWhatsAppLink(phone, message);
+                            if (!link) return null;
+                            return (
+                              <a
+                                href={link}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center justify-center p-1 rounded-full text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition"
+                                title="Abrir chat en WhatsApp"
+                              >
+                                💬
+                              </a>
+                            );
+                          })()}
                         </td>
                         <td className="px-5 py-3">
                           <Badge tone="neutral">{c.source}</Badge>
@@ -730,8 +760,29 @@ export default async function AdminEventoDetailPage({
                       {a.name ?? "—"}
                     </td>
                     <td className="px-5 py-3 text-ink-muted">{a.email ?? "—"}</td>
-                    <td className="px-5 py-3 text-ink-muted">
-                      {a.phoneNormalized ?? "—"}
+                    <td className="px-5 py-3 text-ink-muted flex items-center gap-1.5">
+                      <span>{a.phoneNormalized ?? "—"}</span>
+                      {(() => {
+                        const phone = a.phoneNormalized;
+                        if (!phone) return null;
+                        const message = buildLeadOutreachMessage({
+                          leadName: a.name ?? "Asistente",
+                          eventTitle: event.title,
+                        });
+                        const link = buildDirectWhatsAppLink(phone, message);
+                        if (!link) return null;
+                        return (
+                          <a
+                            href={link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center justify-center p-1 rounded-full text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition"
+                            title="Abrir chat en WhatsApp"
+                          >
+                            💬
+                          </a>
+                        );
+                      })()}
                     </td>
                     <td className="px-5 py-3">
                       {a.confirmationId ? (

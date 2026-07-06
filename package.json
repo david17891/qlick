@@ -15,7 +15,10 @@
     "seed:courses": "node scripts/seed-courses.mjs",
     "seed:demo": "node scripts/seed-demo.mjs",
     "seed:demo:reset": "node scripts/seed-demo.mjs --reset",
-    "seed:demo:cleanup": "node scripts/seed-demo.mjs --cleanup"
+    "seed:demo:cleanup": "node scripts/seed-demo.mjs --cleanup",
+    "smoke:audit": "node --import ./tests/loader-register.mjs --experimental-strip-types scratch/audit-edge-cases.mjs",
+    "smoke:scenarios": "node --import ./tests/loader-register.mjs --experimental-strip-types scratch/simulate-scenarios.mjs",
+    "smoke": "npm run test && npm run type-check && npm run lint && npm run smoke:scenarios && npm run smoke:audit"
   },
   "dependencies": {
     "@getbrevo/brevo": "^5.0.4",

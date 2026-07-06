@@ -68,7 +68,7 @@ export function renderSurveyWithConsentEmail(
   const eventTitle = esc(input.eventTitle);
   const interest = input.commercialInterest ? esc(input.commercialInterest) : null;
 
-  const subject = `Nuevo lead del evento "${input.eventTitle}"`;
+  const subject = `Nuevo lead del evento "${esc(input.eventTitle)}"`;
 
   // HTML inline. Brand colors alineados con el resto de Qlick:
   // bg-brand-50 (#faf5ff), text-brand-700 (#6d28d9), bg-brand-500 (#a855f7).

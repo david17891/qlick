@@ -103,6 +103,11 @@ export default async function AdminAuditLogPage({
       <Navbar />
       <main className="min-h-screen bg-slate-50">
         <Container size="wide" className="py-10">
+          <div className="mb-4 text-xs text-ink-muted flex items-center gap-2">
+            <Link href="/admin" className="hover:text-ink">
+              ← Panel principal
+            </Link>
+          </div>
           {/* Header */}
           <div className="mb-6">
             <p className="text-sm text-ink-muted">Sistema · Diagnóstico</p>

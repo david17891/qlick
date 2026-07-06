@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Navbar, Footer } from "@/components/layout";
 import { Card, CardBody, CardHeader, Badge } from "@/components/ui";
 import {
@@ -32,6 +33,11 @@ export default function SupabaseSystemPage() {
       <Navbar />
       <main className="bg-slate-50 min-h-screen">
         <div className="max-w-4xl mx-auto px-4 py-10">
+          <div className="mb-4 text-xs text-ink-muted flex items-center gap-2">
+            <Link href="/admin" className="hover:text-ink">
+              ← Panel principal
+            </Link>
+          </div>
           <header className="mb-8">
             <p className="text-xs font-semibold uppercase tracking-wider text-brand-600">
               Sistema · Diagnóstico

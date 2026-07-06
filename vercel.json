@@ -8,6 +8,10 @@
     {
       "path": "/api/cron/cleanup-qr-tokens",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/survey-reminders",
+      "schedule": "0 * * * *"
     }
   ]
 }

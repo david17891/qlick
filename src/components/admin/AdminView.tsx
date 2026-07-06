@@ -44,7 +44,7 @@ export function AdminView({ adminEmail }: { adminEmail?: string } = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   // Permite deep-link a un tab específico vía ?tab=crm (usado por
-  // /admin/masterclass/[id] → "Ver lead en CRM").
+  // /admin/eventos/... → "Ver lead en CRM").
   const initialTab = (() => {
     const t = searchParams.get("tab");
     if (
@@ -204,14 +204,8 @@ export function AdminView({ adminEmail }: { adminEmail?: string } = {}) {
           </button>
         ))}
         <Link
-          href="/admin/masterclass"
-          className="ml-auto px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap text-ink-soft hover:bg-brand-50 border border-brand-200"
-        >
-          🎓 Masterclasses →
-        </Link>
-        <Link
           href="/admin/eventos"
-          className="px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap text-ink-soft hover:bg-brand-50 border border-brand-200"
+          className="ml-auto px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap text-ink-soft hover:bg-brand-50 border border-brand-200"
         >
           🎟️ Eventos →
         </Link>

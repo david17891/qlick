@@ -107,6 +107,7 @@ import {
   buildDynamicSurveyStep,
   detectDynamicSurveyButton,
 } from "./survey-wizard";
+import { substituteTemplateVars } from "../crm/lead-scoring";
 import { resolveSurveyConfig } from "../events/survey-config-validator";
 import type { SurveyQuestion, SurveyConfig } from "@/types/events";
 import type { InteractiveMessage } from "./providers/whatsapp-provider";
@@ -2319,9 +2320,47 @@ case "interactive_event_inscribir": {
             leadName: lead.name ?? null,
             eventTitle: args.surveyState.eventTitle ?? "(sin título)",
           });
-          // TODO (commit mañana): seleccionar follow-up bucket y enviar
-          // mensaje personalizado por WhatsApp al lead + admin alert.
-          void selectFollowUpBucket(scoreResult.score);
+          // FIX 2026-07-06 (audit F6): enviar follow-up bucket al lead por
+          // WhatsApp. Antes solo se llamaba selectFollowUpBucket (void).
+          // Si el lead completó el wizard por WhatsApp, NO recibía el
+          // mensaje personalizado del bucket (mql/hot/coldWarm). Esto
+          // era asimétrico con el endpoint /api/submit-survey (que sí
+          // envía). Ahora ambos paths envían el follow-up.
+          //
+          // Cargamos el surveyConfig completo para acceder a followUps.
+          // Si falla el load, caemos al template Default.
+          const surveyConfigFull = await loadSurveyConfigForEvent(
+            args.supabase,
+            args.surveyState.eventId ?? "",
+          ).catch(() => null);
+          const followUps = surveyConfigFull?.followUps;
+          if (followUps) {
+            const bucket = selectFollowUpBucket(scoreResult.score);
+            const followUp = followUps[bucket];
+            if (followUp?.text) {
+              const personalized = substituteTemplateVars(followUp.text, {
+                "1": lead.name?.trim() || "ahí",
+              });
+              try {
+                const provider = getActiveWhatsAppProvider();
+                await provider.send({
+                  to: phoneNormalized,
+                  body: personalized,
+                });
+              } catch (whatsappErr) {
+                errorLog(
+                  "[whatsapp/bot] follow-up WhatsApp falló (encuesta persistida OK)",
+                  {
+                    leadId: lead.id,
+                    error:
+                      whatsappErr instanceof Error
+                        ? whatsappErr.message
+                        : String(whatsappErr),
+                  },
+                );
+              }
+            }
+          }
         } catch (err) {
           errorLog(
             "[whatsapp/bot] promotion engine falló (encuesta persistida OK)",
@@ -3003,6 +3042,51 @@ export async function processInboundMessage(
     const wizardAnswers: SurveyAnswers =
       (wizardStateGlobal?.survey_answers as SurveyAnswers | null) ?? {};
     const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body);
+    // FIX 2026-07-06 (audit F1): comando "reiniciar" del wizard.
+    // Si el lead está en wizard (wizardStep !== null) Y manda "reiniciar"
+    // (o variantes como "reset", "empezar de nuevo"), limpiamos el state
+    // del wizard en el último outbound metadata. El próximo mensaje del
+    // lead va a re-arrancar el wizard desde Q1.
+    const isRestartCommand = /^(reiniciar|reset|empezar|empezar de nuevo|comenzar de nuevo|start over|restart)$/i
+      .test(body.trim());
+    if (isRestartCommand && wizardStep !== null && supabase && lastOutbound?.id) {
+      try {
+        const { error: restartErr } = await supabase
+          .from("lead_whatsapp_conversations" as never)
+          .update({
+            metadata: {
+              awaiting_survey_step: null,
+              survey_event_id: wizardEventId,
+              survey_event_title: wizardEventTitle,
+              survey_answers: {},
+              survey_questions: [],
+              wizard_restarted_at: new Date().toISOString(),
+            } as never,
+          } as never)
+          .eq("id" as never, lastOutbound.id);
+        if (restartErr) {
+          errorLog("[whatsapp/bot] wizard restart: clear metadata falló", {
+            error: restartErr.message,
+          });
+        } else {
+          debugLog("[whatsapp/bot] wizard restart: metadata limpia", {
+            leadId: lead.id,
+            eventId: wizardEventId,
+          });
+        }
+      } catch (err) {
+        errorLog("[whatsapp/bot] wizard restart: clear metadata threw", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      // No retornamos respuesta especial — dejamos que el flow normal
+      // (override a survey_offer o intent="question") siga. El wizard
+      // ya no está activo (metadata limpia), así que el próximo "Si"
+      // del survey_offer re-arranca desde Q1.
+      debugLog("[whatsapp/bot] wizard restart: procesando mensaje siguiente normalmente", {
+        leadId: lead.id,
+      });
+    }
     // FIX 2026-07-02 (sesion David, "Si tras pregunta cerrada"): si el
     // último outbound del bot marcó awaiting_confirmation_for_event_slug
     // (porque preguntó algo como "¿Te animas a apartar tu lugar?"),
