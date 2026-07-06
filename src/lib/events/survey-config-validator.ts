@@ -86,6 +86,13 @@ export function validateSurveyConfig(raw: unknown): SurveyConfig | null {
         if (typeof oo.score !== "number" || oo.score < 0 || oo.score > 100) {
           return null;
         }
+        // Flags exclusivos se chequean en la OPCIÓN, no en la question.
+        // Acumulamos antes de pushear.
+        if (oo.isConsent === true) consentCount++;
+        if (oo.isCommercialInterest === true) {
+          // OK — commercial interest puede estar en varias opciones.
+        }
+        if (consentCount > 1 || businessDescCount > 1) return null;
         options.push({
           id: oo.id,
           title: oo.title,
@@ -97,10 +104,10 @@ export function validateSurveyConfig(raw: unknown): SurveyConfig | null {
       }
     }
 
-    // Flags exclusivos
-    if (qq.isConsent === true) consentCount++;
+    // Flags exclusivos en question (isBusinessDescription).
+    // isConsent se chequea en options arriba.
     if (qq.isBusinessDescription === true) businessDescCount++;
-    if (consentCount > 1 || businessDescCount > 1) return null;
+    if (businessDescCount > 1) return null;
 
     const question: SurveyQuestion = {
       id: qq.id,

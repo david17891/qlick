@@ -42,6 +42,8 @@ export function SurveyEditor({
 }: Props) {
   const [config, setConfig] = useState<SurveyConfig>(initialConfig);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   function addQuestion() {
     const newQ: SurveyQuestion = {
@@ -146,15 +148,50 @@ export function SurveyEditor({
     const def = getDefaultSurveyConfig();
     setConfig(def);
     setSavedNotice("Restaurado a plantilla Default. Pendiente guardar.");
+    setSaveError(null);
     setTimeout(() => setSavedNotice(null), 3000);
   }
 
-  function handleSave() {
-    // Stub: el endpoint real se implementa en un commit aparte.
-    setSavedNotice(
-      `💾 Guardado pendiente. (Endpoint POST /api/admin/events/${eventId}/survey-config — Fase 8+). JSON listo en memoria con ${config.questions.length} preguntas.`,
-    );
-    setTimeout(() => setSavedNotice(null), 6000);
+  async function handleSave() {
+    if (validationIssues.length > 0) {
+      setSaveError("Resolvé los issues de validación antes de guardar.");
+      return;
+    }
+    setSaving(true);
+    setSaveError(null);
+    setSavedNotice(null);
+    try {
+      const res = await fetch(
+        `/api/admin/events/${eventId}/survey-config`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ surveyConfig: config }),
+        },
+      );
+      const data = (await res.json()) as {
+        ok: boolean;
+        error?: string;
+        note?: string;
+      };
+      if (!data.ok) {
+        setSaveError(
+          data.error ??
+            "No se pudo guardar la encuesta. Revisá la consola del server.",
+        );
+        return;
+      }
+      setSavedNotice(
+        `✅ Guardado. ${data.note ?? `${config.questions.length} pregunta(s) persistidas en Supabase.`}`,
+      );
+      setTimeout(() => setSavedNotice(null), 6000);
+    } catch (err) {
+      setSaveError(
+        err instanceof Error ? err.message : "Error de red. Intenta de nuevo.",
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
   // Validaciones agregadas
@@ -214,17 +251,18 @@ export function SurveyEditor({
           <button
             type="button"
             onClick={resetToDefault}
-            className="px-3 py-1.5 text-xs font-semibold border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50"
+            disabled={saving}
+            className="px-3 py-1.5 text-xs font-semibold border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 disabled:opacity-50"
           >
             ↺ Reset a default
           </button>
           <button
             type="button"
             onClick={handleSave}
-            disabled={validationIssues.length > 0}
+            disabled={validationIssues.length > 0 || saving}
             className="px-3 py-1.5 text-xs font-semibold bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50"
           >
-            💾 Guardar
+            {saving ? "⏳ Guardando..." : "💾 Guardar"}
           </button>
         </div>
       </div>
@@ -241,6 +279,12 @@ export function SurveyEditor({
               <li key={i}>{issue}</li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {saveError && (
+        <div className="rounded-lg bg-rose-50 border border-rose-200 p-3 text-xs text-rose-800">
+          ❌ {saveError}
         </div>
       )}
 
