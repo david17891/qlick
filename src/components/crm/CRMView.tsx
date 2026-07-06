@@ -630,11 +630,36 @@ function LeadsTable({
   const [course, setCourse] = useState<string>("all");
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
   const [intent, setIntent] = useState<LeadIntent | "all">("all");
+  const [eventFilter, setEventFilter] = useState<string>("all");
 
   const courses = useMemo(
     () => Array.from(new Set(leads.map((l) => l.courseOfInterest).filter(Boolean))) as string[],
     [leads]
   );
+
+  const events = useMemo(() => {
+    const slugs = new Set<string>();
+    leads.forEach((l) => {
+      if (l.tags) {
+        l.tags.forEach((tag) => {
+          if (tag.startsWith("event:")) {
+            const parts = tag.split(":");
+            if (parts[1]) {
+              slugs.add(parts[1]);
+            }
+          }
+        });
+      }
+    });
+    return Array.from(slugs).sort();
+  }, [leads]);
+
+  const formatEventSlug = (slug: string): string => {
+    return slug
+      .split("-")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
+  };
 
   const filtered = leads.filter((l) => {
     if (status !== "all" && l.status !== status) return false;
@@ -642,6 +667,11 @@ function LeadsTable({
     if (course !== "all" && l.courseOfInterest !== course) return false;
     if (ownerFilter !== "all" && l.ownerId !== ownerFilter) return false;
     if (intent !== "all" && l.intent !== intent) return false;
+    if (eventFilter !== "all") {
+      const tagPrefix = `event:${eventFilter}`;
+      const matchesEvent = l.tags?.some((tag) => tag.startsWith(tagPrefix)) ?? false;
+      if (!matchesEvent) return false;
+    }
     if (q.trim()) {
       const hay = `${l.name} ${l.email} ${l.phone ?? ""}`.toLowerCase();
       if (!hay.includes(q.toLowerCase())) return false;
@@ -652,15 +682,20 @@ function LeadsTable({
   return (
     <Card className="overflow-hidden">
       {/* Filtros */}
-      <div className="p-4 border-b border-brand-50 grid sm:grid-cols-2 lg:grid-cols-6 gap-2">
+      <div className="p-4 border-b border-brand-50 grid sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
         <Input
-          placeholder="Buscar nombre/email/tel"
+          placeholder="Buscar..."
           value={q}
           onChange={(e) => setQ(e.target.value)}
           className="lg:col-span-2"
         />
         <Select value={status} onChange={(v) => setStatus(v as LeadStatus | "all")} options={statusOptions()} />
         <Select value={source} onChange={(v) => setSource(v as LeadSource)} options={sourceOptions()} />
+        <Select
+          value={eventFilter}
+          onChange={setEventFilter}
+          options={[{ value: "all", label: "Todos los eventos" }, ...events.map((e) => ({ value: e, label: formatEventSlug(e) }))]}
+        />
         <Select
           value={course}
           onChange={setCourse}
@@ -669,7 +704,7 @@ function LeadsTable({
         <Select
           value={ownerFilter}
           onChange={setOwnerFilter}
-          options={[{ value: "all", label: "Todos los responsables" }, ...owners.map((o) => ({ value: o.id, label: o.name }))]}
+          options={[{ value: "all", label: "Responsables" }, ...owners.map((o) => ({ value: o.id, label: o.name }))]}
         />
         <Select
           value={intent}
@@ -706,7 +741,18 @@ function LeadsTable({
                         {initials(l.name)}
                       </span>
                       <div>
-                        <p className="font-semibold text-ink">{l.name}</p>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <p className="font-semibold text-ink">{l.name}</p>
+                          {l.tags?.filter(t => t.startsWith("event:")).map(tag => {
+                            const eventSlug = tag.split(":")[1];
+                            if (!eventSlug) return null;
+                            return (
+                              <Badge key={tag} tone="info" className="text-[8px] tracking-wide px-1 py-0 uppercase">
+                                🎟️ {formatEventSlug(eventSlug)}
+                              </Badge>
+                            );
+                          })}
+                        </div>
                         <p className="text-xs text-ink-muted">{l.email}</p>
                       </div>
                     </div>

@@ -35,8 +35,12 @@ export default async function AdminEventImportPage({ params }: Props) {
       <main className="min-h-screen bg-brand-50/30 py-10">
         <Container size="wide">
           <div className="mb-4 text-xs text-ink-muted flex items-center gap-2">
+            <Link href="/admin" className="hover:text-ink">
+              ← Panel principal
+            </Link>
+            <span>·</span>
             <Link href="/admin/eventos" className="hover:text-ink">
-              ← Eventos
+              Eventos
             </Link>
             <span>·</span>
             <Link href={`/admin/eventos/${event.id}`} className="hover:text-ink">

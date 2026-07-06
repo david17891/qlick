@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Navbar, Footer } from "@/components/layout";
 import { Container, Card, Badge } from "@/components/ui";
@@ -70,6 +71,11 @@ export default async function AdminEventosListPage() {
       <Navbar />
       <main className="min-h-screen bg-brand-50/30 py-10">
         <Container size="wide">
+          <div className="mb-4 text-xs text-ink-muted flex items-center gap-2">
+            <Link href="/admin" className="hover:text-ink">
+              ← Panel principal
+            </Link>
+          </div>
           <div className="mb-6">
             <p className="text-sm text-ink-muted">Admin · Eventos</p>
             <h1 className="text-3xl font-bold text-ink">Embudo de eventos</h1>

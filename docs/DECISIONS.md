@@ -563,3 +563,36 @@ decidió, por qué, qué alternativas se consideraron, el riesgo y cómo reverti
   de sync de headers en los 4 docs canónicos. No tocar código de producto.
 
 ---
+
+## D-023 · Eliminación de Masterclass y Conexión de Eventos con CRM (v0.7.2)
+
+- **Fecha:** 2026-07-06
+- **Decisión:** 
+  1. Eliminar definitivamente el módulo `masterclass` obsoleto (rutas públicas `/masterclass`, vistas admin `/admin/masterclass`, actions, utilidades y tipos).
+  2. Implementar navegación consistente de regreso (breadcrumbs) en todas las subpáginas secundarias de administración (`/admin/eventos`, `/admin/eventos/[id]`, `/admin/eventos/[id]/import`, `/admin/handoffs`, `/admin/system/audit-log`) para facilitar la navegación a `/admin`.
+  3. Integrar los Eventos con el CRM mediante filtros por evento y visualización de badges dinámicos en la lista de leads basados en sus tags.
+- **Motivo:** Redundancia funcional del módulo Masterclass frente a Eventos, que ya es mucho más robusto. Necesidad expresada por David de poder regresar al panel principal de manera fácil y rápida, y de tener una conexión visual más directa entre los leads del CRM y los eventos en los que participaron.
+- **Impacto:**
+  - Código limpio con 14 archivos obsoletos removidos físicamente.
+  - Mayor usabilidad en el panel administrativo gracias al flujo de breadcrumbs.
+  - El CRM ahora permite filtrar leads por eventos (ej: `ia-marketing-primeros-pasos`, `taller-meta-ads`) y muestra de forma clara los eventos asociados a cada lead en la tabla.
+- **Reversibilidad:** Alta (control de versiones con Git).
+
+---
+
+## D-024 · Botones de WhatsApp Individuales en Listas de Eventos y Limpieza de Workspace (v0.7.3)
+
+- **Fecha:** 2026-07-06
+- **Decisión:**
+  1. Agregar botones de WhatsApp individuales (`💬`) al lado de los teléfonos en las tablas de **Confirmados** y **Asistentes** en la vista de detalle del evento (`/admin/eventos/[id]/page.tsx`).
+  2. Eliminar permanentemente todos los archivos temporales de logs y scripts residuales (`scratch/_audit-run.log`, `verify_correct_pooler.mjs`, etc.) del workspace local para mantener el repositorio limpio y sin archivos no deseados.
+- **Motivo:** Facilitar la comunicación y el contacto individual rápido del administrador con los confirmados/asistentes de un evento mediante plantillas pre-armadas en un clic, eliminando la necesidad de entrar a la sección de broadcast para tareas sencillas. Además, mantener el repositorio ordenado.
+- **Impacto:**
+  - Los administradores ahora pueden enviar recordatorios de evento personalizados (con fecha, hora, lugar y link del pase) o mensajes de seguimiento directamente desde las filas de confirmados y asistentes.
+  - Mayor higiene del repositorio, habiendo eliminado 8 archivos scratch/logs temporales.
+- **Reversibilidad:** Alta (control de versiones con Git).
+
+---
+
+
+---

@@ -3003,6 +3003,51 @@ export async function processInboundMessage(
     const wizardAnswers: SurveyAnswers =
       (wizardStateGlobal?.survey_answers as SurveyAnswers | null) ?? {};
     const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body);
+    // FIX 2026-07-06 (audit F1): comando "reiniciar" del wizard.
+    // Si el lead está en wizard (wizardStep !== null) Y manda "reiniciar"
+    // (o variantes como "reset", "empezar de nuevo"), limpiamos el state
+    // del wizard en el último outbound metadata. El próximo mensaje del
+    // lead va a re-arrancar el wizard desde Q1.
+    const isRestartCommand = /^(reiniciar|reset|empezar|empezar de nuevo|comenzar de nuevo|start over|restart)$/i
+      .test(body.trim());
+    if (isRestartCommand && wizardStep !== null && supabase && lastOutbound?.id) {
+      try {
+        const { error: restartErr } = await supabase
+          .from("lead_whatsapp_conversations" as never)
+          .update({
+            metadata: {
+              awaiting_survey_step: null,
+              survey_event_id: wizardEventId,
+              survey_event_title: wizardEventTitle,
+              survey_answers: {},
+              survey_questions: [],
+              wizard_restarted_at: new Date().toISOString(),
+            } as never,
+          } as never)
+          .eq("id" as never, lastOutbound.id);
+        if (restartErr) {
+          errorLog("[whatsapp/bot] wizard restart: clear metadata falló", {
+            error: restartErr.message,
+          });
+        } else {
+          debugLog("[whatsapp/bot] wizard restart: metadata limpia", {
+            leadId: lead.id,
+            eventId: wizardEventId,
+          });
+        }
+      } catch (err) {
+        errorLog("[whatsapp/bot] wizard restart: clear metadata threw", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      // No retornamos respuesta especial — dejamos que el flow normal
+      // (override a survey_offer o intent="question") siga. El wizard
+      // ya no está activo (metadata limpia), así que el próximo "Si"
+      // del survey_offer re-arranca desde Q1.
+      debugLog("[whatsapp/bot] wizard restart: procesando mensaje siguiente normalmente", {
+        leadId: lead.id,
+      });
+    }
     // FIX 2026-07-02 (sesion David, "Si tras pregunta cerrada"): si el
     // último outbound del bot marcó awaiting_confirmation_for_event_slug
     // (porque preguntó algo como "¿Te animas a apartar tu lugar?"),
