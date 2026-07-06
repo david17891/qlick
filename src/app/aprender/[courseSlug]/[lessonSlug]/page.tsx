@@ -101,12 +101,12 @@ export default async function LessonPage({
                 <p className="text-ink-muted mt-3">
                   {lmsCourse?.accessType === "paid" ? (
                     <>
-                      Para acceder a esta lección, primero tenés que pagar
+                      Para acceder a esta lección, primero tienes que pagar
                       <strong> ${lmsCourse.priceMXN} MXN</strong> por el curso{" "}
                       <strong>{mockCourse.title}</strong>.
                     </>
                   ) : (
-                    <>Para acceder a esta lección necesitás estar inscripto en el curso.</>
+                    <>Para acceder a esta lección necesitas estar inscripto en el curso.</>
                   )}
                 </p>
                 <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">

@@ -75,7 +75,7 @@ export function EncuestaClient({
     for (const q of surveyConfig.questions) {
       if (q.type === "buttons") {
         if (!responses[q.id] || responses[q.id].trim() === "") {
-          return `Por favor respondé: "${q.text}"`;
+          return `Por favor responde: "${q.text}"`;
         }
       }
       // Text: opcional siempre (puede "saltar")

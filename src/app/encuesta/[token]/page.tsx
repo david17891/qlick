@@ -48,7 +48,7 @@ export default async function EncuestaPage({ params }: PageProps) {
     return (
       <CenteredMessage
         title="Ya enviaste tu encuesta"
-        subtitle="Gracias por tu feedback! Si necesitas modificar algo, escribinos a hola@qlick.marketing."
+        subtitle="Gracias por tu feedback! Si necesitas modificar algo, escríbenos a hola@qlick.marketing."
       />
     );
   }

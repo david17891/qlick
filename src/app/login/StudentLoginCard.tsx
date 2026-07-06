@@ -75,7 +75,7 @@ export function StudentLoginCard() {
 
           <p className="text-[11px] text-center text-ink-muted leading-relaxed pt-2">
             Te enviamos un enlace mágico al correo para entrar sin contraseña.
-            Útil si no querés usar tu cuenta de Google.
+            Útil si no quieres usar tu cuenta de Google.
           </p>
         </>
       ) : (

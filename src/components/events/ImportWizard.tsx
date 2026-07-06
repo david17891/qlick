@@ -250,7 +250,7 @@ function FormatSpecPanel({
 - Si una fila no tiene Email NI Teléfono → marcala con "#" al inicio del nombre para descartarla
 - "Fuente" es texto libre (messenger, whatsapp, form, manual, etc.)
 
-**Lo que NO debés hacer:**
+**Lo que NO debes hacer:**
 - NO inventes teléfonos ni emails faltantes (es PII inventada — ilegal)
 - NO corrijas lo que no estés seguro (mejor dejar y que yo revise)
 
@@ -279,11 +279,11 @@ Devolveme el Excel limpio en la misma estructura de columnas.`,
 **Reglas:**
 - Emails en lowercase
 - Teléfonos en 10 dígitos sin espacios (ej: 6861234567)
-- Asistió: solo Sí/No. Si tenés duda (ej: "tal vez", "no sé"), dejá la celda vacía. NO asumas.
+- Asistió: solo Sí/No. Si tienes duda (ej: "tal vez", "no sé"), deja la celda vacía. NO asumas.
 - Fuente: check_in, zoom, manual, etc. (texto libre)
 - Walk-ins (gente que vino sin confirmar antes): son válidos sin Nombre si tienen Email o Teléfono
 
-**Lo que NO debés hacer:**
+**Lo que NO debes hacer:**
 - NO inventes teléfonos ni emails
 - NO asumas Asistió si el Excel no lo dice explícito
 
@@ -315,7 +315,7 @@ Devolveme el Excel limpio.`,
 - Email lowercase, teléfono 10 dígitos sin espacios
 - Si una fila no tiene Email NI Teléfono → "#" al inicio del nombre
 
-**Lo que NO debés hacer:**
+**Lo que NO debes hacer:**
 - NUNCA conviertas variantes a "Sí" — es consentimiento falsificado (ilegal)
 - NO inventes teléfonos ni emails
 

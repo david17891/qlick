@@ -197,7 +197,7 @@ export default async function EnrollmentPage({
               </div>
 
               <p className="mt-6 text-sm text-ink-muted text-center">
-                ¿Solo querés ver el curso?{" "}
+                ¿Solo quieres ver el curso?{" "}
                 <Link
                   href={`/cursos/${course.slug}`}
                   className="font-semibold text-brand-600 hover:underline"

@@ -76,7 +76,7 @@ export function ConfirmDeleteEventModal({
             asociados (cascade en DB).
           </p>
           <p className="text-xs text-ink-muted italic mb-5">
-            Si solo querés ocultarlo temporalmente, usá{" "}
+            Si solo quieres ocultarlo temporalmente, usa{" "}
             <strong>Archivar</strong> en su lugar.
           </p>
 

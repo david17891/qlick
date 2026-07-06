@@ -215,7 +215,7 @@ export function CheckInClient({
         )}
 
         <p className="text-center text-[11px] text-ink-muted">
-          ¿Cambio de planes? Si no podés asistir, no hace falta que
+          ¿Cambio de planes? Si no puedes asistir, no hace falta que
           hagas nada — el registro expira solo.
         </p>
       </div>

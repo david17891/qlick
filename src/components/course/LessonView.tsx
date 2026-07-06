@@ -99,7 +99,7 @@ export function LessonView({
           icon="🔒"
           title="Esta lección requiere acceso"
           description={
-            "Para acceder a esta lección necesitás estar inscripto en el curso."
+            "Para acceder a esta lección necesitas estar inscripto en el curso."
           }
           action={
             <div className="flex flex-wrap gap-2 justify-center">

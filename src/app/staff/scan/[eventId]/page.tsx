@@ -712,7 +712,7 @@ function WalkInForm({
       {lastResult && (
         <div className="mt-3 rounded-lg bg-emerald-50 border border-emerald-200 p-3 space-y-2">
           <p className="text-xs font-semibold text-emerald-800">
-            ✓ {lastResult.name} registrado. Si querés darle el QR:
+            ✓ {lastResult.name} registrado. Si quieres darle el QR:
           </p>
           <div className="flex items-center gap-2">
             <code className="flex-1 text-xs bg-white px-2 py-1 rounded border border-emerald-100 break-all font-mono">

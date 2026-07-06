@@ -176,7 +176,7 @@ export function StaffLinksPanel({
       </form>
       <p className="text-[10px] text-ink-muted">
         Default: {formatLocalDateTime(defaultValidUntilIso)} (evento +
-        4h). Si querés que expire antes, editá el campo.
+        4h). Si quieres que expire antes, edita el campo.
       </p>
 
       {createNote && (
