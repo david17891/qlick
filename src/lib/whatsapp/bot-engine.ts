@@ -304,6 +304,103 @@ export function cleanFirstName(rawName: string | null | undefined): string {
 }
 
 /**
+ * FIX 2026-07-06 (audit E6 stress testing — David): detecta si el body
+ * del lead es una PREGUNTA o un INTENT (no un nombre).
+ *
+ * Si el bot esta pidiendo nombre (`awaiting_field="name"`) y el lead
+ * responde con una pregunta, NO debe guardarse como nombre. Esta funcion
+ * detecta:
+ *   - Signos de interrogacion: "?" o "¿".
+ *   - Palabras interrogativas al inicio del body: "que", "como", "cuanto",
+ *     "por que", "para que", "donde", "cual", "cuando", "quien".
+ *   - Frases comerciales comunes: "es gratis", "tiene costo", "es
+ *     obligatorio", "como funciona".
+ *
+ * FIX: export para tests (scratch/qlick-stress-audit.mjs E6).
+ */
+export function isQuestionOrIntent(text: string | null | undefined): boolean {
+  if (!text) return false;
+  const t = text.trim();
+  if (t.length === 0) return false;
+  // Signos de interrogacion.
+  if (/[¿?]/.test(t)) return true;
+  // Palabras interrogativas al inicio (case-insensitive).
+  const INTERROGATIVE_RE = /^(qué|que|cómo|como|cuánto|cuanto|cuánta|cuanta|cuántos|cuantos|cuántas|cuantas|por\s*qué|por\s*que|para\s*qué|para\s*que|dónde|donde|cuál|cual|cuáles|cuales|cuándo|cuando|quién|quien|quiénes|quienes)\b/i;
+  if (INTERROGATIVE_RE.test(t)) return true;
+  // Frases comerciales / dudas comunes.
+  const INTENT_PHRASES = [
+    /^es\s+gratis/i,
+    /^tiene\s+costo/i,
+    /^cu[aá]l\s+es\s+el\s+(precio|costo)/i,
+    /^es\s+obligatorio/i,
+    /^c[oó]mo\s+funciona/i,
+    /^qu[eé]\s+incluye/i,
+    /^para\s+qu[eé]\s+sirve/i,
+    /^d[oó]nde\s+es/i,
+    /^a\s+qu[eé]\s+hora/i,
+    /^cu[aá]ndo\s+es/i,
+  ];
+  for (const re of INTENT_PHRASES) {
+    if (re.test(t)) return true;
+  }
+  return false;
+}
+
+/**
+ * FIX 2026-07-06 (audit E7 stress testing): valida que el body del lead
+ * sea un NOMBRE HUMANO valido, no emojis/garbage.
+ *
+ * Reglas:
+ *   - Trim, longitud 2-100 chars.
+ *   - Contiene AL MENOS 2 palabras con caracteres alfabeticos
+ *     (incluyendo acentos: á é í ó ú ü ñ).
+ *   - NO es todo digitos.
+ *   - NO es todo simbolos/emoji.
+ *   - Las palabras NO son muletillas conversacionales ("ah", "ok", "si",
+ *     "ya", "vale", "bueno", "claro", "pues", "hey", "hola", "gracias").
+ *     Estas pasan el filtro de "tienen letras" pero NO son nombres.
+ *   - NO esta en PLACEHOLDER_NAMES_UI (rechaza "Asistente", "Por
+ *     confirmar", etc).
+ *
+ * Casos rechazados: "👍👍👍", "123456", ".......", "ah ok", "ok",
+ * "x", "@#$%", "Asistente", "Por confirmar".
+ * Casos aceptados: "Juan Perez", "Dr. Juan Perez", "Maria de los
+ * Angeles", "Jose-Luis Nunez", "Muller Hans".
+ *
+ * FIX: export para tests (scratch/qlick-stress-audit.mjs E7).
+ */
+const CONVERSATIONAL_FILLER_WORDS = new Set([
+  "ah", "ok", "okay", "si", "sí", "no", "ya", "vale", "bueno",
+  "claro", "pues", "hey", "hola", "gracias", "thanks", "ola",
+  "oe", "ea", "mm", "hmm", "ups", "ahh", "sii", "nop", "nope",
+  "yep", "yup", "mmm", "ajá", "aja", "dale", "va", "listo",
+  "perfecto", "excelente", "genial", "okas", "okis",
+]);
+export function isValidHumanName(text: string | null | undefined): boolean {
+  if (!text) return false;
+  const trimmed = text.trim();
+  if (trimmed.length < 2 || trimmed.length > 100) return false;
+  // NO es todo digitos (con espacios opcionales).
+  if (/^[\d\s]+$/.test(trimmed)) return false;
+  // NO es todo emojis/simbolos sin letras.
+  if (!/[\p{L}]/u.test(trimmed)) return false;
+  // NO es un placeholder UI conocido ("Asistente", "Por confirmar", etc).
+  if (PLACEHOLDER_NAMES_UI.has(trimmed.toLowerCase())) return false;
+  // Al menos 2 palabras con caracteres alfabeticos.
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  const wordsWithLetters = words.filter((w) => /[\p{L}]/u.test(w));
+  if (wordsWithLetters.length < 2) return false;
+  // FIX 2026-07-06 (audit E7 stress testing ronda 2): ninguna palabra
+  // puede ser una muletilla conversacional ("ah ok", "ya", "dale").
+  // Si alguna lo es, el input NO es un nombre real.
+  const hasOnlyFiller = wordsWithLetters.every((w) =>
+    CONVERSATIONAL_FILLER_WORDS.has(w.toLowerCase().replace(/[.!?]+$/, ""))
+  );
+  if (hasOnlyFiller) return false;
+  return true;
+}
+
+/**
  * FIX 2026-07-04 (feat/funnel-survey-scoring): anti-spam del survey offer.
  * Devuelve true si debemos ofrecer la encuesta al lead. Reglas:
  *   - Sin offer previo → ofrecer.
@@ -2555,13 +2652,48 @@ case "interactive_event_inscribir": {
       // el plan (body + metadata).
       //
       // Validaciones defensivas:
+      //   - E6: Si es PREGUNTA (signos ?, palabras interrogativas, dudas
+      //     comerciales), NO guardar como nombre. Responder amablemente
+      //     y mantener awaiting_field="name" para el siguiente turno.
+      //   - E7: Si NO es un nombre humano valido (emojis, numeros,
+      //     monosilabos), rechazar con explicacion.
       //   - Que el body NO sea un email (si lo es, el detectIntent
       //     debería haberlo clasificado como provide_email).
       //   - Que tenga al menos 2 palabras (Juan, no "j").
       //   - Que no supere 100 chars.
       const name = body.trim();
       const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(name);
-      const wordCount = name.split(/\s+/).filter(Boolean).length;
+      // E6: detectar preguntas / dudas — NO guardar como nombre.
+      if (isQuestionOrIntent(name)) {
+        const bodyText =
+          `Buena pregunta. Para poder emitir tu certificado de asistencia ` +
+          `necesitamos tu nombre completo (nombre y apellido). ` +
+          `¿Me lo pasás así: "Juan Pérez"?`;
+        return {
+          kind: "text",
+          body: bodyText,
+          // FIX E6: mantenemos awaiting_field="name" para que el
+          // siguiente turno vuelva a entrar como provide_name.
+          metadata: { awaiting_field: "name" },
+          send: () =>
+            provider.send({ to: phoneNormalized, body: bodyText })
+        };
+      }
+      // E7: detectar inputs basura (emojis, numeros, simbolos).
+      // Lo chequeamos ANTES de wordCount < 2 porque un emoji como "👍"
+      // tiene 1 palabra pero 0 letras.
+      if (!isValidHumanName(name)) {
+        const bodyText =
+          `Por favor escríbeme tu nombre y apellido con letras para ` +
+          `poder generar tu certificado (ej: "Juan Pérez").`;
+        return {
+          kind: "text",
+          body: bodyText,
+          metadata: { awaiting_field: "name" },
+          send: () =>
+            provider.send({ to: phoneNormalized, body: bodyText })
+        };
+      }
       if (looksLikeEmail) {
         // Edge case: el bot pidió nombre pero el lead mandó email.
         // Respondemos recordándole que primero necesitamos el nombre.
@@ -2578,7 +2710,14 @@ case "interactive_event_inscribir": {
             provider.send({ to: phoneNormalized, body: bodyText })
         };
       }
+      const wordCount = name.split(/\s+/).filter(Boolean).length;
       if (wordCount < 2) {
+        // FIX E8/E9: detectamos nombres reales con titulos validos
+        // ("Dr. Juan Perez") que ya pasaron isValidHumanName (tienen 2+
+        // palabras con letras), pero tambien queremos permitir nombres
+        // de 1 palabra con longitud >=3 si el usuario insiste. Por ahora
+        // seguimos pidiendo apellido si solo hay 1 palabra.
+        //
         // Probablemente escribió solo "Juan" o "David". Pedimos apellido.
         const bodyText =
           `Necesito tu nombre completo (nombre y apellido) para el ` +
