@@ -2395,4 +2395,35 @@ sustituir el ciclo con templates". Ejecuté 4 bloques sincrónicamente.
 - **Impacto:** El bot y los emails al lead ahora suenan mexicanos. La consistencia entre el bot WhatsApp y los emails transaccionales está lograda para este surface.
 - **Commit:** aef120f en main. Por pushear.
 
+
+## 2026-07-06 ~15:20 - Fix copy: español mexicano en páginas web admin/student/staff (pase 2)
+
+- **Pregunta:** David aprobó (sesión 2026-07-06 ~15:16) extender el pase
+  de español mexicano (commit aef120f) a las páginas web admin/student/
+  staff. La consistencia full es importante para que el producto no mezcle
+  registros (bot WhatsApp suena MX, pero la página de login suena AR).
+- **Decisión:** Mismo mapping que pase 1 (voseo → tuteo, "por acá" →
+  "por aquí", "escribinos" → "escríbenos", etc.). Aplicado a:
+  - 7 páginas student/lead-facing (encuesta, check-in, login,
+    aprender/[slug], inscripcion/[slug], LessonView)
+  - 4 páginas admin/staff-facing (ConfirmDeleteEventModal, ImportWizard
+    incluye "debés" x3, StaffLinksPanel, staff/scan/[eventId])
+  - 1 LLM system prompt (bot-personality-templates.ts:64 — "tenés" en
+    la regla del LLM para que no genere copy voseo)
+- **Total:** 12 archivos, 13 ubicaciones, 16 líneas cambiadas.
+- **NO incluidos (justificación):**
+  - 9 comentarios de código (bot-engine.ts:1772/2215/3572, types/events.ts:109,
+    EventDrawer.tsx:316, _actions.ts:507, layout/index.ts:4, audit-server.ts:94,
+    entitlements.ts:27, MagicLinkForm.tsx:18) — no son user copy,
+    cambiarlos sería ruido en commits sin impacto UX.
+  - 1 regex defensivo (`/decime\s+tu\s+nombre/i` en bot-engine.ts:3572) —
+    matchea outbound histórico del bot pre-fix. Si lo quito, fallaría
+    la detección para sesiones viejas en DB. Lo dejo.
+- **Validación:** type-check ✓ (clean), lint ✓ (0 warnings), 535/535
+  tests ✓, build ✓.
+- **Impacto:** Todo el product surface (bot WhatsApp + emails transaccionales
+  + páginas web admin/student/staff) ahora suena en español mexicano
+  consistente.
+- **Commit:** 365b620 en main. Por pushear.
+
 `
