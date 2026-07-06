@@ -80,6 +80,20 @@ export function mapLeadRowToLead(row: LeadRow): Lead {
       | "interested"
       | "lost",
     lastContactedAt: row.last_contacted_at ?? undefined,
+    // Bloque 3: scoring post-survey (migration 20260704200000).
+    // FIX 2026-07-06 (G-15 r4): estos campos se persisten en la fila
+    // pero el typegen los marca como "Re-generar typegen" — los
+    // casteamos explícitamente porque LeadRow los incluye como
+    // `score`/`qualification` desde que corrió la migration.
+    score:
+      typeof (row as unknown as { score?: number | null }).score === "number"
+        ? (row as unknown as { score: number }).score
+        : undefined,
+    qualification: ((row as unknown as { qualification?: string | null })
+      .qualification ?? undefined) as Lead["qualification"],
+    surveyOfferSentAt:
+      (row as unknown as { survey_offer_sent_at?: string | null })
+        .survey_offer_sent_at ?? undefined,
     // `message` no se expone en el tipo Lead (privacidad); queda en la DB.
     createdAt: row.created_at,
     updatedAt: row.updated_at,

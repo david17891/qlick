@@ -26,6 +26,16 @@ interface Props {
   href?: string;
   /** Si la card fue revisada (Capa 4: badge "Revisada" + fecha). */
   reviewedAt?: string | null;
+  /**
+   * Score 0-100 derivado de la encuesta post-evento (lead-scoring.ts).
+   * FIX 2026-07-06 (G-15 r4): agregado para que el admin vea la
+   * calificación del lead promovido sin abrir el drawer.
+   */
+  score?: number | null;
+  /**
+   * Bucket del score ("cold"/"warm"/"hot"/"mql"). FIX 2026-07-06 r4.
+   */
+  qualification?: string | null;
   /** Slot opcional para acciones (form, botones) debajo del contenido. */
   action?: React.ReactNode;
 }
@@ -38,6 +48,8 @@ export function PipelineCard({
   date,
   href,
   reviewedAt,
+  score,
+  qualification,
   action,
 }: Props) {
   const inner = (
@@ -56,6 +68,30 @@ export function PipelineCard({
           <span className="text-[10px] text-ink-muted ml-auto">{date}</span>
         )}
       </div>
+      {/* FIX 2026-07-06 (audit G-15 r4): score + qualification badges
+          para que el admin sepa si vale la pena contactar al lead
+          sin abrir el drawer. Solo aparecen si los datos están
+          disponibles (lead con survey persistido). */}
+      {(typeof score === "number" || qualification) && (
+        <div className="flex flex-wrap gap-1 mt-1.5">
+          {typeof score === "number" && (
+            <Badge tone="brand">🎯 {score}</Badge>
+          )}
+          {qualification && (
+            <Badge
+              tone={
+                qualification === "hot" || qualification === "mql"
+                  ? "success"
+                  : qualification === "warm"
+                    ? "warning"
+                    : "neutral"
+              }
+            >
+              {qualification.toUpperCase()}
+            </Badge>
+          )}
+        </div>
+      )}
       {reviewedAt && (
         <div className="mt-1.5 pt-1.5 border-t border-brand-50">
           <Badge tone="success">✓ Revisada</Badge>

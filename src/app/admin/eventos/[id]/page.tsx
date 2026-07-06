@@ -1043,6 +1043,35 @@ export default async function AdminEventoDetailPage({
                           <Badge tone={WHATSAPP_STATUS_TONE[(lead.whatsappStatus ?? "no_contactado") as WhatsAppStatus]}>
                             💬 {WHATSAPP_STATUS_LABEL[(lead.whatsappStatus ?? "no_contactado") as WhatsAppStatus]}
                           </Badge>
+                          {/* FIX 2026-07-06 (audit G-15 r4): score + qualification
+                              vienen del survey post-evento (lead-scoring.ts).
+                              qualification es el bucket ("cold"/"warm"/
+                              "hot"/"mql") derivado del score 0-100. Sin esto
+                              el admin tiene que abrir el drawer del lead
+                              para ver si vale la pena contactarlo. */}
+                          {typeof lead.score === "number" && (
+                            <Badge tone="brand">
+                              🎯 Score: {lead.score}
+                            </Badge>
+                          )}
+                          {lead.qualification && (
+                            <Badge
+                              tone={
+                                lead.qualification === "hot" || lead.qualification === "mql"
+                                  ? "success"
+                                  : lead.qualification === "warm"
+                                    ? "warning"
+                                    : "neutral"
+                              }
+                            >
+                              🔥 {lead.qualification.toUpperCase()}
+                            </Badge>
+                          )}
+                          {lead.consentToContact && (
+                            <Badge tone="success">
+                              ✓ Consent
+                            </Badge>
+                          )}
                         </div>
                         {/* Bloque 2: form para cambiar estado de WhatsApp. */}
                         <form
@@ -1256,6 +1285,8 @@ export default async function AdminEventoDetailPage({
                         email={lead.email}
                         phone={lead.phone}
                         source={links[0]?.linkType ?? lead.source}
+                        score={lead.score ?? null}
+                        qualification={lead.qualification ?? null}
                         action={
                           <div className="flex flex-col gap-1.5">
                             <Badge tone={WHATSAPP_STATUS_TONE[leadStatus]}>
