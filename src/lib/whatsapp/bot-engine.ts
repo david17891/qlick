@@ -60,6 +60,7 @@ import {
 } from "../ai";
 import { sendHumanHandoff } from "./human-handoff";
 import { stripGreetingIfHasHistory } from "./safety-net";
+import { extractEmailFromText } from "./email-extract";
 import { getAIAgentProfile } from "../crm/agent-utils";
 import {
   loadManualContext,
@@ -437,6 +438,16 @@ async function hasCompletedWizardSurvey(args: {
 /* ------------------------------------------------------------------ */
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// FIX 2026-07-05 (sesion David): extraer el primer email de un texto mas
+// largo. EMAIL_RE (con anchors ^...$) solo matchea cuando el body ENTERO es
+// un email. Esto rompe cuando el usuario da contexto, p.ej.:
+//   "Me equivoque, es david17891@gmail.com"
+//   -> EMAIL_RE.test(body) = true (detecta intent)
+//   -> body.trim() = "Me equivoque, es david17891@gmail.com" (basura en DB)
+//   -> Brevo rechaza email invalido al re-enviar QR.
+// extractEmailFromText (en ./email-extract.ts, sin anchors) devuelve el
+// primer match dentro del texto. Devuelve null si no hay match — el
+// caller decide que hacer (fallback al body completo o error).
 const GREETING_RE = /^(hola|hi|buenos|buenas|informaci[oó]n|info|menu|men[uú])/i;
 // FIX 2026-07-02 (sesion David): respuestas afirmativas CORTAS en medio de
 // una conversacion (despues de que el LLM hace una pregunta) NO deberian
@@ -2161,7 +2172,10 @@ case "interactive_event_inscribir": {
       };
     }
     case "provide_email": {
-      const email = body.trim();
+      // FIX 2026-07-05 (sesion David): extraer el email del body, no usar
+      // body.trim() directo. Usuarios mandan contexto ("me equivoque, es X")
+      // y el body completo no es un email valido.
+      const email = extractEmailFromText(body) ?? body.trim();
       // FIX A5: usar el QR token real generado por processInboundMessage.
       // Antes mandaba `${appBaseUrl()}/qr` que NO existe en el routing.
       // Si Supabase cayó y no se pudo generar el token, respondemos sin
@@ -3277,7 +3291,12 @@ export async function processInboundMessage(
   let registrationEventTitle: string | null = null;
   let registrationEventRequiresName: boolean = false;
   if (intent === "provide_email" && supabase) {
-    const email = body.trim().toLowerCase();
+    // FIX 2026-07-05 (sesion David): extraer email del body, no usar el
+    // body completo. Si el usuario mando contexto extra ("me equivoque, es X"),
+    // guardabamos la frase entera en leads.email y la pasabamos a Brevo,
+    // que rechazaba silenciosamente. extractEmailFromText devuelve el primer
+    // email en el texto; fallback a body.trim() si no hay match.
+    const email = extractEmailFromText(body)?.toLowerCase() ?? body.trim().toLowerCase();
     // FIX 2026-07-02 (Commit A): si el evento del registro requiere
     // nombre Y el lead no tiene nombre en DB, NO avanzamos al QR.
     // Respondemos pidiendo el nombre primero. Este caso pasa cuando
