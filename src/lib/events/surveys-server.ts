@@ -10,7 +10,7 @@
  * @server
  */
 
-import type { EventSurvey } from "@/types/events";
+import type { EventSurvey, SurveyConfig } from "@/types/events";
 import type { Json } from "@/types/supabase";
 import {
   mapEventSurveyRowToEventSurvey,
@@ -19,6 +19,10 @@ import {
 import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { normalizePhone } from "../crm/phone-utils.ts";
+import {
+  calculateLeadScore,
+  calculateLeadScoreFromConfig,
+} from "@/lib/crm/lead-scoring";
 
 function isRealMode(): boolean {
   if (typeof window !== "undefined") return false;
@@ -40,6 +44,12 @@ export interface CreateSurveyInput {
   consentToContact: boolean;
   commercialInterest?: string | null;
   importBatchId?: string | null;
+  /**
+   * FIX 2026-07-05 (feat/funnel-dynamic-surveys-crm, commit 9): si viene,
+   * el post-hook de scoring usa `calculateLeadScoreFromConfig` en lugar
+   * de la rama legacy (rating 1-5). Sin config, fallback al legacy.
+   */
+  surveyConfig?: SurveyConfig;
 }
 
 export interface CreateSurveyResult {
@@ -167,51 +177,76 @@ export async function createSurvey(
     };
   }
 
-  // Post-hook (feat/funnel-survey-scoring, 2026-07-04): aplicar score al
-  // lead asociado. Best-effort: si falla el lookup o el UPDATE del lead,
-  // NO fallamos la encuesta (ya está persistida). Solo loggeamos.
-  // Esto cierra el ciclo: lead llena encuesta → score + qualification +
-  // status='survey_completed' en el CRM.
+  // Post-hook (feat/funnel-survey-scoring, 2026-07-04 + commit 9
+  // feat/funnel-dynamic-surveys-crm): aplicar score al lead asociado.
+  // Best-effort: si falla, NO fallamos la encuesta (ya está persistida).
+  // FIX 2026-07-05: si `surveyConfig` viene, usa scoring dinámico.
+  // Si no, fallback al legacy (rating 1-5).
   try {
     const responses = input.responses as Record<string, unknown>;
-    const rating = Number(responses.rating ?? 0);
-    if (rating >= 1 && rating <= 5) {
-      const liked = typeof responses.liked === "string" ? responses.liked : null;
-      const { findLeadByEmail, findLeadByPhone, updateLeadScoring } = await import(
-        "../crm/leads-server"
+    const { findLeadByEmail, findLeadByPhone, updateLeadScoring } = await import(
+      "../crm/leads-server"
+    );
+    let leadId: string | null = null;
+    if (input.respondentEmail) {
+      const lead = await findLeadByEmail(input.respondentEmail).catch(() => null);
+      if (lead) leadId = lead.id;
+    }
+    if (!leadId && input.phoneNormalized) {
+      const lead = await findLeadByPhone(input.phoneNormalized).catch(() => null);
+      if (lead) leadId = lead.id;
+    }
+
+    // Calcular score según config o legacy
+    if (input.surveyConfig) {
+      // Modo dinámico: scoring con questions + flags
+      const scoreResult = calculateLeadScoreFromConfig(
+        responses as Record<string, string>,
+        input.surveyConfig,
       );
-      let leadId: string | null = null;
-      if (input.respondentEmail) {
-        const lead = await findLeadByEmail(input.respondentEmail).catch(() => null);
-        if (lead) leadId = lead.id;
-      }
-      if (!leadId && input.phoneNormalized) {
-        const lead = await findLeadByPhone(input.phoneNormalized).catch(() => null);
-        if (lead) leadId = lead.id;
-      }
       if (leadId) {
+        // score + qualification se setean via applyPromotionRules en
+        // commit 9. Acá solo actualizamos el score base por si el
+        // promotion engine no corre (ej. sin supabase).
         await updateLeadScoring({
           leadId,
-          rating,
-          liked,
+          rating: scoreResult.score, // pasamos score como número
+          liked: scoreResult.businessDescription,
           commercialInterest: input.commercialInterest ?? null,
           consentToContact: input.consentToContact,
         });
-      } else {
-        // Sin lead linkeado todavía (caso raro: encuesta antes de check-in).
-        // El lead se va a crear/activar via promoteSurveyToLead cuando el
-        // admin corra la promotion. El score se puede re-asignar despues.
-        // eslint-disable-next-line no-console
-        console.info(
-          "[surveys-server] createSurvey post-hook: no se encontró lead linkeado a la encuesta",
-          {
-            surveyId: (data as { id: string }).id,
-            hasEmail: !!input.respondentEmail,
-            hasPhone: !!input.phoneNormalized,
-          },
-        );
+      }
+    } else {
+      // Legacy path: solo si rating 1-5 está presente
+      const rating = Number(responses.rating ?? 0);
+      if (rating >= 1 && rating <= 5) {
+        const liked = typeof responses.liked === "string" ? responses.liked : null;
+        if (leadId) {
+          await updateLeadScoring({
+            leadId,
+            rating,
+            liked,
+            commercialInterest: input.commercialInterest ?? null,
+            consentToContact: input.consentToContact,
+          });
+        }
       }
     }
+
+    if (!leadId) {
+      // Sin lead linkeado todavía (caso raro: encuesta antes de check-in).
+      // eslint-disable-next-line no-console
+      console.info(
+        "[surveys-server] createSurvey post-hook: no se encontró lead linkeado a la encuesta",
+        {
+          surveyId: (data as { id: string }).id,
+          hasEmail: !!input.respondentEmail,
+          hasPhone: !!input.phoneNormalized,
+        },
+      );
+    }
+    // Silenciar import warning
+    void calculateLeadScore;
   } catch (postHookErr) {
     // eslint-disable-next-line no-console
     console.warn(

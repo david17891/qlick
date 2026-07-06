@@ -21,6 +21,7 @@
 import { lookupSurveyToken } from "@/lib/events/survey-tokens";
 import { EncuestaClient } from "./EncuestaClient";
 import { getEventById } from "@/lib/events/events-server";
+import { getDefaultSurveyConfig } from "@/lib/events/survey-config-validator";
 
 interface PageProps {
   params: { token: string };
@@ -65,6 +66,13 @@ export default async function EncuestaPage({ params }: PageProps) {
   // Traemos el evento para mostrar nombre + fecha en el header.
   const event = await getEventById(tokenRow.event_id);
 
+  // FIX 2026-07-05 (feat/funnel-dynamic-surveys-crm, commit 8): pasamos
+  // el surveyConfig del evento (jsonb) al client. Si el evento no tiene
+  // (o falla el mapper), usamos la plantilla Default (5 preguntas).
+  // El mapper ya hace fallback automático, pero por defensa en
+  // profundidad lo verificamos acá también.
+  const surveyConfig = event?.surveyConfig ?? getDefaultSurveyConfig();
+
   return (
     <main className="min-h-screen bg-gradient-to-b from-violet-50/40 to-white px-4 py-8">
       <div className="max-w-md mx-auto space-y-4">
@@ -86,6 +94,7 @@ export default async function EncuestaPage({ params }: PageProps) {
           token={token}
           prefillEmail={tokenRow.email ?? ""}
           prefillPhone={tokenRow.phone_normalized ?? ""}
+          surveyConfig={surveyConfig}
         />
       </div>
     </main>

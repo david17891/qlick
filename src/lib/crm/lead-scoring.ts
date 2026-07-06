@@ -13,16 +13,22 @@
  *     warm  20-39
  *     hot   40-59
  *     mql   60+
- * - Max teorico = 75 con los campos actuales (rating 30 + liked 10 +
- *   commercial_interest 25 + consent 10). Subimos los thresholds un poco
- *   para que "llenar la encuesta con respuestas tibias" no promueva a MQL
- *   automaticamente — MQL requiere senales fuertes de intencion comercial.
+ *
+ * Modos soportados (feat/funnel-dynamic-surveys-crm, 2026-07-05):
+ * 1. Legacy (Fase 4): `calculateLeadScore(input)` — campos fijos
+ *    (rating, liked, commercialInterest, consent). Se mantiene para
+ *    retrocompatibilidad con encuestas ya persistidas.
+ * 2. Dinámico (Fase 7d.2): `calculateLeadScoreFromConfig(responses, config)`
+ *    — itera las preguntas del JSON de `events.survey_config`, suma
+ *    `option.score` por respuesta coincidente, y detecta flags
+ *    `isConsent`, `isCommercialInterest` e `isBusinessDescription`.
  *
  * Si en el futuro la encuesta agrega campos (budget, timeline, etc.),
- * los puntos extra se suman aquí sin tocar al consumidor.
+ * los puntos extra se suman en el modo dinámico sin tocar al consumidor.
  */
 
 import type { LeadQualification } from "@/types/crm";
+import type { SurveyConfig } from "@/types/events";
 
 export interface SurveyScoreInput {
   /** 1-5 (requerido por la encuesta). */
@@ -42,6 +48,21 @@ export interface SurveyScoreResult {
   qualification: LeadQualification;
   /** Human-readable breakdown para mostrar en el CRM (debug/admin). */
   reasons: string[];
+  /**
+   * Detectado por el modo dinámico (false en legacy o si el JSON no
+   * tiene opción con `isConsent: true`).
+   */
+  consentDetected?: boolean;
+  /**
+   * Texto del commercial interest detectado (de opción con flag
+   * `isCommercialInterest: true` o de pregunta `text` libre).
+   */
+  commercialInterestDetected?: string | null;
+  /**
+   * Descripción del negocio (de pregunta con flag
+   * `isBusinessDescription: true` y respuesta no vacía).
+   */
+  businessDescription?: string | null;
 }
 
 /**
@@ -96,6 +117,108 @@ export function calculateLeadScore(input: SurveyScoreInput): SurveyScoreResult {
   const qualification = scoreToQualification(clamped);
 
   return { score: clamped, qualification, reasons };
+}
+
+/**
+ * Modo dinámico: calcula score desde `events.survey_config` (Fase 7d.2).
+ *
+ * Itera sobre `config.questions` y para cada respuesta del usuario,
+ * busca la opción matching por `id` y suma `option.score`. Detecta
+ * automáticamente los flags `isConsent`, `isCommercialInterest` e
+ * `isBusinessDescription`.
+ *
+ * Pura — fácil de testear.
+ *
+ * @example
+ *   const result = calculateLeadScoreFromConfig(
+ *     { q1_clarity: "very_clear", q2_apply: "yes", q_consent: "yes", q_business: "Vendo café" },
+ *     surveyConfig,
+ *   );
+ *   // → score: 70, qualification: "mql", consentDetected: true, ...
+ */
+export function calculateLeadScoreFromConfig(
+  responses: Record<string, string>,
+  config: SurveyConfig,
+): SurveyScoreResult {
+  let score = 0;
+  const reasons: string[] = [];
+  let consentDetected = false;
+  let commercialInterest: string | null = null;
+  let businessDescription: string | null = null;
+
+  for (const question of config.questions) {
+    const answer = responses[question.id];
+    if (answer === undefined || answer === null || answer === "") continue;
+
+    if (question.type === "buttons") {
+      const options = question.options ?? [];
+      const matched = options.find((o) => o.id === answer);
+      if (!matched) continue;
+
+      score += matched.score;
+      if (matched.score > 0) {
+        reasons.push(`${question.text} → ${matched.title}`);
+      }
+
+      if (matched.isConsent === true) consentDetected = true;
+      if (matched.isCommercialInterest === true) {
+        commercialInterest = matched.title;
+      }
+    } else if (question.type === "text") {
+      const trimmed = answer.trim();
+      // Filtrar "saltar"/"skip" como respuestas vacías (no puntúan).
+      if (
+        trimmed.length === 0 ||
+        /^(saltar|skip|pasar|omitir|next|omit|no\s*gracias|-)$/i.test(trimmed)
+      ) {
+        continue;
+      }
+      // Texto libre con `isBusinessDescription` mapea a lead.description.
+      if (question.isBusinessDescription === true) {
+        businessDescription = trimmed.slice(0, 500);
+        // Bonus: engagement (escribió algo) = 5 pts
+        score += 5;
+        reasons.push("Contanos sobre su negocio o proyecto");
+      } else {
+        // Texto libre sin flag especial: 5 pts de engagement
+        score += 5;
+        reasons.push("Dejo un comentario libre");
+      }
+    }
+  }
+
+  const clamped = Math.max(0, Math.min(100, score));
+  const qualification = scoreToQualification(clamped);
+
+  if (consentDetected) {
+    reasons.push("Acepto seguimiento comercial");
+  }
+
+  return {
+    score: clamped,
+    qualification,
+    reasons,
+    consentDetected,
+    commercialInterestDetected: commercialInterest,
+    businessDescription,
+  };
+}
+
+/**
+ * Sustituye placeholders `{{1}}`, `{{2}}`, ... en un template con valores.
+ * Usado por el Promotion Engine para personalizar los `followUps.text`.
+ *
+ * Placeholders no encontrados se reemplazan por string vacío.
+ *
+ * Pura — fácil de testear.
+ */
+export function substituteTemplateVars(
+  text: string,
+  vars: Record<string, string>,
+): string {
+  return text.replace(/\{\{(\d+)\}\}/g, (_match, key: string) => {
+    return vars[key] ?? "";
+  });
 }
 
 /** Mapeo score → bucket. Exportado para que el UI / tests lo usen directo. */

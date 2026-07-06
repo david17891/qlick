@@ -37,6 +37,8 @@ import { DeleteRowButton } from "./_components/DeleteRowButton";
 import { DeleteSurveyButton } from "./_components/DeleteSurveyButton";
 import { SendSurveyOffersButton } from "@/components/events/SendSurveyOffersButton";
 import { formatSurveyResponses } from "@/lib/events/survey-display";
+import { SurveyEditor } from "@/components/events/SurveyEditor";
+import { getDefaultSurveyConfig } from "@/lib/events/survey-config-validator";
 
 interface Props {
   params: { id: string };
@@ -81,7 +83,8 @@ type EventDetailTab =
   | "surveys"
   | "leads"
   | "campaigns"
-  | "checkin";
+  | "checkin"
+  | "survey-editor";
 const VALID_TABS: readonly EventDetailTab[] = [
   "confirmations",
   "attendees",
@@ -89,6 +92,7 @@ const VALID_TABS: readonly EventDetailTab[] = [
   "leads",
   "campaigns",
   "checkin",
+  "survey-editor",
 ] as const;
 const DEFAULT_TAB: EventDetailTab = "confirmations";
 
@@ -242,6 +246,12 @@ export default async function AdminEventoDetailPage({
     { id: "leads", label: "Leads promovidos", icon: "🧲", count: leadsPromoted },
     { id: "campaigns", label: "Campañas", icon: "📣", count: 0 },
     { id: "checkin", label: "Check-in", icon: "📲", count: 0 },
+    {
+      id: "survey-editor",
+      label: "Editor",
+      icon: "📋",
+      count: event.surveyConfig?.questions.length ?? 0,
+    },
   ];
 
   return (
@@ -1050,6 +1060,17 @@ export default async function AdminEventoDetailPage({
           {/* Sección 6: Check-in QR (Fase 6 Hito C) */}
           {activeTab === "checkin" && (
             <CheckInTab eventId={event.id} eventTitle={event.title} eventSlug={event.slug} eventStartsAt={event.startsAt} />
+          )}
+
+          {/* Sección 7: Survey Editor (feat/funnel-dynamic-surveys-crm, commit 10) */}
+          {activeTab === "survey-editor" && (
+            <Card className="p-6">
+              <SurveyEditor
+                eventId={event.id}
+                eventTitle={event.title}
+                initialConfig={event.surveyConfig ?? getDefaultSurveyConfig()}
+              />
+            </Card>
           )}
 
           {/* Vista Pipeline (Kanban 5 columnas). Solo se renderiza cuando
