@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-05 ~17:39 (Migration `events.short_code` aplicada en prod. Vercel `NEXT_PUBLIC_*` fix aplicado en los 3 entornos (Production/Preview/Development) por agente externo — `check:supabase` pasa en local, modo `configured`. Evento de prueba `test-short-code` borrado. Scripts `regenerate-supabase-{access-token,db-password}.ps1` en `~/.mavis/skills/api-box/scripts/`. HEAD a pushear: docs + .gitignore revert (la regla `.env*` que metió el agente externo rompía `.env.example`).)
+> **Última actualización:** 2026-07-06 ~17:15 (David actualizó los permisos del PAT para incluir el scope `Workflows: Read and write`. Pusheamos la rama `feat/v0.7.3-admin-refinement` a GitHub, cherry-pickeamos los 3 commits ahead a `main` y pusheamos `main` a origin. Todos los cambios, incluyendo el workflow file `smoke.yml` y el fix de WhatsApp, están en `main` en producción. 480/480 tests verde localmente.)
 
 ---
 
@@ -21,8 +21,8 @@
 | **Production deploy ID** | (más reciente de los fixes 2026-07-04) |
 | **Production URL (auto)** | `qlick-three.vercel.app` |
 | **Branch** | `main` |
-| **Commit HEAD** | `9864a09` (`docs(sesion 2026-07-05 noche): STATUS, OPEN_ITEMS, PROJECT-LOG + memory`) |
-| **Último push** | `3c303b9..3b85898 main -> main` (5 commits esta sesión: 2 delete-modal, 1 short_code feature, 1 window-not-defined, 1 survey drift fix) |
+| **Commit HEAD** | `d904c43` (fix(funnel): link WhatsApp surveys to leads automatically) |
+| **Último push** | `c5c9b25..d904c43 main -> main` (push de los 3 commits: workflow, docs y whatsapp fix) |
 | **Commits ahead of origin** | **0** — working tree clean |
 | **Build status** | ✅ READY + PROMOTED + aliasAssigned |
 | **Build duration** | ~50s (con cache del deploy anterior) |

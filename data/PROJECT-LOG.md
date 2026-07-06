@@ -2124,3 +2124,20 @@ sustituir el ciclo con templates". Ejecuté 4 bloques sincrónicamente.
   - **PowerShell 5.1 quirks**: `-AsSecureString` para input seguro (no aparece en pantalla ni transcript). UTF-8 sin BOM. Em dashes (`—`) y curly quotes (`"`) rompen parser en `.ps1`.
   - **Credential helper de gh prioriza sobre env vars**: cuando el cache de `gh` tiene un token viejo, `git push` usa ese aunque `GH_TOKEN` sea nuevo. Workaround: `git push "https://x-access-token:$GH_TOKEN@github.com/..."` con token en URL.
 
+
+## 2026-07-06 ~17:15 - PR #6 Mergeado a main + PAT de David Resolviendo Workflows y Pusheado (v0.7.4)
+
+- **Pregunta:** David solicitó mergear PR #6 (feat/v0.7.3-admin-refinement) y luego habilitar el workflow de integración continua (`smoke.yml`), el cual fallaba por la falta del scope `Workflows` en su fine-grained PAT.
+- **Decisiones:**
+  1. **Merge de PR #6:** El PR #6 fue mergeado exitosamente a `main` via la API REST de GitHub (SHA `c5c9b25`).
+  2. **Resolución del PAT:** David actualizó los permisos de sus dos tokens activos en GitHub agregando `Workflows: Read and write` en "Repository permissions".
+  3. **Push de rama y cherry-pick:** Pusheamos la rama `feat/v0.7.3-admin-refinement` a origin (exitoso) y cherry-pickeamos los 3 commits ahead (`6442ae9`, `4faf236`, `6d97aeb`) a `main` localmente.
+  4. **Push de main:** Pusheamos local `main` directamente a origin en GitHub (HEAD `d904c43`), integrando el fix de WhatsApp y el workflow de CI a producción.
+- **Razón:** Integrar el fix de vinculación automática de WhatsApp a leads (`6d97aeb`) y activar el workflow de CI en `main` para evitar que queden ramas huérfanas y asegurar el despliegue automático en Vercel.
+- **Impacto:**
+  - `main` en GitHub está al día con HEAD `d904c43`.
+  - El fix de vinculación de WhatsApp y el workflow de CI están activos en producción.
+  - 480/480 tests unitarios pasando localmente.
+- **Trigger:** David confirmó la actualización de los permisos del PAT en la interfaz de GitHub.
+
+
