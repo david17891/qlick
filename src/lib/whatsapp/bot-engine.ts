@@ -103,6 +103,13 @@ import {
   SURVEY_BUTTON_IDS,
   type SurveyAnswers
 } from "./survey-wizard";
+import {
+  buildDynamicSurveyStep,
+  detectDynamicSurveyButton,
+} from "./survey-wizard";
+import { resolveSurveyConfig } from "../events/survey-config-validator";
+import type { SurveyQuestion, SurveyConfig } from "@/types/events";
+import type { InteractiveMessage } from "./providers/whatsapp-provider";
 import { findLatestAttendedEventForPhone } from "../events/attendees-server";
 import { markSurveyOfferSent } from "../crm/leads-server";
 
@@ -386,6 +393,33 @@ async function persistWizardSurvey(
  * (event_id, phone_normalized) o (event_id, respondent_email) para que el
  * dedupe sea a nivel DB. Ver `supabase/migrations/20260705000000_...`.
  */
+/**
+ * Carga el `survey_config` de un evento desde `events.survey_config` (jsonb).
+ *
+ * FIX 2026-07-05 (feat/funnel-dynamic-surveys-crm): agregado para soportar
+ * wizard dinámico. Si la fila no tiene config (o es inválida), devuelve
+ * null y el caller usa `getDefaultSurveyConfig()` (5 preguntas).
+ *
+ * Server-only.
+ */
+async function loadSurveyConfigForEvent(
+  supabase: SupabaseAdmin,
+  eventId: string,
+): Promise<SurveyConfig | null> {
+  try {
+    const { data, error } = await supabase
+      .from("events" as never)
+      .select("survey_config" as never)
+      .eq("id" as never, eventId)
+      .maybeSingle();
+    if (error || !data) return null;
+    const raw = (data as { survey_config: unknown }).survey_config;
+    return resolveSurveyConfig(raw);
+  } catch {
+    return null;
+  }
+}
+
 async function hasCompletedWizardSurvey(args: {
   supabase: SupabaseAdmin | null;
   eventId: string;
@@ -1310,12 +1344,19 @@ async function buildResponsePlan(args: {
   /** Estado del wizard nativo de encuesta (Fase 7d). Extraído por
    *  processInboundMessage del metadata del último outbound. Los handlers
    *  `survey_qN_*` lo usan para saber dónde quedó el wizard y continuar
-   *  desde ahi sin re-leer DB. */
+   *  desde ahi sin re-leer DB.
+   *
+   * FIX 2026-07-05 (feat/funnel-dynamic-surveys-crm): agregamos
+   * `questions?: SurveyQuestion[]` para que los handlers puedan
+   * construir el siguiente paso con `buildDynamicSurveyStep`
+   * sin re-leer DB ni asumir shape legacy (q1/q2/q3/q4 fijos).
+   * Opcional para retrocompat con metadata legacy. */
   surveyState?: {
     step: number;
     eventId: string | null;
     eventTitle: string | null;
     answers: SurveyAnswers;
+    questions?: SurveyQuestion[];
   } | null;
   /** Cliente supabase service-role. Lo pasamos para que los handlers
    *  wizard_qN_* puedan persistir (insert en event_surveys + update
@@ -1847,10 +1888,50 @@ case "interactive_event_inscribir": {
             provider.send({ to: phoneNormalized, body: alreadyBody })
         };
       }
-      // Arrancamos el wizard en Q1.
-      const q1Built = buildSurveyQ1({
-        leadName: lead.name,
-        eventTitle: evt.eventTitle
+      // Arrancamos el wizard. FIX 2026-07-05 (feat/funnel-dynamic-surveys-crm):
+      // cargamos el `survey_config` del evento (jsonb). Si está vacío o el
+      // mapper falla, usa la plantilla Default del sistema (5 preguntas).
+      // El builder dinámico `buildDynamicSurveyStep` construye el primer
+      // paso desde el config (en lugar del `buildSurveyQ1` legacy que está
+      // hardcoded a 4 preguntas fijas).
+      const surveyConfig = args.supabase
+        ? await loadSurveyConfigForEvent(args.supabase, evt.eventId).catch(
+            () => null,
+          )
+        : null;
+      const questions = surveyConfig?.questions ?? [];
+      if (questions.length === 0) {
+        // Fallback extremo: si por alguna razón no hay questions, usamos
+        // el builder Q1 legacy (best-effort, no debería pasar).
+        const q1Built = buildSurveyQ1({
+          leadName: lead.name,
+          eventTitle: evt.eventTitle
+        });
+        markSurveyOfferSent(lead.id).catch(() => {});
+        return {
+          kind: "interactive",
+          body: q1Built.text,
+          interactive: q1Built.interactive,
+          metadata: {
+            awaiting_survey_step: 1,
+            survey_event_id: evt.eventId,
+            survey_event_title: evt.eventTitle,
+            survey_answers: {},
+            survey_questions: []
+          },
+          send: () =>
+            provider.send({
+              to: phoneNormalized,
+              body: q1Built.text,
+              interactive: q1Built.interactive
+            })
+        };
+      }
+      const firstQuestion = questions[0];
+      const q1Built = buildDynamicSurveyStep({
+        eventTitle: evt.eventTitle,
+        question: firstQuestion,
+        leadName: lead.name
       });
       const q1BodyText = q1Built.text;
       // Marcamos offer como enviado para no re-ofrecer.
@@ -1865,7 +1946,8 @@ case "interactive_event_inscribir": {
           awaiting_survey_step: 1,
           survey_event_id: evt.eventId,
           survey_event_title: evt.eventTitle,
-          survey_answers: {}
+          survey_answers: {},
+          survey_questions: questions
         },
         send: () =>
           provider.send({
@@ -1908,36 +1990,69 @@ case "interactive_event_inscribir": {
         args.surveyState.step !== 1 ||
         !args.buttonId
       ) {
-        // Defensa: si llega este intent fuera de orden, mandamos un
-        // nudge en vez de tirar el flow.
         return nudgeToResendWizard(provider, phoneNormalized, lead.name);
       }
-      const detected = detectSurveyButton(args.buttonId);
-      if (!detected || detected.step !== 1) {
-        return nudgeToResendWizard(provider, phoneNormalized, lead.name);
+      // FIX 2026-07-05 (feat/funnel-dynamic-surveys-crm): si tenemos el
+      // questions[] del config dinámico, usamos `detectDynamicSurveyButton`
+      // y `buildDynamicSurveyStep`. Si no (legacy metadata sin questions),
+      // caemos al path hardcoded `detectSurveyButton` + `buildSurveyQ2`.
+      const dynamicQuestions = args.surveyState.questions;
+      let nextAnswers: SurveyAnswers;
+      let nextStepInteractiveText = "";
+      let nextStepInteractiveMsg: InteractiveMessage | undefined;
+
+      if (dynamicQuestions && dynamicQuestions.length >= 2) {
+        const detected = detectDynamicSurveyButton(args.buttonId);
+        if (
+          !detected ||
+          detected.questionId !== dynamicQuestions[0].id
+        ) {
+          return nudgeToResendWizard(provider, phoneNormalized, lead.name);
+        }
+        nextAnswers = {
+          ...args.surveyState.answers,
+          [dynamicQuestions[0].id]: detected.optionId
+        } as unknown as SurveyAnswers;
+        const q2Built = buildDynamicSurveyStep({
+          eventTitle: args.surveyState.eventTitle ?? "",
+          question: dynamicQuestions[1],
+          leadName: lead.name
+        });
+        nextStepInteractiveText = q2Built.text;
+        nextStepInteractiveMsg = q2Built.interactive;
+      } else {
+        const detected = detectSurveyButton(args.buttonId);
+        if (!detected || detected.step !== 1) {
+          return nudgeToResendWizard(provider, phoneNormalized, lead.name);
+        }
+        nextAnswers = {
+          ...args.surveyState.answers,
+          q1: detected.value as SurveyAnswers["q1"]
+        };
+        const q2Built = buildSurveyQ2();
+        nextStepInteractiveText = q2Built.text;
+        nextStepInteractiveMsg = q2Built.interactive;
       }
-      const nextAnswers: SurveyAnswers = {
-        ...args.surveyState.answers,
-        q1: detected.value as SurveyAnswers["q1"]
-      };
-      // Enviar Q2.
-      const q2 = buildSurveyQ2();
+
       return {
-        kind: "interactive",
-        body: q2.text,
-        interactive: q2.interactive,
+        kind: nextStepInteractiveMsg ? "interactive" : "text",
+        body: nextStepInteractiveText,
+        interactive: nextStepInteractiveMsg,
         metadata: {
           awaiting_survey_step: 2,
           survey_event_id: args.surveyState.eventId,
           survey_event_title: args.surveyState.eventTitle,
-          survey_answers: nextAnswers
+          survey_answers: nextAnswers,
+          survey_questions: dynamicQuestions ?? []
         },
         send: () =>
-          provider.send({
-            to: phoneNormalized,
-            body: q2.text,
-            interactive: q2.interactive
-          })
+          nextStepInteractiveMsg
+            ? provider.send({
+                to: phoneNormalized,
+                body: nextStepInteractiveText,
+                interactive: nextStepInteractiveMsg
+              })
+            : provider.send({ to: phoneNormalized, body: nextStepInteractiveText })
       };
     }
     case "survey_q2_continue": {
@@ -1948,31 +2063,60 @@ case "interactive_event_inscribir": {
       ) {
         return nudgeToResendWizard(provider, phoneNormalized, lead.name);
       }
-      const detected = detectSurveyButton(args.buttonId);
-      if (!detected || detected.step !== 2) {
-        return nudgeToResendWizard(provider, phoneNormalized, lead.name);
+      const dynamicQuestions = args.surveyState.questions;
+      let nextAnswers: SurveyAnswers;
+      let nextText = "";
+      let nextInteractive: InteractiveMessage | undefined;
+
+      if (dynamicQuestions && dynamicQuestions.length >= 3) {
+        const detected = detectDynamicSurveyButton(args.buttonId);
+        if (!detected || detected.questionId !== dynamicQuestions[1].id) {
+          return nudgeToResendWizard(provider, phoneNormalized, lead.name);
+        }
+        nextAnswers = {
+          ...args.surveyState.answers,
+          [dynamicQuestions[1].id]: detected.optionId
+        } as unknown as SurveyAnswers;
+        const q3Built = buildDynamicSurveyStep({
+          eventTitle: args.surveyState.eventTitle ?? "",
+          question: dynamicQuestions[2],
+          leadName: lead.name
+        });
+        nextText = q3Built.text;
+        nextInteractive = q3Built.interactive;
+      } else {
+        const detected = detectSurveyButton(args.buttonId);
+        if (!detected || detected.step !== 2) {
+          return nudgeToResendWizard(provider, phoneNormalized, lead.name);
+        }
+        nextAnswers = {
+          ...args.surveyState.answers,
+          q2: detected.value as SurveyAnswers["q2"]
+        };
+        const q3 = buildSurveyQ3();
+        nextText = q3.text;
+        nextInteractive = q3.interactive;
       }
-      const nextAnswers: SurveyAnswers = {
-        ...args.surveyState.answers,
-        q2: detected.value as SurveyAnswers["q2"]
-      };
-      const q3 = buildSurveyQ3();
+
       return {
-        kind: "interactive",
-        body: q3.text,
-        interactive: q3.interactive,
+        kind: nextInteractive ? "interactive" : "text",
+        body: nextText,
+        interactive: nextInteractive,
         metadata: {
           awaiting_survey_step: 3,
           survey_event_id: args.surveyState.eventId,
           survey_event_title: args.surveyState.eventTitle,
-          survey_answers: nextAnswers
+          survey_answers: nextAnswers,
+          survey_questions: dynamicQuestions ?? []
         },
         send: () =>
-          provider.send({
-            to: phoneNormalized,
-            body: q3.text,
-            interactive: q3.interactive
-          })
+          nextInteractive
+            ? provider.send({
+                to: phoneNormalized,
+                body: nextText,
+                interactive: nextInteractive
+              })
+            : provider.send({ to: phoneNormalized, body: nextText })
       };
     }
     case "survey_q3_continue": {
@@ -1983,31 +2127,60 @@ case "interactive_event_inscribir": {
       ) {
         return nudgeToResendWizard(provider, phoneNormalized, lead.name);
       }
-      const detected = detectSurveyButton(args.buttonId);
-      if (!detected || detected.step !== 3) {
-        return nudgeToResendWizard(provider, phoneNormalized, lead.name);
+      const dynamicQuestions = args.surveyState.questions;
+      let nextAnswers: SurveyAnswers;
+      let nextText = "";
+      let nextInteractive: InteractiveMessage | undefined;
+
+      if (dynamicQuestions && dynamicQuestions.length >= 4) {
+        const detected = detectDynamicSurveyButton(args.buttonId);
+        if (!detected || detected.questionId !== dynamicQuestions[2].id) {
+          return nudgeToResendWizard(provider, phoneNormalized, lead.name);
+        }
+        nextAnswers = {
+          ...args.surveyState.answers,
+          [dynamicQuestions[2].id]: detected.optionId
+        } as unknown as SurveyAnswers;
+        const q4Built = buildDynamicSurveyStep({
+          eventTitle: args.surveyState.eventTitle ?? "",
+          question: dynamicQuestions[3],
+          leadName: lead.name
+        });
+        nextText = q4Built.text;
+        nextInteractive = q4Built.interactive;
+      } else {
+        const detected = detectSurveyButton(args.buttonId);
+        if (!detected || detected.step !== 3) {
+          return nudgeToResendWizard(provider, phoneNormalized, lead.name);
+        }
+        nextAnswers = {
+          ...args.surveyState.answers,
+          q3: detected.value as SurveyAnswers["q3"]
+        };
+        const q4 = buildSurveyQ4({ leadName: lead.name });
+        nextText = q4.text;
+        nextInteractive = q4.interactive;
       }
-      const nextAnswers: SurveyAnswers = {
-        ...args.surveyState.answers,
-        q3: detected.value as SurveyAnswers["q3"]
-      };
-      const q4 = buildSurveyQ4({ leadName: lead.name });
+
       return {
-        kind: "interactive",
-        body: q4.text,
-        interactive: q4.interactive,
+        kind: nextInteractive ? "interactive" : "text",
+        body: nextText,
+        interactive: nextInteractive,
         metadata: {
           awaiting_survey_step: 4,
           survey_event_id: args.surveyState.eventId,
           survey_event_title: args.surveyState.eventTitle,
-          survey_answers: nextAnswers
+          survey_answers: nextAnswers,
+          survey_questions: dynamicQuestions ?? []
         },
         send: () =>
-          provider.send({
-            to: phoneNormalized,
-            body: q4.text,
-            interactive: q4.interactive
-          })
+          nextInteractive
+            ? provider.send({
+                to: phoneNormalized,
+                body: nextText,
+                interactive: nextInteractive
+              })
+            : provider.send({ to: phoneNormalized, body: nextText })
       };
     }
     case "survey_q4_text": {
@@ -2020,10 +2193,16 @@ case "interactive_event_inscribir": {
         return nudgeToResendWizard(provider, phoneNormalized, lead.name);
       }
       const cleanedBusiness = cleanBusinessText(body) ?? null;
+      // FIX 2026-07-05 (feat/funnel-dynamic-surveys-crm): si la 4ta
+      // pregunta es dinámica, la key en answers es el questionId, no
+      // "q4_business". Mantenemos retrocompat con legacy.
+      const dynamicQuestions = args.surveyState.questions;
+      const lastQuestion = dynamicQuestions?.[3];
+      const businessKey = lastQuestion?.id ?? "q4_business";
       const finalAnswers: SurveyAnswers = {
         ...args.surveyState.answers,
-        q4_business: cleanedBusiness ?? undefined
-      };
+        [businessKey]: cleanedBusiness ?? undefined
+      } as unknown as SurveyAnswers;
       // Insertar event_surveys row (única persistencia, Fase 7d.1 — sin
       // score ni promotion, el admin decide desde la tab Encuestas).
       await persistWizardSurvey({
@@ -2043,15 +2222,11 @@ case "interactive_event_inscribir": {
         kind: "text",
         body: thankBody,
         metadata: {
-          // Limpiamos el state del wizard — el flow terminó.
           awaiting_survey_step: null,
           survey_event_id: null,
           survey_event_title: null,
           survey_answers: null,
-          // FIX 2026-07-05: marca este último outbound como "wizard recién
-          // completado". El override 3.0 (survey_offer) lo usa para
-          // no re-ofrecer. La inyección en el prompt del LLM también lo
-          // lee para decirle "no ofrezcas la encuesta de nuevo".
+          survey_questions: [],
           survey_completed: true
         },
         send: () =>
@@ -2088,7 +2263,7 @@ case "interactive_event_inscribir": {
           survey_event_id: null,
           survey_event_title: null,
           survey_answers: null,
-          // FIX 2026-07-05: ver caso homónimo en `survey_q4_text` arriba.
+          survey_questions: [],
           survey_completed: true
         },
         send: () =>
