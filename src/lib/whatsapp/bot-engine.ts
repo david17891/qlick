@@ -107,6 +107,7 @@ import {
   buildDynamicSurveyStep,
   detectDynamicSurveyButton,
 } from "./survey-wizard";
+import { substituteTemplateVars } from "../crm/lead-scoring";
 import { resolveSurveyConfig } from "../events/survey-config-validator";
 import type { SurveyQuestion, SurveyConfig } from "@/types/events";
 import type { InteractiveMessage } from "./providers/whatsapp-provider";
@@ -2319,9 +2320,47 @@ case "interactive_event_inscribir": {
             leadName: lead.name ?? null,
             eventTitle: args.surveyState.eventTitle ?? "(sin título)",
           });
-          // TODO (commit mañana): seleccionar follow-up bucket y enviar
-          // mensaje personalizado por WhatsApp al lead + admin alert.
-          void selectFollowUpBucket(scoreResult.score);
+          // FIX 2026-07-06 (audit F6): enviar follow-up bucket al lead por
+          // WhatsApp. Antes solo se llamaba selectFollowUpBucket (void).
+          // Si el lead completó el wizard por WhatsApp, NO recibía el
+          // mensaje personalizado del bucket (mql/hot/coldWarm). Esto
+          // era asimétrico con el endpoint /api/submit-survey (que sí
+          // envía). Ahora ambos paths envían el follow-up.
+          //
+          // Cargamos el surveyConfig completo para acceder a followUps.
+          // Si falla el load, caemos al template Default.
+          const surveyConfigFull = await loadSurveyConfigForEvent(
+            args.supabase,
+            args.surveyState.eventId ?? "",
+          ).catch(() => null);
+          const followUps = surveyConfigFull?.followUps;
+          if (followUps) {
+            const bucket = selectFollowUpBucket(scoreResult.score);
+            const followUp = followUps[bucket];
+            if (followUp?.text) {
+              const personalized = substituteTemplateVars(followUp.text, {
+                "1": lead.name?.trim() || "ahí",
+              });
+              try {
+                const provider = getActiveWhatsAppProvider();
+                await provider.send({
+                  to: phoneNormalized,
+                  body: personalized,
+                });
+              } catch (whatsappErr) {
+                errorLog(
+                  "[whatsapp/bot] follow-up WhatsApp falló (encuesta persistida OK)",
+                  {
+                    leadId: lead.id,
+                    error:
+                      whatsappErr instanceof Error
+                        ? whatsappErr.message
+                        : String(whatsappErr),
+                  },
+                );
+              }
+            }
+          }
         } catch (err) {
           errorLog(
             "[whatsapp/bot] promotion engine falló (encuesta persistida OK)",

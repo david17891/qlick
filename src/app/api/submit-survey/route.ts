@@ -120,6 +120,42 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
+  // FIX 2026-07-06 (Paquete 3 — seguridad): limit de tamaño para
+  // commercialInterest y responses. Antes un atacante podía mandar
+  // 10MB de HTML o un JSON con keys arbitrarias → DoS o XSS via email
+  // admin (Brevo). Ahora clampamos antes de persistir.
+  const MAX_COMMERCIAL_INTEREST_LEN = 500;
+  const MAX_RESPONSES_KEYS = 50;
+  const MAX_RESPONSE_VALUE_LEN = 1000;
+  if (
+    commercialInterest &&
+    typeof commercialInterest === "string" &&
+    commercialInterest.length > MAX_COMMERCIAL_INTEREST_LEN
+  ) {
+    return NextResponse.json(
+      { ok: false, error: "commercialInterest demasiado largo (max 500 chars)." },
+      { status: 400 },
+    );
+  }
+  const responseKeys = Object.keys(responses);
+  if (responseKeys.length > MAX_RESPONSES_KEYS) {
+    return NextResponse.json(
+      { ok: false, error: "Demasiadas respuestas (max 50 keys)." },
+      { status: 400 },
+    );
+  }
+  for (const k of responseKeys) {
+    const v = responses[k];
+    if (typeof v === "string" && v.length > MAX_RESPONSE_VALUE_LEN) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Respuesta "${k}" demasiado larga (max 1000 chars).`,
+        },
+        { status: 400 },
+      );
+    }
+  }
 
   if (!checkSupabaseConfig().configured) {
     return NextResponse.json(
