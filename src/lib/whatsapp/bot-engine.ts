@@ -363,28 +363,21 @@ interface PersistWizardArgs {
   /**
    * Si el lead describió su negocio en la Q4, marcamos
    * consent_to_contact=true como convención: escribir de su
-   * negocio = opt-in implícito al canal comercial. El admin
-   * decide desde la tab Encuestas si promueve o no.
-   * Fase 7d.1 — tope al wizard: NUNCA auto-promovemos.
+   * negocio = opt-in implícito al canal comercial.
    */
   businessCaptured: boolean;
   // El cliente de supabase service-role. Si es null, no persistimos
   // (caso modo demo).
   supabase: SupabaseAdmin | null;
+  leadId?: string | null;
+  consentToContact?: boolean;
+  commercialInterest?: string | null;
 }
 
 /**
  * Persiste el resultado del wizard: insert a `event_surveys` con las
- * respuestas en `responses` jsonb. Esa es la ÚNICA persistencia.
- *
- * Fase 7d.1 (2026-07-05): tope al wizard. NO actualizamos leads.score /
- * leads.qualification / leads.commercial_interest, NO hacemos
- * promotion. El admin decide desde la tab Encuestas qué hacer con
- * cada respuesta.
- *
- * Si businessCaptured=true, marcamos consent_to_contact=true
- * como convención: responder con info del negocio = opt-in
- * implícito al canal comercial. El admin decide después.
+ * respuestas en `responses` jsonb, y vincula automáticamente la encuesta
+ * al lead (promoted_to_lead_id) para habilitar el flujo 100% automático.
  *
  * Retorna `{ ok, note }`. Errores se loggean y se devuelven para que
  * el caller decida si continúa con el thank-you o aborta.
@@ -399,29 +392,23 @@ async function persistWizardSurvey(
     return { ok: false, note: "No hay eventId, no se persiste la encuesta." };
   }
   try {
-    const { error: insErr } = await args.supabase
+    const { data: insData, error: insErr } = (await args.supabase
       .from("event_surveys" as never)
       .insert({
         event_id: args.eventId,
-        // Sin confirmation/attendee por ahora — la encuesta del wizard
-        // es post-asistencia pero no requiere matchear un record
-        // específico (la vista admin la agrupa por evento).
-        // FIX: si más adelante se quiere atar la encuesta al attendee,
-        //       agregar attendee_id acá.
         respondent_email: args.leadEmail,
         respondent_phone: args.phoneNormalized,
         phone_normalized: args.phoneNormalized,
         responses: args.responses as unknown as never,
-        consent_to_contact: args.businessCaptured,
-        // Fase 7d.1: NO tocamos leads.commercial_interest ni nada del
-        // lead — el admin revisa desde la tab Encuestas.
-        commercial_interest: null
-      } as never);
+        consent_to_contact: args.consentToContact ?? args.businessCaptured,
+        commercial_interest: args.commercialInterest ?? null,
+        promoted_to_lead_id: args.leadId ?? null,
+        promoted_at: args.leadId ? new Date().toISOString() : null,
+      } as never)
+      .select("id")
+      .single()) as unknown as { data: { id: string } | null; error: any };
+
     if (insErr) {
-      // FIX 2026-07-05 (Fase 7d.1): si el error es unique violation,
-      // significa que el lead ya completó la encuesta para este evento.
-      // Tratamos como OK para no spamear al usuario. El admin puede ver
-      // el row existente en la tab Encuestas.
       if (insErr.code === "23505" || /duplicate/i.test(String(insErr.message ?? ""))) {
         return { ok: true, note: "Encuesta ya existía (dedupe DB level)." };
       }
@@ -432,6 +419,32 @@ async function persistWizardSurvey(
       });
       return { ok: false, note: `DB error ${insErr.code ?? "unknown"}` };
     }
+
+    // Vincula lead ↔ survey en lead_event_links para trazabilidad completa
+    if (args.leadId && insData?.id) {
+      try {
+        const { error: linkErr } = await args.supabase
+          .from("lead_event_links" as never)
+          .insert({
+            lead_id: args.leadId,
+            event_id: args.eventId,
+            link_type: "survey",
+            link_id: insData.id,
+          } as never);
+        if (linkErr && linkErr.code !== "23505") {
+          errorLog("[whatsapp/bot] persistWizardSurvey link lead_event_links falló", {
+            code: linkErr.code,
+            leadId: args.leadId,
+            surveyId: insData.id,
+          });
+        }
+      } catch (linkErr) {
+        errorLog("[whatsapp/bot] persistWizardSurvey link threw", {
+          error: linkErr instanceof Error ? linkErr.message : String(linkErr),
+        });
+      }
+    }
+
     return { ok: true, note: "Encuesta persistida." };
   } catch (err) {
     errorLog("[whatsapp/bot] persistWizardSurvey threw", {
@@ -2291,15 +2304,35 @@ case "interactive_event_inscribir": {
         ...args.surveyState.answers,
         [businessKey]: cleanedBusiness ?? undefined
       } as unknown as SurveyAnswers;
-      // Insertar event_surveys row (única persistencia, Fase 7d.1 — sin
-      // score ni promotion, el admin decide desde la tab Encuestas).
+      // Calculate score & dynamic fields first so we can persist them correctly linked
+      let consentToContact = !!cleanedBusiness;
+      let commercialInterest: string | null = null;
+      let scoreResult: any = null;
+
+      if (args.supabase && lead.id && dynamicQuestions) {
+        try {
+          scoreResult = calculateLeadScoreFromConfig(
+            finalAnswers as unknown as Record<string, string>,
+            { questions: dynamicQuestions, followUps: undefined },
+          );
+          consentToContact = scoreResult.consentDetected ?? consentToContact;
+          commercialInterest = scoreResult.commercialInterestDetected ?? null;
+        } catch (err) {
+          errorLog("[whatsapp/bot] scoring before persist failed (text path)", { error: err });
+        }
+      }
+
+      // Insertar event_surveys row con referencia de promoción automática
       await persistWizardSurvey({
         eventId: args.surveyState.eventId,
         leadEmail: lead.email ?? null,
         phoneNormalized,
         responses: finalAnswers,
         businessCaptured: !!cleanedBusiness,
-        supabase: args.supabase ?? null
+        supabase: args.supabase ?? null,
+        leadId: lead.id,
+        consentToContact,
+        commercialInterest,
       });
 
       // FIX 2026-07-05 (feat/funnel-dynamic-surveys-crm, commit 7):
@@ -2307,12 +2340,8 @@ case "interactive_event_inscribir": {
       // reglas (status transitions + CRM tasks + notify admin).
       // Best-effort: si falla, el thank-you igual sale. NO bloqueamos
       // el flow del usuario.
-      if (args.supabase && lead.id && dynamicQuestions) {
+      if (args.supabase && lead.id && dynamicQuestions && scoreResult) {
         try {
-          const scoreResult = calculateLeadScoreFromConfig(
-            finalAnswers as unknown as Record<string, string>,
-            { questions: dynamicQuestions, followUps: undefined },
-          );
           await applyPromotionRules(lead.id, scoreResult, {
             supabase: args.supabase,
             actorEmail: "wizard-bot@qlick",
@@ -2408,6 +2437,24 @@ case "interactive_event_inscribir": {
         eventId: args.surveyState.eventId,
         answersCount: Object.keys(finalAnswers).length,
       });
+      // Calculate score & dynamic fields first so we can persist them correctly linked
+      let consentToContact = false;
+      let commercialInterest: string | null = null;
+      let scoreResult: any = null;
+
+      if (args.supabase && lead.id && dynamicQuestions) {
+        try {
+          scoreResult = calculateLeadScoreFromConfig(
+            finalAnswers as unknown as Record<string, string>,
+            { questions: dynamicQuestions, followUps: undefined },
+          );
+          consentToContact = scoreResult.consentDetected ?? consentToContact;
+          commercialInterest = scoreResult.commercialInterestDetected ?? null;
+        } catch (err) {
+          errorLog("[whatsapp/bot] scoring before persist failed (skip path)", { error: err });
+        }
+      }
+
       // Insertar event_surveys row (sin business).
       await persistWizardSurvey({
         eventId: args.surveyState.eventId,
@@ -2415,17 +2462,16 @@ case "interactive_event_inscribir": {
         phoneNormalized,
         responses: finalAnswers,
         businessCaptured: false,
-        supabase: args.supabase ?? null
+        supabase: args.supabase ?? null,
+        leadId: lead.id,
+        consentToContact,
+        commercialInterest,
       });
 
       // FIX 2026-07-05 (feat/funnel-dynamic-surveys-crm, commit 7):
       // Promotion Engine — idem al path de Q4 text. Aplica score + reglas.
-      if (args.supabase && lead.id && dynamicQuestions) {
+      if (args.supabase && lead.id && dynamicQuestions && scoreResult) {
         try {
-          const scoreResult = calculateLeadScoreFromConfig(
-            finalAnswers as unknown as Record<string, string>,
-            { questions: dynamicQuestions, followUps: undefined },
-          );
           await applyPromotionRules(lead.id, scoreResult, {
             supabase: args.supabase,
             actorEmail: "wizard-bot@qlick",

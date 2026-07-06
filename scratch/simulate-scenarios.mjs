@@ -304,7 +304,7 @@ async function runScenario(scenario) {
   }
   ok(`Attendee creado: id=${attendee.id}`);
 
-  // 2.3 Insertar event_surveys con respuestas del escenario
+  // 2.3 Insertar event_surveys con respuestas del escenario (vinculada al lead)
   step(`Insertar event_surveys con respuestas del escenario`);
   const surveyResponses = {
     ...scenario.responses,
@@ -322,6 +322,8 @@ async function runScenario(scenario) {
       responses: surveyResponses,
       consent_to_contact: scenario.responses.q3_consent === "yes",
       commercial_interest: scenario.commercialInterest,
+      promoted_to_lead_id: lead.id,
+      promoted_at: new Date().toISOString(),
     })
     .select("*")
     .single();
@@ -331,6 +333,19 @@ async function runScenario(scenario) {
   }
   ok(`Survey creada: id=${survey.id}`);
   info(`responses: ${JSON.stringify(survey.responses)}`);
+
+  // Crear link lead ↔ survey en lead_event_links
+  const { error: linkErr } = await supabase.from("lead_event_links").insert({
+    lead_id: lead.id,
+    event_id: event.id,
+    link_type: "survey",
+    link_id: survey.id,
+  });
+  if (linkErr) {
+    fail(`No se pudo crear link en lead_event_links: ${linkErr.message}`);
+    return false;
+  }
+  ok(`Link en lead_event_links creado para la survey`);
 
   // 2.4 Calcular score con calculateLeadScoreFromConfig
   step(`Calcular score con calculateLeadScoreFromConfig`);
@@ -497,21 +512,21 @@ async function runScenario(scenario) {
     info(`último audit: action=${audits[0].action} actor=${audits[0].actor_email}`);
   }
 
-  if (scenario.expectedAdminNotified) {
+  if (scenario.expectedStatus !== null) {
     try {
       assert.ok((audits?.length ?? 0) >= 1, "M5 esperaba audit entry");
-      const hot = audits.find((a) => a.action === "lead_hot_promotion");
-      assert.ok(hot, "M5 esperaba action='lead_hot_promotion'");
-      assert.equal(hot.metadata?.score, scenario.expectedScore, "M5 audit metadata.score");
-      assert.equal(hot.metadata?.newStatus, scenario.expectedStatus, "M5 audit metadata.newStatus");
-      assert.equal(hot.metadata?.leadName, name, "M5 audit metadata.leadName");
-      ok(`M5 admin_audit_log: action=lead_hot_promotion score=${hot.metadata.score} newStatus=${hot.metadata.newStatus}`);
+      const promo = audits.find((a) => a.action === "lead_promoted");
+      assert.ok(promo, "M5 esperaba action='lead_promoted'");
+      assert.equal(promo.metadata?.score, scenario.expectedScore, "M5 audit metadata.score");
+      assert.equal(promo.metadata?.newStatus, scenario.expectedStatus, "M5 audit metadata.newStatus");
+      assert.equal(promo.metadata?.leadName, name, "M5 audit metadata.leadName");
+      ok(`M5 admin_audit_log: action=lead_promoted score=${promo.metadata.score} newStatus=${promo.metadata.newStatus}`);
     } catch (e) {
       fail(e.message, { audits: audits?.slice(0, 2) });
     }
   } else {
     try {
-      assert.equal(audits?.length ?? 0, 0, `Hot/Cold: no debería haber audit entry`);
+      assert.equal(audits?.length ?? 0, 0, `Cold: no debería haber audit entry`);
       ok(`M5 admin_audit_log: ninguna entry (correcto)`);
     } catch (e) {
       fail(e.message, { count: audits?.length ?? 0 });
