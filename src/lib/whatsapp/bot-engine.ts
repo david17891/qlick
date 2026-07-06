@@ -100,6 +100,8 @@ import {
   detectSurveyButton,
   cleanBusinessText,
   isSurveySkip,
+  synthesizeSurveyOptionFromText,
+  buildDynamicButtonIdFromOption,
   SURVEY_BUTTON_IDS,
   type SurveyAnswers
 } from "./survey-wizard";
@@ -3210,7 +3212,20 @@ export async function processInboundMessage(
       survey_event_id?: string | null;
       survey_event_title?: string | null;
       survey_answers?: SurveyAnswers | null;
+      // FIX 2026-07-06 (audit G-15): survey_questions para que el
+      // fallback text→buttonId del wizard pueda construir el buttonId
+      // en formato dinámico (e.g. "survey_q1_clarity_very_clear") y
+      // matchear contra detectDynamicSurveyButton en el handler.
+      survey_questions?: SurveyQuestion[] | null;
     } | null) ?? null;
+
+  debugLog("[whatsapp/bot] wizardStateGlobal loaded", {
+    hasLastOutbound: !!lastOutboundGlobal,
+    lastOutboundId: lastOutboundGlobal?.id,
+    awaitingSurveyStep: wizardStateGlobal?.awaiting_survey_step,
+    surveyEventId: wizardStateGlobal?.survey_event_id,
+    hasSurveyQuestions: !!wizardStateGlobal?.survey_questions,
+  });
 
   if (message.buttonId) {
     if (message.buttonId === "evt_yes_next" || message.buttonId.startsWith("evt_yes_")) {
@@ -3421,6 +3436,71 @@ export async function processInboundMessage(
       // (Esto se hace más abajo en la sección 4 via intent != question,
       // pero como ahora SÍ es interactive_event_inscribir, ya queda
       // cubierto por el bloque existente.)
+    } else if (
+      // FIX 2026-07-06 (audit G-15, "Muy claro no avanza wizard"): Meta
+      // a veces NO manda el buttonId en el webhook del segundo click
+      // (dedupe, formato, retry, button reply reentrega). El lead
+      // seleccionó "Muy claro" en el botón de Q1, pero llega como TEXTO
+      // sin buttonId. Sin este fallback, el intent cae a "question" y
+      // el LLM responde con un mensaje libre efusivo que rompe el flow
+      // del survey (no se persiste `event_surveys`, no corre promotion
+      // engine, no se promueve el lead).
+      //
+      // Helper `synthesizeSurveyButtonFromText` matchea regex contra
+      // respuestas esperadas de Q1/Q2/Q3 y retorna el buttonId
+      // equivalente. Step=4 (texto libre) NO aplica — ese path está
+      // cubierto por el override 3.0 más abajo.
+      !message.buttonId &&
+      wizardStep !== null &&
+      wizardStep >= 1 &&
+      wizardStep <= 4 &&
+      body
+    ) {
+      const synthOption = synthesizeSurveyOptionFromText(body, wizardStep);
+      if (synthOption) {
+        // Construimos el buttonId en formato DINÁMICO
+        // (`survey_<questionId>_<optionId>`) si el wizard state trae el
+        // survey_questions del config. Esto es necesario porque el handler
+        // `survey_q1_continue` usa `detectDynamicSurveyButton` que requiere
+        // el formato con questionId completo (e.g. "q1_clarity"), NO el
+        // formato legacy corto (e.g. "q1"). Sin este mapeo, el handler
+        // cae al nudgeToResendWizard ("clic fuera de orden").
+        const dynamicQuestions = wizardStateGlobal?.survey_questions;
+        const dynamicButtonId = dynamicQuestions
+          ? buildDynamicButtonIdFromOption(synthOption.optionTitle, dynamicQuestions, wizardStep)
+          : null;
+        // Fallback al formato legacy si el config no tiene la pregunta
+        // (ej. evento sin dynamicQuestions cargado en metadata).
+        message.buttonId = dynamicButtonId ?? synthOption.legacyButtonId;
+        // Step=4 tiene dos paths: text libre (q_business) o buttons
+        // (q_consent). "Saltar" → q4_skip. "Sí"/"No" en q_consent es
+        // opcional y delega al LLM (q_consent no tiene handler dedicado
+        // porque es un button normal que el lead clickearía).
+        if (wizardStep === 4 && synthOption.legacyButtonId === SURVEY_BUTTON_IDS.q4_skip) {
+          intent = "survey_q4_skip";
+        } else if (wizardStep === 4) {
+          // q_consent Sí/No: opcional. Dejamos que el LLM responda.
+          intent = detectIntent(body, isFirstMessage);
+        } else {
+          intent =
+            wizardStep === 1
+              ? "survey_q1_continue"
+              : wizardStep === 2
+                ? "survey_q2_continue"
+                : "survey_q3_continue";
+        }
+        debugLog("[whatsapp/bot] survey text→buttonId synth (Meta no mandó buttonId)", {
+          step: wizardStep,
+          body: body.trim().slice(0, 80),
+          synth: message.buttonId,
+          usedDynamic: !!dynamicButtonId,
+          intent
+        });
+      } else {
+        // Body no matchea ninguna respuesta esperada del step actual.
+        // Caemos al detectIntent (LLM) como antes.
+        intent = detectIntent(body, isFirstMessage);
+      }
     } else {
       intent = detectIntent(body, isFirstMessage);
     }
@@ -4291,7 +4371,13 @@ export async function processInboundMessage(
     // el buttonId para que handlers como interactive_event_yes puedan
     // extraer el slug del evento cuando el lead selecciona uno especifico
     // de un button o list message.
-    buttonId,
+    //
+    // FIX 2026-07-06 (audit G-15): leemos `message.buttonId` (no la
+    // variable local `buttonId` que se extrajo arriba al inicio). El
+    // fallback text→buttonId synth del wizard puede mutar `message.buttonId`
+    // después del extract inicial, y necesitamos que el handler del wizard
+    // reciba el buttonId sintetizado.
+    buttonId: message.buttonId ?? null,
     // FIX 2026-07-02 (sesion David, "Si tras pregunta cerrada"): pasamos
     // el slug del evento cuando el handler `interactive_event_inscribir`
     // se invoca desde un affirmative corto tras una pregunta cerrada
@@ -4310,7 +4396,17 @@ export async function processInboundMessage(
           eventId: wizardStateGlobal.survey_event_id ?? null,
           eventTitle: wizardStateGlobal.survey_event_title ?? null,
           answers:
-            (wizardStateGlobal.survey_answers as SurveyAnswers | null) ?? {}
+            (wizardStateGlobal.survey_answers as SurveyAnswers | null) ?? {},
+          // FIX 2026-07-06 (audit G-15): pasamos `questions` del survey
+          // config para que el handler `survey_qN_continue` pueda usar
+          // `detectDynamicSurveyButton(buttonId, validQuestionIds)`. Sin
+          // esto, el handler cae al path legacy `detectSurveyButton` que
+          // solo conoce los IDs hardcoded cortos (e.g. "survey_q1_"),
+          // y rechaza el buttonId dinámico `survey_q1_clarity_very_clear`
+          // que sintetiza el fallback text→buttonId.
+          questions:
+            (wizardStateGlobal.survey_questions as SurveyQuestion[] | null | undefined) ??
+            undefined
         }
       : null,
     supabase

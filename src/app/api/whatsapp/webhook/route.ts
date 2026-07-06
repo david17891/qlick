@@ -246,7 +246,15 @@ async function persistInboundIfPossible(
         whatsapp_message_id: msg.messageId,
         metadata: {
           timestamp: msg.timestamp,
-          contactName: msg.contactName
+          contactName: msg.contactName,
+          // FIX 2026-07-06 (audit G-15): persistimos el buttonId del
+          // webhook de Meta en metadata del inbound. Esto permite
+          // auditar si Meta dejó de mandar el buttonId (dedupe, formato,
+          // retry) y causó que el wizard de encuesta no avanzara. Si
+          // vemos muchos inbounds con `body` de tipo botón pero
+          // `metadata.buttonId` ausente, sabemos que Meta cambió el
+          // contrato o hay un problema en su pipeline.
+          ...(msg.buttonId ? { buttonId: msg.buttonId } : {}),
         }
       } as never,
       { onConflict: "whatsapp_message_id", ignoreDuplicates: true } as never

@@ -451,3 +451,134 @@ export function detectDynamicSurveyButton(
   if (!questionId || !optionId) return null;
   return { questionId, optionId };
 }
+
+/**
+ * FIX 2026-07-06 (audit G-15, "Muy claro no avanza wizard"): Meta a
+ * veces NO manda el buttonId en el webhook del segundo click (dedupe,
+ * formato, retry, button reply reentrega). El lead seleccionó "Muy
+ * claro" en el botón de Q1, pero llega como TEXTO sin buttonId. Sin
+ * este fallback, el intent cae a "question" y el LLM responde con un
+ * mensaje libre efusivo que rompe el flow del survey (no se persiste
+ * `event_surveys`, no corre promotion engine, no se promueve el lead).
+ *
+ * Helper principal: identifica QUÉ option del wizard está intentando
+ * responder el lead (independiente del formato del buttonId). Devuelve
+ * `{ legacyButtonId, optionTitle }` para que el caller pueda construir
+ * el buttonId en formato legacy O dinámico según corresponda.
+ *
+ * @param body Texto crudo del inbound (trim antes de pasar).
+ * @param step Step actual del wizard (1, 2 o 3).
+ * @returns { legacyButtonId, optionTitle } si matchea, o null.
+ */
+export function synthesizeSurveyOptionFromText(
+  body: string,
+  step: number,
+): { legacyButtonId: string; optionTitle: string } | null {
+  if (!body) return null;
+  const b = body.trim().toLowerCase();
+  if (!b) return null;
+  if (step === 1) {
+    if (/^muy\s*claro$|^muy$/i.test(b)) {
+      return { legacyButtonId: SURVEY_BUTTON_IDS.q1_very_clear, optionTitle: "Muy claro" };
+    }
+    if (/^claro$/i.test(b)) {
+      return { legacyButtonId: SURVEY_BUTTON_IDS.q1_clear, optionTitle: "Claro" };
+    }
+    if (/^confuso$/i.test(b)) {
+      return { legacyButtonId: SURVEY_BUTTON_IDS.q1_confusing, optionTitle: "Confuso" };
+    }
+    return null;
+  }
+  if (step === 2) {
+    if (/^(s[ií]|claro\s*que\s*s[ií]|por\s*supuesto|desde\s+luego)$/i.test(b)) {
+      return { legacyButtonId: SURVEY_BUTTON_IDS.q2_yes, optionTitle: "Sí" };
+    }
+    if (/^(tal\s*vez|quiz[aá]s|depende)$/i.test(b)) {
+      return { legacyButtonId: SURVEY_BUTTON_IDS.q2_maybe, optionTitle: "Tal vez" };
+    }
+    if (/^no$/i.test(b)) {
+      return { legacyButtonId: SURVEY_BUTTON_IDS.q2_no, optionTitle: "No" };
+    }
+    return null;
+  }
+  if (step === 3) {
+    if (/^(facebook|ig|instagram|meta|fb)$/i.test(b)) {
+      return { legacyButtonId: SURVEY_BUTTON_IDS.q3_meta, optionTitle: "Facebook-IG" };
+    }
+    if (/^(referido|amigo|recomendaci[oó]n)$/i.test(b)) {
+      return { legacyButtonId: SURVEY_BUTTON_IDS.q3_referred, optionTitle: "Referido" };
+    }
+    if (/^otro$/i.test(b)) {
+      return { legacyButtonId: SURVEY_BUTTON_IDS.q3_other, optionTitle: "Otro" };
+    }
+    return null;
+  }
+  if (step === 4) {
+    // Q4 puede ser texto libre (q_business) o botones de consent
+    // (q_consent "Sí"/"No"). "Saltar" se mapea al botón explícito
+    // de skip, presente en preguntas tipo text.
+    if (/^saltar$/i.test(b)) {
+      return { legacyButtonId: SURVEY_BUTTON_IDS.q4_skip, optionTitle: "Saltar" };
+    }
+    if (/^(s[ií]|claro\s*que\s*s[ií]|por\s*supuesto|desde\s+luego)$/i.test(b)) {
+      return { legacyButtonId: "survey_q_consent_yes", optionTitle: "Sí" };
+    }
+    if (/^no$/i.test(b)) {
+      return { legacyButtonId: "survey_q_consent_no", optionTitle: "No" };
+    }
+    return null;
+  }
+  return null;
+}
+
+/**
+ * Backward-compatible wrapper. Devuelve el buttonId en formato legacy
+ * (`SURVEY_BUTTON_IDS.q1_very_clear`). Útil para tests unitarios que
+ * no necesitan construir el formato dinámico. Para el flow de
+ * producción en el bot engine, usar `synthesizeSurveyOptionFromText` +
+ * el helper `buildDynamicButtonIdFromOption` que sí respeta el formato
+ * dinámico del survey config.
+ *
+ * @deprecated Usar `synthesizeSurveyOptionFromText` en código de prod.
+ */
+export function synthesizeSurveyButtonFromText(
+  body: string,
+  step: number,
+): string | null {
+  const opt = synthesizeSurveyOptionFromText(body, step);
+  return opt ? opt.legacyButtonId : null;
+}
+
+/**
+ * FIX 2026-07-06 (audit G-15, follow-up): dado un optionTitle (texto
+ * del botón que el lead seleccionó) Y el set de dynamicQuestions del
+ * survey config del evento, construye el buttonId en formato dinámico
+ * (`survey_<questionId>_<optionId>`). Esto es necesario porque el
+ * handler del wizard (`survey_q1_continue`) usa
+ * `detectDynamicSurveyButton(buttonId, validQuestionIds)` que requiere
+ * el formato con questionId completo (e.g. "q1_clarity"), NO el
+ * formato legacy "q1".
+ *
+ * Match por `option.title` (case-insensitive, trim). Si no matchea,
+ * devuelve null (caller decide qué hacer).
+ */
+export function buildDynamicButtonIdFromOption(
+  optionTitle: string,
+  dynamicQuestions: ReadonlyArray<{
+    id: string;
+    options?: Array<{ id: string; title: string }>;
+  }>,
+  step: number,
+): string | null {
+  if (!optionTitle) return null;
+  const target = optionTitle.trim().toLowerCase();
+  if (!target) return null;
+  const q = dynamicQuestions[step - 1];
+  if (!q || !Array.isArray(q.options)) return null;
+  for (const o of q.options) {
+    if (o.title && o.title.trim().toLowerCase() === target) {
+      return `survey_${q.id}_${o.id}`;
+    }
+  }
+  return null;
+}
