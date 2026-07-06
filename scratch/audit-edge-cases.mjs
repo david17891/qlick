@@ -326,6 +326,82 @@ if (leadNoConsent) {
   }
 }
 
+// 2.5b — Bug del screenshot David: cross-event survey offer
+// FIX 2026-07-06: el bot-engine NO debe ofrecer encuesta de un evento
+// viejo (check-in reciente) si el lead está ACTIVAMENTE inscribiéndose
+// a otro evento (event_confirmation reciente <24h).
+step("FIX screenshot: cross-event survey offer skipped");
+const phoneCross = `+5255553${RUN_ID.slice(-6)}`;
+const emailCross = `audit-cross+${RUN_ID}@example.com`;
+// 1. Lead con status=event_attended (simula que ya hizo check-in en evento viejo)
+const { data: leadCross } = await supabase
+  .from("leads")
+  .insert({
+    name: "Cross Event", email: emailCross, phone: phoneCross,
+    phone_normalized: phoneCross, source: "event",
+    intent: "course_information", status: "event_attended",
+    consent_to_contact: true,
+    tags: [`event:${EVENT_SLUG}`],
+  })
+  .select("id, status").single();
+if (leadCross) {
+  // 2. Confirmation reciente a OTRO evento (simula inscripción activa)
+  const { error: confErr } = await supabase
+    .from("event_confirmations")
+    .insert({
+      event_id: event.id,
+      name: "Cross Event",
+      email: emailCross,
+      phone_raw: phoneCross,
+      phone_normalized: phoneCross,
+      source: "whatsapp_bot",
+      confirmed_at: new Date().toISOString(),
+    })
+    .select("id").single();
+  if (confErr) {
+    fail(`Insert confirmation cross-event falló: ${confErr.code}`);
+  } else {
+    ok("Setup cross-event: lead en event_attended + confirmation reciente");
+    // Verificamos que el query del bot-engine encontraría la confirmation
+    const { data: recentConf } = await supabase
+      .from("event_confirmations")
+      .select("id, confirmed_at")
+      .eq("phone_normalized", phoneCross)
+      .gte("confirmed_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+      .limit(1)
+      .maybeSingle();
+    if (recentConf) {
+      ok("Bot-engine encontraría confirmation reciente → SKIP del survey_offer (FIX activo)");
+    } else {
+      fail("Bot-engine NO encontraría confirmation reciente → survey_offer seguiría disparándose");
+    }
+  }
+}
+
+// 2.5c — FIX attendees-server: filtro ends_at reciente
+step("FIX attendees-server: findLatestAttendedEventForPhone filtra ends_at");
+const attendeesSrc = readFileSync(
+  join(ROOT, "src/lib/events/attendees-server.ts"), "utf8",
+);
+const hasEndsAtFilter = /ends_at.*cutoff|SURVEY_OFFER_EVENT_TTL_HOURS/.test(attendeesSrc);
+if (hasEndsAtFilter) {
+  ok("findLatestAttendedEventForPhone filtra ends_at reciente (FIX activo)");
+} else {
+  fail("findLatestAttendedEventForPhone NO filtra ends_at — survey_offer puede ser de evento viejo");
+}
+
+// 2.5d — FIX bot-engine: skip survey_offer si hay flow activo
+step("FIX bot-engine: skip survey_offer con confirmation reciente");
+const botEngineSrc = readFileSync(
+  join(ROOT, "src/lib/whatsapp/bot-engine.ts"), "utf8",
+);
+const hasFlowSkip = /survey_offer skipped: lead tiene confirmation reciente/.test(botEngineSrc);
+if (hasFlowSkip) {
+  ok("bot-engine skipea survey_offer si lead tiene confirmation reciente <24h");
+} else {
+  fail("bot-engine NO skipea survey_offer — bug cross-event persiste");
+}
+
 // ─────────────────────────────────────────────────────────────
 // PILAR 3: RLS + Auth verification
 // ─────────────────────────────────────────────────────────────

@@ -3062,6 +3062,13 @@ export async function processInboundMessage(
   // y el bot mandaba "gracias por llegar y asistir [a ningún evento]".
   // Gateamos con un lookup de `findLatestAttendedEventForPhone` — si no
   // hay evento válido para ofrecer la encuesta, NO overridear.
+  //
+  // FIX 2026-07-06 (QA funnel-audit, bug del screenshot David):
+  // si el lead está ACTIVAMENTE inscribiéndose a otro evento (tiene
+  // `event_confirmation` reciente <24h), NO ofrecer encuesta de un
+  // evento viejo. Esto evita el cruce de eventos donde David se inscribe
+  // a Masterclass Funnels 2026 y el bot le ofrece encuesta de
+  // "Venderle Hielo a un Pingüino".
   if (
     !message.buttonId &&
     lead.status === "event_attended" &&
@@ -3070,33 +3077,58 @@ export async function processInboundMessage(
       wizardStateGlobal?.awaiting_survey_step === undefined) &&
     !lastSurveyCompleted
   ) {
-    const currentAttendedEvent = await findLatestAttendedEventForPhone(
-      phoneNormalized
-    ).catch(() => null);
-    if (currentAttendedEvent) {
-      intent = "survey_offer";
+    // FIX 2026-07-06: si el lead tiene una confirmación reciente a OTRO
+    // evento (inscripción activa), no ofrecer encuesta del evento viejo.
+    const recentConfirmation = supabase
+      ? await supabase
+          .from("event_confirmations" as never)
+          .select("id, event_id, confirmed_at" as never)
+          .eq("phone_normalized" as never, phoneNormalized)
+          .gte(
+            "confirmed_at" as never,
+            new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+          )
+          .order("confirmed_at" as never, { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      : { data: null, error: null };
+    if (recentConfirmation?.data) {
+      debugLog(
+        "[whatsapp/bot] survey_offer skipped: lead tiene confirmation reciente (flow activo)",
+        {
+          leadId: lead.id,
+          confirmationId: (recentConfirmation.data as { id: string }).id,
+        },
+      );
     } else {
-      // FIX 2026-07-05: drift defensivo. Lead status quedó colgado en
-      // "event_attended" pero no hay attendee row (evento borrado / data
-      // inconsistency). Limpiamos el status a "contactado" best-effort
-      // para que futuros mensajes NO re-intenten este override.
-      if (supabase && lead.id) {
-        const { error: statusResetErr } = await supabase
-          .from("leads")
-          .update({ status: "contacted" })
-          .eq("id", lead.id);
-        if (statusResetErr) {
-          errorLog(
-            "[whatsapp/bot] survey_offer drift: reset lead.status a contacted falló",
-            { leadId: lead.id, code: (statusResetErr as { code?: string }).code }
-          );
-        } else {
-          debugLog(
-            "[whatsapp/bot] survey_offer drift: lead.status colgado en event_attended sin attendee row — reseteado a contacted",
-            { leadId: lead.id }
-          );
-          // Actualizamos el lead en memoria para el resto del flow.
-          lead.status = "contacted";
+      const currentAttendedEvent = await findLatestAttendedEventForPhone(
+        phoneNormalized
+      ).catch(() => null);
+      if (currentAttendedEvent) {
+        intent = "survey_offer";
+      } else {
+        // FIX 2026-07-05: drift defensivo. Lead status quedó colgado en
+        // "event_attended" pero no hay attendee row (evento borrado / data
+        // inconsistency). Limpiamos el status a "contactado" best-effort
+        // para que futuros mensajes NO re-intenten este override.
+        if (supabase && lead.id) {
+          const { error: statusResetErr } = await supabase
+            .from("leads")
+            .update({ status: "contacted" })
+            .eq("id", lead.id);
+          if (statusResetErr) {
+            errorLog(
+              "[whatsapp/bot] survey_offer drift: reset lead.status a contacted falló",
+              { leadId: lead.id, code: (statusResetErr as { code?: string }).code }
+            );
+          } else {
+            debugLog(
+              "[whatsapp/bot] survey_offer drift: lead.status colgado en event_attended sin attendee row — reseteado a contacted",
+              { leadId: lead.id }
+            );
+            // Actualizamos el lead en memoria para el resto del flow.
+            lead.status = "contacted";
+          }
         }
       }
     }

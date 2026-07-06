@@ -437,21 +437,34 @@ export interface LatestAttendedEventInfo {
  *
  * Devuelve `null` si el telefono no tiene check-ins (caso raro — el
  * status event_attended pudo haber sido seteado por otro path).
+ *
+ * FIX 2026-07-06 (bug reportado por David en sesion nocturna):
+ * filtrar por eventos cuyo `ends_at` sea reciente (últimas 72h).
+ * Sin este filtro, si el lead tiene check-in en evento viejo (terminó
+ * hace semanas) y se inscribe a evento nuevo, el bot le ofrece la
+ * encuesta del evento viejo en vez del nuevo. El check de 72h alinea
+ * con la ventana del cron de recordatorios (WINDOW_HOURS_BACK = 4h,
+ * drift ±1h → ~24h, pero dejamos 72h para holgura).
  */
+const SURVEY_OFFER_EVENT_TTL_HOURS = 72;
 export async function findLatestAttendedEventForPhone(
   phoneNormalized: string | null | undefined,
 ): Promise<LatestAttendedEventInfo | null> {
   if (!isRealMode() || !phoneNormalized) return null;
   const supabase = createSupabaseAdminClient();
+  const cutoffIso = new Date(
+    Date.now() - SURVEY_OFFER_EVENT_TTL_HOURS * 60 * 60 * 1000,
+  ).toISOString();
   const { data, error } = await supabase
     .from("event_attendees")
     .select(
       `
       checked_in_at,
-      event:events (id, slug, title)
+      event:events (id, slug, title, ends_at)
     `,
     )
     .eq("phone_normalized", phoneNormalized)
+    .gte("event.ends_at", cutoffIso)
     .order("checked_in_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -459,8 +472,8 @@ export async function findLatestAttendedEventForPhone(
   const row = data as {
     checked_in_at: string | null;
     event:
-      | { id: string; slug: string; title: string }
-      | Array<{ id: string; slug: string; title: string }>
+      | { id: string; slug: string; title: string; ends_at: string | null }
+      | Array<{ id: string; slug: string; title: string; ends_at: string | null }>
       | null;
   };
   const evRaw = row.event;
