@@ -2365,4 +2365,34 @@ sustituir el ciclo con templates". Ejecuté 4 bloques sincrónicamente.
   WhatsApp que no aparezca en la DB.
 - **Commit:** 8f7e60b en main. Por pushear.
 
+
+## 2026-07-06 ~15:15 - Fix copy: español mexicano en bot WhatsApp y emails (voseo/rioplatense → neutro MX)
+
+- **Pregunta:** David reportó (sesión 2026-07-06 ~15:10, screenshot 1783375811558 + 1783375811607) que el bot WhatsApp usaba "contanos" (q_business prompt) y "escribinos por acá" (thank-you), más otras formas voseo/rioplatenses ("querés", "tenés", "podés", "necesitás", "decí", "mandá", "tocá", "Disculpá", "respondé"). En México no se dicen, suenan argentino/uruguayo.
+- **Decisión:** Reemplazar TODAS las formas voseo/rioplatenses en copy que el lead o asistente recibe vía WhatsApp bot outbound o email transaccional. Scope limitado al bot+email — NO toqué páginas web admin/student (UI surface separada, David puede pedir consistencia después).
+- **Mappings aplicados:**
+  - "querés" → "quieres" (voseo → tuteo)
+  - "tenés", "podés", "necesitás" → "tienes", "puedes", "necesitas"
+  - "decí", "respondé", "tocate" → "di", "responde", "toca"
+  - "mandá", "mandame" → "manda", "mándame" (sin voseo)
+  - "tocá", "pasá", "enviá" → "toca", "pasa", "envía"
+  - "Disculpá", "Reformulá" → "Disculpa", "Reformula"
+  - "escribinos" → "escríbenos"
+  - "contanos" → "cuéntanos"
+  - "por acá" → "por aquí"
+- **Archivos (8):**
+  - src/lib/whatsapp/survey-wizard.ts (q_business + thank-you — los dos textos del screenshot)
+  - src/lib/whatsapp/bot-engine.ts (6 mensajes fallback/outbound)
+  - src/lib/whatsapp/survey-messages.ts (decline message)
+  - src/lib/cron/survey-reminders.ts (recordatorio post-evento)
+  - src/lib/data/crm-data.ts (duplicado fallback — sincronizado)
+  - src/lib/email/templates/event-reminder.ts (recordatorio evento)
+  - src/lib/email/templates/event-qr-pass.ts (QR del evento)
+  - src/lib/email/templates/survey-with-consent.ts (notif admin nuevo lead)
+- **Pendiente (no incluido):** páginas web admin/student tienen copy voseo similar (StudentLoginCard.tsx:78, LessonView.tsx:102, inscripcion/[slug]/page.tsx:200, check-in/[token]/CheckInClient.tsx:218, ConfirmDeleteEventModal.tsx:79, StaffLinksPanel.tsx:179, ImportWizard.tsx:282, etc.). Si David quiere consistencia full, abrir issue aparte.
+- **Tests:** sin tests nuevos (no hay assertions sobre copy específico del bot en unit tests). 535/535 verde.
+- **Validación:** type-check ✓, lint ✓ (0 warnings), 535/535 tests ✓, build ✓.
+- **Impacto:** El bot y los emails al lead ahora suenan mexicanos. La consistencia entre el bot WhatsApp y los emails transaccionales está lograda para este surface.
+- **Commit:** aef120f en main. Por pushear.
+
 `
