@@ -110,6 +110,13 @@ import {
 import { resolveSurveyConfig } from "../events/survey-config-validator";
 import type { SurveyQuestion, SurveyConfig } from "@/types/events";
 import type { InteractiveMessage } from "./providers/whatsapp-provider";
+import {
+  applyPromotionRules,
+  selectFollowUpBucket,
+} from "../crm/promotion-engine";
+import {
+  calculateLeadScoreFromConfig,
+} from "../crm/lead-scoring";
 import { findLatestAttendedEventForPhone } from "../events/attendees-server";
 import { markSurveyOfferSent } from "../crm/leads-server";
 
@@ -2213,6 +2220,38 @@ case "interactive_event_inscribir": {
         businessCaptured: !!cleanedBusiness,
         supabase: args.supabase ?? null
       });
+
+      // FIX 2026-07-05 (feat/funnel-dynamic-surveys-crm, commit 7):
+      // Promotion Engine — calcula score con config dinámico + aplica
+      // reglas (status transitions + CRM tasks + notify admin).
+      // Best-effort: si falla, el thank-you igual sale. NO bloqueamos
+      // el flow del usuario.
+      if (args.supabase && lead.id && dynamicQuestions) {
+        try {
+          const scoreResult = calculateLeadScoreFromConfig(
+            finalAnswers as unknown as Record<string, string>,
+            { questions: dynamicQuestions, followUps: undefined },
+          );
+          await applyPromotionRules(lead.id, scoreResult, {
+            supabase: args.supabase,
+            actorEmail: "wizard-bot@qlick",
+            leadEmail: lead.email ?? null,
+            leadName: lead.name ?? null,
+            eventTitle: args.surveyState.eventTitle ?? "(sin título)",
+          });
+          // TODO (commit mañana): seleccionar follow-up bucket y enviar
+          // mensaje personalizado por WhatsApp al lead + admin alert.
+          void selectFollowUpBucket(scoreResult.score);
+        } catch (err) {
+          errorLog(
+            "[whatsapp/bot] promotion engine falló (encuesta persistida OK)",
+            {
+              leadId: lead.id,
+              error: err instanceof Error ? err.message : String(err),
+            },
+          );
+        }
+      }
       const thank = buildSurveyThankYou({
         leadName: lead.name,
         businessCaptured: !!cleanedBusiness
@@ -2240,6 +2279,7 @@ case "interactive_event_inscribir": {
       ) {
         return nudgeToResendWizard(provider, phoneNormalized, lead.name);
       }
+      const dynamicQuestions = args.surveyState.questions;
       const finalAnswers: SurveyAnswers = args.surveyState.answers;
       // Insertar event_surveys row (sin business).
       await persistWizardSurvey({
@@ -2250,6 +2290,32 @@ case "interactive_event_inscribir": {
         businessCaptured: false,
         supabase: args.supabase ?? null
       });
+
+      // FIX 2026-07-05 (feat/funnel-dynamic-surveys-crm, commit 7):
+      // Promotion Engine — idem al path de Q4 text. Aplica score + reglas.
+      if (args.supabase && lead.id && dynamicQuestions) {
+        try {
+          const scoreResult = calculateLeadScoreFromConfig(
+            finalAnswers as unknown as Record<string, string>,
+            { questions: dynamicQuestions, followUps: undefined },
+          );
+          await applyPromotionRules(lead.id, scoreResult, {
+            supabase: args.supabase,
+            actorEmail: "wizard-bot@qlick",
+            leadEmail: lead.email ?? null,
+            leadName: lead.name ?? null,
+            eventTitle: args.surveyState.eventTitle ?? "(sin título)",
+          });
+        } catch (err) {
+          errorLog(
+            "[whatsapp/bot] promotion engine (skip path) falló",
+            {
+              leadId: lead.id,
+              error: err instanceof Error ? err.message : String(err),
+            },
+          );
+        }
+      }
       const thank = buildSurveyThankYou({
         leadName: lead.name,
         businessCaptured: false
