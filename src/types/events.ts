@@ -68,6 +68,116 @@ export interface EventBotRules {
   rules: string[];
 }
 
+/* ------------------------------------------------------------------ */
+/* Encuesta dinámica por evento (Fase 7d.2)                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Una opción de respuesta para una pregunta tipo "buttons".
+ *
+ * `score`: puntos que suma esta opción al `LeadScore` (0-100 clamped).
+ * `isConsent`: si true, esta opción representa consentimiento comercial
+ *   (LFPDPPP). Al elegirla, el wizard auto-promueve el lead.
+ * `isCommercialInterest`: si true, el `title` de esta opción se usa
+ *   como `commercialInterest` del lead.
+ *
+ * Límite de Meta Cloud API: `title` debe tener ≤20 caracteres.
+ */
+export interface SurveyQuestionOption {
+  id: string;
+  /** Texto del botón. Máx 20 caracteres (validado en runtime). */
+  title: string;
+  /** Puntos para el LeadScore. */
+  score: number;
+  /** Marca esta opción como consentimiento comercial explícito. */
+  isConsent?: boolean;
+  /** Marca esta opción como interés comercial (se guarda como commercialInterest). */
+  isCommercialInterest?: boolean;
+}
+
+/**
+ * Tipo de pregunta. `buttons` = interactiva con 2-3 opciones.
+ * `text` = texto libre opcional.
+ */
+export type SurveyQuestionType = "buttons" | "text";
+
+/**
+ * Una pregunta de la encuesta dinámica.
+ *
+ * - `type: "buttons"` → 2-3 opciones (límite Meta Cloud API).
+ *   El lead responde con un click.
+ * - `type: "text"` → texto libre. Útil para "contanos de tu negocio".
+ *   El lead puede responder "saltar" para omitir.
+ *
+ * Flags exclusivos (validados por Zod en runtime):
+ * - Como máximo 1 pregunta con `isConsent: true`.
+ * - Como máximo 1 pregunta con `isBusinessDescription: true`.
+ */
+export interface SurveyQuestion {
+  id: string;
+  /** Texto de la pregunta que verá el lead. */
+  text: string;
+  type: SurveyQuestionType;
+  /** Solo si type === "buttons". */
+  options?: SurveyQuestionOption[];
+  /** Marca esta pregunta como descripción del negocio (se guarda en lead.description). */
+  isBusinessDescription?: boolean;
+}
+
+/**
+ * Mensaje de seguimiento post-encuesta para un bucket de calificación.
+ *
+ * El `text` puede tener placeholders `{{1}}` (nombre del lead) que el
+ * bot sustituye al enviar.
+ *
+ * Si `templateName` está set + la ventana 24h está cerrada, se usa
+ * la plantilla Meta. Si la ventana está abierta o `templateName` es
+ * null, se envía texto libre.
+ */
+export interface SurveyFollowUp {
+  text: string;
+  /**
+   * Nombre de la plantilla Meta (ej. "conf_bienvenida"). Si null,
+   * siempre se envía texto libre.
+   */
+  templateName?: string | null;
+  /** Código de idioma BCP-47 (default "es_MX"). */
+  templateLanguage?: string;
+}
+
+/**
+ * Mensajes de seguimiento por bucket de calificación.
+ *
+ * Cada bucket corresponde a una categoría del LeadQualification:
+ * - `mql`       → score >= 60 (marketing qualified lead)
+ * - `hot`       → score 40-59
+ * - `coldWarm`  → score < 40 (cold y warm comparten mensaje)
+ *
+ * El Promotion Engine (commit 7) elige el bucket según el score.
+ */
+export interface SurveyFollowUps {
+  mql?: SurveyFollowUp;
+  hot?: SurveyFollowUp;
+  coldWarm?: SurveyFollowUp;
+}
+
+/**
+ * Configuración dinámica de la encuesta de un evento.
+ *
+ * Persistida en `events.survey_config` (jsonb, ver migration
+ * `20260705220000_add_survey_config_to_events.sql`).
+ *
+ * Si `survey_config = {}` (vacío), el mapper usa la plantilla Default
+ * del sistema (5 preguntas) — ver `src/lib/events/event-mapper.ts`.
+ *
+ * Validación: Zod en runtime al insertar/actualizar/leer
+ * (ver `src/lib/events/survey-config-schema.ts` — commit 3).
+ */
+export interface SurveyConfig {
+  questions: SurveyQuestion[];
+  followUps?: SurveyFollowUps;
+}
+
 export interface Event {
   id: string;
   /** URL-safe identifier único. Base de la URL pública. */
@@ -106,6 +216,12 @@ export interface Event {
    * Editable desde `/admin/eventos/[id]`. Inyectado al prompt del bot.
    */
   eventRules?: EventBotRules;
+  /**
+   * Configuración dinámica de la encuesta (Fase 7d.2, 2026-07-05).
+   * Si está vacío o undefined, el mapper usa la plantilla Default
+   * del sistema (5 preguntas). Ver `SurveyConfig` arriba.
+   */
+  surveyConfig?: SurveyConfig;
 }
 
 /* ------------------------------------------------------------------ */
