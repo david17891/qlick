@@ -2558,29 +2558,10 @@ case "interactive_event_inscribir": {
             leadName: lead.name ?? null,
             eventTitle: args.surveyState.eventTitle ?? "(sin título)"
           });
-          const surveyConfigFull = await loadSurveyConfigForEvent(
-            args.supabase,
-            args.surveyState.eventId ?? ""
-          ).catch(() => null);
-          const followUps = surveyConfigFull?.followUps;
-          if (followUps) {
-            const bucket = selectFollowUpBucket(scoreResult.score);
-            const followUp = followUps[bucket];
-            if (followUp?.text) {
-              const personalized = substituteTemplateVars(followUp.text, {
-                "1": lead.name?.trim() || "ahí"
-              });
-              try {
-                const provider2 = getActiveWhatsAppProvider();
-                await provider2.send({ to: phoneNormalized, body: personalized });
-              } catch (whatsappErr) {
-                errorLog("[whatsapp/bot] follow-up WhatsApp falló (consent close path)", {
-                  leadId: lead.id,
-                  error: whatsappErr instanceof Error ? whatsappErr.message : String(whatsappErr)
-                });
-              }
-            }
-          }
+          // FIX 2026-07-06 (audit G-15 r5): ya NO enviamos el follow-up
+          // bucket aquí. Mismo racional que en survey_q4_text — antes se
+          // enviaba bucket + thank-you (2 mensajes de cierre) y el bucket
+          // NO se persistía en DB. Solo thank-you de cierre.
         } catch (err) {
           errorLog("[whatsapp/bot] promotion engine falló (consent close path)", {
             leadId: lead.id,
@@ -2680,47 +2661,18 @@ case "interactive_event_inscribir": {
             leadName: lead.name ?? null,
             eventTitle: args.surveyState.eventTitle ?? "(sin título)",
           });
-          // FIX 2026-07-06 (audit F6): enviar follow-up bucket al lead por
-          // WhatsApp. Antes solo se llamaba selectFollowUpBucket (void).
-          // Si el lead completó el wizard por WhatsApp, NO recibía el
-          // mensaje personalizado del bucket (mql/hot/coldWarm). Esto
-          // era asimétrico con el endpoint /api/submit-survey (que sí
-          // envía). Ahora ambos paths envían el follow-up.
+          // FIX 2026-07-06 (audit G-15 r5): ya NO enviamos el follow-up
+          // bucket aquí. Antes (F6, audit 2026-07-06) se enviaba
+          // además del thank-you → 2 mensajes de cierre que decían
+          // cosas similares y confundían al lead. Además, el send del
+          // bucket se hacía con provider.send directo (sin pasar por
+          // el path de retorno del handler) por lo que NO se persistía
+          // en lead_whatsapp_conversations — bug doble.
           //
-          // Cargamos el surveyConfig completo para acceder a followUps.
-          // Si falla el load, caemos al template Default.
-          const surveyConfigFull = await loadSurveyConfigForEvent(
-            args.supabase,
-            args.surveyState.eventId ?? "",
-          ).catch(() => null);
-          const followUps = surveyConfigFull?.followUps;
-          if (followUps) {
-            const bucket = selectFollowUpBucket(scoreResult.score);
-            const followUp = followUps[bucket];
-            if (followUp?.text) {
-              const personalized = substituteTemplateVars(followUp.text, {
-                "1": lead.name?.trim() || "ahí",
-              });
-              try {
-                const provider = getActiveWhatsAppProvider();
-                await provider.send({
-                  to: phoneNormalized,
-                  body: personalized,
-                });
-              } catch (whatsappErr) {
-                errorLog(
-                  "[whatsapp/bot] follow-up WhatsApp falló (encuesta persistida OK)",
-                  {
-                    leadId: lead.id,
-                    error:
-                      whatsappErr instanceof Error
-                        ? whatsappErr.message
-                        : String(whatsappErr),
-                  },
-                );
-              }
-            }
-          }
+          // El thank-you estándar ya cubre el cierre. Si el admin quiere
+          // bucket follow-up, debe disparar /api/events/:id/send-survey-offers
+          // manualmente desde el panel, o re-habilitar este código
+          // cambiando la lógica.
         } catch (err) {
           errorLog(
             "[whatsapp/bot] promotion engine falló (encuesta persistida OK)",
