@@ -280,16 +280,68 @@ function isSurveyOfferStale(lastOfferIso: string | null | undefined): boolean {
 /* ------------------------------------------------------------------ */
 
 /**
+ * FIX 2026-07-06 (QA funnel-audit UX): exportada para tests.
+ *
  * Devuelve un plan de respuesta "nudge" cuando el handler del wizard
  * se dispara fuera de orden (e.g. clickeó un botón de Q2 cuando
- * estábamos esperando Q1). Mensaje neutro: "toca un botón de los que
- * te mandé" sin perder el flujo.
+ * estábamos esperando Q1).
+ *
+ * FIX 2026-07-06 (QA funnel-audit UX): antes solo mandaba texto neutro
+ * ("toca un botón de los que te mandé") sin re-enviar los botones
+ * interactivos. El lead quedaba atascado porque en WhatsApp no se
+ * puede scrollear hacia arriba para encontrar la pregunta original
+ * sin perder el contexto de la conversación.
+ *
+ * Ahora, si tenemos `surveyState`, derivamos la pregunta actual desde
+ * `surveyState.questions[surveyState.step - 1]` y la re-construimos con
+ * `buildDynamicSurveyStep`. Enviamos texto + interactive buttons (o
+ * el botón "Saltar" si es pregunta text). El lead puede hacer clic
+ * inmediatamente sin scrollear.
+ *
+ * Si NO tenemos surveyState (caso edge, drift de estado), fallback a
+ * texto simple con la instrucción de reiniciar.
  */
-function nudgeToResendWizard(
+export function nudgeToResendWizard(
   provider: ReturnType<typeof getActiveWhatsAppProvider>,
   phoneNormalized: string,
-  _leadName: string | null | undefined,
+  leadName: string | null | undefined,
+  surveyState?: {
+    step: number;
+    eventTitle: string | null;
+    questions?: SurveyQuestion[];
+  },
 ) {
+  // Si tenemos la pregunta actual, la re-enviamos con interactive.
+  if (
+    surveyState &&
+    surveyState.questions &&
+    surveyState.questions.length > 0 &&
+    surveyState.step >= 1 &&
+    surveyState.step <= surveyState.questions.length
+  ) {
+    const idx = surveyState.step - 1;
+    const question = surveyState.questions[idx];
+    if (question) {
+      const reStep = buildDynamicSurveyStep({
+        eventTitle: surveyState.eventTitle ?? "",
+        question,
+        leadName,
+      });
+      return {
+        kind: "interactive" as const,
+        body: reStep.text,
+        interactive: reStep.interactive,
+        send: () =>
+          provider.send({
+            to: phoneNormalized,
+            body: reStep.text,
+            interactive: reStep.interactive,
+          }),
+      };
+    }
+  }
+
+  // Fallback: solo texto (caso edge, drift de estado).
   const bodyText =
     `Ups, parece que hubo un clic fuera de orden. Te re-mando la pregunta ` +
     `que estabas respondiendo — tocá uno de los botones. ` +
@@ -1997,7 +2049,7 @@ case "interactive_event_inscribir": {
         args.surveyState.step !== 1 ||
         !args.buttonId
       ) {
-        return nudgeToResendWizard(provider, phoneNormalized, lead.name);
+        return nudgeToResendWizard(provider, phoneNormalized, lead.name, args.surveyState ?? undefined);
       }
       // FIX 2026-07-05 (feat/funnel-dynamic-surveys-crm): si tenemos el
       // questions[] del config dinámico, usamos `detectDynamicSurveyButton`
@@ -2017,7 +2069,7 @@ case "interactive_event_inscribir": {
           !detected ||
           detected.questionId !== dynamicQuestions[0].id
         ) {
-          return nudgeToResendWizard(provider, phoneNormalized, lead.name);
+          return nudgeToResendWizard(provider, phoneNormalized, lead.name, args.surveyState ?? undefined);
         }
         nextAnswers = {
           ...args.surveyState.answers,
@@ -2033,7 +2085,7 @@ case "interactive_event_inscribir": {
       } else {
         const detected = detectSurveyButton(args.buttonId);
         if (!detected || detected.step !== 1) {
-          return nudgeToResendWizard(provider, phoneNormalized, lead.name);
+          return nudgeToResendWizard(provider, phoneNormalized, lead.name, args.surveyState ?? undefined);
         }
         nextAnswers = {
           ...args.surveyState.answers,
@@ -2071,7 +2123,7 @@ case "interactive_event_inscribir": {
         args.surveyState.step !== 2 ||
         !args.buttonId
       ) {
-        return nudgeToResendWizard(provider, phoneNormalized, lead.name);
+        return nudgeToResendWizard(provider, phoneNormalized, lead.name, args.surveyState ?? undefined);
       }
       const dynamicQuestions = args.surveyState.questions;
       let nextAnswers: SurveyAnswers;
@@ -2084,7 +2136,7 @@ case "interactive_event_inscribir": {
           dynamicQuestions.map((q) => q.id),
         );
         if (!detected || detected.questionId !== dynamicQuestions[1].id) {
-          return nudgeToResendWizard(provider, phoneNormalized, lead.name);
+          return nudgeToResendWizard(provider, phoneNormalized, lead.name, args.surveyState ?? undefined);
         }
         nextAnswers = {
           ...args.surveyState.answers,
@@ -2100,7 +2152,7 @@ case "interactive_event_inscribir": {
       } else {
         const detected = detectSurveyButton(args.buttonId);
         if (!detected || detected.step !== 2) {
-          return nudgeToResendWizard(provider, phoneNormalized, lead.name);
+          return nudgeToResendWizard(provider, phoneNormalized, lead.name, args.surveyState ?? undefined);
         }
         nextAnswers = {
           ...args.surveyState.answers,
@@ -2138,7 +2190,7 @@ case "interactive_event_inscribir": {
         args.surveyState.step !== 3 ||
         !args.buttonId
       ) {
-        return nudgeToResendWizard(provider, phoneNormalized, lead.name);
+        return nudgeToResendWizard(provider, phoneNormalized, lead.name, args.surveyState ?? undefined);
       }
       const dynamicQuestions = args.surveyState.questions;
       let nextAnswers: SurveyAnswers;
@@ -2151,7 +2203,7 @@ case "interactive_event_inscribir": {
           dynamicQuestions.map((q) => q.id),
         );
         if (!detected || detected.questionId !== dynamicQuestions[2].id) {
-          return nudgeToResendWizard(provider, phoneNormalized, lead.name);
+          return nudgeToResendWizard(provider, phoneNormalized, lead.name, args.surveyState ?? undefined);
         }
         nextAnswers = {
           ...args.surveyState.answers,
@@ -2167,7 +2219,7 @@ case "interactive_event_inscribir": {
       } else {
         const detected = detectSurveyButton(args.buttonId);
         if (!detected || detected.step !== 3) {
-          return nudgeToResendWizard(provider, phoneNormalized, lead.name);
+          return nudgeToResendWizard(provider, phoneNormalized, lead.name, args.surveyState ?? undefined);
         }
         nextAnswers = {
           ...args.surveyState.answers,
@@ -2206,7 +2258,7 @@ case "interactive_event_inscribir": {
         !args.surveyState ||
         args.surveyState.step !== 4
       ) {
-        return nudgeToResendWizard(provider, phoneNormalized, lead.name);
+        return nudgeToResendWizard(provider, phoneNormalized, lead.name, args.surveyState ?? undefined);
       }
       const cleanedBusiness = cleanBusinessText(body) ?? null;
       // FIX 2026-07-05 (feat/funnel-dynamic-surveys-crm): si la 4ta
@@ -2286,7 +2338,7 @@ case "interactive_event_inscribir": {
         !args.surveyState ||
         args.surveyState.step !== 4
       ) {
-        return nudgeToResendWizard(provider, phoneNormalized, lead.name);
+        return nudgeToResendWizard(provider, phoneNormalized, lead.name, args.surveyState ?? undefined);
       }
       const dynamicQuestions = args.surveyState.questions;
       const finalAnswers: SurveyAnswers = args.surveyState.answers;
