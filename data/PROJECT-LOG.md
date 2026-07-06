@@ -2141,3 +2141,14 @@ sustituir el ciclo con templates". Ejecuté 4 bloques sincrónicamente.
 - **Trigger:** David confirmó la actualización de los permisos del PAT en la interfaz de GitHub.
 
 
+## 2026-07-06 ~11:20 — Mejora Visual de Cabeceras de Eventos en Tarjetas (v0.7.5)
+
+- **Pregunta:** Solucionar el exceso de espacio vacío sobre los títulos en las tarjetas de eventos.
+- **Decisiones:**
+  - **Auto-Alto basado en Padding (Opción 3.B modificada):** Eliminamos la altura fija de las cabeceras degradadas (`h-32`/`h-36`/`h-40`) y aplicamos un layout vertical auto-ajustable con padding y gaps pequeños (`flex flex-col gap-3 p-3.5` en admin, `p-4` en la pública).
+  - **Integración de Metadatos:** Movimos los badges de estado (Publicado/Borrador/Próximo) y los slugs/códigos del cuerpo de la tarjeta al interior de la cabecera degradada. Esto redujo la altura total de la tarjeta y mejoró el balance estético (estilo "Ticket").
+  - **Fix de Compilación Auxiliar:** Corregimos un error de importación de `requireAdmin` en el endpoint de certificados (`src/app/api/events/[id]/certificate/[attendeeId]/route.ts`) que causaba fallas en el `type-check`.
+- **Razón:** Hacer las tarjetas de eventos más compactas y visualmente atractivas, eliminando el desperdicio de espacio en cabeceras de títulos cortos, y asegurar la consistencia estética entre la sección de admin y la pública.
+- **Impacto:** Las cabeceras de eventos son responsivas y compactas en `/eventos` y `/admin/eventos`. La aplicación compila sin errores (`type-check`, `lint` y tests unitarios en verde).
+
+

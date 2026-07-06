@@ -101,10 +101,11 @@ function fallbackFromEnv(): ActiveEventContext {
       eventRules: { personality: "", rules: [] }
     }),
     source: process.env.EVENT_NAME ? "env" : "placeholder",
-    // FIX 2026-07-02: fallback conservador — el placeholder no sabe
-    // si requiere nombre. False por default; si el evento real lo
-    // requiere, lo lee de DB.
-    requiresName: false,
+    // FIX 2026-07-06: el placeholder DEBE pedir nombre. David decidio
+    // que TODO lead necesita nombre real, no hay opcion de skip. Si el
+    // evento real lo desactiva (legacy con requires_name=false), lo lee
+    // de DB — pero el default siempre es true.
+    requiresName: true,
     eventRules: { personality: "", rules: [] },
     // FIX 2026-07-05: el placeholder NO tiene short_code real (es ficticio).
     // El bot cae al fallback chain sin esta capa, pero al ser placeholder
@@ -347,7 +348,9 @@ export async function loadActiveEventContext(
       humanDuration,
       promptBlock,
       source: "db",
-      requiresName: Boolean(evt.requires_name),
+      // FIX 2026-07-06: si requires_name es null/undefined, default true.
+      // Solo false si la columna esta explicitamente en false.
+      requiresName: evt.requires_name !== false,
       eventRules
     };
   } catch {
@@ -431,7 +434,8 @@ export async function loadAllActiveEvents(): Promise<ActiveEventContext[]> {
         humanDuration,
         promptBlock,
         source: "db" as const,
-        requiresName: Boolean(evt.requires_name),
+        // FIX 2026-07-06: default true si la columna es null/undefined.
+        requiresName: evt.requires_name !== false,
         eventRules
       };
     });

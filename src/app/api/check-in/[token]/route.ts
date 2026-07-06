@@ -267,21 +267,61 @@ export async function POST(
   // `confirmation_id = matched.id` en vez de null — el lead que confirmo
   // antes queda como attended matcheado, no como walk-in.
   //
-  // El chequeo NO se filtra por `checked_in_at IS NULL` (como antes)
-  // porque si ya hubo check-in previo del mismo (event_id, phone) — por
-  // ej. el asistente perdió el primer QR y generamos uno nuevo — ese
-  // attendee ya está. Lo dejamos como está (el evento ya quedó
-  // registrado, no duplicamos).
+  // FIX 2026-07-06 (sesion David, "nadie sin nombre"): si el attendee
+  // existente tiene `name` vacío o placeholder ("Asistente", "Por
+  // confirmar"), lo sobreescribimos con `found.row.attendee_name` del
+  // QR token. Si tampoco el QR tiene nombre válido, lookup en leads.name
+  // por phone. Asi garantizamos que TODO attendee con check-in tenga
+  // nombre real (necesario para certificados post-evento).
   const confirmationId = await resolveConfirmationIdForCheckIn(
     supabase,
     found.row.event_id,
     found.row.attendee_phone_normalized,
   );
+
+  // FIX 2026-07-06: helper para resolver nombre valido. Orden de prioridad:
+  //   1. qr_token.attendee_name (si tiene 2+ palabras y no es placeholder)
+  //   2. leads.name por phone (si tiene 2+ palabras y no es placeholder)
+  //   3. attendee.name existente (si ya era valido antes)
+  //   4. null (queda null, warning visible en admin)
+  const isPlaceholderName = (n: string | null | undefined): boolean => {
+    if (!n) return true;
+    const trimmed = n.trim();
+    if (trimmed.length < 2) return true;
+    const lower = trimmed.toLowerCase();
+    const placeholders = [
+      "asistente", "por confirmar", "confirmar", "pendiente",
+      "test", "n/a", "na", "anonimo", "anonymous", "sin nombre",
+    ];
+    return placeholders.includes(lower);
+  };
+  const resolveValidName = async (
+    qrName: string | null,
+    existingAttendeeName: string | null | undefined,
+    phoneForLookup: string | null,
+  ): Promise<string | null> => {
+    if (!isPlaceholderName(qrName)) return qrName!.trim();
+    if (!isPlaceholderName(existingAttendeeName)) return existingAttendeeName!.trim();
+    if (phoneForLookup) {
+      const { data: leadRow } = await supabase
+        .from("leads")
+        .select("name")
+        .eq("phone_normalized", phoneForLookup)
+        .not("name", "is", null)
+        .limit(1);
+      const leadName = (leadRow && leadRow.length > 0)
+        ? (leadRow[0] as { name: string | null }).name
+        : null;
+      if (!isPlaceholderName(leadName)) return leadName!.trim();
+    }
+    return null;
+  };
+
   if (found.row.attendee_phone_normalized) {
     const phone = found.row.attendee_phone_normalized;
     const { data: attendeeRows, error: attErr } = await supabase
       .from("event_attendees")
-      .select("id, checked_in_at, confirmation_id")
+      .select("id, checked_in_at, confirmation_id, name")
       .eq("event_id", found.row.event_id)
       .eq("phone_normalized", phone)
       .limit(1);
@@ -296,14 +336,26 @@ export async function POST(
         id: string;
         checked_in_at: string | null;
         confirmation_id: string | null;
+        name: string | null;
       };
       // Solo UPDATE si checked_in_at es NULL (idempotencia).
       if (!target.checked_in_at) {
-        const updatePayload = {
+        // FIX 2026-07-06: resolver nombre valido y persistirlo.
+        const resolvedName = await resolveValidName(
+          found.row.attendee_name,
+          target.name,
+          phone,
+        );
+        const updatePayload: Record<string, unknown> = {
           checked_in_at: nowIso,
           checked_in_by: PUBLIC_ACTOR.email,
           ...(confirmationId && !target.confirmation_id
             ? { confirmation_id: confirmationId }
+            : {}),
+          // Si el nombre del attendee era placeholder y encontramos uno
+          // real, lo actualizamos junto con el check-in.
+          ...(resolvedName && isPlaceholderName(target.name)
+            ? { name: resolvedName }
             : {}),
         };
         const { error: updErr } = await supabase
@@ -320,6 +372,12 @@ export async function POST(
     } else {
       // Walk-in: no existe attendee previo. Crear al vuelo con
       // confirmation_id matcheado si existe.
+      // FIX 2026-07-06: resolver nombre valido antes de persistir.
+      const resolvedName = await resolveValidName(
+        found.row.attendee_name,
+        null,
+        phone,
+      );
       // Si choca por UNIQUE(event_id, email) — caso raro donde el mismo
       // email se usó en otra confirmation con phone distinto — ignorar
       // el 23505 y seguir. El check-in en event_qr_tokens ya quedó.
@@ -328,7 +386,7 @@ export async function POST(
         .insert({
           event_id: found.row.event_id,
           confirmation_id: confirmationId,
-          name: found.row.attendee_name,
+          name: resolvedName,
           email: found.row.attendee_email,
           phone_normalized: phone,
           checked_in_at: nowIso,

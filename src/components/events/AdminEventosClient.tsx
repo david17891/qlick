@@ -225,7 +225,7 @@ export function AdminEventosClient({
               externos. El campo `cover_image_url` en DB se conserva por
               compat. Ver `docs/OPEN_ITEMS.md` → B-5.
             */}
-            <div className="relative w-full h-32 overflow-hidden bg-gradient-to-br from-brand-700 via-brand-500 to-brand-400">
+            <div className="relative w-full overflow-hidden bg-gradient-to-br from-brand-700 via-brand-500 to-brand-400 flex flex-col gap-3 p-3.5">
               <div
                 aria-hidden="true"
                 className="absolute inset-0 opacity-20"
@@ -234,14 +234,8 @@ export function AdminEventosClient({
                     "radial-gradient(circle at 20% 80%, white 0%, transparent 40%), radial-gradient(circle at 80% 20%, white 0%, transparent 35%)",
                 }}
               />
-              <div className="relative h-full flex items-end p-3">
-                <h3 className="text-white font-bold text-sm leading-tight drop-shadow-md line-clamp-2">
-                  {s.event.title}
-                </h3>
-              </div>
-            </div>
-            <div className="p-5 flex flex-col flex-1">
-              <div className="flex items-center justify-between mb-2 gap-2">
+              {/* Fila superior: Badge y código/slug con estilo integrado */}
+              <div className="relative z-10 flex items-center justify-between gap-2">
                 <Badge
                   tone={
                     s.event.status === "published"
@@ -257,11 +251,7 @@ export function AdminEventosClient({
                       ? "Borrador"
                       : "Archivado"}
                 </Badge>
-                <div className="flex items-center gap-2">
-                  {/* FIX 2026-07-05 (sesión David, ya-estas-registrado con
-                      nombre duplicado): mostramos el short_code (4 chars)
-                      como chip discreto copiable. Lo usa el bot WA y el
-                      staff para desambiguar eventos con título similar. */}
+                <div className="flex items-center gap-1.5 text-xs text-white/90 backdrop-blur-sm bg-black/15 px-2 py-0.5 rounded shadow-inner">
                   {s.event.shortCode && (
                     <button
                       type="button"
@@ -273,14 +263,23 @@ export function AdminEventosClient({
                             .catch(() => {});
                         }
                       }}
-                      className="font-mono text-xs px-2 py-0.5 rounded bg-ink/5 hover:bg-ink/10 text-ink-soft transition-colors"
+                      className="font-mono font-bold hover:text-white transition-colors"
                     >
                       {s.event.shortCode}
                     </button>
                   )}
-                  <span className="text-xs text-ink-muted">/{s.event.slug}</span>
+                  <span className="opacity-75">/{s.event.slug}</span>
                 </div>
               </div>
+
+              {/* Fila inferior: Título */}
+              <div className="relative z-10">
+                <h3 className="text-white font-bold text-sm leading-tight drop-shadow-md line-clamp-2">
+                  {s.event.title}
+                </h3>
+              </div>
+            </div>
+            <div className="p-5 flex flex-col flex-1">
               {/* El título ya está en el cover del card (gradient + h3).
                   No lo duplicamos acá. */}
               {s.event.description && (

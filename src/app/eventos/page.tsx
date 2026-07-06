@@ -136,7 +136,7 @@ function EventCard({
           El campo `cover_image_url` en DB se conserva por compat con
           imports previos. Ver `docs/OPEN_ITEMS.md` → B-5.
         */}
-        <div className="relative w-full h-40 overflow-hidden bg-gradient-to-br from-brand-700 via-brand-500 to-brand-400 group-hover:scale-[1.02] transition-transform duration-300">
+        <div className="relative w-full overflow-hidden bg-gradient-to-br from-brand-700 via-brand-500 to-brand-400 group-hover:scale-[1.02] transition-transform duration-300 flex flex-col gap-3 p-4">
           {/* Patrón sutil para textura, no dominante */}
           <div
             aria-hidden="true"
@@ -146,22 +146,21 @@ function EventCard({
                 "radial-gradient(circle at 20% 80%, white 0%, transparent 40%), radial-gradient(circle at 80% 20%, white 0%, transparent 35%)",
             }}
           />
-          {/* Título del evento — heading semántico, bold, line-clamp para
-              títulos largos. Color blanco con drop-shadow para contraste
-              sobre el gradiente. */}
-          <div className="relative h-full flex items-end p-4">
+          {/* Fila superior: Badge y Evento Qlick */}
+          <div className="relative z-10 flex items-center justify-between gap-2">
+            <Badge tone={status === "upcoming" ? "success" : "neutral"}>
+              {status === "upcoming" ? "Próximo" : "Finalizado"}
+            </Badge>
+            <span className="text-xs text-white/90 font-semibold drop-shadow-sm">Evento Qlick</span>
+          </div>
+          {/* Fila inferior: Título del evento */}
+          <div className="relative z-10">
             <h3 className="text-white font-bold text-lg leading-tight drop-shadow-md line-clamp-3">
               {event.title}
             </h3>
           </div>
         </div>
         <div className="p-5 space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <Badge tone={status === "upcoming" ? "success" : "neutral"}>
-              {status === "upcoming" ? "Próximo" : "Finalizado"}
-            </Badge>
-            <span className="text-xs text-ink-muted">Evento Qlick</span>
-          </div>
           {event.description && (
             <p className="text-sm text-ink-soft line-clamp-2">
               {event.description}

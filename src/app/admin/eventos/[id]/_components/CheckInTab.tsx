@@ -98,6 +98,32 @@ export async function CheckInTab({ eventId, eventTitle, eventSlug, eventStartsAt
       ? Math.round((confirmedAttended / confirmations.length) * 1000) / 10
       : 0;
 
+  // FIX 2026-07-06 (sesion David, "nadie sin nombre"): detectar attendees
+  // con nombre placeholder para warning banner + certificado.
+  const PLACEHOLDER_NAMES = new Set([
+    "asistente",
+    "por confirmar",
+    "confirmar",
+    "pendiente",
+    "test",
+    "n/a",
+    "na",
+    "anonimo",
+    "anonymous",
+    "sin nombre",
+  ]);
+  const isPlaceholderName = (n: string | null | undefined): boolean => {
+    if (!n) return true;
+    const trimmed = n.trim();
+    if (trimmed.length < 2) return true;
+    return PLACEHOLDER_NAMES.has(trimmed.toLowerCase());
+  };
+  const checkedInAttendees = attendees.filter((a) => a.checkedInAt !== null);
+  const attendeesWithoutRealName = checkedInAttendees.filter((a) =>
+    isPlaceholderName(a.name),
+  );
+  const hasNameWarning = attendeesWithoutRealName.length > 0;
+
   return (
     <Card className="overflow-hidden mb-6">
       <div className="p-5 border-b border-brand-50">
@@ -107,6 +133,26 @@ export async function CheckInTab({ eventId, eventTitle, eventSlug, eventStartsAt
           imprimible y haz check-in manual si alguien no trae su QR.
         </p>
       </div>
+
+      {/* FIX 2026-07-06: warning banner si hay attendees sin nombre real.
+          Esto NO debería pasar post-fix (check-in route.ts copia nombre
+          del QR o de leads), pero si pasa (legacy data, walk-ins sin
+          lead previo), David puede identificar y editar uno por uno. */}
+      {hasNameWarning && (
+        <div className="p-4 bg-amber-50 border-b border-amber-200 flex items-start gap-3">
+          <span className="text-2xl flex-shrink-0">⚠️</span>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-sm text-amber-900">
+              {attendeesWithoutRealName.length} asistente
+              {attendeesWithoutRealName.length === 1 ? "" : "s"} con check-in pero sin nombre real
+            </p>
+            <p className="text-xs text-amber-800 mt-1">
+              Los certificados no se pueden emitir para estos asistentes hasta que les
+              edites el nombre en el panel. Click en el nombre abajo para editarlo.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* 4 stat cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-5 border-b border-brand-50 bg-brand-50/20">
@@ -173,6 +219,60 @@ export async function CheckInTab({ eventId, eventTitle, eventSlug, eventStartsAt
           </div>
         );
       })()}
+
+      {/* FIX 2026-07-06: lista de asistentes con check-in + botón certificado.
+          David puede descargar el certificado de cada uno. El endpoint
+          rechaza si el nombre es placeholder (warning arriba indica
+          cuales son). */}
+      {checkedInAttendees.length > 0 && (
+        <div className="p-5 border-t border-brand-50">
+          <h3 className="text-xs font-bold uppercase text-brand-600 mb-3">
+            📜 Asistentes con check-in ({checkedInAttendees.length})
+          </h3>
+          <ul className="divide-y divide-brand-50">
+            {checkedInAttendees.map((a) => {
+              const nameIsOk = !isPlaceholderName(a.name);
+              return (
+                <li
+                  key={a.id}
+                  className="py-3 flex flex-wrap items-center justify-between gap-2"
+                >
+                  <div className="min-w-0">
+                    <p
+                      className={`font-semibold text-sm truncate ${
+                        nameIsOk ? "text-ink" : "text-amber-700"
+                      }`}
+                    >
+                      {a.name ?? "(sin nombre)"}
+                      {!nameIsOk && (
+                        <span className="ml-2 text-[10px] uppercase font-bold text-amber-700">
+                          ⚠️ editar
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-xs text-ink-muted">
+                      {a.phoneNormalized ?? a.email ?? "sin contacto"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge tone="success">✓ Check-in</Badge>
+                    {nameIsOk && (
+                      <a
+                        href={`/api/events/${eventId}/certificate/${a.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-semibold bg-brand-500 text-white hover:bg-brand-600 transition"
+                      >
+                        📜 Certificado
+                      </a>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
 
       {/* Log reciente */}
       <div className="p-5 border-t border-brand-50">

@@ -226,7 +226,13 @@ function getActiveEvent(): {
  * de este archivo (welcome, interactive_event_inscribir, provide_email)
  * con riesgo de drift silencioso. Ahora es una sola constante de módulo.
  */
-const PLACEHOLDER_NAMES = new Set([
+/**
+ * FIX 2026-07-06: export para tests (whatsapp-bot-name-capture.test.mjs).
+ * Es el set canonico de nombres que NO son nombres reales — se filtra
+ * en `cleanFirstName` para evitar saludos placeholder ("Hola Por") y
+ * para que el bot no acepte un lead con `name = "Asistente"`.
+ */
+export const PLACEHOLDER_NAMES = new Set([
   "por",
   "por confirmar",
   "confirmar",
@@ -255,8 +261,14 @@ const VALID_INBOUND_MESSAGE_TYPES: ReadonlySet<string> = new Set([
   "interactive"
 ]);
 
-/** Helper: devuelve el firstName limpio (sin placeholders). */
-function cleanFirstName(rawName: string | null | undefined): string {
+/**
+ * Helper: devuelve el firstName limpio (sin placeholders).
+ *
+ * FIX 2026-07-06: export para tests. Si el nombre del lead es un placeholder
+ * (e.g. "Por", "Asistente", "test"), devolvemos "" para que el bot NO lo
+ * use en saludos ni en el system prompt del LLM.
+ */
+export function cleanFirstName(rawName: string | null | undefined): string {
   const name = (rawName ?? "").toLowerCase().trim();
   if (PLACEHOLDER_NAMES.has(name)) return "";
   return rawName?.trim() ?? "";
@@ -1684,50 +1696,43 @@ async function buildResponsePlan(args: {
       };
     }
 case "interactive_event_inscribir": {
-      // Fase 7a.5: el usuario clickeó "Inscribirme" después de ver info
-      // del evento. Le pedimos el email (o nombre primero, según el
-      // evento). Si responde con un email válido, el intent
-      // `provide_email` se encarga.
+      // FIX 2026-07-06 (sesion David, "no me sirve la opcion de no
+      // requerir nombres"): TODO lead debe tener nombre real. Se
+      // elimina la rama condicional `if (requiresName)`. El bot
+      // SIEMPRE pide nombre completo antes del email, sin importar
+      // el flag del evento.
+      //
+      // Migracion 20260706120000_force_name_capture_and_default.sql
+      // cambia el default de requires_name a true y backfillea
+      // eventos existentes. El flag queda en DB por compatibilidad
+      // (algunos lugares lo siguen leyendo) pero ya no controla el
+      // flow del bot.
       //
       // FIX 2026-07-02 (sesion David): cargamos el activeEvent real de
-      // DB (no el placeholder de env vars que decia "IA y Marketing
-      // Basico el 6 de julio" cuando el evento real es otro).
-      //
-      // FIX 2026-07-02 (Commit A): si `requiresName=true`, el flow
-      // es secuencial: primero nombre, después email. Marcamos el
-      // outbound con metadata.awaiting_field='name' para que el
-      // siguiente intent del lead sea `provide_name`.
+      // DB (no el placeholder de env vars).
       //
       // FIX 2026-07-02 (sesion David, "Si tras pregunta cerrada"):
-      // si el handler se invoca desde un affirmative corto (Bug 1),
+      // si el handler se invoca desde un affirmative corto,
       // `requestedEventSlug` viene con el slug del evento sobre el que
-      // el bot preguntó. Lo usamos en loadActiveEventContext para
-      // mantener consistencia con la pregunta que el lead está
-      // respondiendo (ej. "¿Te gustaría apartar tu lugar en IA y
-      // Marketing?" → inscribir a ESE evento, no al activeEvent default).
+      // el bot preguntó. Lo usamos para inscribir al evento correcto.
       const evtReal = await loadActiveEventContext(args.requestedEventSlug ?? undefined).catch(() => null);
       const evtFallback = getActiveEvent();
       const evtName = evtReal?.title ?? evtFallback.name;
       const evtDate = evtReal?.humanStartsAt ?? evtFallback.date;
-      // FIX 2026-07-02: filtrar firstName de placeholders (mismo set
-      // que el welcome y el LLM context). El "Por" del lead legacy
-      // generaba "Excelente Por!".
+      // FIX 2026-07-02: filtrar firstName de placeholders.
       const clean = cleanFirstName(firstName);
       const saludo = clean ? `¡Excelente ${clean}!` : "¡Excelente!";
-      const requiresName = evtReal?.requiresName === true;
-      const bodyText = requiresName
-        ? `${saludo} Para inscribirte a "${evtName}" el ${evtDate}, ` +
-          `primero decime tu nombre completo. Después te pido tu email.`
-        : `${saludo} Para inscribirte a "${evtName}" el ${evtDate}, ` +
-          `mandame tu email por acá y te paso tu QR de entrada.`;
+      // FIX 2026-07-06: el bot SIEMPRE pide nombre antes del email.
+      const bodyText =
+        `${saludo} Para inscribirte a "${evtName}" el ${evtDate}, ` +
+        `primero decime tu nombre completo. Después te pido tu email.`;
       return {
         kind: "text",
         body: bodyText,
-        // FIX 2026-07-02 (Commit A): pasamos metadata para que el
-        // processInboundMessage persista el awaiting_field. El
-        // bot-engine consulta este flag en el siguiente turno para
-        // detectar el intent `provide_name`.
-        metadata: requiresName ? { awaiting_field: "name" } : undefined,
+        // FIX 2026-07-02 (Commit A): metadata para que processInboundMessage
+        // persista el awaiting_field. El bot-engine consulta este flag en
+        // el siguiente turno para detectar el intent `provide_name`.
+        metadata: { awaiting_field: "name" },
         send: () =>
           provider.send({
             to: phoneNormalized,
@@ -2586,6 +2591,33 @@ case "interactive_event_inscribir": {
       };
     }
     case "provide_email": {
+      // FIX 2026-07-06 (sesion David, "no me sirve la opcion de no
+      // requerir nombres"): si el lead no tiene nombre valido todavia
+      // (o si su nombre es un placeholder como "Asistente" / "Por"),
+      // NO procesamos el email. Lo redirigimos a pedir su nombre
+      // primero. Asi forzamos la captura ANTES del QR.
+      //
+      // Caso edge: lead ya completo el flow de nombre en un mensaje
+      // previo (lead.name limpio) → procesamos normalmente.
+      //
+      // Caso edge 2: el handler provide_name acaba de correr y
+      // procesoInboundMessage ya actualizo lead.name → procesamos.
+      const currentLeadName = lead.name?.trim() ?? "";
+      const cleanedCurrentName = cleanFirstName(currentLeadName);
+      if (!cleanedCurrentName) {
+        const askBody =
+          `Antes de registrarte, necesito tu nombre completo ` +
+          `(nombre y apellido) para el certificado. ` +
+          `Por favor mandamelo asi: "Juan Pérez".`;
+        return {
+          kind: "text",
+          body: askBody,
+          // FIX 2026-07-02 (Commit A): siguiente intent es provide_name.
+          metadata: { awaiting_field: "name" },
+          send: () =>
+            provider.send({ to: phoneNormalized, body: askBody })
+        };
+      }
       // FIX 2026-07-05 (sesion David): extraer el email del body, no usar
       // body.trim() directo. Usuarios mandan contexto ("me equivoque, es X")
       // y el body completo no es un email valido.
@@ -3317,6 +3349,10 @@ export async function processInboundMessage(
   // el nombre en `leads.name`. Lo hacemos ANTES de buildResponsePlan para
   // que el handler pueda usar el `lead.name` actualizado en mensajes
   // posteriores (ej. cuando llegue provide_email).
+  //
+  // FIX 2026-07-06: ademas del UPDATE, registramos la accion en
+  // admin_audit_log para trazabilidad (cuando David audite sabe quien
+  // puso que nombre en que momento).
   if (intent === "provide_name" && supabase && lead.id) {
     const name = body.trim();
     const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(name);
@@ -3324,6 +3360,7 @@ export async function processInboundMessage(
     // Solo persistir si pasó las validaciones del handler (no email,
     // 2+ palabras, <=100 chars). Si falló la validación, NO actualizamos.
     if (!looksLikeEmail && wordCount >= 2 && name.length <= 100) {
+      const previousName = lead.name ?? null;
       const { error: nameUpdateErr } = await supabase
         .from("leads")
         .update({ name })
@@ -3341,6 +3378,28 @@ export async function processInboundMessage(
           leadId: lead.id,
           name
         });
+        // FIX 2026-07-06: audit log del cambio de nombre.
+        // Best-effort: si falla, no rompemos el flow del bot.
+        try {
+          const { logAdminAction } = await import("@/lib/crm/audit-server");
+          await logAdminAction({
+            actor_email: "system@qlick",
+            action: "lead_name_update",
+            entity_type: "lead",
+            entity_id: lead.id,
+            metadata: {
+              source: "whatsapp_bot",
+              intent: "provide_name",
+              previous_name: previousName,
+              new_name: name,
+            },
+          });
+        } catch (auditErr) {
+          errorLog("[whatsapp/bot] provide_name: audit log falló", {
+            leadId: lead.id,
+            error: (auditErr as Error).message,
+          });
+        }
       }
     }
   }
