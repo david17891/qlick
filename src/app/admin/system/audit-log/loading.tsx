@@ -8,7 +8,7 @@ import { Navbar, Footer } from "@/components/layout";
  * Skeleton del header + filtros + tabla.
  *
  * Mismo patrón que `/admin/eventos/loading.tsx` y
- * `/admin/masterclass/loading.tsx`.
+ * `/admin/loading.tsx`.
  */
 export default function AdminAuditLogLoading() {
   return (

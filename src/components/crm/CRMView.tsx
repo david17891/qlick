@@ -95,7 +95,7 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
   const [realOverviewError, setRealOverviewError] = useState<string | null>(null);
   const [realPendingTasks, setRealPendingTasks] = useState<PendingTasksSplitClient | null>(null);
 
-  // Deep-link desde /admin?leadId=... (usado por masterclass funnel).
+  // Deep-link desde /admin?leadId=... (usado por el funnel de eventos).
   // Cuando los leads reales terminen de cargar, abre el drawer del lead
   // correspondiente si su id coincide con initialLeadId.
   useEffect(() => {

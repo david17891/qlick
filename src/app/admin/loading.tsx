@@ -25,13 +25,12 @@ export default function AdminLoading() {
           <Skeleton className="h-7 w-20 rounded-full" />
         </div>
 
-        {/* Tabs (7 tabs + 2 links a masterclass/eventos) */}
+        {/* Tabs (7 tabs + 1 link a eventos) */}
         <div className="flex flex-wrap items-center gap-2 mb-8 border-b border-brand-100 pb-3">
           {[1, 2, 3, 4, 5, 6, 7].map((i) => (
             <Skeleton key={i} className="h-9 w-24 rounded-full" />
           ))}
           <Skeleton className="h-9 w-36 rounded-full ml-auto" />
-          <Skeleton className="h-9 w-24 rounded-full" />
         </div>
 
         {/* Stat cards (Resumen tab) */}

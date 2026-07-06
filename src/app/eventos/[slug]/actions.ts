@@ -7,7 +7,7 @@
  * NO requiere auth admin (es público), pero valida input y consentimiento
  * antes de delegar a `createConfirmation` (server lib con service role).
  *
- * Decisión de seguridad (espejo de `submitMasterclassRegistration`):
+ * Decisión de seguridad (espejo de `submitEventRegistration`):
  * - Corre en el servidor, no en el navegador.
  * - Usa service role server-side, NUNCA expone la key al cliente.
  * - anon NO tiene acceso directo a `event_confirmations` (RLS deny).
