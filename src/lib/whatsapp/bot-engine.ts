@@ -242,6 +242,35 @@ export const PLACEHOLDER_NAMES = new Set([
 ]);
 
 /**
+ * FIX 2026-07-06 (audit E2E — David): lista extendida de placeholders
+ * UI. Usada SOLO en validacion de "lead.name ya capturado" (provide_email,
+ * provide_name), NO en saludos (cleanFirstName usa la lista canonica
+ * para no romper dialogos viejos).
+ *
+ * Por que una lista aparte? Los placeholders canonicos son del bot
+ * ("Por" = lead de prueba "Por" de Q2). Los UI son del admin/check-in
+ * ("Asistente" = prefilled por default en formularios). Si un lead tiene
+ * uno de estos UI en `leads.name` (de un registro anterior), NO es un
+ * nombre valido y debemos redirigir a provide_name.
+ */
+export const PLACEHOLDER_NAMES_UI = new Set([
+  ...Array.from(PLACEHOLDER_NAMES), // incluye los canonicos
+  "asistente",
+  "pendiente",
+  "n/a",
+  "na",
+  "anonimo",
+  "anonymous",
+  "sin nombre"
+]);
+
+/** True si `rawName` es un placeholder UI (canonico o extendido). */
+export function isPlaceholderNameUI(rawName: string | null | undefined): boolean {
+  if (!rawName) return true;
+  return PLACEHOLDER_NAMES_UI.has(String(rawName).trim().toLowerCase());
+}
+
+/**
  * Tipos de mensaje inbound que el CHECK constraint de
  * `lead_whatsapp_conversations.message_type` acepta. Si llega un
  * IncomingWhatsAppMessage.type fuera de este set (ej. 'button' legacy,
@@ -2602,8 +2631,16 @@ case "interactive_event_inscribir": {
       //
       // Caso edge 2: el handler provide_name acaba de correr y
       // procesoInboundMessage ya actualizo lead.name → procesamos.
+      //
+      // FIX 2026-07-06 (audit E2E): usamos isPlaceholderNameUI (no
+      // cleanFirstName) porque queremos bloquear tanto placeholders
+      // canonicos ("Por") como placeholders UI ("Asistente", "Por
+      // confirmar") que pudieron quedar en leads.name de registros
+      // anteriores al fix.
       const currentLeadName = lead.name?.trim() ?? "";
-      const cleanedCurrentName = cleanFirstName(currentLeadName);
+      const cleanedCurrentName = isPlaceholderNameUI(currentLeadName)
+        ? ""
+        : currentLeadName;
       if (!cleanedCurrentName) {
         const askBody =
           `Antes de registrarte, necesito tu nombre completo ` +
