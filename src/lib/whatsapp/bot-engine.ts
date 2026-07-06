@@ -1887,6 +1887,25 @@ case "interactive_event_inscribir": {
       };
     }
     case "interactive_survey_yes": {
+      // FIX 2026-07-06 (audit F7): rate limit por lead.id para evitar
+      // que un click rápido-spam ("Sí, dejar feedback" 10 veces en 5s)
+      // triggeree 10 queries a event_surveys + 10 updates de
+      // survey_offer_sent_at. 1 click cada 5 segundos es suficiente.
+      const wizardRateLimit = recordAndCheckRateLimit(
+        `wizard-yes:${lead.id}`,
+        { windowMs: 5000, maxCalls: 1 }
+      );
+      if (!wizardRateLimit.allowed) {
+        // Idempotente: el lead probablemente ya clickeó hace <5s. No
+        // procesamos de nuevo, devolvemos thank-you corto.
+        const ackBody = `¡Ya estamos con tu feedback! Aguanta un momento...`;
+        return {
+          kind: "text",
+          body: ackBody,
+          send: () => provider.send({ to: phoneNormalized, body: ackBody }),
+        };
+      }
+
       // FIX 2026-07-05 (feat/survey-wizard-native): el lead clickeó "Sí,
       // dejar feedback". Arrancamos el wizard nativo de WhatsApp (4
       // preguntas con opciones) en vez del legacy token+form HTML
@@ -2342,6 +2361,14 @@ case "interactive_event_inscribir": {
       }
       const dynamicQuestions = args.surveyState.questions;
       const finalAnswers: SurveyAnswers = args.surveyState.answers;
+      // FIX 2026-07-06 (audit F3): loggear skip para que el admin
+      // sepa que el lead skipeó la Q4 de texto libre. Antes no había
+      // visibilidad — el admin solo veía `consent_to_contact=false`.
+      debugLog("[whatsapp/bot] survey_q4 skipped by user", {
+        leadId: lead.id,
+        eventId: args.surveyState.eventId,
+        answersCount: Object.keys(finalAnswers).length,
+      });
       // Insertar event_surveys row (sin business).
       await persistWizardSurvey({
         eventId: args.surveyState.eventId,

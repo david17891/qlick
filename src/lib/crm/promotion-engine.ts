@@ -156,9 +156,10 @@ export async function applyPromotionRules(
         // FIX 2026-07-06 (QA funnel-simulation-tester, bug #3): la
         // columna `created_by_email` de `crm_tasks` es NOT NULL pero
         // el Promotion Engine no la seteaba, generando 23502 (not-null
-        // violation). Usamos el actor del context (en producción es
-        // "wizard-bot@qlick" o el email del admin que disparó el flow).
-        created_by_email: ctx.actorEmail,
+        // violation). FIX 2026-07-06 (audit F5): fallback a "system@qlick"
+        // si actorEmail es null/undefined (caso path admin action sin
+        // email de actor).
+        created_by_email: ctx.actorEmail?.trim() || "system@qlick",
       } as never);
       if (error) {
         result.notes.push(
@@ -174,30 +175,35 @@ export async function applyPromotionRules(
     }
   }
 
-  // 4) Notificar al admin (best-effort — solo loggeamos por ahora,
-  //    integración con Brevo queda para Fase 8+ cuando el template
-  //    survey-with-consent esté confirmado)
-  if (notifyAdmin) {
+  // 4) Audit log de la promoción (best-effort).
+  //    FIX 2026-07-06 (audit F4): antes solo se loggeaba cuando el lead
+  //    era MQL (notifyAdmin=true). Ahora TODAS las promociones se
+  //    loggean en admin_audit_log con action="lead_promoted" y la
+  //    qualification en metadata, para que el admin tenga visibilidad
+  //    del funnel completo en el panel /admin/system/audit-log.
+  //    Para MQL, además se notifica vía email (futuro Brevo).
+  if (newStatus) {
     try {
-      // Por ahora solo loggeamos en el audit log para que el admin lo vea.
       await ctx.supabase.from("admin_audit_log" as never).insert({
-        actor_email: ctx.actorEmail,
-        action: "lead_hot_promotion",
+        actor_email: ctx.actorEmail?.trim() || "system@qlick",
+        action: "lead_promoted",
         entity_type: "lead",
         entity_id: leadId,
         metadata: {
           score,
           qualification,
           newStatus,
+          taskPriority,
           leadEmail: ctx.leadEmail,
           leadName: ctx.leadName,
           eventTitle: ctx.eventTitle,
+          notifyAdmin,
         },
       } as never);
-      result.adminNotified = true;
+      result.adminNotified = notifyAdmin;
     } catch (err) {
       result.notes.push(
-        `Notify admin threw: ${err instanceof Error ? err.message : String(err)}`,
+        `Audit log failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }
