@@ -1,0 +1,54 @@
+# Smoke tests para PRs — Paquete 3 (cierre auditoría)
+# - tests: 480 unit tests con mocks (sin DB)
+# - type-check: TypeScript strict
+# - lint: ESLint
+# - smoke:audit: simulador E2E contra DB real (requiere secrets)
+# - smoke:scenarios: 3 escenarios del funnel dinámico (MQL/Hot/Cold)
+name: Smoke
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  static:
+    name: Tests + Type-check + Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - run: npm test
+      - run: npm run type-check
+      - run: npm run lint
+
+  e2e:
+    name: Smoke E2E (Supabase)
+    runs-on: ubuntu-latest
+    needs: static
+    # Solo corre contra main (no en PRs de forks por secrets).
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - name: Audit edge cases (3 pilares del funnel)
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: npm run smoke:audit
+      - name: Simulate funnel scenarios (MQL/Hot/Cold)
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: npm run smoke:scenarios
