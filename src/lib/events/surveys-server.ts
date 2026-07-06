@@ -163,6 +163,26 @@ export async function createSurvey(
     .single();
 
   if (error || !data) {
+    // FIX 2026-07-06 (QA funnel-audit, bug #6): race condition entre
+    // /api/submit-survey y wizard WhatsApp podía crear 2 surveys
+    // para el mismo (event_id, phone). Ahora con UNIQUE INDEX
+    // event_surveys_event_phone_unique (migration 20260706030000),
+    // el segundo insert falla con 23505. Tratamos como OK (dedupe
+    // a nivel DB) para que el caller no se entere.
+    if (error?.code === "23505" || /duplicate/i.test(String(error?.message ?? ""))) {
+      // eslint-disable-next-line no-console
+      console.info(
+        "[surveys-server] createSurvey dedupe DB (23505): survey ya existe",
+        { eventId: input.eventId, phone: phoneNormalized, email: respondentEmail },
+      );
+      return {
+        ok: true,
+        created: false,
+        persisted: false,
+        demo: false,
+        note: "Encuesta ya existía (dedupe DB level).",
+      };
+    }
     // eslint-disable-next-line no-console
     console.error("[surveys-server] createSurvey falló", {
       code: error?.code,

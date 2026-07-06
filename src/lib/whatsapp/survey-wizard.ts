@@ -390,6 +390,20 @@ export function buildDynamicSurveyStep(args: {
 /**
  * Detecta si un buttonId fue emitido por el builder dinámico.
  *
+ * FIX 2026-07-06 (QA funnel-audit): el parser anterior usaba
+ * `lastIndexOf("_")` que falla con questionIds que tienen underscores
+ * (e.g. "survey_q1_clarity_very_clear" se parseaba como
+ * `{ questionId: "q1_clarity_very", optionId: "clear" }`). Esto
+ * rompía el wizard entero en producción desde el merge del plan
+ * dinámico, porque todos los questionIds del proyecto
+ * (`q1_clarity`, `q2_apply`, `q3_consent`, `q_business`) tienen
+ * guiones bajos.
+ *
+ * FIX: recibe el set de `validQuestionIds` del `survey_config` y
+ * matchea el prefijo más largo. Esto garantiza que `questionId`
+ * sea siempre uno de los IDs del config (no heurística de
+ * lastIndexOf).
+ *
  * Devuelve `{ questionId, optionId }` o `null` si no matchea.
  *
  * Ejemplo de IDs emitidos por buildDynamicSurveyStep:
@@ -398,12 +412,38 @@ export function buildDynamicSurveyStep(args: {
  */
 export function detectDynamicSurveyButton(
   buttonId: string,
+  validQuestionIds: readonly string[] = [],
 ): { questionId: string; optionId: string } | null {
   // Format esperado: survey_<questionId>_<optionId>
-  // questionId puede tener guiones bajos (e.g. "q1_clarity").
   if (!buttonId.startsWith("survey_")) return null;
   const rest = buttonId.slice("survey_".length);
-  // Buscar el último "_" para separar questionId de optionId.
+
+  if (validQuestionIds.length > 0) {
+    // FIX: matchear el questionId válido más largo (longest-prefix match).
+    // Ordenar por longitud descendente para que "q1_clarity" matchee
+    // antes que "q1" si ambos existieran en el config.
+    const sorted = [...validQuestionIds].sort((a, b) => b.length - a.length);
+    for (const qid of sorted) {
+      if (rest === qid) {
+        // Caso edge: buttonId = "survey_q_business" sin optionId
+        // (no debería pasar porque siempre emitimos optionId, pero
+        // por seguridad lo manejamos).
+        return null;
+      }
+      const prefix = `${qid}_`;
+      if (rest.startsWith(prefix)) {
+        const optionId = rest.slice(prefix.length);
+        if (optionId.length > 0) return { questionId: qid, optionId };
+      }
+    }
+    return null;
+  }
+
+  // Fallback legacy: si no se pasan validQuestionIds, usamos
+  // lastIndexOf (comportamiento previo). Útil para tests unitarios
+  // que no quieren construir el set. **OJO:** este modo es
+  // ambiguo con questionIds que tienen underscores — usar el modo
+  // con validQuestionIds en producción.
   const lastUnderscore = rest.lastIndexOf("_");
   if (lastUnderscore === -1) return null;
   const questionId = rest.slice(0, lastUnderscore);

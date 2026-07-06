@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   SURVEY_BUTTON_IDS,
   detectSurveyButton,
+  detectDynamicSurveyButton,
   buildSurveyQ1,
   buildSurveyQ2,
   buildSurveyQ3,
@@ -196,4 +197,84 @@ test("cleanBusinessText: trunca a 500 chars máximo", () => {
   const longText = "a".repeat(1000);
   const trimmed = cleanBusinessText(longText);
   assert.ok(trimmed && trimmed.length === 500);
+});
+
+// ────────────────────────────────────────────────────────────
+// FIX 2026-07-06 (QA funnel-audit): detectDynamicSurveyButton
+// usaba lastIndexOf("_") que fallaba con questionIds que tienen
+// guiones bajos (todos los del proyecto: q1_clarity, q2_apply,
+// q3_consent, q_business). Ahora recibe validQuestionIds y
+// matchea el prefijo más largo.
+// ────────────────────────────────────────────────────────────
+
+test("detectDynamicSurveyButton: parsea correctamente con validQuestionIds", () => {
+  const qids = ["q1_clarity", "q2_apply", "q3_consent", "q_business"];
+  assert.deepEqual(
+    detectDynamicSurveyButton("survey_q1_clarity_very_clear", qids),
+    { questionId: "q1_clarity", optionId: "very_clear" },
+  );
+  assert.deepEqual(
+    detectDynamicSurveyButton("survey_q2_apply_yes", qids),
+    { questionId: "q2_apply", optionId: "yes" },
+  );
+  assert.deepEqual(
+    detectDynamicSurveyButton("survey_q3_consent_no", qids),
+    { questionId: "q3_consent", optionId: "no" },
+  );
+  assert.deepEqual(
+    detectDynamicSurveyButton("survey_q_business_skip", qids),
+    { questionId: "q_business", optionId: "skip" },
+  );
+});
+
+test("detectDynamicSurveyButton: longest-prefix match (no ambiguity con underscores)", () => {
+  // Si tuvieramos "q1" y "q1_clarity" en el config, debe preferir el más largo.
+  const qids = ["q1", "q1_clarity"];
+  assert.deepEqual(
+    detectDynamicSurveyButton("survey_q1_clarity_yes", qids),
+    { questionId: "q1_clarity", optionId: "yes" },
+  );
+  assert.deepEqual(
+    detectDynamicSurveyButton("survey_q1_yes", qids),
+    { questionId: "q1", optionId: "yes" },
+  );
+});
+
+test("detectDynamicSurveyButton: optionId puede tener underscores", () => {
+  const qids = ["q1", "q2_with_underscore"];
+  assert.deepEqual(
+    detectDynamicSurveyButton("survey_q2_with_underscore_long_option", qids),
+    { questionId: "q2_with_underscore", optionId: "long_option" },
+  );
+});
+
+test("detectDynamicSurveyButton: retorna null para IDs fuera del set", () => {
+  const qids = ["q1_clarity", "q_business"];
+  // IDs cuyo questionId NO está en el set
+  assert.equal(detectDynamicSurveyButton("survey_q99_nope", qids), null);
+  // Garbage no parseable
+  assert.equal(detectDynamicSurveyButton("garbage", qids), null);
+  // Sin optionId (formato incompleto) retorna null
+  assert.equal(detectDynamicSurveyButton("survey_q1_clarity", qids), null);
+  // IDs cuyo questionId matchea el set, el parser retorna el par
+  // (la validación de optionId vs options es responsabilidad del caller).
+  assert.deepEqual(
+    detectDynamicSurveyButton("survey_q1_clarity_unknown_option", qids),
+    { questionId: "q1_clarity", optionId: "unknown_option" },
+  );
+});
+
+test("detectDynamicSurveyButton: fallback legacy (sin validQuestionIds) usa lastIndexOf", () => {
+  // Sin qids, mantiene comportamiento legacy (lastIndexOf).
+  // Útil para tests unitarios rápidos que no quieren construir el set.
+  assert.deepEqual(
+    detectDynamicSurveyButton("survey_q_simple_yes"),
+    { questionId: "q_simple", optionId: "yes" },
+  );
+  // Advertencia: este modo es ambiguo si el questionId tiene underscores.
+  // Por eso se recomienda pasar validQuestionIds en producción.
+  assert.deepEqual(
+    detectDynamicSurveyButton("survey_q1_clarity_very_clear"),
+    { questionId: "q1_clarity_very", optionId: "clear" }, // comportamiento legacy
+  );
 });

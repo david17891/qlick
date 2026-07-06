@@ -2072,3 +2072,23 @@ sustituir el ciclo con templates". Ejecuté 4 bloques sincrónicamente.
 - **Trigger:** Sesión post-merge del plan Maestro v4 (#5) — David pidió ejecutar la simulación automatizada.
 - **Cleanup pendiente:** borrar artefactos temporales no commiteados (`scratch/_npm-test2.log`, `scratch/_sim-final.log`, `verify_correct_pooler.mjs`, `.agents/`).
 
+
+## 2026-07-06 ~01:45 - Eliminación de Masterclass, Breadcrumbs y Conexión de Eventos con CRM (v0.7.2)
+
+- **Pregunta:** David solicita continuar con la depuración del módulo obsoleto `masterclass`, mejorar la navegabilidad en el panel administrativo añadiendo breadcrumbs a todas las subpáginas secundarias, y conectar la sección de Eventos de manera más estrecha con el CRM.
+- **Decisiones:**
+  1. **Eliminación Física:** Borrar definitivamente los 14 archivos obsoletos del módulo `masterclass` (actions, folders, views, mappers, types) que fueron restaurados temporalmente para validación.
+  2. **Navegabilidad:** Añadir breadcrumbs de regreso a `/admin` en `/admin/eventos/page.tsx`, `/admin/eventos/[id]/page.tsx`, `/admin/eventos/[id]/import/page.tsx`, `/admin/handoffs/page.tsx` y `/admin/system/audit-log/page.tsx`.
+  3. **Conexión CRM-Eventos:** En `CRMView.tsx`, extraer dinámicamente los slugs de eventos de las etiquetas (tags) de los leads y agregar un dropdown para filtrar la tabla de leads por evento. Además, mostrar badges dinámicos con el ícono `🎟️` al lado de los nombres de los leads que participaron en eventos.
+- **Razón:** Simplificar el código de producción evitando duplicidad, y proveer una experiencia de usuario integrada en el panel administrativo donde se pueda regresar fácilmente al panel principal y filtrar leads según su participación en eventos.
+- **Impacto:** Reducción de deuda técnica, mayor agilidad de navegación, y segmentación por eventos 100% operativa en el CRM sin riesgos en las pruebas activas de eventos.
+
+## 2026-07-06 ~02:30 - Botones de WhatsApp Individuales en Registros de Eventos y Limpieza de Workspace (v0.7.3)
+
+- **Pregunta:** Realizar auditoría de navegación, experiencia de usuario y funcionalidad en el módulo de Eventos y CRM, y proponer/implementar mejoras sutiles que faciliten la operación manual. Además, limpiar logs y archivos scratch del workspace local.
+- **Decisiones:**
+  1. **Outreach de WhatsApp Directo:** Agregar botones/iconos de WhatsApp individuales (`💬`) al lado de los números de teléfono en las tablas de **Confirmados** y **Asistentes** del detalle del evento (`/admin/eventos/[id]/page.tsx`). Esto permite contactar directamente a un participante pre-armando un mensaje con su nombre, detalles del evento y enlace de confirmación/pase, acelerando la gestión manual sin tener que entrar a la vista masiva de broadcast.
+  2. **Limpieza de Archivos Temporales:** Eliminar permanentemente todos los logs y scripts temporales generados durante el testing y debugging del plan maestro de la sesión anterior (`scratch/_audit-run.log`, `scratch/audit-edge-cases.mjs`, `verify_correct_pooler.mjs`, etc.) manteniendo el repositorio libre de archivos no deseados.
+- **Razón:** Aumentar la productividad del administrador al permitir un contacto individual rápido con plantillas pre-armadas dinámicamente y mantener la higiene del repositorio.
+- **Impacto:** 0 archivos temporales residuales en el workspace. Navegación y contacto WhatsApp 100% integrados por fila en listas de eventos. Todos los 480 tests unitarios y la build de Next.js compilan sin errores.
+

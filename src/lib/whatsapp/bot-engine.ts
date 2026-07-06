@@ -2009,7 +2009,10 @@ case "interactive_event_inscribir": {
       let nextStepInteractiveMsg: InteractiveMessage | undefined;
 
       if (dynamicQuestions && dynamicQuestions.length >= 2) {
-        const detected = detectDynamicSurveyButton(args.buttonId);
+        const detected = detectDynamicSurveyButton(
+          args.buttonId,
+          dynamicQuestions.map((q) => q.id),
+        );
         if (
           !detected ||
           detected.questionId !== dynamicQuestions[0].id
@@ -2076,7 +2079,10 @@ case "interactive_event_inscribir": {
       let nextInteractive: InteractiveMessage | undefined;
 
       if (dynamicQuestions && dynamicQuestions.length >= 3) {
-        const detected = detectDynamicSurveyButton(args.buttonId);
+        const detected = detectDynamicSurveyButton(
+          args.buttonId,
+          dynamicQuestions.map((q) => q.id),
+        );
         if (!detected || detected.questionId !== dynamicQuestions[1].id) {
           return nudgeToResendWizard(provider, phoneNormalized, lead.name);
         }
@@ -2140,7 +2146,10 @@ case "interactive_event_inscribir": {
       let nextInteractive: InteractiveMessage | undefined;
 
       if (dynamicQuestions && dynamicQuestions.length >= 4) {
-        const detected = detectDynamicSurveyButton(args.buttonId);
+        const detected = detectDynamicSurveyButton(
+          args.buttonId,
+          dynamicQuestions.map((q) => q.id),
+        );
         if (!detected || detected.questionId !== dynamicQuestions[2].id) {
           return nudgeToResendWizard(provider, phoneNormalized, lead.name);
         }
