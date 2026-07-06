@@ -8,6 +8,105 @@
 
 ---
 
+## [v0.8.0] — Wizard WhatsApp funcional + Español MX — 2026-07-06
+
+**Tag:** `v0.8.0` (rollback target estable)
+**Branch:** `main` (HEAD post-tag)
+**Handoff:** `docs/HANDOFF_v0.8.0_FUNCIONAL.md`
+**Tests:** 535/535 verde · type-check ✓ · lint ✓ (0 warnings) · build ✓
+
+Este release acumula los clusters **G-15 r1-r7** (wizard funcional + UI admin
+mejorada + copy MX) más la **Fase name capture** previa. Cierra el ciclo
+donde el wizard de encuesta post-evento WhatsApp funciona end-to-end sin
+que el LLM "robe" turnos del flow conversacional, y todo el copy user-facing
+suena en español mexicano consistente.
+
+### Added
+
+- **Wizard de encuesta WhatsApp end-to-end (G-15 r1-r5)**
+  - Detección de buttonId formato dinámico (`survey_q1_clarity_very_clear`) +
+    legacy (`survey_q1_very_clear`) unificada en `detectSurveyButtonAny`
+    (`src/lib/whatsapp/survey-wizard.ts`).
+  - Síntesis de buttonId desde texto crudo cuando Meta omite el field
+    (dudupe/retry/button reply reentrega) — `synthesizeSurveyOptionFromText`
+    + `buildDynamicButtonIdFromOption`.
+  - Nuevo intent `survey_q_consent_continue` — "Sí" en q_consent avanza a
+    q_business (step 5), "No" cierra. `survey_q4_text/skip` aceptan step 4 OR 5.
+  - `consent_to_contact` derivado de `responses.q_consent` explícito
+    (yes→true, no→false), fallback a `businessCaptured` si ausente.
+- **Admin panel `/admin/eventos/[id]` mejorado (G-15 r4)**
+  - Tab Encuestas con rama "dynamic" en `detectSurveyShape` que formatea
+    labels legibles (incluye `Consentimiento: Sí/No`).
+  - Tab Leads promovidos renderiza badges inline (🎯 Score, HOT/WARM/MQL/
+    COLD con tone según bucket, ✓ Consent).
+  - `mapLeadRowToLead` ahora incluye `score`, `qualification`,
+    `surveyOfferSentAt` con cast explícito (typegen stale).
+  - `PipelineCard` acepta props opcionales `score/qualification` y renderiza
+    badges cuando están presentes.
+- **Documentación de release**
+  - `docs/HANDOFF_v0.8.0_FUNCIONAL.md` (handoff completo).
+  - `docs/STATUS.md` snapshot v0.8.0.
+  - `docs/ROADMAP.md` entrada v0.8.0.
+  - Este CHANGELOG.
+  - Tag Git `v0.8.0` pusheado.
+
+### Changed
+
+- **Cierre del wizard ahora manda 1 solo mensaje (G-15 r5)**
+  - Removido el send del follow-up bucket HOT/MQL/coldWarm del close path
+    (`survey_q4_text` + `survey_q_consent_continue`).
+  - Solo thank-you estándar de cierre. Consistente entre path texto y path
+    Saltar. Sin mensaje fantasma que aparezca en WhatsApp pero no en DB.
+  - Si el admin quiere disparar bucket follow-up, debe usar
+    `/api/events/:id/send-survey-offers` desde el panel.
+- **Copy 100% español mexicano (G-15 r6-r7)**
+  - 8 archivos del WhatsApp bot outbound + emails transaccionales arreglados.
+  - 12 archivos de páginas web admin/student/staff + LLM system prompt
+    arreglados.
+  - **Mappings aplicados:** voseo → tuteo (`querés` → `quieres`, `tenés` →
+    `tienes`, etc.), `escribinos` → `escríbenos`, `contanos` → `cuéntanos`,
+    `por acá` → `por aquí`, `Disculpá` → `Disculpa`, `respondé` → `responde`.
+
+### Fixed
+
+- **Bug G-15 r0 (David 2026-07-06 12:36):** "Muy claro no avanza wizard" —
+  Meta omite buttonId en dedupe/retry; ahora sintetizamos desde texto.
+- **Bug G-15 r3 (David 2026-07-06 13:30):** "Encuestas=0, Leads promovidos=0,
+  no me da info del lead" — q_consent ahora persiste, consent_to_contact se
+  deriva correctamente, formato dinámico soportado en UI.
+- **Bug G-15 r5 (David 2026-07-06 14:55):** "Mensaje extra en cierre wizard" —
+  follow-up bucket duplicaba el thank-you; ahora solo thank-you.
+- **Bug G-15 r6 (David 2026-07-06 15:10):** "Contanos/escribinos/por acá
+  no se dicen en español mexicano" — todos los archivos user-facing migrados.
+
+### Internal
+
+- 5 nuevos tests para formato dinámico en `survey-display.test.mjs`.
+- Tests existentes actualizados para validar `detectSurveyButtonAny` con
+  ambos formatos (legacy + dinámico) — 12 nuevos tests en
+  `survey-button-detection.test.mjs`.
+- 14 tests en `survey-text-fallback.test.mjs` para
+  `synthesizeSurveyButtonFromText`.
+- LLM system prompt (`bot-personality-templates.ts:64`) actualizado a
+  español mexicano para que no genere voseo en runtime.
+
+### Lecciones aprendidas (para futuras sesiones)
+
+1. **Tests E2E con DB limpia no detectan bugs del path webhook → bot.**
+   El E2E del r2 simuló buttonId en formato legacy, pasó, pero prod usa
+   formato dinámico. Regla: tests E2E deben usar el formato EXACTO que
+   produce prod, no uno equivalente.
+2. **Anti-invention trap — NO fabricar comportamiento de servicios.**
+   Decir "Supabase detecta tokens pegados en chat y los rota
+   automáticamente" sin evidencia es wrong. La razón válida para no pegar
+   tokens por chat es solo de seguridad (logs de Mavis son persistentes),
+   no comportamiento del servicio.
+3. **Fix defensivo NO es aceptable cuando el root cause es identificable.**
+   G-15 r0 requería leer logs de Vercel y entender QUE Meta omite
+   buttonId, no agregar un regex permisivo.
+
+---
+
 ## [Unreleased] — Fase 6 (Polish + auditoría + métricas globales)
 
 **Branch:** `feat/fase-6-hitos` (siguiente branch lógico tras `feat/fase-5-planning`)

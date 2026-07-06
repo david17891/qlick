@@ -2426,4 +2426,48 @@ sustituir el ciclo con templates". Ejecuté 4 bloques sincrónicamente.
   consistente.
 - **Commit:** 365b620 en main. Por pushear.
 
+
+## 2026-07-06 ~15:30 - Release v0.8.0: Wizard WhatsApp funcional + Español MX
+
+- **Pregunta:** David pidió (sesión 2026-07-06 ~15:22) documentar y
+  marcar en GitHub este punto como un release al que siempre podamos
+  volver. Inicialmente dijo "v0.9" pero al ver que ya había un v0.9.0
+  LMS en CHANGELOG, abrió la puerta a elegir yo el número.
+- **Decisión:** Usar **v0.8.0** como tag/release.
+  - Sigue el semver natural del proyecto (último tag v0.6.0, después Fase 7A
+    con HANDOFF v0.7.1 sin tag, ahora cerramos con v0.8.0).
+  - Minor bump (no patch) porque G-15 agrega features user-facing nuevas
+    (wizard close fix, copy MX) que cambian comportamiento del bot.
+  - No es major (v1.0.0) porque hay pendientes documentados (Meta templates,
+    OAuth loop I-4) que bloquean producción plena.
+  - David dijo "puedes usar la versión, 0.9 es un ejemplo nomas" — me dio
+    libertad explícita.
+- **Artefactos del release:**
+  - `docs/HANDOFF_v0.8.0_FUNCIONAL.md` (handoff completo, ~400 líneas).
+  - `docs/STATUS.md` sobreescrito con snapshot v0.8.0.
+  - `docs/ROADMAP.md` actualizado con milestone v0.8.0 al inicio de
+    "Estado actual".
+  - `CHANGELOG.md` nueva sección `[v0.8.0]` arriba del todo (encima del
+    `[Unreleased]` Fase 6 que estaba abierto).
+  - `package.json` version bump `0.1.0` → `0.8.0`.
+  - Git tag `v0.8.0` con mensaje descriptivo + push a origin.
+- **Qué incluye el release (resumen ejecutivo):**
+  - Wizard de encuesta WhatsApp end-to-end (G-15 r1-r5): botón detection
+    formato dinámico + consent advance + UI admin mejorada + cierre sin
+    duplicación.
+  - Copy 100% español mexicano consistente (G-15 r6-r7): 8 archivos bot+email
+    + 12 archivos web + LLM system prompt. Total: 20 archivos, 35+ ubicaciones.
+  - 535/535 tests verde · type-check ✓ · lint ✓ · build ✓.
+- **Pendientes post-v0.8.0 (no bloquean):**
+  - Meta templates (G-5) — David las pide, 24-48h Meta aprobación.
+  - OAuth loop I-4 — 1 hora fix.
+  - Banner por sección CRM (I-2) — visual, no funcional.
+  - `findLeadByPhone` timeouts (G-12) — 3s + retry mitiga mayoría.
+- **Para volver a este punto (rollback):**
+  - `git checkout v0.8.0` o `git revert <commits-G-15>`.
+- **Impacto:** Primer punto estable del producto donde wizard WhatsApp
+  funciona end-to-end, admin tiene visibilidad real de respuestas, y todo
+  el copy user-facing suena MX. Si algo se rompe en producción, rollback
+  a v0.8.0.
+
 `

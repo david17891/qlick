@@ -1,12 +1,25 @@
 # Qlick LMS — Roadmap
 
 > Fuente de verdad del plan del LMS. Cualquier desvío se conversa y se actualiza acá.
-> Última revisión: 2026-06-28 (sesión tarde-noche) — **Fase 6 Hitos A+B+C cerrados**.
+> Última revisión: 2026-07-06 (sesión tarde) — **v0.8.0 Wizard WhatsApp funcional + Español MX** cerrado y taggeado.
 
 ---
 
 ## Estado actual
 
+- [x] **v0.8.0 — Wizard WhatsApp funcional + Español MX** — release cerrado y taggeado el 2026-07-06 (HEAD `main`, tag `v0.8.0`)
+  - Handoff completo: `docs/HANDOFF_v0.8.0_FUNCIONAL.md` ← **leer primero**
+  - 21 commits del cluster G-15 (r1-r7) + Fase name capture + auditoría nocturna
+  - 535/535 tests verde · type-check ✓ · lint ✓ · build ✓
+  - **Qué incluye:**
+    - Wizard post-evento end-to-end funcional (Q1→Q2→Q3→q_consent→q_business→cierre)
+    - Detección de buttonId formato dinámico (`survey_q1_clarity_very_clear`) + legacy
+    - Nuevo intent `survey_q_consent_continue` (avanzar de q_consent a q_business)
+    - Tab Encuestas con labels legibles (formato dinámico + Consentimiento Sí/No)
+    - Tab Leads promovidos con badges score/qualification/consent
+    - Cierre sin mensaje duplicado (solo thank-you, follow-up bucket removido)
+    - Copy 100% español mexicano consistente (bot WhatsApp + emails + web pages)
+  - **Tag:** `v0.8.0` (rollback target estable)
 - [x] **Events Funnel Foundation v0.7.0** — fase cerrada y mergeada a `main` (rama `feat/events-funnel-foundation`) el 2026-06-26
   - 12 commits: migration (6 tablas + RLS) → tipos dominio → mapper → 5 server libs (events/confirmations/attendees/surveys/promotion) → refactor `linkLeadToEventRecord` (cierra H2 de Fase 2) → importer CLI con `xlsx` → 23 unit tests del importer → barrel + doc
   - **Cierre del H2 del QA Fase 2** (race condition en tags) por construcción: `linkLeadToEventRecord` ahora usa `lead_event_links` (INSERT-only con UNIQUE)
