@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-05 ~03:55 (Sesión nocturna: delete-event modal sin fricción, short_code por evento (feature + 27 tests), survey offer drift fix. HEAD `3b85898` pushed. 429/429 tests ✅, build 26/26 ✅. **Migration `20260705120000_events_short_code` pendiente de aplicar en prod** — David la corre via Supabase SQL Editor cuando tenga hueco.)
+> **Última actualización:** 2026-07-05 ~17:39 (Migration `events.short_code` aplicada en prod. Vercel `NEXT_PUBLIC_*` fix aplicado en los 3 entornos (Production/Preview/Development) por agente externo — `check:supabase` pasa en local, modo `configured`. Evento de prueba `test-short-code` borrado. Scripts `regenerate-supabase-{access-token,db-password}.ps1` en `~/.mavis/skills/api-box/scripts/`. HEAD a pushear: docs + .gitignore revert (la regla `.env*` que metió el agente externo rompía `.env.example`).)
 
 ---
 
@@ -21,7 +21,7 @@
 | **Production deploy ID** | (más reciente de los fixes 2026-07-04) |
 | **Production URL (auto)** | `qlick-three.vercel.app` |
 | **Branch** | `main` |
-| **Commit HEAD** | `3b85898` (`fix(wa-bot): no ofrecer encuesta cuando el evento fue deleteado`) |
+| **Commit HEAD** | `9864a09` (`docs(sesion 2026-07-05 noche): STATUS, OPEN_ITEMS, PROJECT-LOG + memory`) |
 | **Último push** | `3c303b9..3b85898 main -> main` (5 commits esta sesión: 2 delete-modal, 1 short_code feature, 1 window-not-defined, 1 survey drift fix) |
 | **Commits ahead of origin** | **0** — working tree clean |
 | **Build status** | ✅ READY + PROMOTED + aliasAssigned |

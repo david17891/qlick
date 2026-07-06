@@ -1611,3 +1611,55 @@ ext.config.mjs o src/lib/env.ts.
 - 429/429 tests ? (eran 413, +16 nuevos: 11 short-code + 5 matchShortCode + 4 mas via contexto)
 - type-check ? - lint 0 warnings - build 26/26 - TODOS pushed a main (3b85898 punta)
 
+---
+
+## 4. Sesion tarde 2026-07-05 (~17:00 - 17:25) - Migration aplicada + credenciales drift
+
+### Migration `20260705120000_events_short_code.sql`
+
+**Estado:** ✅ **APLICADA en prod 2026-07-05 17:23** via Supabase SQL Editor (David la pego y la corrio a mano).
+
+**Verificacion end-to-end:**
+- DB schema: columna `short_code text NOT NULL` con CHECK `^[A-HJ-NP-Z2-9]{4}$` + UNIQUE index `events_short_code_unique` (btree) + trigger `events_short_code_before_insert` (auto-genera si new.short_code IS NULL).
+- Comportamiento: insert de prueba `slug=test-short-code` recibio `short_code=BE64` automaticamente.
+- UI publica: chip "Codigo del evento: BE64" visible en `https://qlick-three.vercel.app/eventos/test-short-code`.
+
+### Pendientes
+
+- 🟡 **Evento de prueba `test-short-code`**: insertado a mano por David, status=published, short_code=BE64. **Borrar o dejarlo como demo** - decision de David.
+
+### Credenciales Supabase drift (delegado a agente externo)
+
+**Sintoma:**
+- `SUPABASE_ACCESS_TOKEN` (`<redacted>`) da `401 Unauthorized` contra `GET /v1/projects/ugpejblymtbwtsoiykyj`.
+- `SUPABASE_DB_PASSWORD` (`<redacted>`) da `28P01 password authentication failed for user "postgres"` contra DB directa (puerto 5432).
+
+**Lo que se intento (todos fallaron):**
+- `npx supabase db push --dry-run` → 401 con token actual.
+- `exec-sql.mjs` con pooler (`aws-0-us-west-1.pooler.supabase.com:6543`) → ENOTFOUND (pooler caido, conocido).
+- `exec-sql.mjs` con host directo (`db.ugpejblymtbwtsoiykyj.supabase.co:5432`) → auth failed.
+- 3+ regeneraciones de token + password por David + scripts de regeneracion (`regenerate-supabase-access-token.ps1`, `regenerate-supabase-db-password.ps1`) → ambas siguen drift.
+
+**Mitigacion aplicada:** David aplico la migration pendiente via SQL Editor del dashboard (30 seg, sin necesidad de credenciales Mavis). Migration aditiva, riesgo ~0.
+
+**Proxima accion:** esperar resultados del agente externo que David mando en paralelo. Cuando tenga credenciales sanas:
+1. Aplicar las proximas migrations sin pasar por SQL Editor.
+2. Restaurar `supabase db push` y `exec-sql.mjs` como paths principales.
+3. Borrar evento de prueba `test-short-code` desde admin o SQL.
+4. Rotar el DPAPI backup del vault con las credenciales frescas.
+
+### Scripts nuevos en `~/.mavis/skills/api-box/scripts/`
+
+- `regenerate-supabase-access-token.ps1` - pega nuevo access token, actualiza HKCU + vault + DPAPI backup, valida contra Management API.
+- `regenerate-supabase-db-password.ps1` - pega nueva DB password, actualiza HKCU + vault + DPAPI backup, valida contra DB.
+- `verify-pg.js` - companion del db-password script (auto-detecta `pg` en `node_modules`).
+
+**Bugs encontrados y corregidos:**
+- **UTF-8 BOM** rompe el parser de PowerShell 5.1 - `Set-Content -Encoding UTF8` mete BOM. Fix: escribir con `[System.IO.File]::WriteAllText` + `UTF8Encoding($false)`.
+- **Em dashes (—) y curly quotes (' " " ")** rompen el parser dentro de double-quoted strings. Fix: ASCII-only en scripts `.ps1`.
+
+### Leccion del dia (agent memory, ya guardada)
+
+- **No inventar comportamiento de servicios.** Yo dije que "Supabase detecta tokens pegados en chat y los rota" - David me corrigio: no hay evidencia de eso, la unica razon valida para no pegar tokens por chat es seguridad (no queres que queden en logs de Mavis), no un comportamiento del servicio. **Regla:** si no verifique, no afirmo.
+- **SQL Editor del dashboard > pelearse con credenciales drift** para migraciones aditivas. 30 seg vs 30 min. Reservar `supabase db push` / `exec-sql.mjs` para cuando las credenciales esten sanas.
+
