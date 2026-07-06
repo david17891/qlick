@@ -1,27 +1,37 @@
 "use client";
 
 /**
- * Formulario publico de encuesta post-evento.
+ * Formulario público de encuesta post-evento (Render DINÁMICO).
  *
- * FIX 2026-07-03 (sesion David G-4). Mobile-first.
+ * FIX 2026-07-05 (feat/funnel-dynamic-surveys-crm, commit 8): ahora renderiza
+ * preguntas desde `surveyConfig` (provisto por page.tsx, viene del
+ * `events.survey_config` jsonb). Si el config está vacío o el evento no
+ * tiene, page.tsx cae al Default template (5 preguntas).
  *
- * Estado del form:
+ * Render genérico:
+ *  - `type === "buttons"` → radio group (1-3 opciones según config).
+ *  - `type === "text"` → textarea con skip opcional.
+ *
+ * Consentimiento:
+ *  - Si hay alguna pregunta con `isConsent: true` en una opción, NO se
+ *    muestra checkbox separado — la respuesta "Sí" a esa pregunta ES el
+ *    consent (LFPDPPP-defendible).
+ *  - Si NO hay ninguna pregunta con isConsent, se muestra el checkbox
+ *    legacy de consent al final (fallback para configs incompletos).
+ *
+ * Email + phone son campos EXTRA (no son parte del questions[]), siempre
+ * se piden porque el endpoint `/api/submit-survey` los necesita para
+ * matchear el lead.
+ *
+ * Mobile-first. Estado:
  *  - filling: editar respuestas.
  *  - submitting: POST en curso.
- *  - success: gracias, volver al inicio.
+ *  - success: gracias.
  *  - error: reintentar.
- *
- * Campos:
- *  - rating 1-5 (radios)
- *  - "lo que mas te gusto" (textarea)
- *  - "que mejorarias" (textarea, opcional)
- *  - "tema de interes comercial" (textarea, opcional)
- *  - consent (checkbox) — requerido para promover
- *  - email (editable, pre-rellenado del token)
- *  - phone (editable, pre-rellenado del token)
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import type { SurveyConfig, SurveyQuestion } from "@/types/events";
 
 type FormState = "filling" | "submitting" | "success" | "error";
 
@@ -29,55 +39,109 @@ interface Props {
   token: string;
   prefillEmail: string;
   prefillPhone: string;
+  surveyConfig: SurveyConfig;
 }
 
-const RATINGS = [
-  { value: 5, label: "Excelente" },
-  { value: 4, label: "Muy bueno" },
-  { value: 3, label: "Bien" },
-  { value: 2, label: "Regular" },
-  { value: 1, label: "No me gusto" },
-] as const;
-
-export function EncuestaClient({ token, prefillEmail, prefillPhone }: Props) {
+export function EncuestaClient({
+  token,
+  prefillEmail,
+  prefillPhone,
+  surveyConfig,
+}: Props) {
   const [state, setState] = useState<FormState>("filling");
   const [errorMsg, setErrorMsg] = useState<string>("");
 
-  const [rating, setRating] = useState<number | null>(null);
-  const [liked, setLiked] = useState("");
-  const [improve, setImprove] = useState("");
-  const [interest, setInterest] = useState("");
-  const [consent, setConsent] = useState(false);
+  // Respuestas dinámicas: { [questionId]: stringValue }
+  const [responses, setResponses] = useState<Record<string, string>>({});
+  // Fallback consent checkbox (solo si NINGUNA question tiene isConsent flag)
+  const [consentFallback, setConsentFallback] = useState(false);
   const [email, setEmail] = useState(prefillEmail);
   const [phone, setPhone] = useState(prefillPhone);
 
+  // ¿Hay alguna opción con isConsent? Si sí, NO mostramos checkbox separado.
+  const hasConsentFlag = useMemo(() => {
+    return surveyConfig.questions.some(
+      (q) => q.type === "buttons" && q.options?.some((o) => o.isConsent === true),
+    );
+  }, [surveyConfig]);
+
+  function setAnswer(questionId: string, value: string) {
+    setResponses((prev) => ({ ...prev, [questionId]: value }));
+  }
+
+  // Validación dinámica: ¿qué campos son required?
+  function validate(): string | null {
+    // Botón-required: si es buttons, debe haber respuesta
+    for (const q of surveyConfig.questions) {
+      if (q.type === "buttons") {
+        if (!responses[q.id] || responses[q.id].trim() === "") {
+          return `Por favor respondé: "${q.text}"`;
+        }
+      }
+      // Text: opcional siempre (puede "saltar")
+    }
+    // Consent: si no hay isConsent flag, debe estar tildado el fallback
+    if (!hasConsentFlag && !consentFallback) {
+      return "Necesitamos tu autorización para guardar la encuesta.";
+    }
+    // Email es required (lo pide el endpoint)
+    if (!email.trim()) {
+      return "Por favor escribí tu correo.";
+    }
+    return null;
+  }
+
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!consent) {
-      setErrorMsg("Necesitamos tu autorizacion para guardar la encuesta.");
-      setState("error");
-      return;
-    }
-    if (rating === null) {
-      setErrorMsg("Califica el evento del 1 al 5.");
+    const err = validate();
+    if (err) {
+      setErrorMsg(err);
       setState("error");
       return;
     }
     setState("submitting");
     setErrorMsg("");
     try {
+      // Calcular consentToContact desde la respuesta con isConsent flag
+      let consentToContact = false;
+      if (hasConsentFlag) {
+        for (const q of surveyConfig.questions) {
+          if (q.type === "buttons") {
+            const matched = q.options?.find(
+              (o) => o.id === responses[q.id] && o.isConsent === true,
+            );
+            if (matched) {
+              consentToContact = true;
+              break;
+            }
+          }
+        }
+      } else {
+        consentToContact = consentFallback;
+      }
+
+      // Calcular commercialInterest desde la respuesta con isCommercialInterest flag
+      let commercialInterest: string | null = null;
+      for (const q of surveyConfig.questions) {
+        if (q.type === "buttons") {
+          const matched = q.options?.find(
+            (o) => o.id === responses[q.id] && o.isCommercialInterest === true,
+          );
+          if (matched) {
+            commercialInterest = matched.title;
+            break;
+          }
+        }
+      }
+
       const res = await fetch("/api/submit-survey", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           token,
-          responses: {
-            rating,
-            liked: liked.trim() || null,
-            improve: improve.trim() || null,
-          },
-          consentToContact: consent,
-          commercialInterest: interest.trim() || null,
+          responses,
+          consentToContact,
+          commercialInterest,
         }),
       });
       const data = (await res.json()) as {
@@ -132,96 +196,17 @@ export function EncuestaClient({ token, prefillEmail, prefillPhone }: Props) {
       onSubmit={onSubmit}
       className="rounded-xl bg-white border border-violet-100 p-4 space-y-4"
     >
-      {/* Rating (radios 1-5) */}
-      <fieldset>
-        <legend className="block text-sm font-bold text-slate-900 mb-2">
-          Como calificaras el evento? *
-        </legend>
-        <div className="grid grid-cols-5 gap-1.5">
-          {RATINGS.map((r) => (
-            <label
-              key={r.value}
-              className={`flex flex-col items-center justify-center gap-0.5 cursor-pointer rounded-lg border-2 px-1 py-2.5 text-center transition ${
-                rating === r.value
-                  ? "border-violet-500 bg-violet-50 text-violet-900"
-                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
-              }`}
-            >
-              <input
-                type="radio"
-                name="rating"
-                value={r.value}
-                checked={rating === r.value}
-                onChange={() => setRating(r.value)}
-                required
-                className="sr-only"
-              />
-              <span className="text-lg font-bold">{r.value}</span>
-              <span className="text-[10px] leading-tight">{r.label}</span>
-            </label>
-          ))}
-        </div>
-      </fieldset>
-
-      {/* Lo que mas te gusto */}
-      <div>
-        <label
-          htmlFor="liked"
-          className="block text-sm font-bold text-slate-900 mb-1"
-        >
-          Que fue lo que mas te sirvio?
-        </label>
-        <textarea
-          id="liked"
-          value={liked}
-          onChange={(e) => setLiked(e.target.value)}
-          maxLength={500}
-          rows={3}
-          placeholder="Lo que aprendi sobre..."
-          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm resize-y"
+      {/* Render dinámico de preguntas */}
+      {surveyConfig.questions.map((q) => (
+        <DynamicQuestion
+          key={q.id}
+          question={q}
+          value={responses[q.id] ?? ""}
+          onChange={(v) => setAnswer(q.id, v)}
         />
-      </div>
+      ))}
 
-      {/* Mejoras */}
-      <div>
-        <label
-          htmlFor="improve"
-          className="block text-sm font-bold text-slate-900 mb-1"
-        >
-          Que mejorarias? <span className="text-ink-muted font-normal">(opcional)</span>
-        </label>
-        <textarea
-          id="improve"
-          value={improve}
-          onChange={(e) => setImprove(e.target.value)}
-          maxLength={500}
-          rows={3}
-          placeholder="Mas tiempo para preguntas, mejores ejemplos..."
-          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm resize-y"
-        />
-      </div>
-
-      {/* Interes comercial */}
-      <div>
-        <label
-          htmlFor="interest"
-          className="block text-sm font-bold text-slate-900 mb-1"
-        >
-          Te interesa saber mas sobre algo?{" "}
-          <span className="text-ink-muted font-normal">(opcional)</span>
-        </label>
-        <textarea
-          id="interest"
-          value={interest}
-          onChange={(e) => setInterest(e.target.value)}
-          maxLength={200}
-          rows={2}
-          placeholder="Ej: consultoria 1:1, curso avanzado, asesoria para mi empresa..."
-          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm resize-y"
-        />
-      </div>
-
-      {/* Email (editable, pre-rellenado del token) */}
+      {/* Email (campo fijo, no parte del questions[] — el endpoint lo necesita) */}
       <div>
         <label
           htmlFor="email"
@@ -239,13 +224,14 @@ export function EncuestaClient({ token, prefillEmail, prefillPhone }: Props) {
         />
       </div>
 
-      {/* Phone */}
+      {/* Phone (campo fijo, opcional) */}
       <div>
         <label
           htmlFor="phone"
           className="block text-sm font-bold text-slate-900 mb-1"
         >
-          Tu WhatsApp <span className="text-ink-muted font-normal">(opcional)</span>
+          Tu WhatsApp{" "}
+          <span className="text-ink-muted font-normal">(opcional)</span>
         </label>
         <input
           id="phone"
@@ -257,31 +243,33 @@ export function EncuestaClient({ token, prefillEmail, prefillPhone }: Props) {
         />
       </div>
 
-      {/* Consentimiento */}
-      <div className="rounded-lg bg-violet-50/60 border border-violet-100 p-3">
-        <label className="flex items-start gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={consent}
-            onChange={(e) => setConsent(e.target.checked)}
-            required
-            className="mt-0.5 h-4 w-4 text-violet-600 rounded border-slate-300"
-          />
-          <span className="text-xs text-slate-700 leading-snug">
-            Acepto que Qlick use mi respuesta y datos de contacto para
-            enviarme seguimiento comercial sobre los temas que indique.
-            Puedo darme de baja en cualquier momento respondiendo STOP al
-            WhatsApp o escribiendo a{" "}
-            <a
-              href="mailto:privacidad@qlick.digital"
-              className="underline text-violet-700"
-            >
-              privacidad@qlick.digital
-            </a>
-            .
-          </span>
-        </label>
-      </div>
+      {/* Fallback consent checkbox (solo si NINGUNA question tiene isConsent) */}
+      {!hasConsentFlag && (
+        <div className="rounded-lg bg-violet-50/60 border border-violet-100 p-3">
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={consentFallback}
+              onChange={(e) => setConsentFallback(e.target.checked)}
+              required
+              className="mt-0.5 h-4 w-4 text-violet-600 rounded border-slate-300"
+            />
+            <span className="text-xs text-slate-700 leading-snug">
+              Acepto que Qlick use mi respuesta y datos de contacto para
+              enviarme seguimiento comercial sobre los temas que indique.
+              Puedo darme de baja en cualquier momento respondiendo STOP al
+              WhatsApp o escribiendo a{" "}
+              <a
+                href="mailto:privacidad@qlick.digital"
+                className="underline text-violet-700"
+              >
+                privacidad@qlick.digital
+              </a>
+              .
+            </span>
+          </label>
+        </div>
+      )}
 
       {/* Error */}
       {state === "error" && errorMsg && (
@@ -307,5 +295,75 @@ export function EncuestaClient({ token, prefillEmail, prefillPhone }: Props) {
         .
       </p>
     </form>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Sub-componente: render genérico de una pregunta                     */
+/* ------------------------------------------------------------------ */
+
+function DynamicQuestion({
+  question,
+  value,
+  onChange,
+}: {
+  question: SurveyQuestion;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  if (question.type === "buttons" && question.options) {
+    const cols =
+      question.options.length >= 3 ? 3 : question.options.length;
+    return (
+      <fieldset>
+        <legend className="block text-sm font-bold text-slate-900 mb-2">
+          {question.text} *
+        </legend>
+        <div className={`grid gap-1.5 grid-cols-${cols}`}>
+          {question.options.map((o) => (
+            <label
+              key={o.id}
+              className={`flex flex-col items-center justify-center gap-0.5 cursor-pointer rounded-lg border-2 px-1 py-2.5 text-center transition ${
+                value === o.id
+                  ? "border-violet-500 bg-violet-50 text-violet-900"
+                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+              }`}
+            >
+              <input
+                type="radio"
+                name={`q-${question.id}`}
+                value={o.id}
+                checked={value === o.id}
+                onChange={() => onChange(o.id)}
+                required
+                className="sr-only"
+              />
+              <span className="text-sm font-bold">{o.title}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+    );
+  }
+  // text
+  return (
+    <div>
+      <label
+        htmlFor={`q-${question.id}`}
+        className="block text-sm font-bold text-slate-900 mb-1"
+      >
+        {question.text}{" "}
+        <span className="text-ink-muted font-normal">(opcional)</span>
+      </label>
+      <textarea
+        id={`q-${question.id}`}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        maxLength={500}
+        rows={3}
+        placeholder="Contanos brevemente (o escribí 'saltar' para omitir)"
+        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm resize-y"
+      />
+    </div>
   );
 }
