@@ -453,6 +453,68 @@ export function detectDynamicSurveyButton(
 }
 
 /**
+ * FIX 2026-07-06 (audit G-15, segundo round): detector unificado de
+ * buttonId del wizard que entiende AMBOS formatos que produce el código:
+ *
+ * 1. **Legacy** (`survey_q1_very_clear`): emitido por `buildSurveyQ1` y
+ *    los builders hardcoded. Usa IDs cortos (`q1`, `q2`, ...).
+ * 2. **Dinámico** (`survey_q1_clarity_very_clear`): emitido por
+ *    `buildDynamicSurveyStep` cuando hay `SurveyQuestion` del
+ *    `survey_config` del evento. Usa el `question.id` completo.
+ *
+ * El bug original (David, "Muy claro no avanza wizard" en prod) era
+ * que el detector de intent del bot-engine.ts comparaba con
+ * `SURVEY_BUTTON_IDS.q1_very_clear` (formato legacy) y el botón
+ * emitido en prod es dinámico → NO matcheaba → intent caía a
+ * "question" → LLM respondía cualquier cosa.
+ *
+ * Este helper intenta primero el formato legacy (vía
+ * `detectSurveyButton`) y luego el dinámico (vía
+ * `detectDynamicSurveyButton` con el set de questionIds). Devuelve
+ * `{ step, questionId, optionId }` donde `step` es 1-indexed y
+ * alinea con `awaiting_survey_step` del wizard state.
+ *
+ * @param buttonId ID del botón emitido por Meta en el webhook.
+ * @param validQuestionIds Set de questionIds del survey config del
+ *   evento (necesario para el formato dinámico). Si falta, solo
+ *   intentará legacy.
+ * @returns `{ step, questionId, optionId }` o null si no matchea.
+ */
+export function detectSurveyButtonAny(
+  buttonId: string,
+  validQuestionIds: readonly string[] = [],
+): { step: number; questionId: string; optionId: string } | null {
+  if (!buttonId) return null;
+
+  // 1. Legacy: hardcoded IDs cortos (q1/q2/q3/q4).
+  const legacy = detectSurveyButton(buttonId);
+  if (legacy) {
+    return {
+      step: legacy.step,
+      // Para legacy, el "questionId" corto lo derivamos del step.
+      questionId: `q${legacy.step}`,
+      optionId: legacy.value,
+    };
+  }
+
+  // 2. Dinámico: `survey_<questionId>_<optionId>` con questionId completo.
+  if (validQuestionIds.length > 0) {
+    const dyn = detectDynamicSurveyButton(buttonId, validQuestionIds);
+    if (dyn) {
+      // step es 1-indexed según la posición del questionId en el array.
+      // OJO: el orden de las questions en el array = orden en el wizard.
+      // q_consent y q_business son step 4 y 5 (no continuables).
+      const step = validQuestionIds.indexOf(dyn.questionId) + 1;
+      if (step >= 1) {
+        return { step, questionId: dyn.questionId, optionId: dyn.optionId };
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
  * FIX 2026-07-06 (audit G-15, "Muy claro no avanza wizard"): Meta a
  * veces NO manda el buttonId en el webhook del segundo click (dedupe,
  * formato, retry, button reply reentrega). El lead seleccionó "Muy

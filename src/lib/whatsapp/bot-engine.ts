@@ -98,6 +98,7 @@ import {
   buildSurveyQ4,
   buildSurveyThankYou,
   detectSurveyButton,
+  detectSurveyButtonAny,
   cleanBusinessText,
   isSurveySkip,
   synthesizeSurveyOptionFromText,
@@ -3263,30 +3264,41 @@ export async function processInboundMessage(
       intent = "interactive_survey_no";
     } else if (message.buttonId.startsWith("survey_q")) {
       // Wizard nativo de encuesta (Fase 7d). Detectamos el paso por
-      // buttonId (survey_q1_*, survey_q2_*, survey_q3_*, survey_q4_skip).
-      // Mapeo específico en buildResponsePlan con `wizardStep` para
-      // validar que el bot está esperando ese step (defensa contra
-      // clicks fuera de orden).
-      if (message.buttonId === SURVEY_BUTTON_IDS.q4_skip) {
-        intent = "survey_q4_skip";
-      } else if (
-        message.buttonId === SURVEY_BUTTON_IDS.q1_very_clear ||
-        message.buttonId === SURVEY_BUTTON_IDS.q1_clear ||
-        message.buttonId === SURVEY_BUTTON_IDS.q1_confusing
-      ) {
-        intent = "survey_q1_continue";
-      } else if (
-        message.buttonId === SURVEY_BUTTON_IDS.q2_yes ||
-        message.buttonId === SURVEY_BUTTON_IDS.q2_maybe ||
-        message.buttonId === SURVEY_BUTTON_IDS.q2_no
-      ) {
-        intent = "survey_q2_continue";
-      } else if (
-        message.buttonId === SURVEY_BUTTON_IDS.q3_meta ||
-        message.buttonId === SURVEY_BUTTON_IDS.q3_referred ||
-        message.buttonId === SURVEY_BUTTON_IDS.q3_other
-      ) {
-        intent = "survey_q3_continue";
+      // buttonId. FIX 2026-07-06 (audit G-15): el botón puede venir en
+      // dos formatos:
+      //   - Legacy corto: `survey_q1_very_clear` (buildSurveyQ1 hardcoded)
+      //   - Dinámico:     `survey_q1_clarity_very_clear` (buildDynamicSurveyStep
+      //                   cuando hay SurveyQuestion del survey_config)
+      // Antes solo matcheábamos el formato legacy con literales
+      // SURVEY_BUTTON_IDS, lo cual rompía el flow cuando el evento usa
+      // el builder dinámico (caso real David 2026-07-06: el botón emitido
+      // era `survey_q1_clarity_very_clear` y NO matcheaba con
+      // `SURVEY_BUTTON_IDS.q1_very_clear`). Helper `detectSurveyButtonAny`
+      // intenta ambos formatos y devuelve `{ step, questionId, optionId }`.
+      const wizardQuestionIds = (wizardStateGlobal?.survey_questions as
+        | Array<{ id: string }>
+        | null
+        | undefined)?.map((q) => q.id) ?? [];
+      const detected = detectSurveyButtonAny(message.buttonId, wizardQuestionIds);
+      if (detected) {
+        // step 4 (q_consent buttons) o step 5 (q_business text) con
+        // optionId="skip" → cierra wizard sin texto libre.
+        // step 1-3 → continue.
+        if (detected.optionId === "skip") {
+          intent = "survey_q4_skip";
+        } else if (detected.step >= 1 && detected.step <= 3) {
+          intent =
+            detected.step === 1
+              ? "survey_q1_continue"
+              : detected.step === 2
+                ? "survey_q2_continue"
+                : "survey_q3_continue";
+        } else {
+          // q_consent Sí/No (step 4 buttons): el flow del wizard ya
+          // completó Q1-Q3; dejamos que el override 3.0 o el LLM
+          // manejen (q_consent es opcional, no persiste por sí solo).
+          intent = "question";
+        }
       } else {
         intent = "question";
       }
