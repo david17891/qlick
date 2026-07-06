@@ -756,7 +756,7 @@ export const appointments: Appointment[] = [
 
 export const aiAgentProfile: AIAgentProfile = {
   name: "Qlick Asistente",
-  businessName: "Qlick Marketing Integral",
+  businessName: "Qlick Marketing Digital",
   businessDescription:
     "Agencia de marketing y escuela de cursos digitales. Ayudamos a emprendedores y pymes a atraer, convertir y fidelizar clientes con marketing práctico.",
   servicesOrCourses: [

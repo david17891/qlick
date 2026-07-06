@@ -28,7 +28,7 @@ interface Props {
 }
 
 const CONSENT_LEAD =
-  "Acepto que Qlick Marketing Integral use mis datos para contactarme sobre esta masterclass, contenidos relacionados y seguimiento comercial";
+  "Acepto que Qlick Marketing Digital use mis datos para contactarme sobre esta masterclass, contenidos relacionados y seguimiento comercial";
 const CONSENT_TAIL = "conforme al Aviso de Privacidad.";
 
 export function MasterclassView({ masterclass, utmSource, utmCampaign }: Props) {

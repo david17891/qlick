@@ -39,9 +39,9 @@ export interface BrandAssetMeta {
 }
 
 export const brandManifest = {
-  name: "Qlick Marketing Integral",
+  name: "Qlick Marketing Digital",
   shortName: "Qlick",
-  tagline: "Marketing Integral",
+  tagline: "Marketing Digital",
   colors: {
     primary: "#AB3FEA",
     secondary: "#A140DC",

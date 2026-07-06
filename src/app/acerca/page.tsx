@@ -6,7 +6,7 @@ import { Logo } from "@/components/brand";
 export const metadata: Metadata = {
   title: "Acerca de Qlick",
   description:
-    "Qlick Marketing Integral es una agencia y plataforma educativa que ayuda a negocios mexicanos a crecer con marketing aplicado.",
+    "Qlick Marketing Digital es una agencia y plataforma educativa que ayuda a negocios mexicanos a crecer con marketing aplicado.",
   alternates: { canonical: "/acerca" }
 };
 
@@ -48,7 +48,7 @@ export default function AcercaPage() {
             Somos Qlick, una agencia que también <span className="text-brand-gradient">enseña</span>.
           </h1>
           <p className="mt-5 text-lg text-ink-soft max-w-2xl mx-auto">
-            Qlick Marketing Integral nació como agencia de marketing. Después de
+            Qlick Marketing Digital nació como agencia de marketing. Después de
             años generando resultados para clientes, decidimos empaquetar lo que
             sabemos en cursos prácticos para que más negocios crezcan.
           </p>

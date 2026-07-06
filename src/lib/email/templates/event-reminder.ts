@@ -191,7 +191,7 @@ export function renderEventReminderEmail(
           <tr>
             <td style="background:#f8fafc;padding:20px 32px;border-top:1px solid #e2e8f0;text-align:center;">
               <p style="margin:0;font-size:12px;color:#64748b;">
-                Qlick Marketing Integral · Recordatorio automático
+                Qlick Marketing Digital · Recordatorio automático
               </p>
               <p style="margin:8px 0 0;font-size:11px;color:#94a3b8;">
                 Enviado porque confirmaste tu registro. No queremos que te lo pierdas.

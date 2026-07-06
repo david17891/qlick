@@ -10,12 +10,12 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "Eventos · Qlick",
   description:
-    "Eventos abiertos de Qlick Marketing Integral: talleres, masterclasses y conferencias para hacer crecer tu negocio. Confirma tu asistencia gratis.",
+    "Eventos abiertos de Qlick Marketing Digital: talleres, masterclasses y conferencias para hacer crecer tu negocio. Confirma tu asistencia gratis.",
   alternates: { canonical: "/eventos" },
   openGraph: {
     title: "Eventos · Qlick",
     description:
-      "Eventos abiertos de Qlick Marketing Integral. Confirma tu asistencia gratis.",
+      "Eventos abiertos de Qlick Marketing Digital. Confirma tu asistencia gratis.",
     type: "website",
   },
 };

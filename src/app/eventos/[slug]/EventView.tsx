@@ -42,7 +42,7 @@ interface Props {
 }
 
 const CONSENT_TEXT =
-  "Acepto que Qlick Marketing Integral me envíe recordatorios del evento por email o WhatsApp";
+  "Acepto que Qlick Marketing Digital me envíe recordatorios del evento por email o WhatsApp";
 
 const CONSENT_TAIL = "conforme al Aviso de Privacidad.";
 

@@ -155,7 +155,7 @@ export function renderSurveyWithConsentEmail(
           <tr>
             <td style="background:#f8fafc;padding:20px 32px;border-top:1px solid #e2e8f0;text-align:center;">
               <p style="margin:0;font-size:12px;color:#64748b;">
-                Qlick Marketing Integral · Notificación automática
+                Qlick Marketing Digital · Notificación automática
               </p>
               <p style="margin:8px 0 0;font-size:11px;color:#94a3b8;">
                 Este email se envía porque ${email} aceptó recibir contacto comercial

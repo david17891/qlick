@@ -19,8 +19,8 @@ const siteUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "Qlick Marketing Integral · Cursos de marketing aplicado",
-    template: "%s · Qlick Marketing Integral"
+    default: "Qlick Marketing Digital · Cursos de marketing aplicado",
+    template: "%s · Qlick Marketing Digital"
   },
   description:
     "Formación práctica en marketing digital, publicidad, ventas, automatización y contenido. Cursos en línea para hacer crecer tu negocio en México.",
@@ -36,13 +36,13 @@ export const metadata: Metadata = {
     "México",
     "Qlick"
   ],
-  authors: [{ name: "Qlick Marketing Integral" }],
+  authors: [{ name: "Qlick Marketing Digital" }],
   openGraph: {
     type: "website",
     locale: "es_MX",
     url: siteUrl,
-    siteName: "Qlick Marketing Integral",
-    title: "Qlick Marketing Integral · Cursos de marketing aplicado",
+    siteName: "Qlick Marketing Digital",
+    title: "Qlick Marketing Digital · Cursos de marketing aplicado",
     description:
       "Aprende marketing práctico: publicidad, ventas, automatización y contenido. Plataforma educativa hecha en México.",
     images: [
@@ -50,13 +50,13 @@ export const metadata: Metadata = {
         url: "/brand/original/01_qlick_full_logo_transparent_canvas_500.png",
         width: 500,
         height: 500,
-        alt: "Qlick Marketing Integral"
+        alt: "Qlick Marketing Digital"
       }
     ]
   },
   twitter: {
     card: "summary_large_image",
-    title: "Qlick Marketing Integral",
+    title: "Qlick Marketing Digital",
     description:
       "Cursos de marketing aplicado para negocios en México."
   },

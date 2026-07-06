@@ -157,7 +157,7 @@ export function CheckInClient({
         {/* Header Qlick */}
         <div className="text-center">
           <p className="text-xs font-bold uppercase tracking-widest text-brand-600">
-            Qlick Marketing Integral
+            Qlick Marketing Digital
           </p>
         </div>
 

@@ -32,7 +32,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
   const description =
     event.description?.slice(0, 160) ??
-    `Confirma tu asistencia a ${event.title} en Qlick Marketing Integral.`;
+    `Confirma tu asistencia a ${event.title} en Qlick Marketing Digital.`;
   return {
     title: `${event.title} · Qlick`,
     description,

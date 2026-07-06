@@ -2001,18 +2001,17 @@ sustituir el ciclo con templates". Ejecuté 4 bloques sincrónicamente.
 
 ---
 
-## 2026-07-05 ~03:55 � WA bot survey offer drift (event deleted, lead colgado)
+---
+
+## 2026-07-05 ~03:55 · WA bot survey offer drift (event deleted, lead colgado)
 
 - **Pregunta:** David elimino un evento (hard delete), creo uno nuevo (0 asistentes), pero al mandar 'hola' al bot, este respondia con el survey offer del evento anterior (sin nombre de evento, drift puro).
 - **Root cause:** Section 3.0 del bot-engine (eat/funnel-survey-scoring) overridea intent a survey_offer cuando lead.status === 'event_attended' && isSurveyOfferStale(...). Al borrar el evento, event_attendees desaparece por CASCADE pero leads.status='event_attended' queda colgado - el override sigue disparando.
-- **Decision:** Gate en el override con indLatestAttendedEventForPhone. Si retorna null, NO overridea y resetea lead.status a contacted (best-effort cleanup). Defense in depth: el reset elimina futuras auto-trigger del mismo path; si falla el reset, loggeamos pero el gate ya protegi� este turno.
+- **Decision:** Gate en el override con indLatestAttendedEventForPhone. Si retorna null, NO overridea y resetea lead.status a contacted (best-effort cleanup). Defense in depth: el reset elimina futuras auto-trigger del mismo path; si falla el reset, loggeamos pero el gate ya protegió este turno.
 - **Razon:** El 'ya estas registrado' del fix anterior cerro el bug del lado de la inscripcion. Este es el mismo patron (stale state por hard-delete de evento) en el lado del post-event. El mismo gate (indLatestAttendedEventForPhone) resuelve ambos.
 - **Impacto:**
-  - src/lib/whatsapp/bot-engine.ts:2733-2796 � override gated, con drift cleanup de leads.status.
+  - src/lib/whatsapp/bot-engine.ts:2733-2796 — override gated, con drift cleanup de leads.status.
   - Lead de David que estaba en event_attendido sin attendee row: reseteo automatico en el siguiente 'hola' que mande.
-- **Trigger:** David reporto el sintoma post-fix de short_code. Mismo root cause class (drift por hard-delete). No es un bug nuevo del short_code; es el patron que el short_code me hizo notar.
-
----
 
 ## 2026-07-05 ~17:23 - Migration `events.short_code` aplicada en prod
 
@@ -2050,4 +2049,10 @@ sustituir el ciclo con templates". Ejecuté 4 bloques sincrónicamente.
   - **No inventar comportamiento de servicios** (yo dije "Supabase detecta tokens pegados en chat y los rota" - falso, sin evidencia; David corrigio).
   - **SQL Editor del dashboard > pelearse con credenciales drift** para migraciones aditivas.
   - **PowerShell 5.1 scripts .ps1**: ASCII-only + UTF-8 sin BOM. Em dashes (—), curly quotes (' " " "), y BOM rompen el parser.
+
+## 2026-07-05 ~19:15 - Migración global a Qlick Marketing Digital para aprobación en Meta
+
+- **Pregunta:** El display name de WhatsApp "Qlick Marketing Digital" fue rechazado porque el sitio web `qlick.digital` tenía "Qlick Marketing Integral" (Integral) en el título, footer, políticas de privacidad y consentimiento. Meta exige coherencia de marca exacta.
+- **Decisión:** Modificar todas las referencias de "Qlick Marketing Integral" a "Qlick Marketing Digital" en el código fuente, metadatos, aviso de privacidad, layouts, consentimiento de registro, bot de WhatsApp y archivos de prueba (429 tests unitarios actualizados y pasando).
+- **Razón:** Proveer coincidencia 100% ante la revisión del soporte humano de Meta y garantizar la aprobación del display name en WhatsApp.
 

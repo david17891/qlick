@@ -5,12 +5,12 @@ import { Container, Card, Badge, SectionHeading } from "@/components/ui";
 export const metadata: Metadata = {
   title: "Aviso de Privacidad | Qlick",
   description:
-    "Aviso de privacidad de Qlick Marketing Integral: cómo tratamos los datos del formulario de contacto, la gestión de leads, WhatsApp Business API y tus derechos ARCO.",
+    "Aviso de privacidad de Qlick Marketing Digital: cómo tratamos los datos del formulario de contacto, la gestión de leads, WhatsApp Business API y tus derechos ARCO.",
   alternates: { canonical: "/privacidad" }
 };
 
 /**
- * Aviso de Privacidad de Qlick Marketing Integral.
+ * Aviso de Privacidad de Qlick Marketing Digital.
  *
  * Editado 2026-06-30:
  *  - Email de contacto actualizado a david17891@gmail.com (gmail personal).
@@ -19,7 +19,7 @@ export const metadata: Metadata = {
  *  - Nueva sección 8 sobre Eliminación de Datos / Data Deletion Request
  *    (requerida por Meta App Review).
  */
-const RESPONSABLE = "Qlick Marketing Integral";
+const RESPONSABLE = "Qlick Marketing Digital";
 const CONTACTO_PRIVACIDAD = "privacidad@qlick.digital";
 const ULTIMA_ACTUALIZACION = "Última actualización: 2 de julio de 2026";
 

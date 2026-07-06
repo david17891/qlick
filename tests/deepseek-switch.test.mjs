@@ -118,7 +118,7 @@ function withEnv(overrides) {
 /** Perfil minimo valido para buildSystemPrompt (shape de AIAgentProfile). */
 const MOCK_PROFILE = {
   name: "Qlick Assistant",
-  businessName: "Qlick Marketing Integral",
+  businessName: "Qlick Marketing Digital",
   businessDescription: "Plataforma de cursos de marketing para PYMEs.",
   businessHours: "Lunes a Viernes, 9:00 a 18:00 CST",
   tone: "friendly",

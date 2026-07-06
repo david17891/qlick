@@ -38,7 +38,7 @@ const initialForm: ContactMessage = {
  * (campo `consent_to_contact` en Supabase) como evidencia del consentimiento.
  */
 const CONSENT_LEAD =
-  "Acepto que Qlick Marketing Integral use mis datos para contactarme sobre cursos, servicios y seguimiento comercial";
+  "Acepto que Qlick Marketing Digital use mis datos para contactarme sobre cursos, servicios y seguimiento comercial";
 const CONSENT_TAIL = "conforme al Aviso de Privacidad.";
 
 const topics = [

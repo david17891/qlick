@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Plataforma LMS de cursos de marketing de Qlick Marketing Integral — Next.js
+Plataforma LMS de cursos de marketing de Qlick Marketing Digital — Next.js
 14 + TypeScript + Supabase + Tailwind, con un panel admin, CRM de leads
 (incluye agente IA en modo sugerencia) y funnel de eventos/masterclass.
 

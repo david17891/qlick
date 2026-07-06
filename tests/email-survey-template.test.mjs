@@ -115,7 +115,7 @@ test("renderSurveyWithConsentEmail: footer incluye disclaimer de consentimiento"
     leadId: "id",
   });
   assert.match(result.html, /aceptó recibir contacto comercial/);
-  assert.match(result.html, /Qlick Marketing Integral/);
+  assert.match(result.html, /Qlick Marketing Digital/);
 });
 
 test("renderSurveyWithConsentEmail: appUrl default sin NEXT_PUBLIC_APP_URL", async () => {

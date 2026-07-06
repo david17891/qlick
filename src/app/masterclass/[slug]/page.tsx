@@ -23,7 +23,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     description:
       masterclass.subtitle ??
       masterclass.description ??
-      "Masterclass gratuita de Qlick Marketing Integral.",
+      "Masterclass gratuita de Qlick Marketing Digital.",
     openGraph: {
       title: masterclass.title,
       description: masterclass.subtitle ?? masterclass.description ?? undefined,

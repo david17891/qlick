@@ -174,7 +174,7 @@ export interface LeadUpsertResult {
 
 /** Disclosure exacto que se loggea en `lead_consent_log` (LFPDPPP). */
 const CONSENT_DISCLOSURE =
-  "Acepto recibir información comercial de Qlick Marketing Integral por WhatsApp. Puedo revocar este consentimiento en cualquier momento respondiendo 'baja'.";
+  "Acepto recibir información comercial de Qlick Marketing Digital por WhatsApp. Puedo revocar este consentimiento en cualquier momento respondiendo 'baja'.";
 
 /** Datos del evento activo para las respuestas del bot.
  *
@@ -1345,7 +1345,7 @@ async function buildResponsePlan(args: {
       const interactive = {
         type: "button" as const,
         body: {
-          text: `${saludo} Soy Qlick, asistente de Qlick Marketing Integral. ¿Qué te interesa?${eventLine}`
+          text: `${saludo} Soy Qlick, asistente de Qlick Marketing Digital. ¿Qué te interesa?${eventLine}`
         },
         action: {
           buttons: [
