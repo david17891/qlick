@@ -6,17 +6,17 @@
  * al usuario). Toda la encuesta se hace dentro de WhatsApp con
  * interactive buttons + 1 campo de texto libre opcional.
  *
- * 4 preguntas:
- * - Q1 (3 botones): claridad del contenido
- * - Q2 (3 botones): intención de aplicar
- * - Q3 (3 botones): fuente de descubrimiento
- * - Q4 (texto libre, opcional): descripción del negocio — 'saltar' lo omite
+ * Modos (feat/funnel-dynamic-surveys-crm, 2026-07-05):
  *
- * HACIA ADELANTE (Fase 7d.1): tope al wizard. NO se calculan scores, NO
- * se promueven leads, NO se actualiza el commercial_interest. El admin
- * decide desde la tab Encuestas qué hacer con cada respuesta. El
- * state-tracking de "ya completó" se hace con `hasCompletedWizardSurvey`
- * (lookup a event_surveys en bot-engine).
+ * 1. Legacy (Fase 7d): las funciones `buildSurveyQ1/Q2/Q3/Q4` están
+ *    hardcoded con las 4 preguntas default. Se mantienen para compat
+ *    con código existente pero están deprecated — usar
+ *    `buildDynamicSurveyStep` para encuestas por evento.
+ *
+ * 2. Dinámico (Fase 7d.2, commit 5): `buildDynamicSurveyStep` toma una
+ *    `SurveyQuestion` del `events.survey_config` y construye el mensaje
+ *    interactivo (buttons) o texto libre (text). Valida límites Meta
+ *    (3 botones, 20 chars título) en tiempo de construcción.
  *
  * Estado del wizard vive en `lead_whatsapp_log.metadata` del último
  * outbound del bot-engine (mismo patrón que `awaiting_field`).
@@ -273,4 +273,141 @@ export function cleanBusinessText(body: string): string | undefined {
   if (t.length < 3) return undefined;
   if (t.length > 500) return t.slice(0, 500);
   return t;
+}
+
+/* ------------------------------------------------------------------ */
+/* Builder dinámico (Fase 7d.2, feat/funnel-dynamic-surveys-crm)       */
+/* ------------------------------------------------------------------ */
+
+import type { SurveyQuestion } from "@/types/events";
+
+/**
+ * Límites estrictos de Meta Cloud API para botones interactivos.
+ * Si la pregunta los viola, el builder lanza (fail-fast).
+ */
+const META_BUTTONS_MAX = 3;
+const META_BUTTONS_MIN = 2;
+const META_BUTTON_TITLE_MAX = 20;
+
+/**
+ * Builder genérico de un paso del wizard (commit 5, Fase 7d.2).
+ *
+ * Toma una `SurveyQuestion` del `events.survey_config` y construye
+ * el mensaje apropiado:
+ * - `type: "buttons"` → interactive con 2-3 botones (Meta limit).
+ * - `type: "text"` → texto libre con botón "Saltar".
+ *
+ * Lanza si la pregunta viola los límites de Meta (defensa contra
+ * JSON mal configurado en runtime).
+ *
+ * @example
+ *   const step = buildDynamicSurveyStep({
+ *     eventTitle: "Funnels Venta",
+ *     question: {
+ *       id: "q1_clarity",
+ *       text: "¿Qué tan claro te quedó el contenido?",
+ *       type: "buttons",
+ *       options: [
+ *         { id: "very_clear", title: "Muy claro", score: 20 },
+ *         ...
+ *       ],
+ *     },
+ *     leadName: "María",
+ *   });
+ *   // → { text: "¡Hola María!...", interactive: {...} }
+ */
+export function buildDynamicSurveyStep(args: {
+  eventTitle: string;
+  question: SurveyQuestion;
+  leadName?: string | null;
+}): { text: string; interactive?: InteractiveMessage } {
+  const saludo = greeting(args.leadName);
+  const eventCtx = args.eventTitle
+    ? ` del evento "${args.eventTitle}"`
+    : "";
+
+  if (args.question.type === "buttons") {
+    const options = args.question.options ?? [];
+    if (
+      options.length < META_BUTTONS_MIN ||
+      options.length > META_BUTTONS_MAX
+    ) {
+      throw new Error(
+        `[survey-wizard] pregunta "${args.question.id}" tiene ${options.length} opciones; Meta requiere ${META_BUTTONS_MIN}-${META_BUTTONS_MAX}.`,
+      );
+    }
+    for (const o of options) {
+      if (o.title.length === 0 || o.title.length > META_BUTTON_TITLE_MAX) {
+        throw new Error(
+          `[survey-wizard] opción "${o.id}" tiene título de ${o.title.length} chars; Meta requiere 1-${META_BUTTON_TITLE_MAX}.`,
+        );
+      }
+    }
+
+    const text =
+      `${saludo}${args.question.text}${eventCtx ? ` (${eventCtx})` : ""}`;
+    return {
+      text,
+      interactive: {
+        type: "button",
+        body: { text },
+        action: {
+          buttons: options.map((o) => ({
+            type: "reply",
+            reply: {
+              id: `survey_${args.question.id}_${o.id}`,
+              title: o.title,
+            },
+          })),
+        },
+      },
+    };
+  }
+
+  // type === "text" → texto libre con botón "Saltar"
+  const text =
+    `${saludo}${args.question.text}${eventCtx ? ` (${eventCtx})` : ""}`;
+  return {
+    text,
+    interactive: {
+      type: "button",
+      body: { text },
+      action: {
+        buttons: [
+          {
+            type: "reply",
+            reply: {
+              id: `survey_${args.question.id}_skip`,
+              title: "Saltar",
+            },
+          },
+        ],
+      },
+    },
+  };
+}
+
+/**
+ * Detecta si un buttonId fue emitido por el builder dinámico.
+ *
+ * Devuelve `{ questionId, optionId }` o `null` si no matchea.
+ *
+ * Ejemplo de IDs emitidos por buildDynamicSurveyStep:
+ * - "survey_q1_clarity_very_clear" (button)
+ * - "survey_q_business_skip" (text-skip)
+ */
+export function detectDynamicSurveyButton(
+  buttonId: string,
+): { questionId: string; optionId: string } | null {
+  // Format esperado: survey_<questionId>_<optionId>
+  // questionId puede tener guiones bajos (e.g. "q1_clarity").
+  if (!buttonId.startsWith("survey_")) return null;
+  const rest = buttonId.slice("survey_".length);
+  // Buscar el último "_" para separar questionId de optionId.
+  const lastUnderscore = rest.lastIndexOf("_");
+  if (lastUnderscore === -1) return null;
+  const questionId = rest.slice(0, lastUnderscore);
+  const optionId = rest.slice(lastUnderscore + 1);
+  if (!questionId || !optionId) return null;
+  return { questionId, optionId };
 }
