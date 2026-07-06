@@ -2243,4 +2243,47 @@ sustituir el ciclo con templates". EjecutÃ© 4 bloques sincrÃ³nicamente.
   retry) — ambos fixes son complementarios.
 - **Commit:** c120c47 en main. Pusheado.
 
+``n## 2026-07-06 ~14:30 - Fix q_consent advance + persist + consent derivation (audit G-15 round 3)
+
+- **Pregunta:** David reprobo de nuevo en prod. El wizard G-15 r2 ya
+  avanza Q1?Q2?Q3, pero despues de hacer click "Si" en q_consent
+  ("¿Aceptas que te contactemos por WhatsApp?"), el bot salto
+  DIRECTO al follow-up bucket ("Perfecto David, te voy a enviar la
+  info...") SIN preguntar q_business (texto libre). El responses.q_consent
+  persistido fue "Es todo?" (mensaje de texto posterior que disparo el
+  override 3.0), no "si". consent_to_contact quedo en false aunque
+  el lead dijo "si" explicitamente.
+- **Causa raiz (3 bugs distintos):**
+  1. Wizard skip q_business: despues de click "Si"/"No" en q_consent
+     (step 4), el intent caia a "question" ? LLM respondia con
+     follow-up bucket sin persistir.
+  2. q_consent respuesta no persistida: cuando el lead mando texto
+     "Es todo?" despues, el override 3.0 (`awaiting_survey_step===4`
+     ? survey_q4_text) uso `dynamicQuestions[3]` (q_consent) como
+     "lastQuestion" y sobreescribio su respuesta con el texto.
+  3. consent_to_contact siempre false: survey_q4_text/skip derivaban
+     consent de `businessCaptured` (q_business text). Si q_business
+     estaba vacio (wizard cerrado antes), consent=false aunque
+     q_consent="yes".
+- **Decisión:** Numerar steps correctamente (Q1=1, Q2=2, Q3=3,
+  q_consent=4, q_business=5). Agregar nuevo intent
+  `survey_q_consent_continue` que:
+  - "Si" + q_business existe ? avanza al q_business text (step 5)
+  - "No" o no q_business ? cierra wizard, persist + thank-you
+  En todos los paths persiste q_consent en responses. Derivar
+  consent_to_contact de q_consent answer (yes=true, no=false) con
+  fallback a businessCaptured.
+- **Validación:** type-check ?, lint ? (0 warnings), 530/530 tests ?,
+  build ?. E2E completo (scratch/e2e-g15r3-consent.mjs, borrado) con
+  Q1?Q2?Q3?q_consent="yes"?q_business text:
+  - event_surveys persiste con q_consent="yes", q_business="Tengo una
+    agencia...", commercial_interest="Sí", consent_to_contact=true,
+    promoted_to_lead_id=true.
+- **UI follow-ups** (David los reporto también, fixes separados):
+  - Encuestas tab muestra "(sin respuestas registradas)" aunque las
+    respuestas SI estan en jsonb ? UI bug.
+  - Leads promovidos view sin info de calificacion (score, ci, consent)
+    ? UI gap.
+- **Commit:** e4d7988 en main. Pusheado.
+
 `
