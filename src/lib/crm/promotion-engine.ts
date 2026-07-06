@@ -153,6 +153,12 @@ export async function applyPromotionRules(
         priority: taskPriority,
         due_at: dueAt,
         status: "pending",
+        // FIX 2026-07-06 (QA funnel-simulation-tester, bug #3): la
+        // columna `created_by_email` de `crm_tasks` es NOT NULL pero
+        // el Promotion Engine no la seteaba, generando 23502 (not-null
+        // violation). Usamos el actor del context (en producción es
+        // "wizard-bot@qlick" o el email del admin que disparó el flow).
+        created_by_email: ctx.actorEmail,
       } as never);
       if (error) {
         result.notes.push(

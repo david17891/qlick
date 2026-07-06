@@ -2056,3 +2056,19 @@ sustituir el ciclo con templates". Ejecuté 4 bloques sincrónicamente.
 - **Decisión:** Modificar todas las referencias de "Qlick Marketing Integral" a "Qlick Marketing Digital" en el código fuente, metadatos, aviso de privacidad, layouts, consentimiento de registro, bot de WhatsApp y archivos de prueba (429 tests unitarios actualizados y pasando).
 - **Razón:** Proveer coincidencia 100% ante la revisión del soporte humano de Meta y garantizar la aprobación del display name en WhatsApp.
 
+## 2026-07-06 ~01:25 - QA funnel-simulation-tester cazó 3 bugs silenciosos en Promotion Engine
+
+- **Pregunta:** Simular end-to-end el funnel dinámico (MQL/Hot/Cold) recién mergeado a main, validando que `applyPromotionRules` (commit 7 de feat/funnel-dynamic-surveys-crm) funciona contra la DB real.
+- **Decisiones:**
+  1. Crear `scratch/simulate-scenarios.mjs` que corre 3 escenarios con datos sintéticos y aserta estado en `leads`, `crm_tasks`, `admin_audit_log`.
+  2. **Bug #2 (proyecto):** `promotion-engine.ts` UPDATE `leads.status = 'qualified'` para MQL, pero el enum `lead_status` (migration 20260623000001) NO incluía ese valor. Fallaba con `22P02` en cada lead MQL que completaba encuesta. Fix: migration `20260706020000_add_qualified_to_lead_status.sql` (David la aplicó en SQL Editor).
+  3. **Bug #3 (proyecto):** `promotion-engine.ts` INSERT `crm_tasks` sin `created_by_email` (NOT NULL). Fallaba con `23502`. Fix definitivo: agregar `created_by_email: ctx.actorEmail` al INSERT.
+  4. **Bug #4 (proyecto):** `promotion-engine.ts` INSERT `crm_tasks` referenciaba `priority`, columna inexistente. Fix: migration `20260706010000_add_priority_to_crm_tasks.sql` (David la aplicó en SQL Editor).
+- **Razón:** El QA automatizado detectó lo que el code-review y los 475 tests unitarios NO detectaron: los tests del Promotion Engine usan mocks de supabase que devuelven `{ error: null }` sin checkear constraints reales. El bug del enum `qualified` y el `created_by_email NOT NULL` pasaron por alto.
+- **Impacto:**
+  - 3 bugs críticos corregidos (2 con migration + 1 fix de código).
+  - Script `scratch/simulate-scenarios.mjs` re-usable para validar el funnel antes de cada deploy.
+  - 31/31 aserciones verdes en simulación. 475/475 tests del repo verdes.
+- **Trigger:** Sesión post-merge del plan Maestro v4 (#5) — David pidió ejecutar la simulación automatizada.
+- **Cleanup pendiente:** borrar artefactos temporales no commiteados (`scratch/_npm-test2.log`, `scratch/_sim-final.log`, `verify_correct_pooler.mjs`, `.agents/`).
+

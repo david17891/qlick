@@ -120,6 +120,12 @@ test("promotion: MQL (score 70) → status='qualified' + task high + admin notif
   assert.equal(mock.captured.update.status, "qualified");
   assert.match(mock.captured.taskInsert.title, /HOT LEAD/);
   assert.match(mock.captured.taskInsert.title, /70/);
+  // FIX 2026-07-06 (bug #3): crm_tasks.created_by_email es NOT NULL,
+  // el Promotion Engine ahora lo setea con actorEmail.
+  assert.equal(mock.captured.taskInsert.created_by_email, "admin@qlick");
+  // FIX 2026-07-06 (bug #4): crm_tasks.priority ahora es columna
+  // nativa (migration 20260706010000). Promotion Engine la setea.
+  assert.equal(mock.captured.taskInsert.priority, "high");
 });
 
 test("promotion: Hot (score 50) → status='contacted', task media, NO notify admin", async () => {
@@ -139,6 +145,9 @@ test("promotion: Hot (score 50) → status='contacted', task media, NO notify ad
     mock.captured.taskInsert.title,
     /Llamar para calificar/,
   );
+  // FIX 2026-07-06 (bug #4): priority es columna nativa.
+  assert.equal(mock.captured.taskInsert.priority, "medium");
+  assert.equal(mock.captured.taskInsert.created_by_email, "admin@qlick");
 });
 
 test("promotion: Warm (score 30) → status='contacted', task baja", async () => {
@@ -154,6 +163,9 @@ test("promotion: Warm (score 30) → status='contacted', task baja", async () =>
   assert.equal(result.newStatus, "contacted");
   assert.equal(result.taskCreated, true);
   assert.match(mock.captured.taskInsert.title, /Enviar temario/);
+  // FIX 2026-07-06 (bug #4): priority es columna nativa.
+  assert.equal(mock.captured.taskInsert.priority, "low");
+  assert.equal(mock.captured.taskInsert.created_by_email, "admin@qlick");
 });
 
 test("promotion: Cold (score 10) → sin cambios", async () => {
