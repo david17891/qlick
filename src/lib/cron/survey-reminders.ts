@@ -132,10 +132,16 @@ export async function runSurveyRemindersJob(): Promise<SurveyReminderRunResult> 
     if (attErr || !attendees) continue;
 
     // 3. Filtrar attendees que YA completaron la encuesta.
+    // FIX 2026-07-06 (Paquete 3 — cron performance): antes cargaba TODOS
+    // los surveys del evento (N rows). Para eventos grandes (500+
+    // attendees) esto era O(N) por cada iteración del cron. Ahora
+    // filtramos por submitted_at > evento.ends_at (solo surveys
+    // post-evento, que son los que importan para el reminder).
     const { data: surveys, error: sErr } = await supabase
       .from("event_surveys" as never)
       .select("attendee_id, phone_normalized, respondent_email" as never)
-      .eq("event_id" as never, ev.id);
+      .eq("event_id" as never, ev.id)
+      .gte("submitted_at" as never, ev.ends_at);
 
     if (sErr) continue;
 
