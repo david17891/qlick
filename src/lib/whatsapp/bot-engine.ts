@@ -1851,7 +1851,7 @@ case "interactive_event_inscribir": {
       // FIX 2026-07-06: el bot SIEMPRE pide nombre antes del email.
       const bodyText =
         `${saludo} Para inscribirte a "${evtName}" el ${evtDate}, ` +
-        `primero decime tu nombre completo. Después te pido tu email.`;
+        `primero dime tu nombre completo. Después te pido tu email.`;
       return {
         kind: "text",
         body: bodyText,
@@ -2096,7 +2096,7 @@ case "interactive_event_inscribir": {
         const alreadyBody =
           `¡Gracias! Ya tenemos tu feedback de "${evt.eventTitle}" ` +
           `— no hace falta que la vuelvas a completar. ` +
-          `Si hay algo más en lo que te pueda ayudar, decime.`;
+          `Si hay algo más en lo que te pueda ayudar, dime.`;
         return {
           kind: "text",
           body: alreadyBody,
@@ -2747,7 +2747,7 @@ case "interactive_event_inscribir": {
       const clean = cleanFirstName(name);
       const saludo = clean ? `Gracias ${clean}.` : "Gracias.";
       const bodyText =
-        `${saludo} Ahora mandame tu email y te paso tu QR de entrada.`;
+        `${saludo} Ahora mándame tu email y te paso tu QR de entrada.`;
       return {
         kind: "text",
         body: bodyText,
@@ -2784,7 +2784,7 @@ case "interactive_event_inscribir": {
         const askBody =
           `Antes de registrarte, necesito tu nombre completo ` +
           `(nombre y apellido) para el certificado. ` +
-          `Por favor mandamelo asi: "Juan Pérez".`;
+          `Por favor mándamelo así: "Juan Pérez".`;
         return {
           kind: "text",
           body: askBody,
@@ -3366,8 +3366,37 @@ export async function processInboundMessage(
     const AFFIRMATIVE_EXTENDED_RE = /^(s[ií]|ok|dale|va|claro|desde luego|por supuesto|porfa(?:vor)?)/i;
     const isAffirmative =
       AFFIRMATIVE_RE.test(body) || AFFIRMATIVE_EXTENDED_RE.test(body);
+    // FIX 2026-07-06 (debug David "david martinez" ignorado): si el
+    // metadata.awaiting_field no se persistio correctamente (race con
+    // Meta retry, upsert skip, o body=null), caemos al fallback de
+    // detectar el patron en el body del ultimo outbound del bot.
+    // Si el bot dijo "dime tu nombre completo" / "tu nombre completo"
+    // en su ultimo mensaje, interpretamos el siguiente texto del lead
+    // como un intento de provide_name.
+    const lastOutboundBody: string =
+      (lastOutbound?.body as string | null | undefined) ?? "";
+    const looksLikeNamePrompt =
+      /tu\s+nombre\s+completo/i.test(lastOutboundBody) ||
+      /dime\s+tu\s+nombre/i.test(lastOutboundBody) ||
+      /decime\s+tu\s+nombre/i.test(lastOutboundBody);
     if (awaitingField === "name" && body && !looksLikeEmail) {
       intent = "provide_name";
+    } else if (
+      // FALLBACK: el bot pidio nombre en su ultimo outbound pero el
+      // metadata no llego (bug visto por David). El body entrante tiene
+      // 2+ palabras con letras (= candidato a nombre real).
+      looksLikeNamePrompt &&
+      !awaitingField &&
+      body &&
+      !looksLikeEmail &&
+      /[\p{L}]{2,}/u.test(body.split(/\s+/)[0] ?? "") &&
+      body.split(/\s+/).filter((w) => /[\p{L}]/u.test(w)).length >= 2
+    ) {
+      intent = "provide_name";
+      debugLog(
+        "[whatsapp/bot] provide_name via FALLBACK (metadata.awaiting_field missing, body pattern matched)",
+        { leadId: lead.id, lastOutboundBody: lastOutboundBody.slice(0, 80) }
+      );
     } else if (
       awaitingConfirmationForSlug &&
       isAffirmative &&
