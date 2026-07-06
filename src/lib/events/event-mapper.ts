@@ -19,6 +19,7 @@ import type {
   EventSurveyUnmatched,
   LeadEventLink,
 } from "@/types/events";
+import { resolveSurveyConfig } from "./survey-config-validator";
 
 // ─────────────────────────────────────────────────────────────
 // Row types — derivados del typegen. Single source of truth.
@@ -58,7 +59,14 @@ export function mapEventRowToEvent(row: EventRow): Event {
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    eventRules: normalizeEventRules(row.event_rules)
+    eventRules: normalizeEventRules(row.event_rules),
+    // FIX 2026-07-05 (feat/funnel-dynamic-surveys-crm, commit 3): el typegen
+    // puede no incluir `survey_config` todavía (migration 20260705220000).
+    // Casteamos con `as never` para no romper builds mientras el typegen
+    // queda stale. Cuando David regenere el typegen, este cast se quita.
+    surveyConfig: resolveSurveyConfig(
+      (row as unknown as { survey_config?: unknown }).survey_config,
+    )
   };
 }
 
