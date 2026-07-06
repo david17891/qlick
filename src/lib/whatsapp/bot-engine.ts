@@ -487,8 +487,8 @@ export function nudgeToResendWizard(
   // Fallback: solo texto (caso edge, drift de estado).
   const bodyText =
     `Ups, parece que hubo un clic fuera de orden. Te re-mando la pregunta ` +
-    `que estabas respondiendo — tocá uno de los botones. ` +
-    `Si querés empezar de nuevo, decí "reiniciar".`;
+    `que estabas respondiendo — toca uno de los botones. ` +
+    `Si quieres empezar de nuevo, di "reiniciar".`;
   return {
     kind: "text" as const,
     body: bodyText,
@@ -1755,12 +1755,12 @@ async function buildResponsePlan(args: {
     case "opt_out": {
       return {
         kind: "text",
-        body: "Listo, no te contacto más. Si cambias de opinión, escribinos.",
+        body: "Listo, no te contacto más. Si cambias de opinión, escríbenos.",
         send: () =>
           provider.send({
             to: phoneNormalized,
             body:
-              "Listo, no te contacto más. Si cambias de opinión, escribinos."
+              "Listo, no te contacto más. Si cambias de opinión, escríbenos."
           })
       };
     }
@@ -1997,7 +1997,7 @@ case "interactive_event_inscribir": {
       // compartido), respondemos con los canales de contacto y le
       // preguntamos qué necesita. NO notificamos a David por email.
       const bodyText =
-        `Si necesitás atención más personalizada, podés escribirnos a ` +
+        `Si necesitas atención más personalizada, puedes escribirnos a ` +
         `hola@qlick.marketing o visitar https://qlick.digital/contacto. ` +
         `Mientras tanto, ¿hay algo más en lo que te pueda ayudar?`;
       return {
@@ -2892,7 +2892,7 @@ case "interactive_event_inscribir": {
       }
       if (name.length > 100) {
         const bodyText =
-          `El nombre que mandaste es muy largo. ¿Me lo podés escribir ` +
+          `El nombre que mandaste es muy largo. ¿Me lo puedes escribir ` +
           `más corto? (máximo 100 caracteres)`;
         return {
           kind: "text",
@@ -3087,7 +3087,7 @@ case "interactive_event_inscribir": {
       let content = result.content?.trim();
       if (!content) {
         content =
-          "Disculpá, no pude procesar tu mensaje. ¿Me lo podés reformular? Si necesitás atención personalizada escribinos a hola@qlick.marketing.";
+          "Disculpa, no pude procesar tu mensaje. ¿Me lo puedes reformular? Si necesitas atención personalizada escríbenos a hola@qlick.marketing.";
       }
       // Safety net: si NO es el primer mensaje del lead y la respuesta empieza
       // con saludo o "gracias por escribir", strip. (Por si el LLM ignora los
@@ -4059,7 +4059,7 @@ export async function processInboundMessage(
             `${saludo} Ya estás registrado en *${evtName}*${evtCodeLabel} (${priceDisplay}). ` +
             `\n\n⚠️ *Método de pago por implementar.* Te avisamos cuando esté ` +
             `listo para que completes el registro.` +
-            `\n\nSi querés acelerar, escribinos a hola@qlick.marketing.`;
+            `\n\nSi quieres acelerar, escríbenos a hola@qlick.marketing.`;
           const provider = getActiveWhatsAppProvider();
           let sendResult: { ok: boolean; externalId?: string; demo?: boolean } = {
             ok: false
@@ -4249,7 +4249,7 @@ export async function processInboundMessage(
               `${saludo} Tu lugar para *${evtName}*${evtCodeLabel} (${priceDisplay}) está apartado. ` +
               `\n\n⚠️ *Método de pago por implementar.* Te avisamos por aquí cuando ` +
               `esté listo para que completes el registro.` +
-              `\n\nSi querés acelerar, escribinos a hola@qlick.marketing.`;
+`\n\nSi quieres acelerar, escríbenos a hola@qlick.marketing.`;
             const provider = getActiveWhatsAppProvider();
             let sendResult: { ok: boolean; externalId?: string; demo?: boolean } = {
               ok: false

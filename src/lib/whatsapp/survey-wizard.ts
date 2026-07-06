@@ -216,8 +216,8 @@ export function buildSurveyQ4(args: {
 }): { text: string; interactive: InteractiveMessage } {
   const text =
     `${greeting(args.leadName)}Ya casi. Última (opcional): ` +
-    `contanos brevemente sobre tu negocio o qué haces — ` +
-    `si querés pasar, mandá "saltar" o tocá el botón.`;
+    `cuéntanos brevemente sobre tu negocio o a qué te dedicas — ` +
+    `si prefieres pasar, manda "saltar" o toca el botón.`;
   return {
     text,
     interactive: {
@@ -246,7 +246,7 @@ export function buildSurveyThankYou(args: {
 }): { text: string } {
   const base = `${greeting(args.leadName)}¡Gracias por tu feedback! ` +
     `Tu opinión nos ayuda a mejorar los próximos eventos. ` +
-    `Si querés estar al tanto de próximos encuentros, escribinos por acá y te avisamos.`;
+    `Si quieres estar al tanto de próximos encuentros, escríbenos por aquí y te avisamos.`;
   const businessLine = args.businessCaptured
     ? ` Tomamos nota de tu negocio — si hay algo que te sirva, te contactamos.`
     : "";

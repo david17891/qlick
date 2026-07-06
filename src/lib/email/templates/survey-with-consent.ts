@@ -145,8 +145,8 @@ export function renderSurveyWithConsentEmail(
 
               <p style="margin:0;font-size:13px;color:#64748b;line-height:1.5;">
                 El link abre directamente el drawer del lead con badge de evento,
-                historial de contactos y notas. Si querés contactar a ${name.split(" ")[0]}
-                ahora, hacelo desde el botón de WhatsApp en el drawer.
+                historial de contactos y notas. Si quieres contactar a ${name.split(" ")[0]}
+                ahora, hazlo desde el botón de WhatsApp en el drawer.
               </p>
             </td>
           </tr>

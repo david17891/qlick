@@ -99,8 +99,8 @@ export function buildSurveyDeclineMessage(args: {
   const clean = cleanFirstName(args.leadName);
   const saludo = clean ? `¡Gracias ${clean}! ` : "¡Gracias! ";
   const text =
-    `${saludo}Sin problema. Si más adelante querés dejarnos tu feedback, ` +
-    `escribinos y te mandamos el link.`;
+    `${saludo}Sin problema. Si más adelante quieres dejarnos tu feedback, ` +
+    `escríbenos y te mandamos el link.`;
   return { text };
 }
 

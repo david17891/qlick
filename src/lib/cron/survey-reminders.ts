@@ -206,7 +206,7 @@ export async function runSurveyRemindersJob(): Promise<SurveyReminderRunResult> 
       // Cuando el template esté aprobado, se cambia `body` por la
       // llamada al template con variables {{1}}, {{2}}, {{3}}.
       const driveUrl = `https://drive.google.com/drive/search?q=${encodeURIComponent(ev.title)}`;
-      const messageBody = `¡Hola${att.name ? ` ${att.name}` : ""}! Gracias por sumarte a "${ev.title}". Te compartimos el link privado para que puedas dejarnos tu feedback (toma 2 minutos): ${tokenResult.url}\n\nSi querés acceder a la grabación del evento, acá está: ${driveUrl}`;
+      const messageBody = `¡Hola${att.name ? ` ${att.name}` : ""}! Gracias por sumarte a "${ev.title}". Te compartimos el link privado para que puedas dejarnos tu feedback (toma 2 minutos): ${tokenResult.url}\n\nSi quieres acceder a la grabación del evento, aquí está: ${driveUrl}`;
 
       try {
         const provider = getActiveWhatsAppProvider();

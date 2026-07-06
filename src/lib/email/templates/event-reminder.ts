@@ -181,8 +181,8 @@ export function renderEventReminderEmail(
               </table>
 
               <p style="margin:0;font-size:13px;color:#64748b;line-height:1.5;">
-                Si no podés asistir, no hace falta que respondas — liberamos tu lugar.
-                Si tenés dudas, respondé este email.
+                Si no puedes asistir, no hace falta que respondas — liberamos tu lugar.
+                Si tienes dudas, responde este email.
               </p>
             </td>
           </tr>
