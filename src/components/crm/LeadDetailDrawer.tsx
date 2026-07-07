@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Lead, LeadStatus, SalesOwner } from "@/types";
+import type { Lead, LeadStatus, SalesOwner, Conversation, ConversationMessage } from "@/types";
 import { Card, Badge, Button, Input, Textarea, Field, Spinner } from "@/components/ui";
 import {
   leadStatusLabel,
@@ -117,6 +117,19 @@ export function LeadDetailDrawer({
   const [fetchedEventContext, setFetchedEventContext] =
     useState<LeadEventContext | null>(null);
 
+  // FIX 2026-07-06 (conversaciones v2) — datos reales del chat en el
+  // panel admin. Antes era MOCK (`getLeadConversation`).
+  // `realConversation` viene de `lead_whatsapp_conversations` +
+  // `lead_interactions` (ver `conversations-server.ts`). Soft-deleted
+  // excluidos automáticamente desde la query.
+  const [realConversation, setRealConversation] = useState<Conversation | null>(null);
+  const [conversationState, setConversationState] = useState<OpStatus>("idle");
+  const [conversationMsg, setConversationMsg] = useState<string | null>(null);
+  const [newMessageBody, setNewMessageBody] = useState("");
+  const [newMessageDirection, setNewMessageDirection] = useState<"inbound" | "outbound">("outbound");
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleteState, setDeleteState] = useState<OpStatus>("idle");
+
   // Cerrar con tecla Escape.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -135,18 +148,28 @@ export function LeadDetailDrawer({
     setRealTasks(null);
     setRealInteractions(null);
     setFetchedEventContext(null);
+    setRealConversation(null);
     Promise.all([
       fetchLeadNotes(currentLead.id),
       fetchLeadTasks(currentLead.id),
       fetchLeadInteractions(currentLead.id),
       fetchEventContext(currentLead.id),
+      fetch(`/api/admin/crm/conversations?leadId=${encodeURIComponent(currentLead.id)}`, {
+        cache: "no-store",
+      })
+        .then(async (r) => {
+          if (!r.ok) return null;
+          return ((await r.json()) as { conversation: Conversation | null }).conversation;
+        })
+        .catch(() => null),
     ])
-      .then(([n, t, ints, ec]) => {
+      .then(([n, t, ints, ec, conv]) => {
         if (cancelled) return;
         setRealNotes(n.map(mapNoteRow));
         setRealTasks(t.map(mapTaskRow));
         setRealInteractions(ints.map(mapInteractionRow));
         setFetchedEventContext(ec);
+        setRealConversation(conv);
       })
       .catch((err) => {
         if (!cancelled) setDataError(err instanceof Error ? err.message : "Error cargando datos.");
@@ -158,7 +181,11 @@ export function LeadDetailDrawer({
 
   const risk = calculateLeadResponseRisk(currentLead);
   const interactions = getLeadInteractions(currentLead.id);
-  const conversation = getLeadConversation(currentLead.id);
+  // FIX 2026-07-06 (conversaciones v2) — en modo real, usar
+  // `realConversation` (cargado vía fetch a
+  // `/api/admin/crm/conversations?leadId=X`). En demo mode, fallback
+  // al mock local para no romper el modo demo.
+  const conversation = realMode ? realConversation : getLeadConversation(currentLead.id);
   const suggestions = getAISuggestionsForLead(currentLead.id);
   const appts = getAppointmentsForLead(currentLead.id);
   const owner = owners.find((o) => o.id === currentLead.ownerId);
@@ -231,6 +258,117 @@ export function LeadDetailDrawer({
       setCurrentLead((c) => ({ ...c, status: prevStatus }));
       setArchiveState("error");
       setArchiveMsg(err instanceof Error ? err.message : "No se pudo archivar.");
+    }
+  }
+
+  // FIX 2026-07-06 (conversaciones v2) — registra un mensaje de texto
+  // manual en la conversación del lead. FIX 2026-07-06 — el admin
+  // tipea el body, elige dirección (inbound = el lead habló;
+  // outbound = admin respondió), submit → POST al endpoint. El
+  // server inserta en `lead_whatsapp_conversations` y devuelve el id.
+  async function handleAppendMessage(e: React.FormEvent) {
+    e.preventDefault();
+    if (conversationState === "loading") return;
+    const text = newMessageBody.trim();
+    if (!text) {
+      setConversationState("error");
+      setConversationMsg("El mensaje no puede estar vacío.");
+      return;
+    }
+    if (text.length > 4000) {
+      setConversationState("error");
+      setConversationMsg("Máximo 4000 caracteres.");
+      return;
+    }
+    setConversationState("loading");
+    setConversationMsg(null);
+    try {
+      const res = await fetch("/api/admin/crm/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          leadId: currentLead.id,
+          body: text,
+          direction: newMessageDirection,
+        }),
+      });
+      const data = (await res.json()) as {
+        ok: boolean;
+        note?: string;
+        messageId?: string;
+      };
+      if (!res.ok || !data.ok) {
+        setConversationState("error");
+        setConversationMsg(data.note ?? `Error ${res.status}`);
+        return;
+      }
+      // Refetch la conversación entera para mostrar el nuevo mensaje
+      // (mantenemos server-side como source of truth).
+      const refetch = await fetch(
+        `/api/admin/crm/conversations?leadId=${encodeURIComponent(currentLead.id)}`,
+        { cache: "no-store" },
+      );
+      const refetched = refetch.ok
+        ? ((await refetch.json()) as { conversation: Conversation | null }).conversation
+        : null;
+      setRealConversation(refetched);
+      setNewMessageBody("");
+      setConversationState("success");
+      setConversationMsg("Mensaje registrado.");
+      setTimeout(() => setConversationState("idle"), 2500);
+    } catch (err) {
+      setConversationState("error");
+      setConversationMsg(
+        err instanceof Error ? err.message : "No se pudo registrar el mensaje.",
+      );
+    }
+  }
+
+  // FIX 2026-07-06 (conversaciones v2) — soft-delete de toda la
+  // conversación. Confirmación textual "ARCHIVAR" (mismo patrón que
+  // el resto del proyecto para bulk delete).
+  async function handleDeleteConversation() {
+    if (deleteState === "loading") return;
+    const expected = "ARCHIVAR";
+    if (deleteConfirmText.trim().toUpperCase() !== expected) {
+      setConversationState("error");
+      setConversationMsg(`Escribí ${expected} para confirmar.`);
+      return;
+    }
+    setDeleteState("loading");
+    setConversationMsg(null);
+    try {
+      const res = await fetch(
+        `/api/admin/crm/conversations?leadId=${encodeURIComponent(currentLead.id)}`,
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reason: "admin_delete_from_drawer" }),
+        },
+      );
+      const data = (await res.json()) as {
+        ok: boolean;
+        deletedCount?: number;
+        note?: string;
+      };
+      if (!res.ok || !data.ok) {
+        setDeleteState("error");
+        setConversationMsg(data.note ?? `Error ${res.status}`);
+        return;
+      }
+      // Limpiar vista local.
+      setRealConversation(null);
+      setDeleteState("success");
+      setConversationMsg(
+        `Conversación archivada (${data.deletedCount ?? 0} mensaje${data.deletedCount === 1 ? "" : "s"}).`,
+      );
+      setDeleteConfirmText("");
+      setTimeout(() => setDeleteState("idle"), 3000);
+    } catch (err) {
+      setDeleteState("error");
+      setConversationMsg(
+        err instanceof Error ? err.message : "No se pudo archivar la conversación.",
+      );
     }
   }
 
@@ -803,12 +941,17 @@ export function LeadDetailDrawer({
             </Section>
           )}
 
-          {/* Conversación */}
-          <Section title="Conversación (WhatsApp · demo)">
+          {/* Conversación — FIX 2026-07-06 (conversaciones v2).
+              Modo real: muestra conversación de DB (lead_whatsapp_conversations)
+              con form para registrar mensajes manuales + botón archivar.
+              Modo demo: comportamiento idéntico al viejo (mock local). */}
+          <Section
+            title={`Conversación${realMode ? "" : " (WhatsApp · demo)"}`}
+          >
             {!conversation ? (
-              <Empty text="Sin conversación registrada." />
+              <Empty text={realMode ? "Sin conversación registrada. Anotá el primer mensaje abajo." : "Sin conversación registrada."} />
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-2 mb-3">
                 <div className="flex items-center gap-2 mb-1">
                   <Badge tone={conversation.status === "escalated" ? "danger" : "info"}>
                     {conversation.status}
@@ -816,8 +959,12 @@ export function LeadDetailDrawer({
                   {conversation.summary && (
                     <span className="text-xs text-ink-muted">{conversation.summary}</span>
                   )}
+                  <span className="ml-auto text-[10px] text-ink-muted">
+                    {conversation.messages.length} mensaje
+                    {conversation.messages.length === 1 ? "" : "s"}
+                  </span>
                 </div>
-                {conversation.messages.map((m) => (
+                {conversation.messages.map((m: ConversationMessage) => (
                   <div
                     key={m.id}
                     className={
@@ -832,10 +979,132 @@ export function LeadDetailDrawer({
                         Sugerencia IA (demo)
                       </span>
                     )}
-                    {m.body}
+                    <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                    <p
+                      className={
+                        "mt-1 text-[10px] " +
+                        (m.direction === "inbound" ? "text-ink-muted" : "text-white/70")
+                      }
+                    >
+                      {m.author !== "Lead" && m.author !== "Qlick" ? `${m.author} · ` : ""}
+                      {new Date(m.at).toLocaleString("es-MX")}
+                    </p>
                   </div>
                 ))}
               </div>
+            )}
+
+            {/* FIX 2026-07-06 — form para registrar mensajes manuales.
+                Solo visible en modo real (en demo no hay endpoint POST). */}
+            {realMode && (
+              <form
+                onSubmit={handleAppendMessage}
+                noValidate
+                className="mt-2 space-y-2 border-t border-brand-100 pt-3"
+              >
+                <p className="text-[10px] uppercase font-semibold text-ink-muted">
+                  Registrar mensaje manual
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="text-xs text-ink-muted flex items-center gap-1">
+                    Dirección
+                    <select
+                      value={newMessageDirection}
+                      onChange={(e) =>
+                        setNewMessageDirection(
+                          e.target.value as "inbound" | "outbound",
+                        )
+                      }
+                      className="rounded-lg border border-brand-200 bg-white px-2 py-1 text-xs text-ink focus:outline-none focus:border-brand-400"
+                    >
+                      <option value="outbound">outbound (yo respondí)</option>
+                      <option value="inbound">inbound (él/ella escribió)</option>
+                    </select>
+                  </label>
+                  <span className="ml-auto text-[10px] text-ink-muted">
+                    Solo texto (≤4000 chars)
+                  </span>
+                </div>
+                <Textarea
+                  value={newMessageBody}
+                  onChange={(e) => setNewMessageBody(e.target.value)}
+                  placeholder="Pega aquí el mensaje que llegó por WhatsApp/email/voz o que vos enviaste…"
+                  rows={3}
+                  className="w-full"
+                  disabled={conversationState === "loading" || deleteState === "loading"}
+                />
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={
+                      conversationState === "loading" ||
+                      deleteState === "loading" ||
+                      newMessageBody.trim().length === 0
+                    }
+                  >
+                    {conversationState === "loading"
+                      ? "Registrando…"
+                      : "Registrar mensaje"}
+                  </Button>
+                  {conversationMsg && (
+                    <span
+                      className={
+                        "text-xs " +
+                        (conversationState === "error"
+                          ? "text-rose-700"
+                          : "text-emerald-700")
+                      }
+                      role={conversationState === "error" ? "alert" : "status"}
+                    >
+                      {conversationMsg}
+                    </span>
+                  )}
+                </div>
+              </form>
+            )}
+
+            {/* FIX 2026-07-06 — soft-delete de toda la conversación.
+                Confirmación textual "ARCHIVAR" (mismo patrón canónico). */}
+            {realMode && conversation && conversation.messages.length > 0 && (
+              <details className="mt-3 border-t border-brand-100 pt-3 text-xs">
+                <summary className="cursor-pointer text-ink-muted hover:text-ink select-none font-semibold">
+                  ⚠️ Archivar conversación completa
+                </summary>
+                <div className="mt-2 space-y-2 p-3 rounded-lg bg-rose-50 border border-rose-200">
+                  <p className="text-rose-800">
+                    Esto <strong>oculta</strong> los {conversation.messages.length}{" "}
+                    mensaje{conversation.messages.length === 1 ? "" : "s"} del
+                    CRM. Los rows siguen existiendo (compliance LGPD) y el
+                    audit log registra tu email.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="text"
+                      value={deleteConfirmText}
+                      onChange={(e) => setDeleteConfirmText(e.target.value)}
+                      placeholder='Escribí "ARCHIVAR" para confirmar'
+                      className="flex-1 min-w-[180px] rounded-lg border border-rose-200 bg-white px-2 py-1.5 text-xs focus:outline-none focus:border-rose-400"
+                      disabled={deleteState === "loading"}
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="danger"
+                      onClick={handleDeleteConversation}
+                      disabled={
+                        deleteState === "loading" ||
+                        conversationState === "loading" ||
+                        deleteConfirmText.trim().toUpperCase() !== "ARCHIVAR"
+                      }
+                    >
+                      {deleteState === "loading"
+                        ? "Archivando…"
+                        : "Archivar conversación"}
+                    </Button>
+                  </div>
+                </div>
+              </details>
             )}
           </Section>
 

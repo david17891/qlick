@@ -151,12 +151,17 @@ export async function listRealConversations(): Promise<Conversation[]> {
   // Cast a `never` porque el typegen de Supabase no incluye esta tabla
   // (legacy: aplicada 2026-06-29 antes del typegen actual). El runtime
   // funciona OK; el cast solo silencia al compilador.
+  //
+  // FIX 2026-07-06 (conversaciones v2): filtrar `deleted_at IS NULL`
+  // para no mostrar mensajes soft-deleted en la UI. El row sigue
+  // existiendo para audit, pero no aparece en este listado.
   const { data: whatsappRows, error: waErr } = await (supabase.from(
     "lead_whatsapp_conversations" as never,
   ) as any)
     .select(
       "id, lead_id, phone_normalized, direction, message_type, body, metadata, created_at",
     )
+    .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
   if (waErr) {
@@ -271,4 +276,247 @@ export async function getRealConversationForLead(
   if (!checkSupabaseConfig().configured) return undefined;
   const all = await listRealConversations();
   return all.find((c) => c.leadId === leadId);
+}
+
+/* ------------------------------------------------------------------ */
+/* Escritura (FIX 2026-07-06 conversaciones v2)                        */
+/* ------------------------------------------------------------------ */
+
+import { logAdminAction } from "@/lib/crm/audit-server";
+
+/**
+ * Input para `appendConversationMessage`.
+ *
+ * El admin puede registrar un mensaje de texto manualmente cuando
+ * recibe una conversación fuera del bot (ej. el lead le escribió
+ * por WhatsApp directo al celular del admin, o el admin respondió
+ * por WhatsApp Web/Desktop y quiere loggear el contacto).
+ *
+ * Solo texto (David pidió "solo texto por ahora"). La validación
+ * corre server-side en el route handler.
+ */
+export interface AppendConversationMessageInput {
+  /** UUID del lead. Si el lead no tiene historial, se crea el primer
+   *  mensaje con este lead_id (la "conversación" se crea implícita
+   *  al insertar el primer mensaje). */
+  leadId: string;
+  /** Cuerpo del mensaje (texto plano). Validación server-side: 1-4000
+   *  chars después de trim. */
+  body: string;
+  /** inbound = el lead habló; outbound = el admin respondió. */
+  direction: "inbound" | "outbound";
+  /** Teléfono normalizado del lead (E.164 sin `+`, ej. "5216532935492").
+   *  Se obtiene del lead en DB si no se pasa. Necesario porque la tabla
+   *  tiene `phone_normalized NOT NULL`. */
+  phoneNormalized?: string;
+  /** Metadata opcional libre que se persiste en la columna `metadata`.
+   *  Para distinguir los mensajes manuales del bot, el server pone
+   *  `metadata.manual = true` y `metadata.by_email = actorEmail`. */
+  metadata?: Record<string, unknown>;
+}
+
+export interface AppendConversationMessageResult {
+  ok: boolean;
+  messageId?: string;
+  leadId: string;
+  note?: string;
+}
+
+/**
+ * Append de un mensaje a la conversación de un lead. Si no hay
+ * conversación previa, este mensaje es el primero (la conversación
+ * se materializa al insertar el primer row).
+ *
+ * NO es idempotente: si el admin hace 2 clicks, se insertan 2 rows.
+ * El bot SÍ es idempotente (por `whatsapp_message_id` UNIQUE); los
+ * mensajes manuales desde la UI no tienen wamid, así que aceptamos
+ * duplicados si el usuario lo hace.
+ *
+ * @server
+ */
+export async function appendConversationMessage(
+  input: AppendConversationMessageInput,
+  actorEmail: string,
+): Promise<AppendConversationMessageResult> {
+  if (!checkSupabaseConfig().configured) {
+    return {
+      ok: false,
+      leadId: input.leadId,
+      note: "Supabase no configurado (modo demo).",
+    };
+  }
+
+  const supabase = createSupabaseAdminClient();
+
+  // 1. Resolver phone_normalized si no se pasó (la columna es NOT NULL).
+  let phoneNormalized = input.phoneNormalized?.trim() ?? "";
+  if (!phoneNormalized) {
+    const { data: leadRow, error: leadErr } = await (supabase
+      .from("leads") as any)
+      .select("phone, phone_normalized")
+      .eq("id", input.leadId)
+      .maybeSingle();
+    if (leadErr) {
+      // eslint-disable-next-line no-console
+      console.error("[conversations-server] lead lookup falló", {
+        code: leadErr.code,
+      });
+      return { ok: false, leadId: input.leadId, note: "No se pudo leer el lead." };
+    }
+    if (!leadRow) {
+      return { ok: false, leadId: input.leadId, note: "Lead inexistente." };
+    }
+    phoneNormalized =
+      leadRow.phone_normalized?.trim() ||
+      leadRow.phone?.replace(/[^0-9]/g, "").trim() ||
+      "";
+    if (!phoneNormalized) {
+      return {
+        ok: false,
+        leadId: input.leadId,
+        note: "El lead no tiene teléfono — no se puede registrar la conversación.",
+      };
+    }
+  }
+
+  // 2. Construir metadata incluyendo marcadores de auditoría.
+  const metadata = {
+    ...(input.metadata ?? {}),
+    manual: true,
+    by_email: actorEmail,
+    ui_source: "conversations_panel",
+    at: new Date().toISOString(),
+  };
+
+  // 3. INSERT.
+  // Cast a `never` por la misma razón que el query de lectura
+  // (tabla no incluida en typegen actual).
+  const { data: insertedRow, error: insErr } = await (supabase.from(
+    "lead_whatsapp_conversations" as never,
+  ) as any)
+    .insert({
+      lead_id: input.leadId,
+      phone_normalized: phoneNormalized,
+      direction: input.direction,
+      message_type: "text",
+      body: input.body.trim(),
+      metadata,
+    })
+    .select("id")
+    .maybeSingle();
+
+  if (insErr || !insertedRow) {
+    // eslint-disable-next-line no-console
+    console.error("[conversations-server] append falló", {
+      code: insErr?.code,
+      message: insErr?.message,
+    });
+    return {
+      ok: false,
+      leadId: input.leadId,
+      note: `No se pudo registrar el mensaje (${insErr?.code ?? "sin código"}).`,
+    };
+  }
+
+  // 4. Audit log (best-effort; si falla no afecta el resultado del append).
+  try {
+    await logAdminAction({
+      actor_email: actorEmail,
+      action: "conversation_append_manual",
+      entity_type: "lead",
+      entity_id: input.leadId,
+      metadata: {
+        message_id: insertedRow.id,
+        direction: input.direction,
+        body_length: input.body.trim().length,
+      },
+    });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error("[conversations-server] audit log (append) falló", {
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+
+  return { ok: true, messageId: insertedRow.id, leadId: input.leadId };
+}
+
+/**
+ * Soft-delete de TODA la conversación de un lead (todos los
+ * mensajes de `lead_whatsapp_conversations` con ese `lead_id`).
+ *
+ * Preserva los rows (compliance LGPD) — solo marca `deleted_at`,
+ * `deleted_by_email`, `delete_reason`. El listado y la UI los
+ * filtran con `WHERE deleted_at IS NULL`.
+ *
+ * Si después se inserta un nuevo mensaje manualmente, ese nuevo
+ * mensaje entra con `deleted_at = NULL` (es un row nuevo), por
+ * lo que "reabre" la conversación naturalmente.
+ *
+ * Idempotente: llamar 2 veces seguidas deja el row en el mismo
+ * estado (segunda llamada afecta `affected=0`).
+ *
+ * @server
+ */
+export async function softDeleteConversation(
+  leadId: string,
+  actorEmail: string,
+  reason?: string,
+): Promise<{ ok: boolean; leadId: string; deletedCount: number; note?: string }> {
+  if (!checkSupabaseConfig().configured) {
+    return {
+      ok: false,
+      leadId,
+      deletedCount: 0,
+      note: "Supabase no configurado (modo demo).",
+    };
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const now = new Date().toISOString();
+
+  // Cast a `never` por la razón ya explicada.
+  const { data: updatedRows, error: updErr } = await (supabase.from(
+    "lead_whatsapp_conversations" as never,
+  ) as any)
+    .update({
+      deleted_at: now,
+      deleted_by_email: actorEmail,
+      delete_reason: reason ?? null,
+    })
+    .eq("lead_id", leadId)
+    .is("deleted_at", null)
+    .select("id");
+
+  if (updErr) {
+    // eslint-disable-next-line no-console
+    console.error("[conversations-server] soft-delete falló", {
+      code: updErr.code,
+      message: updErr.message,
+    });
+    return { ok: false, leadId, deletedCount: 0, note: `Error de Supabase (${updErr.code ?? "?"}).` };
+  }
+
+  const deletedCount = (updatedRows ?? []).length;
+
+  // Audit log (best-effort).
+  try {
+    await logAdminAction({
+      actor_email: actorEmail,
+      action: "conversation_soft_delete",
+      entity_type: "lead",
+      entity_id: leadId,
+      metadata: {
+        deleted_count: deletedCount,
+        reason: reason ?? null,
+      },
+    });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error("[conversations-server] audit log (delete) falló", {
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+
+  return { ok: true, leadId, deletedCount };
 }
