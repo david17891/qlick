@@ -2793,3 +2793,40 @@ sustituir el ciclo con templates". Ejecuté 4 bloques sincrónicamente.
 - **Trigger:** David pidió "da una revisión de salud de toda la repo, busca problemas o bugs". Sesión con varios sub-agents en paralelo; gaps detectados.
 
 ---
+
+## 2026-07-07 ~12:50 · Fix bot muestra 17:00 UTC en vez de 10:00 hora del evento
+
+- **Pregunta:** David reportó "Problema grave el evento es a las 10 y el bot lo pone a esa hora" — el admin escribió `11/07/2026 10:00` en `datetime-local` pero el bot de WhatsApp le dijo al lead "11 de julio de 2026, 17:00 hrs (UTC)". Bug bloqueante de conversión de zona horaria.
+
+- **Causa raíz:**
+  - `src/lib/ai/event-context-loader.ts:171-183` `formatHumanDate()` usaba `date.getUTCHours()` con sufijo `(UTC)` hardcodeado.
+  - El admin escribe hora local del navegador (Phoenix UTC-7). `datetimeLocalToIso()` (`src/lib/crm/ops-client.ts:381`) hace `new Date(local).toISOString()` → guarda timestamptz UTC. La zona local se PIERDE al persistir.
+  - Al formatear de vuelta con UTC, el bot mostraba la hora UTC (17:00) en vez de la hora original (10:00).
+  - Mismo patrón roto en `src/lib/email/templates/event-reminder.ts:51,61`, `src/lib/email/templates/event-qr-pass.ts:93,104`, `src/app/api/events/[id]/certificate/[attendeeId]/route.ts:41-64`. 4 archivos con el mismo bug.
+  - Único lugar correcto antes del fix: `src/app/check-in/[token]/CheckInClient.tsx:72` ya usaba `timeZone: "America/Mexico_City"`.
+
+- **Decisión:** Constante fija `EVENT_TIMEZONE = "America/Phoenix"` (`src/lib/datetime.ts`). Cubre Phoenix + Mexicali exacto (UTC-7 sin DST); Tijuana con horario de verano mexicano tiene 1h de desfase conocido, aceptado por David 2026-07-07 ("los eventos son en norte america al menos, por ahora digamos que todos seran en zona, tijuana, phoenix, mexicali").
+- **Por qué no columna `timezone` en `events`:** más invasivo (migration + backfill + admin form update + 5 renderers). La plataforma hoy es 100% Pacífico; cuando crezca a CDMX/Madrid/otra zona se hace el upgrade. Decisión David en sesión 2026-07-07.
+
+- **Acciones tomadas:**
+  - Nuevo `src/lib/datetime.ts`: exporta `EVENT_TIMEZONE`, `EVENT_TIMEZONE_LABEL = "hora Pacífico"`, helpers `formatEventDateOnly`, `formatEventTimeOnly` (24h con `hour12: false`), `formatEventDateTimeWithZone`. Este último usa `Intl.DateTimeFormat` con `formatToParts` para evitar hydration mismatch entre server (Vercel UTC) y client (navegador admin).
+  - `formatHumanDate` en `event-context-loader.ts` ahora delega a `formatEventDateTimeWithZone`. Sufijo cambió de `(UTC)` a `(hora Pacífico)`.
+  - `formatEventDate/Time` en `event-reminder.ts` y `event-qr-pass.ts`: `timeZone: "America/Phoenix"`.
+  - `formatDateLong/formatTime` en certificate route: `timeZone: "America/Phoenix"`.
+  - **NO toqué** `src/lib/utils.ts:formatDate()` (UTC, legítimo para fechas de auditoría tipo `created_at`) ni vistas públicas (`/eventos/[slug]`, `/eventos`) que ya usan `toLocaleString("es-MX")` sin `timeZone` (deliberado: deja al navegador del visitante ajustar a su zona).
+  - **NO toqué** `CheckInClient.tsx` que ya usa `America/Mexico_City` (es la zona del visitante del pase, distinta al zona del evento — fine).
+
+- **Tests:**
+  - Nuevo `tests/datetime.test.mjs` (16/16 verde) — incluye el caso del bug de David verbatim: `formatEventDateTimeWithZone("2026-07-11T17:00:00.000Z") === "11 de julio de 2026, 10:00 hrs (hora Pacífico)"`.
+  - Suite completa: **577/577** verde (561 pre-existentes + 16 nuevos).
+  - `type-check`: 0 errores. `lint`: 0 warnings. `build`: 49/49 rutas OK.
+
+- **Impacto:**
+  - Bot de WhatsApp ahora muestra "11 de julio de 2026, 10:00 hrs (hora Pacífico)" al lead en el mensaje "Próximo evento" → copy coherente con el admin.
+  - Emails de recordatorio 24h/2h y pase QR digital ahora muestran la hora correcta del evento (no UTC +7h).
+  - Certificados de asistencia imprimibles correctos.
+  - Riesgo conocido: si en el futuro se agrega columna `timezone` a `events` (caso eventos en CDMX/Tijuana-con-DST-mexicano/Madrid), hay que migrar `formatEventDateTimeWithZone(iso)` → `formatEventDateTimeWithZone(iso, evt.timezone)` y capturar la zona del admin al guardar. Documentado en `lib/datetime.ts` cabecera.
+
+- **Trigger:** David reportó el bug con captura del bot mostrando "17:00 hrs (UTC)". Sesión 2026-07-07.
+
+---

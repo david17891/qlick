@@ -80,7 +80,14 @@ function esc(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
-/** Formato corto de fecha (es-MX, ej. "6 de julio de 2026"). */
+/**
+ * FIX 2026-07-07 (sesión David, "bot pone 17:00 UTC cuando admin escribió
+ * 10:00"): antes usábamos `timeZone: "UTC"` y mostrábamos la hora UTC al
+ * destinatario del pase. Como el admin escribe hora local del navegador
+ * (Phoenix, UTC-7) y la DB guarda timestamptz UTC, el formateo anterior
+ * desplazaba la hora +7h. Ahora usamos la zona del proyecto.
+ */
+/** Formato corto de fecha (es-MX, ej. "11 de julio de 2026"). */
 function formatEventDate(iso: string): string {
   const d = new Date(iso);
   // Date.toLocaleDateString devuelve "Invalid Date" sin throw cuando el
@@ -90,18 +97,18 @@ function formatEventDate(iso: string): string {
     day: "numeric",
     month: "long",
     year: "numeric",
-    timeZone: "UTC",
+    timeZone: "America/Phoenix",
   });
 }
 
-/** Formato de hora (es-MX, ej. "18:00"). */
+/** Formato de hora (es-MX, ej. "10:00"). */
 function formatEventTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleTimeString("es-MX", {
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: "UTC",
+    timeZone: "America/Phoenix",
   });
 }
 

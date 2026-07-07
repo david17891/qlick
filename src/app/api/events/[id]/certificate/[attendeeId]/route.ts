@@ -38,13 +38,20 @@ import { requireAdmin } from "@/lib/auth/session";
 // Helpers locales (no usamos formatDateLong/formatTime porque no existen
 // en lib/utils — solo formatDate. Inline para mantener el endpoint
 // autocontenido).
+//
+// FIX 2026-07-07 (sesión David, "bot pone 17:00 UTC cuando admin escribió
+// 10:00"): antes usábamos `timeZone: "UTC"` y el certificado mostraba la
+// hora UTC al asistente. Como el admin escribe hora local del navegador
+// (Phoenix, UTC-7) y la DB guarda timestamptz UTC, el certificado
+// imprimible quedaba con la hora desplazada +7h. Ahora usamos la zona del
+// proyecto.
 function formatDateLong(iso: string): string {
   try {
     return new Date(iso).toLocaleDateString("es-MX", {
       day: "numeric",
       month: "long",
       year: "numeric",
-      timeZone: "UTC",
+      timeZone: "America/Phoenix",
     });
   } catch {
     return iso;
@@ -56,7 +63,7 @@ function formatTime(iso: string): string {
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
-      timeZone: "UTC",
+      timeZone: "America/Phoenix",
     });
   } catch {
     return "";

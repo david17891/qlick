@@ -14,6 +14,7 @@ import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/types/supabase";
+import { formatEventDateTimeWithZone } from "../datetime";
 
 /* ------------------------------------------------------------------ */
 /*  Tipos                                                              */
@@ -165,21 +166,26 @@ function fallbackFromEnv(): ActiveEventContext {
 /* ------------------------------------------------------------------ */
 
 /**
- * Formatea un timestamptz a un texto humano en español MX.
- * Ej: "6 de julio, 18:00 hrs (Centro)"
+ * Formatea un timestamptz a un texto humano en español MX en la zona del
+ * proyecto (`America/Phoenix`, Pacífico UTC-7 sin DST).
+ *
+ * Ej: "11 de julio de 2026, 10:00 hrs (hora Pacífico)".
+ *
+ * FIX 2026-07-07 (sesión David, "bot pone 17:00 UTC cuando admin escribió
+ * 10:00"): antes esta función usaba `date.getUTCHours()` con sufijo "(UTC)"
+ * hardcodeado. Como el admin escribe hora local del navegador (Phoenix, UTC-7)
+ * y la DB guarda timestamptz en UTC, formatear con UTC muestra la hora
+ * CONVERTIDA a UTC (17:00) en vez de la hora que el admin escribió (10:00).
+ * El lead recibía un mensaje confuso.
+ *
+ * Ahora delegamos a `formatEventDateTimeWithZone()` en `lib/datetime.ts`,
+ * que usa `Intl.DateTimeFormat` con `timeZone: EVENT_TIMEZONE`. Eso garantiza
+ * que server (Vercel UTC) y client (navegador del admin) rendericen idéntico
+ * y muestra la hora local del evento (10:00 Pacífico) al lead.
  */
 export function formatHumanDate(iso: string | Date): string {
-  const date = typeof iso === "string" ? new Date(iso) : iso;
-  const months = [
-    "enero", "febrero", "marzo", "abril", "mayo", "junio",
-    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
-  ];
-  const day = date.getUTCDate();
-  const month = months[date.getUTCMonth()];
-  const year = date.getUTCFullYear();
-  const hours = date.getUTCHours().toString().padStart(2, "0");
-  const minutes = date.getUTCMinutes().toString().padStart(2, "0");
-  return `${day} de ${month} de ${year}, ${hours}:${minutes} hrs (UTC)`;
+  const isoStr = typeof iso === "string" ? iso : iso.toISOString();
+  return formatEventDateTimeWithZone(isoStr);
 }
 
 /**

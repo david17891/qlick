@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-07 11:20 — Hotfix post-v0.9.0: fix crítico en `POST /api/admin/events` que descartaba silenciosamente los 5 campos nuevos (`format`, `eventRules`, `streamingUrl`, `streamingProvider`, `streamingAccessNote`). Aplicar el fix en el admin (Editar AA4E → guardar) ahora persiste correctamente. Suite sigue verde: 545/545 tests + 48/48 rutas + Vercel Production Ready.
+> **Última actualización:** 2026-07-07 12:50 — Hotfix v0.9.1 (pendiente commit): bot mostraba "17:00 hrs (UTC)" al lead cuando el admin escribió 10:00 — bug de zona horaria en 4 renderers. Nuevo `lib/datetime.ts` con constante `EVENT_TIMEZONE = "America/Phoenix"` (UTC-7 sin DST, cubre Phoenix/Mexicali/Tijuana). Suite sigue verde: **577/577 tests** (16 nuevos en `tests/datetime.test.mjs`) + 49/49 rutas + type-check/lint OK.
 
 ---
 
