@@ -117,7 +117,7 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
   }, [realMode, mockLeads]);
 
   useEffect(() => {
-    if (realLeads) {
+    if (realLeads !== null) {
       setLeads(realLeads);
     }
   }, [realLeads]);
