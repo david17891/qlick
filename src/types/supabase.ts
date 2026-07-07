@@ -320,6 +320,63 @@ export type Database = {
           },
         ]
       }
+      event_access: {
+        Row: {
+          access_source: string
+          access_status: string
+          created_at: string
+          event_id: string
+          expires_at: string | null
+          granted_reason: string | null
+          id: string
+          payment_id: string | null
+          starts_at: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          access_source: string
+          access_status: string
+          created_at?: string
+          event_id: string
+          expires_at?: string | null
+          granted_reason?: string | null
+          id?: string
+          payment_id?: string | null
+          starts_at?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          access_source?: string
+          access_status?: string
+          created_at?: string
+          event_id?: string
+          expires_at?: string | null
+          granted_reason?: string | null
+          id?: string
+          payment_id?: string | null
+          starts_at?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_access_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_access_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       event_attendees: {
         Row: {
           checked_in_at: string | null
@@ -651,9 +708,9 @@ export type Database = {
           respondent_email: string | null
           respondent_phone: string | null
           responses: Json
-          submitted_at: string
           reviewed_at: string | null
           reviewed_by: string | null
+          submitted_at: string
         }
         Insert: {
           attendee_id?: string | null
@@ -669,9 +726,9 @@ export type Database = {
           respondent_email?: string | null
           respondent_phone?: string | null
           responses?: Json
-          submitted_at?: string
           reviewed_at?: string | null
           reviewed_by?: string | null
+          submitted_at?: string
         }
         Update: {
           attendee_id?: string | null
@@ -687,9 +744,9 @@ export type Database = {
           respondent_email?: string | null
           respondent_phone?: string | null
           responses?: Json
-          submitted_at?: string
           reviewed_at?: string | null
           reviewed_by?: string | null
+          submitted_at?: string
         }
         Relationships: [
           {
@@ -1075,6 +1132,57 @@ export type Database = {
           },
         ]
       }
+      lead_whatsapp_log: {
+        Row: {
+          actor_email: string | null
+          created_at: string
+          event_id: string | null
+          id: string
+          lead_id: string
+          message_preview: string | null
+          metadata: Json
+          new_status: string
+          prev_status: string | null
+        }
+        Insert: {
+          actor_email?: string | null
+          created_at?: string
+          event_id?: string | null
+          id?: string
+          lead_id: string
+          message_preview?: string | null
+          metadata?: Json
+          new_status: string
+          prev_status?: string | null
+        }
+        Update: {
+          actor_email?: string | null
+          created_at?: string
+          event_id?: string | null
+          id?: string
+          lead_id?: string
+          message_preview?: string | null
+          metadata?: Json
+          new_status?: string
+          prev_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_whatsapp_log_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_whatsapp_log_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leads: {
         Row: {
           consent_to_contact: boolean
@@ -1406,7 +1514,7 @@ export type Database = {
         Row: {
           amount_mxn: number
           coupon_id: string | null
-          course_id: string
+          course_id: string | null
           created_at: string
           currency: string
           discount_mxn: number
@@ -1423,7 +1531,7 @@ export type Database = {
         Insert: {
           amount_mxn: number
           coupon_id?: string | null
-          course_id: string
+          course_id?: string | null
           created_at?: string
           currency?: string
           discount_mxn?: number
@@ -1440,7 +1548,7 @@ export type Database = {
         Update: {
           amount_mxn?: number
           coupon_id?: string | null
-          course_id?: string
+          course_id?: string | null
           created_at?: string
           currency?: string
           discount_mxn?: number
