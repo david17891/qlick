@@ -59,6 +59,7 @@ import {
   recordAndCheckRateLimit
 } from "../ai";
 import { sendHumanHandoff } from "./human-handoff";
+import { mustEscalateToHuman } from "../ai/guardrails";
 import { stripGreetingIfHasHistory } from "./safety-net";
 import { extractEmailFromText } from "./email-extract";
 import { getAIAgentProfile } from "../crm/agent-utils";
@@ -149,6 +150,7 @@ export type BotIntent =
   | "survey_q_consent_continue"
   | "survey_q4_skip"
   | "survey_q4_text"
+  | "human_handoff"
   | "question";
 
 /** Resultado del procesamiento de un mensaje entrante. */
@@ -3471,6 +3473,134 @@ export async function processInboundMessage(
         buttonId
       }
     });
+  }
+
+  // 2.5 Escalación a humano (FIX 2026-07-07, sesion David, opcion B del
+  // handoff): si el mensaje del lead matchea una de las 5 categorías duras
+  // de mustEscalateToHuman (reembolso, queja, soporte técnico, descuento
+  // no autorizado, datos personales), persistimos el handoff via
+  // sendHumanHandoff + mandamos respuesta segura al lead. NO dejamos que
+  // el LLM responda (riesgo de prometer cosas que no podemos cumplir,
+  // especialmente en pagos y reembolsos).
+  //
+  // Por que ANTES del intent detection: mustEscalateToHuman es un regex
+  // barato (no llama LLM). Si salta, queremos cortar el flujo acá para
+  // que el LLM ni siquiera vea el texto riesgoso. Si no salta, seguimos
+  // el flujo normal.
+  //
+  // best-effort: si sendHumanHandoff falla, igual mandamos la respuesta
+  // al lead — la notificación a David es bonus, no bloquea el flow.
+  // El lead nunca queda sin respuesta.
+  //
+  // FIX 2026-07-07 (post test fail): OPT_OUT_RE matchea "baja" como
+  // cancelacion de contacto. mustEscalateToHuman tambien matchea "baja"
+  // como datos personales (categoria privacidad). Para no romper el flow
+  // opt_out existente cuando alguien escribe solo "baja", excluimos
+  // OPT_OUT_RE antes de escalar. Si el lead escribe "quiero darme de baja
+  // por privacidad" NO matchea OPT_OUT_RE (texto antes) y SI escala a
+  // humano, que es lo correcto.
+  if (body && !OPT_OUT_RE.test(body)) {
+    const escalation = mustEscalateToHuman(body);
+    if (escalation.escalate) {
+      const leadNameForHandoff = lead.name?.trim() || "Lead sin nombre";
+
+      // 1) Persistir handoff (best-effort, nunca lanza).
+      const handoffOk = await sendHumanHandoff({
+        leadId: lead.id ?? null,
+        leadName: leadNameForHandoff,
+        leadPhone: phoneNormalized,
+        leadEmail: lead.email ?? undefined,
+        lastMessages: [
+          {
+            direction: "inbound",
+            body,
+            timestamp: message.timestamp
+          }
+        ]
+      }).catch((err) => {
+        // eslint-disable-next-line no-console
+        errorLog("[whatsapp/bot] sendHumanHandoff threw", {
+          leadId: lead.id,
+          error: err instanceof Error ? err.message : String(err)
+        });
+        return false;
+      });
+
+      // 2) Respuesta segura al lead (sin inventar copy).
+      // Texto generico: NO prometemos tiempos especificos ni acciones
+      // que no podamos cumplir (ej. "te hago el reembolso ahora"). Solo
+      // confirmamos recepcion y redirigimos a canales pasivos si urge.
+      const handoffBody =
+        "Recibí tu mensaje. Un asesor de Qlick te contactará pronto " +
+        "por este medio para ayudarte con tu caso. " +
+        "Si es urgente, escríbenos a hola@qlick.marketing.";
+
+      const provider = getActiveWhatsAppProvider();
+      let handoffSend: {
+        ok: boolean;
+        externalId?: string;
+        demo?: boolean;
+      } = { ok: false };
+      try {
+        const r = await provider.send({ to: phoneNormalized, body: handoffBody });
+        handoffSend = { ok: r.ok, externalId: r.externalId, demo: r.demo };
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        errorLog("[whatsapp/bot] handoff response send failed", {
+          leadId: lead.id,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+
+      // 3) Persistir outbound para mantener la conversación completa
+      //    en lead_whatsapp_conversations.
+      let handoffConvId: string | null = null;
+      if (supabase && handoffSend.ok) {
+        handoffConvId = await persistConversation(supabase, {
+          lead_id: lead.id,
+          phone_normalized: phoneNormalized,
+          direction: "outbound",
+          message_type: "text",
+          body: handoffBody,
+          whatsapp_message_id: handoffSend.externalId ?? null,
+          metadata: {
+            trigger: "must_escalate_human",
+            escalation_reason: escalation.reason ?? "unknown",
+            handoff_notified: handoffOk
+          }
+        }).catch((err) => {
+          // eslint-disable-next-line no-console
+          errorLog("[whatsapp/bot] handoff persistConversation threw", {
+            leadId: lead.id,
+            error: err instanceof Error ? err.message : String(err)
+          });
+          return null;
+        });
+      }
+
+      // eslint-disable-next-line no-console
+      debugLog("[whatsapp/bot] escalation triggered", {
+        leadId: lead.id,
+        reason: escalation.reason,
+        handoffOk,
+        responseSent: handoffSend.ok
+      });
+
+      return {
+        ok: true,
+        intent: "human_handoff",
+        leadId: lead.id,
+        conversationId: handoffConvId ?? inboundConvId ?? undefined,
+        outboundMessageId: handoffSend.externalId,
+        responseKind: "text",
+        responsePreview: handoffBody,
+        demo: handoffSend.demo,
+        note:
+          `Escalación a humano (${escalation.reason ?? "sin razón"}). ` +
+          `Handoff ${handoffOk ? "notificado OK" : "falló, ver log"}. ` +
+          `Respuesta al lead ${handoffSend.ok ? "enviada" : "falló"}.`
+      };
+    }
   }
 
   // 3. Detectar intent. Si el usuario clickeó un botón (Fase 7a), el

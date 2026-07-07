@@ -2830,3 +2830,52 @@ sustituir el ciclo con templates". Ejecuté 4 bloques sincrónicamente.
 - **Trigger:** David reportó el bug con captura del bot mostrando "17:00 hrs (UTC)". Sesión 2026-07-07.
 
 ---
+
+## 2026-07-07 ~13:00 · Commit b5405b8 pusheado a main, Vercel auto-deploy en curso
+
+- **Acción:** Tras sesión de fix anterior, David autorizó commit + push. `git commit -m "fix(datetime): formatear fechas de eventos en zona del proyecto"` generó `b5405b8` (8 archivos, +334/-22). `git push origin main` exitoso (`1469909..b5405b8  main -> main`). Vercel Production auto-deploy disparado.
+- **Monitoreo:** cron self-reminder `vercel-deploy-check-datetime` cada 2min, expira 2026-07-21. Verifica `vercel ls --prod` y la URL de producción; elimina cron si READY, reporta si ERROR o build colgado >5min.
+- **Próximo paso:** Confirmar que producción está mostrando "10:00 hrs (hora Pacífico)" al lead. David puede pedirle a un lead de prueba (o a sí mismo mandando "Hola" al bot) para smoke-test end-to-end.
+
+---
+
+## 2026-07-07 ~13:07 · Smoke-test OK, fix cerrado
+
+- **Acción:** Cron `vercel-deploy-check-datetime` confirmó a las 13:02: deploy `dpl_7QD3KMG83XrzQKRQW8MLeaZMXkGP` en estado `● Ready`, `https://www.qlick.digital/eventos/marketing-ia-para-emprendedores` responde HTTP 200. Cron eliminado.
+- **Cierre:** David mandó "Hola" al bot y validó que el mensaje del próximo evento muestra "10:00 hrs (hora Pacífico)" en vez de "17:00 hrs (UTC)". Fix funcional end-to-end.
+
+---
+
+## 2026-07-07 ~13:25 · Cablear escalación a humano en el bot (opción B del handoff)
+
+- **Pregunta:** David preguntó "qué hace el bot cuando debe contactar un humano?". Auditoría del código reveló que `sendHumanHandoff` y `mustEscalateToHuman` existían pero NUNCA SE LLAMABAN desde el flujo runtime. El bot era 100% autónomo — si un lead escribía "quiero un reembolso" o "no me funciona el curso", el bot lo intentaba resolver con copy o caía en "no tengo esa información, te derivo con el equipo" sin crear ticket ni notificar a David. Riesgo de que leads con problemas reales se pierdan silenciosamente.
+
+- **Decisión:** Opción B (de las 3 que le propuse a David). Cablear `mustEscalateToHuman` en el flow del bot:
+  - Cuando detecta una de las 5 categorías duras (reembolso, queja, soporte técnico, descuento no autorizado, datos personales), persiste en `handoff_requests` vía `sendHumanHandoff` y manda respuesta segura al lead (texto fijo, sin inventar copy).
+  - David lo ve en `/admin/handoffs` cuando entre al dashboard.
+  - Email opcional vía Brevo si está configurado (ya cableado en `human-handoff.ts`).
+- **Razón:** Mínimo útil. Mantiene al bot autónomo para lo que sabe resolver (eventos, inscripción, info de cursos), pero escala categorías donde inventar copy es peligroso. NO incluye notificaciones activas (opción C) — David las pidió después si las necesita.
+
+- **Acciones tomadas:**
+  - `src/lib/whatsapp/bot-engine.ts`: nuevo bloque "2.5 Escalación a humano" entre persistConversation inbound y detectIntent. Import de `mustEscalateToHuman` desde `../ai/guardrails`. Nuevo `BotIntent: "human_handoff"`. El bloque:
+    1. Chequea `mustEscalateToHuman(body)` ANTES del intent detection (corte temprano — el LLM no ve texto riesgoso).
+    2. Excluye `OPT_OUT_RE` (regex de "baja/stop/cancelar") para no romper el flow opt_out existente. La palabra "baja" matchea ambas heurísticas, pero el contrato legacy es opt_out.
+    3. Llama `sendHumanHandoff({leadId, leadName, leadPhone, leadEmail, lastMessages})` best-effort (nunca lanza).
+    4. Envía respuesta segura al lead vía provider: "Recibí tu mensaje. Un asesor de Qlick te contactará pronto por este medio para ayudarte con tu caso. Si es urgente, escríbenos a hola@qlick.marketing." (sin promesas de tiempo, sin "te hago el reembolso ahora", sin copy riesgoso).
+    5. Persiste el outbound con metadata `{trigger: "must_escalate_human", escalation_reason, handoff_notified}` para tener conversación completa en `lead_whatsapp_conversations`.
+    6. Retorna `BotProcessResult` con `intent: "human_handoff"` y `note` describiendo el resultado.
+  - `tests/whatsapp-bot.test.mjs`: 8 tests nuevos cubriendo las 5 categorías + opt_out exclusion + 2 negativos (no escala en mensajes neutros).
+
+- **Tests:**
+  - Suite: **569/569 verde** (561 pre + 8 nuevos).
+  - `type-check`: 0 errores. `lint`: 0 warnings. `build`: OK.
+
+- **Impacto:**
+  - Leads con problemas reales (reembolso, soporte, queja) generan ticket automático. David los ve en `/admin/handoffs` cuando entra al dashboard.
+  - El bot ya no intenta resolver copy de pagos/reembolsos por su cuenta (riesgo legal bajo).
+  - Opt_out sigue funcionando idéntico ("baja"/"stop"/"cancelar" NO escala, sigue su flow normal).
+  - Si en algún momento David quiere notificaciones activas (email/Slack/push en <2 min), el cableado de email en `human-handoff.ts` ya existe — solo activar `BREVO_API_KEY` + `ADMIN_NOTIFICATION_EMAILS` en Vercel env.
+
+- **Trigger:** David preguntó "qué hace el bot si debe contactar un humano?" y aprobó opción B tras revisar las 3 alternativas. Sesión 2026-07-07.
+
+---

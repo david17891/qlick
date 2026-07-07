@@ -1063,3 +1063,160 @@ test("processInboundMessage: question → LLM o fallback", async () => {
 //     delete process.env.WHATSAPP_WEBHOOK_SECRET;
 //   }
 // });
+
+/* ----------------------------------------------------------------
+ * FIX 2026-07-07 (sesión David, opción B): bot escala a humano cuando
+ * el mensaje matchea mustEscalateToHuman. El flow:
+ *   1) Persistir handoff en `handoff_requests` (best-effort, mockeamos
+ *      Supabase para que falle silenciosamente).
+ *   2) Enviar respuesta segura al lead (texto fijo, sin inventar).
+ *   3) Retornar intent="human_handoff" + responseKind="text".
+ *
+ * Excluimos OPT_OUT_RE para no romper "baja" como opt_out.
+ * ---------------------------------------------------------------- */
+
+test("processInboundMessage: 'quiero un reembolso' → intent=human_handoff + texto seguro", async () => {
+  disableSupabase();
+  const m = mockFetch();
+  try {
+    const result = await processInboundMessage({
+      messageId: "wamid_h1",
+      from: "523399999991",
+      text: "Quiero un reembolso del curso que compré ayer",
+      type: "text"
+    });
+    assert.equal(result.intent, "human_handoff");
+    assert.equal(result.responseKind, "text");
+    // El cuerpo NO debe contener frases prohibidas (inventar copy).
+    assert.doesNotMatch(result.responsePreview ?? "", /reembolso/i);
+    assert.match(
+      result.responsePreview ?? "",
+      /asesor de Qlick te contactará pronto/i
+    );
+    assert.match(result.note, /Escalación a humano/i);
+    assert.match(result.note, /Reembolso/i);
+  } finally {
+    m.restore();
+  }
+});
+
+test("processInboundMessage: 'me cobraron dos veces' → human_handoff (pagos)", async () => {
+  disableSupabase();
+  const m = mockFetch();
+  try {
+    const result = await processInboundMessage({
+      messageId: "wamid_h2",
+      from: "523399999992",
+      text: "Oye, me cobraron dos veces con tarjeta",
+      type: "text"
+    });
+    assert.equal(result.intent, "human_handoff");
+    assert.match(result.note, /Pagos/i);
+  } finally {
+    m.restore();
+  }
+});
+
+test("processInboundMessage: 'no me funciona el acceso al curso' → human_handoff (soporte)", async () => {
+  disableSupabase();
+  const m = mockFetch();
+  try {
+    const result = await processInboundMessage({
+      messageId: "wamid_h3",
+      from: "523399999993",
+      text: "no me funciona el acceso, ya pagué",
+      type: "text"
+    });
+    assert.equal(result.intent, "human_handoff");
+    assert.match(result.note, /Soporte/i);
+  } finally {
+    m.restore();
+  }
+});
+
+test("processInboundMessage: 'eliminar mis datos' → human_handoff (privacidad)", async () => {
+  disableSupabase();
+  const m = mockFetch();
+  try {
+    const result = await processInboundMessage({
+      messageId: "wamid_h4",
+      from: "523399999994",
+      text: "quiero eliminar mis datos personales",
+      type: "text"
+    });
+    assert.equal(result.intent, "human_handoff");
+    assert.match(result.note, /Datos personales/i);
+  } finally {
+    m.restore();
+  }
+});
+
+test("processInboundMessage: 'tienen descuento?' → human_handoff (descuento no autorizado)", async () => {
+  disableSupabase();
+  const m = mockFetch();
+  try {
+    const result = await processInboundMessage({
+      messageId: "wamid_h5",
+      from: "523399999995",
+      text: "me pueden dar descuento si me inscribo a los 4 cursos?",
+      type: "text"
+    });
+    assert.equal(result.intent, "human_handoff");
+    assert.match(result.note, /Descuento/i);
+  } finally {
+    m.restore();
+  }
+});
+
+test("processInboundMessage: 'baja' → opt_out (NO human_handoff) — exclude OPT_OUT_RE", async () => {
+  // FIX 2026-07-07 (post test fail): "baja" matchea tanto
+  // mustEscalateToHuman (datos personales) como OPT_OUT_RE. El flow
+  // opt_out debe ganar porque es el contrato legacy del bot.
+  disableSupabase();
+  const m = mockFetch();
+  try {
+    const result = await processInboundMessage({
+      messageId: "wamid_o2",
+      from: "523399999996",
+      text: "baja",
+      type: "text"
+    });
+    assert.equal(result.intent, "opt_out");
+    assert.notEqual(result.intent, "human_handoff");
+  } finally {
+    m.restore();
+  }
+});
+
+test("processInboundMessage: 'stop' → opt_out (no escala)", async () => {
+  disableSupabase();
+  const m = mockFetch();
+  try {
+    const result = await processInboundMessage({
+      messageId: "wamid_o3",
+      from: "523399999997",
+      text: "stop",
+      type: "text"
+    });
+    assert.equal(result.intent, "opt_out");
+    assert.notEqual(result.intent, "human_handoff");
+  } finally {
+    m.restore();
+  }
+});
+
+test("processInboundMessage: mensaje neutro 'hola' → NO escala a humano", async () => {
+  disableSupabase();
+  const m = mockFetch();
+  try {
+    const result = await processInboundMessage({
+      messageId: "wamid_n1",
+      from: "523399999998",
+      text: "hola, quiero info del evento",
+      type: "text"
+    });
+    assert.notEqual(result.intent, "human_handoff");
+  } finally {
+    m.restore();
+  }
+});

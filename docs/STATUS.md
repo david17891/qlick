@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-07 12:50 — Hotfix v0.9.1 (pendiente commit): bot mostraba "17:00 hrs (UTC)" al lead cuando el admin escribió 10:00 — bug de zona horaria en 4 renderers. Nuevo `lib/datetime.ts` con constante `EVENT_TIMEZONE = "America/Phoenix"` (UTC-7 sin DST, cubre Phoenix/Mexicali/Tijuana). Suite sigue verde: **577/577 tests** (16 nuevos en `tests/datetime.test.mjs`) + 49/49 rutas + type-check/lint OK.
+> **Última actualización:** 2026-07-07 13:25 — Hotfix v0.9.2 (pendiente commit): cablear `mustEscalateToHuman` en el bot flow (opción B del plan de handoff). Cuando un lead escribe sobre reembolso/queja/soporte técnico/descuento no autorizado/datos personales, el bot persiste en `handoff_requests` + manda respuesta segura al lead. Suite verde: **569/569 tests** (8 nuevos en `whatsapp-bot.test.mjs`) + type-check/lint OK.
 
 ---
 
