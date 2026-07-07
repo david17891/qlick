@@ -23,7 +23,8 @@ import {
 } from "@/lib/crm/crm-service";
 import {
   getPipelineStages,
-  calculateConversionRate
+  calculateConversionRate,
+  PIPELINE_ORDER
 } from "@/lib/crm/pipeline-utils";
 import {
   leadStatusLabel,
@@ -50,6 +51,8 @@ import {
 } from "@/lib/crm/appointments";
 import {
   fetchPendingCRMTasks,
+  patchLeadStatus,
+  archiveLeadClient,
   type PendingTasksSplitClient
 } from "@/lib/crm/ops-client";
 import type { CrmTaskRow } from "@/lib/crm/crm-rows";
@@ -90,6 +93,8 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
   // Modo real vs demo: en modo real hacemos fetch de los leads reales desde
   // la API admin (protegida). En demo usamos los mocks.
   const realMode = isSupabaseConfigured();
+  const mockLeads = getLeads();
+
   const [realLeads, setRealLeads] = useState<Lead[] | null>(null);
   const [realLeadsError, setRealLeadsError] = useState<string | null>(null);
   const [realOverview, setRealOverview] = useState<CRMOverview | null>(null);
@@ -99,6 +104,86 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
   const [realIntelligence, setRealIntelligence] = useState<unknown | null>(null);
   const [realPendingTasks, setRealPendingTasks] = useState<PendingTasksSplitClient | null>(null);
   const [realConversations, setRealConversations] = useState<Conversation[] | null>(null);
+
+  // Estados locales para la interactividad dinâmica.
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [deletedLeadConversations, setDeletedLeadConversations] = useState<Set<string>>(new Set());
+  const [dragOverStage, setDragOverStage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!realMode) {
+      setLeads(mockLeads);
+    }
+  }, [realMode, mockLeads]);
+
+  useEffect(() => {
+    if (realLeads) {
+      setLeads(realLeads);
+    }
+  }, [realLeads]);
+
+  async function handleMoveLead(leadId: string, newStatus: LeadStatus) {
+    const originalLeads = leads;
+    // Optimistic update
+    setLeads((prev) =>
+      prev.map((l) => (l.id === leadId ? { ...l, status: newStatus } : l)),
+    );
+
+    if (realMode) {
+      try {
+        const updatedLead = await patchLeadStatus(leadId, newStatus);
+        setLeads((prev) =>
+          prev.map((l) => (l.id === leadId ? updatedLead : l)),
+        );
+      } catch (err) {
+        alert(err instanceof Error ? err.message : "Error al cambiar de etapa.");
+        setLeads(originalLeads);
+      }
+    }
+  }
+
+  async function handleArchiveLead(leadId: string) {
+    const originalLeads = leads;
+    // Optimistic update
+    setLeads((prev) =>
+      prev.map((l) => (l.id === leadId ? { ...l, status: "archived" as LeadStatus } : l)),
+    );
+
+    if (realMode) {
+      try {
+        const updatedLead = await archiveLeadClient(leadId);
+        setLeads((prev) =>
+          prev.map((l) => (l.id === leadId ? updatedLead : l)),
+        );
+      } catch (err) {
+        alert(err instanceof Error ? err.message : "Error al archivar lead.");
+        setLeads(originalLeads);
+      }
+    }
+  }
+
+  async function handleDeleteConversation(leadId: string) {
+    if (!window.confirm("¿Estás seguro de que deseas eliminar esta conversación? Esto ocultará todos sus mensajes.")) return;
+    try {
+      if (realMode) {
+        const res = await fetch(`/api/admin/crm/conversations?leadId=${encodeURIComponent(leadId)}`, {
+          method: "DELETE",
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          alert(data.error ?? "No se pudo eliminar la conversación.");
+          return;
+        }
+      }
+      setDeletedLeadConversations((prev) => {
+        const next = new Set(prev);
+        next.add(leadId);
+        return next;
+      });
+    } catch (err) {
+      alert("Error de red al eliminar la conversación.");
+    }
+  }
 
   // Deep-link desde /admin?leadId=... (usado por el funnel de eventos).
   // Cuando los leads reales terminen de cargar, abre el drawer del lead
@@ -226,16 +311,17 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
     };
   }, [realMode, selectedLead]);
 
-  // Leads efectivos: reales si están cargados, null mientras cargan en modo real.
-  const mockLeads = getLeads();
   const owners = getSalesOwners();
   // Overview: real si está cargado (incluso durante carga para no parpadear);
   // demo si no. La carga inicial en realMode muestra el overview demo brevemente.
   const mockOverview = getCRMOverview();
   const overview = realMode ? (realOverview ?? mockOverview) : mockOverview;
-  const conversations = realMode
-    ? (realConversations ?? [])
-    : getConversations();
+  const conversations = useMemo(() => {
+    const raw = realMode
+      ? (realConversations ?? [])
+      : getConversations();
+    return raw.filter((c) => !deletedLeadConversations.has(c.leadId));
+  }, [realMode, realConversations, deletedLeadConversations]);
   const upcomingTasks = getUpcomingCRMTasks();
   const overdueTasks = getOverdueCRMTasks();
   const appts = getAppointments();
@@ -258,9 +344,6 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
   // En modo real: si realLeads está null (cargando o sin sesión), mostramos
   // estado de carga. Si está cargado (incluso vacío), lo usamos.
   const loadingReal = realMode && realLeads === null && !realLeadsError;
-  const leads = realMode
-    ? realLeads ?? []
-    : mockLeads;
   const stages = getPipelineStages(leads);
 
   return (
@@ -365,12 +448,35 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
         <div className="overflow-x-auto pb-4">
           <div className="flex gap-4 min-w-max">
             {stages.map((stage) => (
-              <div key={stage.status} className="w-72 shrink-0">
+              <div
+                key={stage.status}
+                className={
+                  "w-72 shrink-0 p-2 rounded-xl transition-all duration-200 " +
+                  (dragOverStage === stage.status ? "bg-brand-50 border border-dashed border-brand-400" : "bg-transparent")
+                }
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (dragOverStage !== stage.status) {
+                    setDragOverStage(stage.status);
+                  }
+                }}
+                onDragLeave={() => {
+                  setDragOverStage(null);
+                }}
+                onDrop={async (e) => {
+                  e.preventDefault();
+                  setDragOverStage(null);
+                  const leadId = e.dataTransfer.getData("leadId");
+                  if (leadId) {
+                    handleMoveLead(leadId, stage.status);
+                  }
+                }}
+              >
                 <div className="flex items-center justify-between mb-2 px-1">
                   <span className="text-sm font-bold text-ink">{stage.label}</span>
                   <Badge tone={stage.tone}>{stage.leads.length}</Badge>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 min-h-[250px]">
                   {stage.leads.length === 0 ? (
                     <p className="text-xs text-ink-muted italic px-1 py-4 text-center border border-dashed border-brand-100 rounded-xl">
                       Vacío
@@ -382,6 +488,9 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
                         lead={lead}
                         owners={owners}
                         onClick={() => setSelectedLead(lead)}
+                        onMoveLead={handleMoveLead}
+                        onArchiveLead={handleArchiveLead}
+                        onDeleteConversation={handleDeleteConversation}
                       />
                     ))
                   )}
@@ -394,12 +503,25 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
 
       {/* C. Leads */}
       {section === "leads" && (
-        <LeadsTable leads={leads} owners={owners} onSelect={setSelectedLead} />
+        <LeadsTable
+          leads={leads}
+          owners={owners}
+          onSelect={setSelectedLead}
+          onMoveLead={handleMoveLead}
+          onArchiveLead={handleArchiveLead}
+          onDeleteConversation={handleDeleteConversation}
+        />
       )}
 
       {/* D. Conversaciones */}
       {section === "conversaciones" && (
-        <ConversationsView conversations={conversations} leads={leads} owners={owners} onSelectLead={setSelectedLead} />
+        <ConversationsView
+          conversations={conversations}
+          leads={leads}
+          owners={owners}
+          onSelectLead={setSelectedLead}
+          onDeleteConversation={handleDeleteConversation}
+        />
       )}
 
       {/* E. Calendario */}
@@ -570,8 +692,12 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
             setRealLeads((prev) =>
               prev ? prev.map((p) => (p.id === updated.id ? updated : p)) : prev,
             );
+            setLeads((prev) =>
+              prev.map((p) => (p.id === updated.id ? updated : p)),
+            );
             setSelectedLead(updated);
           }}
+          onConversationDeleted={handleDeleteConversation}
           onClose={() => setSelectedLead(null)}
         />
       )}
@@ -598,6 +724,7 @@ function mockTaskToRow(t: import("@/types").CRMTask): CrmTaskRow {
     completed_at: t.done ? t.dueAt : null,
     created_by_email: "demo@qlick.mx",
     created_at: t.createdAt,
+    priority: null,
   };
 }
 
@@ -651,48 +778,83 @@ function CalendarTaskRow({
 function PipelineCard({
   lead,
   owners,
-  onClick
+  onClick,
+  onMoveLead,
+  onArchiveLead,
+  onDeleteConversation,
 }: {
   lead: Lead;
   owners: SalesOwner[];
   onClick: () => void;
+  onMoveLead?: (leadId: string, newStatus: LeadStatus) => void;
+  onArchiveLead?: (leadId: string) => void;
+  onDeleteConversation?: (leadId: string) => void;
 }) {
   const risk = calculateLeadResponseRisk(lead);
   const owner = owners.find((o) => o.id === lead.ownerId);
+
+  const handleDragStart = (e: React.DragEvent) => {
+    e.dataTransfer.setData("leadId", lead.id);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
   return (
-    <button
-      onClick={onClick}
-      className="w-full text-left rounded-xl bg-white border border-brand-100 p-3 hover:shadow-md hover:border-brand-300 transition"
+    <div
+      draggable
+      onDragStart={handleDragStart}
+      className="w-full text-left rounded-xl bg-white border border-brand-100 p-3 hover:shadow-md hover:border-brand-300 transition cursor-grab active:cursor-grabbing relative"
     >
       <div className="flex items-start justify-between gap-2 mb-1">
-        <p className="font-semibold text-ink text-sm leading-tight">{lead.name}</p>
-        <Badge tone={riskTone[risk.level]} title={risk.reasons.join(", ")}>
-          {riskLabel[risk.level][0]}
-        </Badge>
+        <button
+          type="button"
+          onClick={onClick}
+          className="font-semibold text-ink text-sm leading-tight hover:text-brand-600 hover:underline text-left flex-1 font-bold"
+        >
+          {lead.name}
+        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <Badge tone={riskTone[risk.level]} title={risk.reasons.join(", ")}>
+            {riskLabel[risk.level][0]}
+          </Badge>
+          <LeadActionsMenu
+            lead={lead}
+            onMoveLead={onMoveLead}
+            onArchiveLead={onArchiveLead}
+            onDeleteConversation={onDeleteConversation}
+          />
+        </div>
       </div>
-      <p className="text-xs text-ink-muted mb-2 line-clamp-1">
-        {lead.courseOfInterest ?? "Sin curso"}
-      </p>
-      <div className="flex flex-wrap items-center gap-1.5 mb-2">
-        <Badge tone={intentTone[lead.intent]}>{leadIntentLabel[lead.intent]}</Badge>
-        <Badge tone="neutral">{leadSourceLabel[lead.source]}</Badge>
+      <div onClick={onClick} className="cursor-pointer">
+        <p className="text-xs text-ink-muted mb-2 line-clamp-1">
+          {lead.courseOfInterest ?? "Sin curso"}
+        </p>
+        <div className="flex flex-wrap items-center gap-1.5 mb-2">
+          <Badge tone={intentTone[lead.intent]}>{leadIntentLabel[lead.intent]}</Badge>
+          <Badge tone="neutral">{leadSourceLabel[lead.source]}</Badge>
+        </div>
+        <div className="flex items-center justify-between text-xs text-ink-muted">
+          <span>{owner ? owner.initials : "—"}</span>
+          <span>{lead.nextFollowUpAt ? formatDate(lead.nextFollowUpAt) : ""}</span>
+        </div>
       </div>
-      <div className="flex items-center justify-between text-xs text-ink-muted">
-        <span>{owner ? owner.initials : "—"}</span>
-        <span>{lead.nextFollowUpAt ? formatDate(lead.nextFollowUpAt) : ""}</span>
-      </div>
-    </button>
+    </div>
   );
 }
 
 function LeadsTable({
   leads,
   owners,
-  onSelect
+  onSelect,
+  onMoveLead,
+  onArchiveLead,
+  onDeleteConversation,
 }: {
   leads: Lead[];
   owners: SalesOwner[];
   onSelect: (lead: Lead) => void;
+  onMoveLead?: (leadId: string, newStatus: LeadStatus) => void;
+  onArchiveLead?: (leadId: string) => void;
+  onDeleteConversation?: (leadId: string) => void;
 }) {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<LeadStatus | "all">("all");
@@ -1072,9 +1234,17 @@ function LeadsTable({
                     <Badge tone={riskTone[risk.level]}>{riskLabel[risk.level]}</Badge>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Button size="sm" variant="outline" onClick={() => onSelect(l)}>
-                      Ver detalle
-                    </Button>
+                    <div className="flex items-center justify-end gap-2">
+                      <Button size="sm" variant="outline" onClick={() => onSelect(l)}>
+                        Ver detalle
+                      </Button>
+                      <LeadActionsMenu
+                        lead={l}
+                        onMoveLead={onMoveLead}
+                        onArchiveLead={onArchiveLead}
+                        onDeleteConversation={onDeleteConversation}
+                      />
+                    </div>
                   </td>
                 </tr>
               );
@@ -1382,18 +1552,36 @@ function ConversationsView({
   conversations,
   leads,
   owners,
-  onSelectLead
+  onSelectLead,
+  onDeleteConversation,
 }: {
   conversations: Conversation[];
   leads: Lead[];
   owners: SalesOwner[];
   onSelectLead: (lead: Lead) => void;
+  onDeleteConversation?: (leadId: string) => void;
 }) {
   const [activeId, setActiveId] = useState<string | null>(
     conversations[0]?.id ?? null
   );
   const active = conversations.find((c) => c.id === activeId) ?? conversations[0];
   const lead = active ? leads.find((l) => l.id === active.leadId) : undefined;
+
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+
+  useEffect(() => {
+    if (isConfirmingDelete) {
+      const t = setTimeout(() => setIsConfirmingDelete(false), 3000);
+      return () => clearTimeout(t);
+    }
+  }, [isConfirmingDelete]);
+
+  // Si la conversación activa es eliminada, cambiar a la primera de la lista.
+  useEffect(() => {
+    if (activeId && !conversations.some((c) => c.id === activeId)) {
+      setActiveId(conversations[0]?.id ?? null);
+    }
+  }, [conversations, activeId]);
 
   // Sugerencias IA: si hay lead, intentar cargar las dinámicas vía API
   // real (Fase 3). Si falla o Supabase no está, caer al mock fallback.
@@ -1534,9 +1722,33 @@ function ConversationsView({
                 : "Escalada"}
             </Badge>
             {lead && (
-              <Button size="sm" variant="outline" onClick={() => onSelectLead(lead)}>
-                Ver lead
-              </Button>
+              <div className="flex items-center gap-1.5">
+                <Button size="sm" variant="outline" onClick={() => onSelectLead(lead)}>
+                  Ver lead
+                </Button>
+                {isConfirmingDelete ? (
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    onClick={() => {
+                      onDeleteConversation?.(lead.id);
+                      setIsConfirmingDelete(false);
+                    }}
+                    className="animate-pulse"
+                  >
+                    ⚠️ ¿Confirmar?
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setIsConfirmingDelete(true)}
+                    title="Eliminar conversación"
+                  >
+                    🗑️ Eliminar
+                  </Button>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -1778,4 +1990,86 @@ function sourceOptions(): Option[] {
 
 function intentOptions(): Option[] {
   return Object.entries(leadIntentLabel).map(([value, label]) => ({ value, label }));
+}
+
+/* ----------------------- LeadActionsMenu Component ----------------------- */
+
+function LeadActionsMenu({
+  lead,
+  onMoveLead,
+  onArchiveLead,
+  onDeleteConversation,
+}: {
+  lead: Lead;
+  onMoveLead?: (leadId: string, newStatus: LeadStatus) => void;
+  onArchiveLead?: (leadId: string) => void;
+  onDeleteConversation?: (leadId: string) => void;
+}) {
+  const [showMenu, setShowMenu] = useState(false);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setShowMenu(!showMenu);
+        }}
+        className="p-1.5 rounded-lg border border-brand-200 text-ink-muted hover:bg-brand-50 hover:text-brand-600 transition text-xs flex items-center justify-center bg-white"
+        title="Acciones rápidas"
+      >
+        ⚙️
+      </button>
+      {showMenu && (
+        <>
+          <div
+            className="fixed inset-0 z-20"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowMenu(false);
+            }}
+          />
+          <div className="absolute right-0 top-8 w-48 bg-white border border-brand-100 rounded-lg shadow-lg z-30 p-1 text-xs text-left">
+            <p className="font-semibold text-ink-muted px-2 py-1 border-b border-brand-50">Mover a:</p>
+            {PIPELINE_ORDER.filter(s => s !== lead.status).map(status => (
+              <button
+                key={status}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onMoveLead?.(lead.id, status);
+                  setShowMenu(false);
+                }}
+                className="w-full text-left px-2 py-1.5 hover:bg-brand-50 rounded text-ink-soft transition font-medium"
+              >
+                ➡️ {leadStatusLabel[status]}
+              </button>
+            ))}
+            <div className="border-t border-brand-50 my-1"></div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (window.confirm(`¿Archivar a ${lead.name}? El lead no se borra físicamente.`)) {
+                  onArchiveLead?.(lead.id);
+                }
+                setShowMenu(false);
+              }}
+              className="w-full text-left px-2 py-1.5 hover:bg-red-50 text-red-600 rounded font-semibold transition"
+            >
+              📥 Archivar lead
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteConversation?.(lead.id);
+                setShowMenu(false);
+              }}
+              className="w-full text-left px-2 py-1.5 hover:bg-red-50 text-red-600 rounded font-semibold transition"
+            >
+              💬 Eliminar conversación
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
 }

@@ -70,6 +70,7 @@ export function LeadDetailDrawer({
   onClose,
   realMode = false,
   onLeadChanged,
+  onConversationDeleted,
   eventContext = null,
 }: {
   lead: Lead;
@@ -79,6 +80,8 @@ export function LeadDetailDrawer({
   realMode?: boolean;
   /** Callback cuando un PATCH actualiza el lead (p. ej. status). */
   onLeadChanged?: (lead: Lead) => void;
+  /** Callback cuando se elimina la conversación del lead. */
+  onConversationDeleted?: (leadId: string) => void;
   /** Si el lead viene de un evento, contexto del mismo (evento + survey).
    *  `null` o `undefined` si el lead no tiene origen de evento. */
   eventContext?: LeadEventContext | null;
@@ -117,18 +120,13 @@ export function LeadDetailDrawer({
   const [fetchedEventContext, setFetchedEventContext] =
     useState<LeadEventContext | null>(null);
 
-  // FIX 2026-07-06 (conversaciones v2) — datos reales del chat en el
-  // panel admin. Antes era MOCK (`getLeadConversation`).
-  // `realConversation` viene de `lead_whatsapp_conversations` +
-  // `lead_interactions` (ver `conversations-server.ts`). Soft-deleted
-  // excluidos automáticamente desde la query.
-  const [realConversation, setRealConversation] = useState<Conversation | null>(null);
+  // activeConversation es el estado unificado de la conversación (real o mock).
+  const [activeConversation, setActiveConversation] = useState<Conversation | null>(null);
   const [conversationState, setConversationState] = useState<OpStatus>("idle");
   const [conversationMsg, setConversationMsg] = useState<string | null>(null);
   const [newMessageBody, setNewMessageBody] = useState("");
   const [newMessageDirection, setNewMessageDirection] = useState<"inbound" | "outbound">("outbound");
   const [showConfirm, setShowConfirm] = useState(false);
-  const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleteState, setDeleteState] = useState<OpStatus>("idle");
 
   // Cerrar con tecla Escape.
@@ -142,14 +140,17 @@ export function LeadDetailDrawer({
 
   // Cargar notas y tareas reales al abrir el drawer (modo real).
   useEffect(() => {
-    if (!realMode) return;
+    if (!realMode) {
+      setActiveConversation(getLeadConversation(currentLead.id) ?? null);
+      return;
+    }
     let cancelled = false;
     setDataError(null);
     setRealNotes(null);
     setRealTasks(null);
     setRealInteractions(null);
     setFetchedEventContext(null);
-    setRealConversation(null);
+    setActiveConversation(null);
     Promise.all([
       fetchLeadNotes(currentLead.id),
       fetchLeadTasks(currentLead.id),
@@ -170,7 +171,7 @@ export function LeadDetailDrawer({
         setRealTasks(t.map(mapTaskRow));
         setRealInteractions(ints.map(mapInteractionRow));
         setFetchedEventContext(ec);
-        setRealConversation(conv);
+        setActiveConversation(conv);
       })
       .catch((err) => {
         if (!cancelled) setDataError(err instanceof Error ? err.message : "Error cargando datos.");
@@ -182,11 +183,8 @@ export function LeadDetailDrawer({
 
   const risk = calculateLeadResponseRisk(currentLead);
   const interactions = getLeadInteractions(currentLead.id);
-  // FIX 2026-07-06 (conversaciones v2) — en modo real, usar
-  // `realConversation` (cargado vía fetch a
-  // `/api/admin/crm/conversations?leadId=X`). En demo mode, fallback
-  // al mock local para no romper el modo demo.
-  const conversation = realMode ? realConversation : getLeadConversation(currentLead.id);
+  // activeConversation es la fuente de verdad de la conversación cargada.
+  const conversation = activeConversation;
   const suggestions = getAISuggestionsForLead(currentLead.id);
   const appts = getAppointmentsForLead(currentLead.id);
   const owner = owners.find((o) => o.id === currentLead.ownerId);
@@ -312,7 +310,7 @@ export function LeadDetailDrawer({
       const refetched = refetch.ok
         ? ((await refetch.json()) as { conversation: Conversation | null }).conversation
         : null;
-      setRealConversation(refetched);
+      setActiveConversation(refetched);
       setNewMessageBody("");
       setConversationState("success");
       setConversationMsg("Mensaje registrado.");
@@ -325,46 +323,46 @@ export function LeadDetailDrawer({
     }
   }
 
-  // FIX 2026-07-06 (conversaciones v2) — soft-delete de toda la
-  // conversación. Confirmación textual "ARCHIVAR" (mismo patrón que
-  // el resto del proyecto para bulk delete).
   async function handleDeleteConversation() {
     if (deleteState === "loading") return;
-    const expected = "ARCHIVAR";
-    if (deleteConfirmText.trim().toUpperCase() !== expected) {
-      setConversationState("error");
-      setConversationMsg(`Escribí ${expected} para confirmar.`);
-      return;
-    }
     setDeleteState("loading");
     setConversationMsg(null);
     try {
-      const res = await fetch(
-        `/api/admin/crm/conversations?leadId=${encodeURIComponent(currentLead.id)}`,
-        {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ reason: "admin_delete_from_drawer" }),
-        },
-      );
-      const data = (await res.json()) as {
-        ok: boolean;
-        deletedCount?: number;
-        note?: string;
-      };
-      if (!res.ok || !data.ok) {
-        setDeleteState("error");
-        setConversationMsg(data.note ?? `Error ${res.status}`);
-        return;
+      let deletedCount = activeConversation?.messages.length ?? 0;
+      if (realMode) {
+        const res = await fetch(
+          `/api/admin/crm/conversations?leadId=${encodeURIComponent(currentLead.id)}`,
+          {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reason: "admin_delete_from_drawer" }),
+          },
+        );
+        const data = (await res.json()) as {
+          ok: boolean;
+          deletedCount?: number;
+          note?: string;
+        };
+        if (!res.ok || !data.ok) {
+          setDeleteState("error");
+          setConversationMsg(data.note ?? `Error ${res.status}`);
+          return;
+        }
+        deletedCount = data.deletedCount ?? deletedCount;
       }
       // Limpiar vista local.
-      setRealConversation(null);
+      setActiveConversation(null);
       setDeleteState("success");
       setConversationMsg(
-        `Conversación archivada (${data.deletedCount ?? 0} mensaje${data.deletedCount === 1 ? "" : "s"}).`,
+        `Conversación archivada (${deletedCount} mensaje${deletedCount === 1 ? "" : "s"}).`,
       );
-      setDeleteConfirmText("");
-      setTimeout(() => setDeleteState("idle"), 3000);
+      if (onConversationDeleted) {
+        onConversationDeleted(currentLead.id);
+      }
+      setTimeout(() => {
+        setDeleteState("idle");
+        setShowConfirm(false);
+      }, 2000);
     } catch (err) {
       setDeleteState("error");
       setConversationMsg(
@@ -964,14 +962,13 @@ export function LeadDetailDrawer({
                     {conversation.messages.length} mensaje
                     {conversation.messages.length === 1 ? "" : "s"}
                   </span>
-                  {realMode && conversation.messages.length > 0 && (
+                  {conversation && conversation.messages.length > 0 && (
                     <Button
                       type="button"
                       size="sm"
                       variant="danger"
                       onClick={() => {
                         setShowConfirm(true);
-                        setDeleteConfirmText("");
                       }}
                       disabled={deleteState === "loading" || conversationState === "loading"}
                       aria-label={`Eliminar la conversación completa del lead ${currentLead.name}`}
@@ -1087,7 +1084,7 @@ export function LeadDetailDrawer({
                 necesidad de expandir nada). La confirmación textual
                 "ARCHIVAR" sigue siendo el guard anti-click-accidental,
                 dentro del modal que se abre al click del botón. */}
-            {realMode && showConfirm && conversation && (
+            {showConfirm && conversation && (
               <div
                 className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
                 role="dialog"
@@ -1096,7 +1093,7 @@ export function LeadDetailDrawer({
                 onClick={() => deleteState !== "loading" && setShowConfirm(false)}
               >
                 <div
-                  className="bg-white rounded-2xl p-5 sm:p-6 max-w-md w-full shadow-2xl"
+                  className="bg-white rounded-2xl p-5 sm:p-6 max-w-md w-full shadow-2xl animate-fade-in"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <h2
@@ -1105,32 +1102,23 @@ export function LeadDetailDrawer({
                   >
                     ¿Eliminar la conversación de {currentLead.name}?
                   </h2>
-                  <p className="text-sm text-ink-muted mb-3">
+                  <p className="text-sm text-ink-muted mb-4">
                     Esto <strong>oculta</strong> los {conversation.messages.length}{" "}
                     mensaje{conversation.messages.length === 1 ? "" : "s"} de la
                     UI del CRM. Los rows siguen existiendo en la base de datos
                     (compliance LFPDPPP/LGPD) y el audit log registra tu
-                    email + razón.
+                    email.
                   </p>
-                  <p className="text-sm text-ink-soft mb-2">
-                    Para confirmar, escribí{" "}
-                    <code className="bg-brand-50 px-1.5 py-0.5 rounded text-xs font-bold text-brand-700">
-                      ARCHIVAR
-                    </code>{" "}
-                    abajo:
-                  </p>
-                  <input
-                    type="text"
-                    value={deleteConfirmText}
-                    onChange={(e) => setDeleteConfirmText(e.target.value)}
-                    className="w-full px-3 py-2 border border-rose-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-rose-300 mb-3 font-mono"
-                    placeholder="ARCHIVAR"
-                    autoFocus
-                    disabled={deleteState === "loading"}
-                    aria-label="Frase de confirmación"
-                  />
-                  {conversationMsg && conversationState === "error" && (
-                    <div className="mb-3 p-3 rounded-lg bg-rose-50 border border-rose-200 text-sm text-rose-700" role="alert">
+                  {conversationMsg && (
+                    <div
+                      className={
+                        "mb-4 p-3 rounded-lg border text-sm " +
+                        (deleteState === "error"
+                          ? "bg-rose-50 border-rose-200 text-rose-700"
+                          : "bg-emerald-50 border-emerald-200 text-emerald-700")
+                      }
+                      role="alert"
+                    >
                       {conversationMsg}
                     </div>
                   )}
@@ -1141,7 +1129,6 @@ export function LeadDetailDrawer({
                       variant="ghost"
                       onClick={() => {
                         setShowConfirm(false);
-                        setDeleteConfirmText("");
                       }}
                       disabled={deleteState === "loading"}
                     >
@@ -1152,12 +1139,9 @@ export function LeadDetailDrawer({
                       size="sm"
                       variant="danger"
                       onClick={handleDeleteConversation}
-                      disabled={
-                        deleteState === "loading" ||
-                        deleteConfirmText.trim().toUpperCase() !== "ARCHIVAR"
-                      }
+                      disabled={deleteState === "loading"}
                     >
-                      {deleteState === "loading" ? "Archivando…" : "🗑️ Eliminar"}
+                      {deleteState === "loading" ? "Eliminando…" : "Sí, eliminar"}
                     </Button>
                   </div>
                 </div>

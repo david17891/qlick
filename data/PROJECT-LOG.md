@@ -2568,3 +2568,22 @@ sustituir el ciclo con templates". Ejecuté 4 bloques sincrónicamente.
   - Bot engine intacto (política de aislamiento confirmada).
   - 545/545 tests verde, type-check OK, lint OK, build OK.
 - **Trigger:** Cierre administrativo solicitado explícitamente por David después de 3 horas de fricción operativa con `.env.local` y `vercel env pull`.
+
+---
+
+## 2026-07-07 ~09:20 · Eliminación interactiva de chats y Drag & Drop de leads en CRM
+
+- **Pregunta:** ¿Cómo facilitar y flexibilizar el flujo de eliminación de chats y la gestión del pipeline del CRM sin forzar al usuario a escribir palabras de confirmación y permitiendo mover leads de manera fluida?
+- **Decisión:**
+  - Modificar `LeadDetailDrawer.tsx` reemplazando la confirmación de eliminación con input de texto ("ARCHIVAR") por un flujo interactivo de 2 clics simple. Habilitar la eliminación tanto para leads reales como mock (demo mode).
+  - Modificar `CRMView.tsx` unificando el estado local `leads` para reflejar instantáneamente cualquier cambio (tanto en demo como real) y agregar los handlers de Drag and Drop en las columnas Kanban.
+  - Convertir `PipelineCard` de `<button>` a `<div>` draggable (evitando anidación de botones), permitiendo hacer clic para detalles y arrastrar para mover la etapa del lead de manera reactiva.
+  - Implementar el componente `LeadActionsMenu` (menú rápido de configuración) con opciones para mover etapa rápidamente, archivar lead, o borrar conversación. Inyectarlo en `PipelineCard` y `LeadsTable`.
+  - Agregar botón de eliminar conversación con doble confirmación de 2 clics en la cabecera de `ConversationsView`.
+- **Razón:** El usuario reportó fricción extrema en Minimax al intentar borrar conversaciones e interactuar con el pipeline. El flujo de confirmación con input de texto era engorroso para el ritmo de operación diaria, y el pipeline carecía de interactividad fluida.
+- **Impacto:**
+  - Gestión ágil del pipeline del CRM vía Drag and Drop nativo.
+  - Posibilidad de mover etapa, archivar o borrar chats directamente con 2 clics desde las tarjetas del pipeline y la tabla de leads.
+  - Eliminación de chats en un flujo simplificado desde el panel de conversación principal.
+  - Proyecto compila exitosamente (Next.js build limpio) y todas las 545 pruebas unitarias continúan pasando.
+- **Trigger:** Solicitud del usuario para mejorar la experiencia de eliminación e interacción en el CRM.

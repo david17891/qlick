@@ -176,7 +176,7 @@ export async function markWhatsAppStatus(
   }
 
   // 3. INSERT log.
-  const { error: logErr } = await supabase.from("lead_whatsapp_log").insert({
+  const { error: logErr } = await supabase.from("lead_whatsapp_log" as any).insert({
     lead_id: input.leadId,
     event_id: input.eventId ?? null,
     new_status: input.newStatus,
