@@ -201,23 +201,76 @@ const CONSENT_DISCLOSURE =
  * Configurables via env vars (lectura runtime, no buildtime):
  *   EVENT_NAME, EVENT_DATE, EVENT_LOCATION, EVENT_DURATION
  *
- * Si las env vars no están seteadas, cae al placeholder del primer
- * piloto. Cuando integremos el lookup a la DB de `events`, este getter
- * cambia a `await getEventById(activeEventId)` sin tocar el resto del
- * flujo.
+ * FIX 2026-07-07 (audit David "bot presenta evento fantasma"): antes
+ * esta funcion retornaba un evento ficticio hardcoded ("IA y Marketing
+ * Básico / 6 de julio / Ciudad de México / 2 horas") que el bot le
+ * mostraba al lead como si fuera real. Eso comprometia leads con un
+ * evento que no existia.
+ *
+ * Ahora retorna `{ source: "env" | "no_events", ... }`:
+ *   - `source: "env"`  -> todas las env vars EVENT_* seteadas con
+ *                         valores reales (modo demo / legacy).
+ *   - `source: "no_events"` -> falta alguna env var (o todas). El bot
+ *                              debe retornar copy honesto y NO iniciar
+ *                              el flow de inscripcion.
+ *
+ * El listado publico de eventos publicados en DB lo maneja
+ * `loadActiveEventContext()` (no esta funcion).
  */
 function getActiveEvent(): {
+  source: "env" | "no_events";
   name: string;
   date: string;
   location: string;
   duration: string;
 } {
+  const envName = process.env.EVENT_NAME?.trim();
+  const envDate = process.env.EVENT_DATE?.trim();
+  const envLoc = process.env.EVENT_LOCATION?.trim();
+  const envDur = process.env.EVENT_DURATION?.trim();
+  const allEnvSet = Boolean(envName && envDate && envLoc && envDur);
+  if (!allEnvSet) {
+    return {
+      source: "no_events",
+      name: "—",
+      date: "—",
+      location: "—",
+      duration: "—"
+    };
+  }
   return {
-    name: process.env.EVENT_NAME?.trim() || "IA y Marketing Básico",
-    date: process.env.EVENT_DATE?.trim() || "6 de julio",
-    location: process.env.EVENT_LOCATION?.trim() || "Ciudad de México",
-    duration: process.env.EVENT_DURATION?.trim() || "2 horas"
+    source: "env",
+    name: envName!,
+    date: envDate!,
+    location: envLoc!,
+    duration: envDur!
   };
+}
+
+/**
+ * FIX 2026-07-07 (audit David "bot presenta evento fantasma"): texto
+ * honesto que retornan los handlers del bot cuando no hay eventos
+ * publicados en DB ni env vars reales seteadas.
+ *
+ * Antes el bot armaba un evento ficticio ("IA y Marketing Básico /
+ * 6 de julio / Ciudad de México") que comprometía leads con un
+ * evento que no existía. Ahora NUNCA se le muestra al lead un evento
+ * que no está en DB.
+ *
+ * Lo retornan los handlers:
+ *   - `register`             (línea ~1709)
+ *   - `interactive_event_yes`     (línea ~1824)
+ *   - `interactive_event_inscribir` (línea ~1890)
+ *   - `provide_email`        (línea ~3004)
+ */
+function noEventsText(): string {
+  return [
+    "Por el momento no tenemos eventos próximos publicados.",
+    "",
+    "Si te interesa enterarte cuando publiquemos uno, avísame por aquí",
+    "y te aviso. También podés ver la lista en:",
+    "https://www.qlick.digital/eventos",
+  ].join("\n");
 }
 
 /**
@@ -1680,8 +1733,21 @@ async function buildResponsePlan(args: {
       // carga el evento por slug via loadActiveEventContext).
       const allEvents = await loadAllActiveEvents().catch(() => [] as ActiveEventContext[]);
       if (allEvents.length === 0) {
-        // Fallback al placeholder si Supabase no responde (modo demo).
-        const evt = getActiveEvent();
+        // FIX 2026-07-07 (audit David "bot presenta evento fantasma"):
+        // si tampoco hay env vars reales seteadas, respondemos con copy
+        // honesto. Antes caía al placeholder hardcoded "IA y Marketing
+        // Básico / 6 de julio / Ciudad de México" que comprometia
+        // leads con un evento que no existía.
+        const evtFb = getActiveEvent();
+        if (evtFb.source === "no_events") {
+          const noEvents = noEventsText();
+          return {
+            kind: "text",
+            body: noEvents,
+            send: () => provider.send({ to: phoneNormalized, body: noEvents })
+          };
+        }
+        const evt = evtFb;
         const interactive = {
           type: "list" as const,
           body: {
@@ -1795,6 +1861,21 @@ async function buildResponsePlan(args: {
         requestedSlug = buttonId.slice("evt_yes_".length);
       }
       const evt = await loadActiveEventContext(requestedSlug).catch(() => null);
+      // FIX 2026-07-07 (audit David "bot presenta evento fantasma"):
+      // si NO hay evento real (DB sin published o env vars no seteadas),
+      // respondemos con copy honesto y NO armamos un evento ficticio.
+      // Antes caía al placeholder "IA y Marketing Básico / 6 de julio".
+      if (!evt || evt.source === "no_events") {
+        const fallback = getActiveEvent();
+        if (fallback.source === "no_events" || !evt) {
+          const noEvents = noEventsText();
+          return {
+            kind: "text",
+            body: noEvents,
+            send: () => provider.send({ to: phoneNormalized, body: noEvents })
+          };
+        }
+      }
       const evtFallback = getActiveEvent();
       const evtName = evt?.title ?? evtFallback.name;
       const evtDate = evt?.humanStartsAt ?? evtFallback.date;
@@ -1860,6 +1941,21 @@ case "interactive_event_inscribir": {
       // `requestedEventSlug` viene con el slug del evento sobre el que
       // el bot preguntó. Lo usamos para inscribir al evento correcto.
       const evtReal = await loadActiveEventContext(args.requestedEventSlug ?? undefined).catch(() => null);
+      // FIX 2026-07-07 (audit David "bot presenta evento fantasma"):
+      // si NO hay evento real (slug invalido o env vars no seteadas),
+      // respondemos con copy honesto en vez de comprometer al lead con
+      // un evento ficticio.
+      if (!evtReal || evtReal.source === "no_events") {
+        const fallback = getActiveEvent();
+        if (fallback.source === "no_events" || !evtReal) {
+          const noEvents = noEventsText();
+          return {
+            kind: "text",
+            body: noEvents,
+            send: () => provider.send({ to: phoneNormalized, body: noEvents })
+          };
+        }
+      }
       const evtFallback = getActiveEvent();
       const evtName = evtReal?.title ?? evtFallback.name;
       const evtDate = evtReal?.humanStartsAt ?? evtFallback.date;
@@ -2974,6 +3070,21 @@ case "interactive_event_inscribir": {
       // registro (detectado por findEventInConversation) si esta disponible.
       // Si no, fallback a getActiveEvent() (env vars) o al evento del QR.
       const qrUrl = args.qrUrl ?? null;
+      // FIX 2026-07-07 (audit David "bot presenta evento fantasma"):
+      // si llegamos a `provide_email` SIN un evento del registro (matched)
+      // Y el fallback es `no_events` (sin env vars reales), NO podemos
+      // inscribir al lead en un placeholder. Respondemos con copy honesto.
+      if (!args.registrationEvent || args.registrationEvent.source === "no_events") {
+        const fallback = getActiveEvent();
+        if (fallback.source === "no_events") {
+          const noEvents = noEventsText();
+          return {
+            kind: "text",
+            body: noEvents,
+            send: () => provider.send({ to: phoneNormalized, body: noEvents })
+          };
+        }
+      }
       const evt = getActiveEvent();
       // FIX 2026-07-02: si tenemos el evento del registro, usar ese para
       // el mensaje. Si no, usar el fallback (getActiveEvent = env vars).

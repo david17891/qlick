@@ -2658,6 +2658,34 @@ sustituir el ciclo con templates". Ejecuté 4 bloques sincrónicamente.
 
 ---
 
+## 2026-07-07 ~11:00 · Fallback honesto del bot — NUNCA miente sobre eventos
+
+- **Pregunta:** David reportó que el bot de WhatsApp, ANTES de que él creara el evento `marketing-ia-para-emprendedores` (AA4E) en la DB, le ofreció un evento "IA y Marketing Básico · 6 de julio · Ciudad de México · 2 horas" que NO existía en la DB. Ese "evento" era un fallback hardcoded en el código del bot — los handlers del bot (`interactive_event_yes`, `interactive_event_inscribir`, `register`, `provide_email`) cargaban `loadActiveEventContext()` y, cuando la DB devolvía `null` (porque no había eventos `published`), caían al fallback `getActiveEvent()` que retornaba un evento ficticio con datos hardcoded.
+
+- **Decisión:** Eliminar por completo los datos ficticios del fallback. Si NO hay eventos en DB ni env vars reales, el bot responde con copy honesto del estilo "Por el momento no tenemos eventos próximos publicados" en vez de armar un evento ficticio.
+
+  Implementación:
+  1. **`src/lib/ai/event-context-loader.ts`**: el type `ActiveEventContext.source` cambió de `"db" | "env" | "placeholder"` a `"db" | "no_events"`. La función `fallbackNoEvents()` (nueva) reemplaza a `fallbackFromEnv()` (deprecada) y retorna `source: "no_events"` con campos vacíos honestos (`"—"`) y un `promptBlock` que instruye al LLM a no inventar eventos. Sentinel UUID determinístico basado en seed fijo (no cambia entre runs).
+  2. **`src/lib/whatsapp/bot-engine.ts:getActiveEvent()`**: ahora retorna `{ source: "env" | "no_events", name, date, location, duration }`. Si todas las env vars `EVENT_NAME/EVENT_DATE/EVENT_LOCATION/EVENT_DURATION` están seteadas con valores reales → `source: "env"`. Si falta alguna (o todas) → `source: "no_events"` con campos honestos.
+  3. **Helper `noEventsText()`** nuevo en `bot-engine.ts`: copy centralizado "Por el momento no tenemos eventos próximos publicados. Si te interesa enterarte cuando publiquemos uno, avísame por aquí y te aviso. También podés ver la lista en: https://www.qlick.digital/eventos".
+  4. **Refactor de los 4 call sites que antes caían al fallback**: `register`, `interactive_event_yes`, `interactive_event_inscribir`, `provide_email`. Ahora cada uno detecta `evt?.source === "no_events"` (o `evt === null` con fallback `no_events`) y retorna el helper `noEventsText()` en vez de armar el mensaje.
+  5. **Tests actualizados**: 2 tests en `tests/whatsapp-bot.test.mjs` (`register → list interactive con eventos`, `evt_yes_* → interactive_event_yes (con botones)`) asumían el comportamiento viejo (placeholder ficticio). Se renombraron y actualizaron para validar el nuevo comportamiento honesto.
+
+- **Razón:** El placeholder ficticio es un bug serio de producto. Compromete leads con un evento que no existe, genera QR tokens apuntando a un sha256 UUID sintético, manda mensajes como "Listo David, te registramos para el evento 'IA y Marketing Básico'" cuando NO existe tal evento, y rompe el flow de check-in. La memoria del proyecto tiene el patrón "Auditor AMBOS runtimes" — mismo principio: auditar qué pasa cuando NO hay datos, no solo cuando todo funciona.
+
+- **Impacto:**
+  - **Code base**: 4 archivos cambiados (event-context-loader.ts, bot-engine.ts, whatsapp-bot.test.mjs + 2 tests renombrados). Total ~80 líneas modificadas.
+  - **Suite verde**: `type-check` + `lint` + `545/545 tests` + `build` (48/48 routes). Build en ~50s sin warnings.
+  - **Comportamiento**:
+    - **Antes**: el bot respondía con un evento ficticio cuando no había eventos en DB.
+    - **Ahora**: el bot responde con copy honesto "no tenemos eventos próximos".
+  - **Modo demo preservado**: si las env vars `EVENT_*` están seteadas, sigue funcionando en modo demo (como antes). Si NO están seteadas, ahora el bot es honesto.
+  - **No rompen eventos reales**: cuando hay eventos `published` en DB, todo el flow funciona exactamente igual.
+
+- **Trigger:** David reportó que antes de crear el evento AA4E, el bot le ofrecía "6 de julio" (un placeholder hardcoded). El fix era lo que David eligió: "Fix completo: fallback honesto".
+
+---
+
 ## 2026-07-07 ~10:30 · fix(webhook): normalización de teléfonos internacionales y logs de webhook crudos
 
 - **Pregunta:** David reportó que llegó un código al WhatsApp del bot (desde Meta / Facebook oficial con número de Reino Unido +44...) pero no se veía en la conversación de Qlick ni se guardaba en la base de datos. Al enviar una imagen de prueba, salía vacía en la interfaz del CRM.

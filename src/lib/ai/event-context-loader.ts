@@ -46,8 +46,22 @@ export interface ActiveEventContext {
   humanDuration: string;
   /** Bloque listo para inyectar en el system prompt. */
   promptBlock: string;
-  /** Fuente de la data: "db" (real) | "env" (fallback) | "placeholder". */
-  source: "db" | "env" | "placeholder";
+  /**
+   * Fuente de la data:
+   *  - "db":        evento real cargado de Supabase.
+   *  - "no_events": NO hay datos reales. El bot debe responder con copy
+   *                 honesto ("no tenemos eventos próximos") y NO debe
+   *                 iniciar el flow de inscripción ni mencionar títulos/
+   *                 fechas ficticias al lead.
+   *
+   * FIX 2026-07-07 (audit David "bot presenta evento fantasma"): los
+   * valores "env" y "placeholder" se consolidan en "no_events" porque
+   * el bug que motivó el fix es que el bot armaba un evento ficticio
+   * cuando caía al fallback hardcoded de `bot-engine.ts:getActiveEvent()`
+   * con `"IA y Marketing Básico" / "6 de julio"`. Ahora NUNCA se le
+   * muestra al lead un evento que no existe en DB.
+   */
+  source: "db" | "no_events";
   /**
    * FIX 2026-07-02 (sesion David, Commit A): si true, el bot pide
    * nombre completo del lead ANTES del email en el flow de inscripcion.
@@ -79,58 +93,71 @@ eventRules: import("@/types/events").EventBotRules;
 type SupabaseAdmin = SupabaseClient<Database>;
 
 /* ------------------------------------------------------------------ */
-/*  Fallback de env vars (placeholder)                                 */
+/*  Fallback honesto (sin datos reales)                                */
 /* ------------------------------------------------------------------ */
 
 /**
- * Devuelve el contexto de fallback (env vars). Usado si la DB no responde
- * o no hay evento publicado. NO usar en producción sin verificar primero.
+ * FIX 2026-07-07 (audit David "bot presenta evento fantasma"): el
+ * fallback antes armaba un evento ficticio ("IA y Marketing Básico /
+ * 6 de julio / Ciudad de México / 2 horas") que se le mostraba al
+ * lead como si fuera real. Esto comprometía leads con un evento que
+ * no existía, generaba QR tokens apuntando a un placeholder, y rompía
+ * el flow de check-in.
+ *
+ * El nuevo fallback marca la respuesta como `source: "no_events"` y
+ * sus campos son placeholders honestos (`"—"`). El promptBlock le dice
+ * al LLM que NO invente eventos y que si el lead pregunta por uno,
+ * responda con copy honesto.
  */
-function fallbackFromEnv(): ActiveEventContext {
-  const title = process.env.EVENT_NAME?.trim() || "IA y Marketing Básico";
-  const date = process.env.EVENT_DATE?.trim() || "6 de julio";
-  const location = process.env.EVENT_LOCATION?.trim() || "Ciudad de México";
-  const duration = process.env.EVENT_DURATION?.trim() || "2 horas";
-  const placeholderId = createHash("sha256")
-    .update(`placeholder:${title}:${date}`)
+function fallbackNoEvents(): ActiveEventContext {
+  // Hash determinístico basado en un seed fijo (NO cambia entre runs).
+  // Sirve para que cualquier llamada que reciba `evt.id` sepa que es
+  // un sentinel del sistema, no un evento real.
+  const sentinelId = createHash("sha256")
+    .update("qlick:no_events:v1")
     .digest("hex")
     .slice(0, 36);
   return {
-    id: placeholderId,
-    slug: "placeholder",
-    title,
+    id: sentinelId,
+    slug: "_no_events",
+    shortCode: null,
+    title: "—",
     description: null,
-    startsAt: new Date(),
+    startsAt: new Date(0),
     endsAt: null,
-    location,
-    humanStartsAt: date,
-    humanDuration: duration,
+    location: "—",
+    humanStartsAt: "—",
+    humanDuration: "—",
     promptBlock: formatPromptBlock({
-      title,
-      humanStartsAt: date,
-      humanDuration: duration,
-      location,
+      title: "(sin evento activo)",
+      humanStartsAt: "—",
+      humanDuration: "—",
+      location: "—",
       description: null,
       eventRules: { personality: "", rules: [] }
     }),
-    source: process.env.EVENT_NAME ? "env" : "placeholder",
+    source: "no_events",
     // FIX 2026-07-06: el placeholder DEBE pedir nombre. David decidio
     // que TODO lead necesita nombre real, no hay opcion de skip. Si el
     // evento real lo desactiva (legacy con requires_name=false), lo lee
     // de DB — pero el default siempre es true.
     requiresName: true,
     eventRules: { personality: "", rules: [] },
-    // FIX 2026-07-05: el placeholder NO tiene short_code real (es ficticio).
-    // El bot cae al fallback chain sin esta capa, pero al ser placeholder
-    // no debería recibir WhatsApps reales — es solo safety net para tests.
-    shortCode: null,
-    // Streaming (migration 20260707000000): defaults seguros. El bot no
-    // sabe que es virtual en modo placeholder — solo el admin ve esto.
+    // Streaming (migration 20260707000000): defaults seguros.
     format: "in_person",
     streamingUrl: null,
     streamingProvider: null,
     streamingAccessNote: null,
   };
+}
+
+/**
+ * @deprecated Solo dejar export por compatibilidad con callers legacy.
+ * Usar `fallbackNoEvents()` directamente. Esta funcion ahora SIEMPRE
+ * retorna el sentinel `"no_events"` (antes armaba un evento ficticio).
+ */
+function fallbackFromEnv(): ActiveEventContext {
+  return fallbackNoEvents();
 }
 
 /* ------------------------------------------------------------------ */
@@ -293,7 +320,7 @@ export async function loadActiveEventContext(
   }
 
   if (!supabase) {
-    return fallbackFromEnv();
+    return fallbackNoEvents();
   }
 
   try {
@@ -326,7 +353,7 @@ export async function loadActiveEventContext(
           .maybeSingle();
 
     if (error || !data) {
-      return fallbackFromEnv();
+      return fallbackNoEvents();
     }
 
     const evt = data as unknown as {
@@ -390,7 +417,7 @@ export async function loadActiveEventContext(
       streamingAccessNote: evt.streaming_access_note ?? null,
     };
   } catch {
-    return fallbackFromEnv();
+    return fallbackNoEvents();
   }
 }
 

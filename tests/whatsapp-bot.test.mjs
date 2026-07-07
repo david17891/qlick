@@ -696,7 +696,7 @@ test("processInboundMessage: primer mensaje 'hola' (demo mode) → welcome", asy
   }
 });
 
-test("processInboundMessage: register → list interactive con eventos", async () => {
+test("processInboundMessage: register sin eventos → text honesto (no muestra fantasma)", async () => {
   disableSupabase();
   const m = mockFetch();
   try {
@@ -707,10 +707,16 @@ test("processInboundMessage: register → list interactive con eventos", async (
       type: "text"
     });
     assert.equal(result.intent, "register");
-    // Fase 7a 2026-07-01: register devuelve List Message con los eventos
-    // disponibles como filas navegables. El usuario clickea el evento y
-    // vemos el detail. Mayor conversion que texto libre.
-    assert.equal(result.responseKind, "interactive");
+    // FIX 2026-07-07 (audit David "bot presenta evento fantasma"):
+    // si NO hay eventos en DB ni env vars, register devuelve texto
+    // honesto en vez de armar un evento ficticio. Antes caía al
+    // placeholder "IA y Marketing Básico / 6 de julio / Ciudad de México"
+    // y comprometia leads con un evento que no existía.
+    assert.equal(result.responseKind, "text");
+    assert.match(
+      result.responsePreview ?? "",
+      /no tenemos eventos pr[oó]ximos/i
+    );
   } finally {
     m.restore();
   }
@@ -772,7 +778,7 @@ test("processInboundMessage: provee email → provide_email + texto confirmacion
 
 // Fase 7a (2026-07-01): cuando el usuario clickea un Reply Button del welcome,
 // el intent se deriva del buttonId en vez de regex sobre el texto.
-test("processInboundMessage: buttonId evt_yes_* → interactive_event_yes (con botones)", async () => {
+test("processInboundMessage: buttonId evt_yes_* sin evento → text honesto (no muestra fantasma)", async () => {
   disableSupabase();
   const m = mockFetch();
   try {
@@ -785,10 +791,16 @@ test("processInboundMessage: buttonId evt_yes_* → interactive_event_yes (con b
       buttonTitle: "Sí, info IA y Marketing"
     });
     assert.equal(result.intent, "interactive_event_yes");
-    // Fase 7a.5: ahora devolvemos un button message con detalles del
-    // evento + botones "Inscribirme" y "Hablar con humano". No más texto
-    // abierto "mandame tu email".
-    assert.equal(result.responseKind, "interactive");
+    // FIX 2026-07-07 (audit David "bot presenta evento fantasma"):
+    // si NO hay eventos en DB ni env vars, ya NO armamos un evento
+    // ficticio. Devolvemos texto honesto. Antes caia al placeholder
+    // "IA y Marketing Básico / 6 de julio / Ciudad de México" y
+    // comprometia leads con un evento que no existía.
+    assert.equal(result.responseKind, "text");
+    assert.match(
+      result.responsePreview ?? "",
+      /no tenemos eventos pr[oó]ximos/i
+    );
   } finally {
     m.restore();
   }
