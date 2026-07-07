@@ -2989,11 +2989,21 @@ case "interactive_event_inscribir": {
       // eventos 100% presenciales). WhatsApp es un canal íntimo donde
       // el link directo está OK — el gate "SÍ, VOY" se reserva para email
       // (donde el link se puede re-enviar y compartir).
+      //
+      // Migration 20260707093000: streaming_url es opcional. El bot
+      // distingue 3 casos:
+      //   a) presencial: copy "QR en puerta" (igual que antes).
+      //   b) virtual/hybrid CON streaming_url: copy "link por correo".
+      //   c) virtual/hybrid SIN streaming_url (aun no se definio el link):
+      //      copy "el link te lo enviamos el dia del evento".
       const regEvt = args.registrationEvent;
       const isVirtual = regEvt?.format === "virtual" || regEvt?.format === "hybrid";
-      const eventLine = isVirtual
-        ? `\n\nEs un evento virtual. Te enviamos el link de acceso al stream por correo. Cuando estes listo, hace click y entras.${regEvt?.streamingAccessNote ? `\n\n${regEvt.streamingAccessNote}` : ""}`
-        : `\n\nTambien te enviamos el pase con el QR a tu correo. Es el link de check-in para que lo presentes el dia del evento.`;
+      const hasStreamingLink = Boolean(regEvt?.streamingUrl);
+      const eventLine = isVirtual && hasStreamingLink
+        ? `\n\nEs un evento virtual. Te enviamos el link de acceso al stream por correo. Cuando estés listo, haz click y entras.${regEvt?.streamingAccessNote ? `\n\n${regEvt.streamingAccessNote}` : ""}`
+        : isVirtual
+          ? `\n\nEs un evento virtual. ${regEvt?.streamingAccessNote ? `${regEvt.streamingAccessNote}\n\n` : ""}Aún no tenemos el link del stream configurado — te lo enviamos por correo y por aquí el día del evento. Guarda tu pase con QR, lo vas a necesitar para confirmar asistencia.`
+          : `\n\nTambién te enviamos el pase con el QR a tu correo. Es el link de check-in para que lo presentes el día del evento.`;
       const bodyText = qrUrl
         ? `Listo${clean ? " " + clean : ""}, te registramos para el evento. Tu pase (link de check-in): ${qrUrl}${eventLine}`
         : `Listo${clean ? " " + clean : ""}, registramos tu email ${email}. Te esperamos el ${evt.date} en ${evt.location}.`;
@@ -4127,8 +4137,11 @@ export async function processInboundMessage(
             const qrImageUrl = `${appBaseUrl()}/api/event-qr/${existing.token}.png`;
             // Gate URL para eventos virtuales/híbridos (migration 20260707000000).
             // El handler registra intent_attended y redirige al streaming_url.
+            // Migration 20260707093000: streaming_url es opcional, así que el
+            // gateUrl solo se calcula si hay link (si no, el email no muestra
+            // el bloque gate — solo QR + nota "link pendiente").
             const gateUrl =
-              evt?.format && evt.format !== "in_person"
+              evt?.format && evt.format !== "in_person" && evt.streamingUrl
                 ? `${appBaseUrl()}/api/event-gate/${encodeURIComponent(existing.token)}/click`
                 : undefined;
             // FIX P1 2026-07-03: pasamos eventId + tokenId para que el
@@ -4175,10 +4188,22 @@ export async function processInboundMessage(
         const emailLine = lead.email && !lead.email.endsWith("@placeholder.local")
           ? `\n📧 Te lo reenviamos a tu correo ${lead.email} por si lo perdiste.`
           : "";
+        // Migration 20260707093000: adaptarse a la modalidad del evento.
+        // - in_person: copia clásica (muestra QR en puerta).
+        // - virtual/hybrid SIN streaming_url: el link llega el día del evento.
+        // - virtual/hybrid CON streaming_url: el link es inmediato (behavior
+        //   histórico, decide via gate). Acá ya se reenvió el email con el gate.
+        const evtIsVirtualLike = evt?.format === "virtual" || evt?.format === "hybrid";
+        const hasStreamingLink = Boolean(evt?.streamingUrl);
+        const accessLine = evtIsVirtualLike && hasStreamingLink
+          ? `\n\n🎥 Tu acceso virtual ya está configurado. Te enviamos un correo con el botón para entrar al stream cuando estés listo.`
+          : evtIsVirtualLike
+            ? `\n\n⏳ El link del evento virtual aún no está configurado — te lo enviamos por correo y por aquí el día del evento. Guarda este pase con QR, lo vas a necesitar.`
+            : `\n\nMuéstralo en la entrada del evento. El staff lo va a escanear.`;
         const bodyText =
           `${saludo} Ya estás registrado en *${evtName}*${evtCodeLabel}. ` +
           `Tu QR actual (link de check-in) es:\n\n${existing.url}` +
-          `\n\nMuéstralo en la entrada del evento. El staff lo va a escanear.` +
+          accessLine +
           emailLine;
         const provider = getActiveWhatsAppProvider();
         let sendResult: { ok: boolean; externalId?: string; demo?: boolean } = {

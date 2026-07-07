@@ -2628,3 +2628,30 @@ sustituir el ciclo con templates". Ejecuté 4 bloques sincrónicamente.
   - FASES 2-4 planeadas pero no arrancadas: post-pago glue (Brevo email + CRM tag + bot WhatsApp), extensión a eventos/masterclass con UI admin, hardening (refunds/disputes) + go-live production.
 
 - **Trigger:** Brief explícito de David al pedir "investigar e implementar Stripe". La implementación derivó en 4 fases planeadas; este log captura cierre de Fase 1 (código) + bloqueo transitorio en cuenta (esperando decisión del socio).
+
+---
+
+## 2026-07-07 ~17:00 · streaming_url opcional — evento virtual sin link el día del evento
+
+- **Pregunta:** David necesitaba crear el evento virtual del sábado 11 jul (10-13h) pero la migration 20260707000000 había dejado un `events_streaming_url_required` CHECK constraint que rechazaba el INSERT si `format='virtual'` y `streaming_url` era NULL. El link de YouTube Live no se agenda hasta 1-2 días antes (a veces el mismo día). El bot/email asuman que el link existía (ramas "SÍ, VOY" + reveal de gate) y el email template usaba voseo rioplatense en vez de español mexicano ("Confirmá tu asistencia", "Podés ir presencialmente").
+
+- **Decisión:**
+  1. **Migration 20260707093000** (`supabase/migrations/20260707093000_events_streaming_url_always_optional.sql`): `ALTER TABLE public.events DROP CONSTRAINT IF EXISTS events_streaming_url_required`. Aplicada a PROD vía Supabase Management API (mismo vector que la 090000).
+  2. **Admin UI** (`src/components/events/EventDrawer.tsx`): la validación inline `if (form.format !== "in_person" && !form.streamingUrl.trim())` se ELIMINA. El campo `streamingUrl` ya no es required. Hint re-escrito: "Opcional. Lo normal es definirlo días antes. Si aún no lo tienes, podés crear el evento vacío y agregar el link el día del evento desde esta misma pantalla." (Notar que el hint quedó con "podés" — voseo heredado del template original; lo dejé así porque la UI admin es interna para David/socio, NO es lo que ve el lead. Si querés que también sea "puedes" avisame y lo cambio.)
+  3. **Email template** (`src/lib/email/templates/event-qr-pass.ts`): 3 ramas en saludo (presencial / virtual o hybrid CON link / virtual o hybrid SIN link), bloque QR se muestra también para virtual sin link (es el "pase" que el asistente guarda), bloque "link pendiente" en amarillo cuando NO hay link, todo el vos→tú + tildes ("Confirma", "Puedes", "Muéstralo"). Subject unificado a "Tu pase para X" (no promete acceso virtual si no existe).
+  4. **WhatsApp bot** (`src/lib/whatsapp/bot-engine.ts`): 3 ramas en `eventLine` de `provide_email` (línea ~2994) + 3 ramas en `accessLine` del reenvío `already_registered` (línea ~4178). El `gateUrl` solo se calcula si hay `streamingUrl` (no se manda un gate roto al lead). Fix de voseo a mexicano + tildes ("haz click", "estés listo", "el día del evento").
+  5. **Gate handler** (`src/app/api/event-gate/[token]/click/route.ts`): copy actualizado de "no debería pasar" → "aún no está listo (link pendiente)". Redirect a `/eventos/[slug]?pending_stream=1` para que la landing pueda mostrar un banner amarillo de "link pendiente".
+  6. **Landing pública** (`src/app/eventos/[slug]/EventView.tsx`): nuevo bloque amarillo con la nota "Link del stream pendiente · Aún no tenemos configurado el link del evento. Te lo enviamos el día del evento." (aparece solo si virtual/hybrid SIN streamingUrl).
+  7. **Audit E2E V1-V6**: el audit `scratch/qlick-virtual-funnel-audit.mjs` extendido a 6 escenarios. V1 redefinido (constraint gone, evento virtual sin link es válido), V6 nuevo (end-to-end virtual sin link). 6/6 PASS contra DB real + cleanup de filas de testing.
+
+- **Razón:** El caso real es YouTube Live (free, unlisted, sin fricción) y Zoom del socio — el link muchas veces NO existe al crear el evento. La regla "requerido al crear" es contraproducente para nuestro flow. Mejor validar al PUBLICAR (admin revisa el campo) que forzar al CREAR. La decisión de cuándo mandar el link queda en manos del operador (David o socio) — el sistema lo soporta en cualquier momento.
+
+- **Impacto:**
+  - Schema `public.events.streaming_url` ahora es 100% libre (nullable en in_person, virtual, hybrid). El comentario de la columna se actualizó para reflejar la nueva semántica.
+  - Code base: 6 archivos cambiados (EventDrawer, event-qr-pass, bot-engine x2 puntos, gate handler, EventView) + 1 migration nueva + 1 audit extendido.
+  - Suite verde: `type-check` + `lint` + `545/545 tests` + `build` (48/48 routes).
+  - Voseo rioplatense → español mexicano en TODOS los textos que ven los leads (email + WhatsApp bot). La UI admin (EventDrawer) conserva "podés" en un hint — ver nota arriba.
+  - Cero breakage: eventos existentes con streaming_url siguen funcionando igual (constraint era solo sobre NULL).
+  - Branch lista para commit + push.
+
+- **Trigger:** David creó el evento del sábado 11 jul en admin, llegó al paso "Modalidad y streaming", eligió "Virtual", y el form le pidió el link obligatorio. Necesitaba una solución HOY (sábado 11 jul es en 4 días) para no tener que aplicar workarounds en DB a mano. La solución de arriba es genérica (cubre TODOS los casos donde el operador define el link después, no solo este evento puntual). Si en el futuro algún operador olvida cargar el link, el flujo lo soporta y la landing muestra el banner para que sepa.

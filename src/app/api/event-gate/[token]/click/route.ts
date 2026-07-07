@@ -111,12 +111,13 @@ export async function GET(
     );
   }
 
-  // 6) Sin streaming_url (no debería pasar por el constraint de DB, pero
-  // defendemos igual). Redirect a la landing del evento.
+  // 6) Sin streaming_url (caso REAL post-migration 20260707093000: el
+  // operador puede definir el link después; aun no esta listo). Redirect
+  // a la landing del evento con un reason que la landing puede leer.
   if (!event.streaming_url) {
     return NextResponse.redirect(
       new URL(
-        `/eventos/${encodeURIComponent(event.slug)}`,
+        `/eventos/${encodeURIComponent(event.slug)}?pending_stream=1`,
         process.env.NEXT_PUBLIC_APP_URL ?? "https://qlick.mx",
       ),
     );

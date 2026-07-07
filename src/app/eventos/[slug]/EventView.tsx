@@ -272,7 +272,7 @@ export function EventView({ event, pastEvent }: Props) {
                       🎥 Acceso al evento virtual
                     </p>
                     <p className="mt-2 text-sm text-ink-soft">
-                      Cuando estés listo para entrar al stream, hacé click en
+                      Cuando estés listo para entrar al stream, haz click en
                       el botón. Te contamos como asistencia y te llevamos al
                       vivo.
                     </p>
@@ -292,6 +292,28 @@ export function EventView({ event, pastEvent }: Props) {
                     <p className="mt-3 text-[11px] text-ink-muted text-center">
                       Al confirmar, te llevamos al stream. Solo se cuenta 1 vez.
                     </p>
+                  </div>
+                )}
+
+                {/* Migration 20260707093000: bloque "link pendiente" para
+                    virtual/hybrid SIN streaming_url. Diferencia visual
+                    respecto al bloque gate: amarillo (no promesa de CTA
+                    inmediato) en vez de morado (acción inmediata). */}
+                {!gateUrl && event.format && event.format !== "in_person" && (
+                  <div className="mt-6 rounded-2xl border-2 border-amber-400 bg-gradient-to-br from-amber-50 to-yellow-50 p-6 text-left">
+                    <p className="text-xs font-bold uppercase tracking-wider text-amber-700">
+                      ⏳ Link del stream pendiente
+                    </p>
+                    <p className="mt-2 text-sm text-ink-soft">
+                      Aún no tenemos configurado el link del evento virtual.
+                      Te lo enviamos por correo y por WhatsApp el día del
+                      evento. Estate atento a tu bandeja.
+                    </p>
+                    {event.streamingAccessNote && (
+                      <p className="mt-2 text-xs font-semibold text-amber-800">
+                        {event.streamingAccessNote}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>

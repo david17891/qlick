@@ -146,12 +146,16 @@ export function renderEventQrPassEmail(
   // inyecta en <title>...</title> del HTML, así que lo escapamos para
   // que un eventTitle con "<" o ">" no rompa el markup.
   // Adapt copy al formato (el subject refleja la modalidad).
-  const subject =
-    format === "virtual"
-      ? `Tu acceso para "${esc(input.eventTitle)}"`
-      : format === "hybrid"
-        ? `Tu pase + acceso para "${esc(input.eventTitle)}"`
-        : `Tu pase para "${esc(input.eventTitle)}"`;
+  // Migration 20260707093000: virtual/hybrid pueden NO tener link aún —
+  // el subject siempre dice "tu pase" (no promete acceso a algo que
+  // aún no existe).
+  const hasVirtualAccess = (format === "virtual" || format === "hybrid") && Boolean(gateUrl);
+  const subject = `Tu pase para "${esc(input.eventTitle)}"`;
+  // Mostrar QR cuando NO hay acceso virtual garantizado (porque es la
+  // pieza que el asistente guarda). Migración 20260707093000: virtual
+  // sin link también muestra QR — es el "pase" que el asistente debe
+  // conservar hasta que llegue el link del stream.
+  const showQr = format === "in_person" || format === "hybrid" || !hasVirtualAccess;
 
   const html = `
 <!DOCTYPE html>
@@ -171,9 +175,11 @@ export function renderEventQrPassEmail(
             <td style="background:linear-gradient(135deg,#6d28d9 0%,#c026d3 50%,#f97316 100%);padding:24px 32px;text-align:center;">
               <h1 style="margin:0;font-size:24px;font-weight:700;color:#ffffff;">Qlick Marketing</h1>
               <p style="margin:8px 0 0;font-size:14px;color:#ffffff;opacity:0.95;">
-            ${format === "virtual" ? "Tu acceso virtual está listo" :
-              format === "hybrid" ? "Tu pase + acceso virtual" :
-              "Tu pase está listo"}
+            ${hasVirtualAccess
+                ? (format === "hybrid"
+                    ? "Tu pase + acceso virtual están listos"
+                    : "Tu acceso virtual está listo")
+                : "Tu pase está listo"}
           </p>
             </td>
           </tr>
@@ -186,34 +192,40 @@ export function renderEventQrPassEmail(
               </p>
               <p style="margin:0 0 24px;font-size:16px;line-height:1.5;">
                 ${
-                  format === "virtual"
-                    ? `Confirmamos tu registro a <strong>"${eventTitle}"</strong>. Este evento es virtual — confirmá tu asistencia con el botón de abajo para recibir el link de acceso al stream.`
-                    : format === "hybrid"
-                      ? `Confirmamos tu registro a <strong>"${eventTitle}"</strong>. Podés ir presencialmente (mostrá el QR en la entrada) o sumarte virtualmente (confirmá con el botón de abajo).`
-                      : `Confirmamos tu registro a <strong>"${eventTitle}"</strong>. Tu pase digital está acá. Muéstralo en la entrada — el staff lo escanea y listo.`
+                  format === "virtual" && hasVirtualAccess
+                    ? `Gracias por registrarte a <strong>"${eventTitle}"</strong>. Este evento es virtual — confirma tu asistencia con el botón de abajo para recibir el link de acceso al stream.`
+                    : format === "virtual"
+                      ? `Gracias por registrarte a <strong>"${eventTitle}"</strong>. Este es un evento virtual. Tu pase con QR ya está listo (te lo mandamos al final del correo), y el link del stream te lo enviamos por correo el día del evento.`
+                      : format === "hybrid" && hasVirtualAccess
+                        ? `Gracias por registrarte a <strong>"${eventTitle}"</strong>. Puedes ir presencialmente (muestra el QR en la entrada) o sumarte virtualmente (confirma con el botón de abajo).`
+                        : format === "hybrid"
+                          ? `Gracias por registrarte a <strong>"${eventTitle}"</strong>. Puedes ir presencialmente (muestra el QR en la entrada) o esperar al link del stream que te enviaremos por correo el día del evento.`
+                          : `Gracias por registrarte a <strong>"${eventTitle}"</strong>. Tu pase digital está aquí. Muéstralo en la entrada — el staff lo escanea y listo.`
                 }
               </p>
 
               ${
-                /* Bloque QR: solo para in_person o hybrid. */
-                format !== "virtual"
+                /* Bloque QR: in_person, hybrid, o virtual SIN link. */
+                showQr
                   ? `
               <!-- QR (centrado, en card blanca con borde) -->
               <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:12px;margin-bottom:24px;">
                 <tr>
                   <td align="center" style="padding:24px;">
                     <p style="margin:0 0 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#6d28d9;">
-                      Tu código QR
+                      ${format === "in_person" ? "Tu código QR" : "Tu pase digital"}
                     </p>
                     <img
                       src="${qrSrc}"
-                      alt="Código QR de entrada para ${eventTitle}"
+                      alt="Pase digital para ${eventTitle}"
                       width="240"
                       height="240"
                       style="display:block;margin:0 auto;background:#ffffff;padding:12px;border-radius:8px;border:1px solid #e9d5ff;"
                     />
                     <p style="margin:12px 0 0;font-size:11px;color:#64748b;">
-                      Escanea desde la app de cámara de tu celular o muestra esta pantalla al staff.
+                      ${format === "in_person"
+                        ? "Escanea desde la app de cámara de tu celular o muestra esta pantalla al staff."
+                        : "Guarda este pase. Cuando llegue el día del evento lo usarás para confirmar tu asistencia virtual."}
                     </p>
                   </td>
                 </tr>
@@ -223,7 +235,7 @@ export function renderEventQrPassEmail(
               }
 
               ${
-                /* Bloque gate "SÍ, VOY": solo para virtual o hybrid. */
+                /* Bloque gate "SÍ, VOY": solo para virtual/hybrid CON link. */
                 format !== "in_person" && gateUrl
                   ? `
               <!-- Gate virtual: "SÍ, VOY A ENTRAR" -->
@@ -234,7 +246,7 @@ export function renderEventQrPassEmail(
                       Acceso al evento virtual
                     </p>
                     <p style="margin:0 0 20px;font-size:14px;color:#1e293b;line-height:1.5;">
-                      Confirmá que vas a entrar al stream para recibir el link de acceso.
+                      Confirma que vas a entrar al stream para recibir el link de acceso.
                       ${
                         streamingNote
                           ? `<br><span style="color:#6d28d9;font-weight:600;">${streamingNote}</span>`
@@ -246,6 +258,31 @@ export function renderEventQrPassEmail(
                     </a>
                     <p style="margin:16px 0 0;font-size:11px;color:#64748b;">
                       Al confirmar, te llevamos al stream en vivo.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+              `
+                  : ""
+              }
+
+              ${
+                /* Migration 20260707093000: bloque "link pendiente" para
+                    virtual/hybrid SIN link aún. NO promete fecha exacta
+                    (eso lo controla el operador al cargar el link). */
+                (format === "virtual" || format === "hybrid") && !gateUrl
+                  ? `
+              <!-- Link pendiente: lo enviamos el día del evento -->
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:linear-gradient(135deg,#fffbeb 0%,#fef3c7 100%);border:2px solid #f59e0b;border-radius:12px;margin-bottom:24px;">
+                <tr>
+                  <td style="padding:24px;">
+                    <p style="margin:0 0 8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#b45309;">
+                      ⏳ Link del stream pendiente
+                    </p>
+                    <p style="margin:0 0 0;font-size:14px;color:#1e293b;line-height:1.5;">
+                      Aún no tenemos configurado el link del evento — te lo enviamos
+                      por correo y por WhatsApp el día del evento. Estate atento a
+                      tu bandeja de entrada.
                     </p>
                   </td>
                 </tr>

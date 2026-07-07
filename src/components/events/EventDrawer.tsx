@@ -251,14 +251,14 @@ export function EventDrawer({
         durationParsed = n;
       }
     }
-    // Streaming (migration 20260707000000): si la modalidad es virtual o
-    // hybrid, el streaming_url es obligatorio. La DB también lo valida
-    // (events_streaming_url_required), pero validamos acá para feedback
-    // inline más rápido.
-    if (form.format !== "in_person" && !form.streamingUrl.trim()) {
-      errs.streamingUrl =
-        "Para eventos virtuales o híbridos, el link de streaming es obligatorio.";
-    }
+    // Streaming (migration 20260707000000 + 20260707093000): el
+    // streaming_url es OPCIONAL en TODAS las modalidades. El operador
+    // puede crear el evento sin link y agregarlo días después desde
+    // Edición (caso real: YouTube Live se agenda 1-2 días antes).
+    // La validación acá NO bloquea — queda como campo libre.
+    // Si queda vacío y el evento es virtual, se muestra "el link te lo
+    // enviamos el día del evento" en bot/email/landing.
+    void form.streamingUrl; // campo opcional, no se valida en esta capa
     if (Object.keys(errs).length > 0) {
       setFieldErrors(errs);
       return;
@@ -635,16 +635,16 @@ export function EventDrawer({
             </Field>
 
             {/* Campos streaming: SOLO visibles si format != in_person.
-                El constraint events_streaming_url_required se valida
-                inline (errs.streamingUrl) y en DB. */}
+                Migration 20260707093000: streaming_url ahora es OPCIONAL.
+                Podés crearlo vacío y agregar el link el día del evento
+                (caso real: YouTube Live se agenda 1-2 días antes). */}
             {form.format !== "in_person" && (
               <>
                 <Field
                   label="Link de streaming"
                   htmlFor="evt-streaming-url"
-                  hint="YouTube Live, Zoom, Facebook Live, o cualquier link público/privado."
+                  hint="Opcional. Lo normal es definirlo días antes. Si aún no lo tienes, podés crear el evento vacío y agregar el link el día del evento desde esta misma pantalla."
                   error={fieldErrors.streamingUrl}
-                  required
                 >
                   <Input
                     id="evt-streaming-url"
@@ -652,7 +652,6 @@ export function EventDrawer({
                     value={form.streamingUrl}
                     onChange={(e) => set("streamingUrl", e.target.value)}
                     placeholder="https://youtu.be/XXXXXXX"
-                    required
                     disabled={saving}
                   />
                 </Field>
@@ -697,7 +696,9 @@ export function EventDrawer({
                   💡 <strong>Tip Qlick:</strong> YouTube Live es gratis y de cero
                   fricción para el attendee. Configurá el stream como
                   &quot;Unlisted&quot; en YouTube Studio para que solo con el link
-                  se pueda ver.
+                  se pueda ver. <strong>Si aún no definiste el link, no es
+                  problema:</strong> creá el evento vacío, guardá y agregá el
+                  link cuando lo tengas (mismo formulario, en Edición).
                 </div>
               </>
             )}
