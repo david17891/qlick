@@ -2607,3 +2607,24 @@ sustituir el ciclo con templates". Ejecuté 4 bloques sincrónicamente.
   - Pipeline completo verde: type-check / lint / 545+545 tests / build OK.
   - Schema `event_attendees.checked_in_at` ahora nullable. NO afecta registros legacy (todos tienen valor previo).
 - **Trigger:** Brief /GOAL explicito del usuario al final de la sesion anterior de eventos virtuales. Auto-reparacion en bucle hasta 100% verde.
+
+---
+
+## 2026-07-07 ~03:00 · Stripe Fase 1 lista en código + setup doc
+
+- **Pregunta:** Integrar Stripe como proveedor de pagos multi-producto (cursos + eventos + masterclass) flexible y conectable a bot/correos. Setup con cuenta del socio vs cuenta David.
+- **Decisión:**
+  1. **Código Fase 1 cerrado en rama `feat/pagos-stripe-real`** (`2158f97`): provider Stripe real (no stub) con `stripe.checkout.sessions.create` polimórfico + payment_method_types card/oxxo/spei, webhook handler con HMAC + idempotencia + grants según `productRef.kind`, server lib `event-entitlements.ts` análoga a LMS, 2 migrations SQL (`event_access` y `payments.course_id nullable`). Interface polimórfica `ProductRef` (cursos/eventos/masterclass) reemplaza shape `courseId/amountMXN` legacy (compat mantenida en mock provider). Stripe SDK v22.3.0 instalado.
+  2. **Stripe NO account creada:** explicación que Stripe = 1 account por dueño, test/live son environments dentro de la misma cuenta, cambiar de owner (David → socio) requiere transfer ownership formal (~2-3 semanas). Recomendación: que el socio cree la suya desde el principio (test mode ahora, toggle a live después de KYC + CLABE MX). Alternativa: David crea con `david17891@gmail.com` en test y se migra después, o se mantiene con el socio como team member Admin.
+  3. **`docs/PAYMENTS_STRIPE_SETUP.md` escrito** con: decisión cuenta (1.1 socio recomendado / 1.2 David alternativo), env vars (3 keys, sensitive vs public), registrar webhook endpoint en Dashboard, Stripe CLI para dev local con `stripe listen`, test cards (4242.../4000...9995/etc), 2 migrations a aplicar via SQL Editor, typegen regen post-migration para limpiar ~6 casts `@ts-ignore`, troubleshooting. Setup concreto para mañana.
+
+- **Razón:** David prefirió esperar la confirmación del socio antes de crear una Stripe account (no quería duplicar trabajo que después se descarta). Mientras tanto, escribir el setup doc ahora permite que mañana arranque listo apenas llegue la decisión del email/cuenta. Las 2 migrations quedan listas en el código para que David las aplique directo por SQL Editor (más rápido que pelear con credenciales Mavis drift).
+
+- **Impacto:**
+  - Branch `feat/pagos-stripe-real` pusheada a origin.
+  - Suite verde: `type-check` + `lint` + `545/545 tests` (12.9s) + `build` (48/48 routes).
+  - 6 casts `@ts-ignore` temporales en `src/lib/lms/event-entitlements.ts` y `src/app/api/webhooks/stripe/route.ts` por typegen local desincronizado. Se limpian automáticamente tras aplicar migrations + regenerar typegen.
+  - Pendiente Fase 1 cierre: aplicar las 2 migrations a Supabase, decidir cuenta Stripe, cargar env vars, UI `/pagar` con redirect, `/api/payments/create-checkout`, success/cancel pages, tests E2E con test cards, actualizar `STATUS.md` + `ROADMAP.md`.
+  - FASES 2-4 planeadas pero no arrancadas: post-pago glue (Brevo email + CRM tag + bot WhatsApp), extensión a eventos/masterclass con UI admin, hardening (refunds/disputes) + go-live production.
+
+- **Trigger:** Brief explícito de David al pedir "investigar e implementar Stripe". La implementación derivó en 4 fases planeadas; este log captura cierre de Fase 1 (código) + bloqueo transitorio en cuenta (esperando decisión del socio).
