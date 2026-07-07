@@ -155,47 +155,85 @@ export async function sendEmail(opts: SendEmailOptions): Promise<SendEmailResult
   }
 
   // Prod con API key → Brevo API.
-  try {
-    const client = await getClient();
-    if (!client) {
-      return {
-        ok: false,
-        mode: "prod",
-        error: "Brevo client unavailable",
-      };
-    }
-    const sender = parseSender(fromRaw);
-    const response = await client.transactionalEmails.sendTransacEmail({
-      sender,
-      to: to.map((email) => ({ email })),
-      subject: opts.subject,
-      htmlContent: opts.html,
-      textContent: opts.text,
-      replyTo: replyTo ? { email: replyTo } : undefined,
-    });
-    // Brevo v5: response es `{ messageId, messageIds? }` directamente.
-    const messageId = (response as { messageId?: string }).messageId;
-    if (!messageId) {
-      return {
-        ok: false,
-        mode: "prod",
-        error: "Brevo response missing messageId",
-      };
-    }
-    return {
-      ok: true,
-      mode: "prod",
-      id: messageId,
-    };
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.warn(
-      `[email/prod] sendEmail threw: ${err instanceof Error ? err.message : String(err)}`,
-    );
+  //
+  // FIX 2026-07-07 (auditoría SRE pre-evento, item C3): el SDK de Brevo no
+  // expone AbortSignal ni status code HTTP en errores, así que usamos
+  // Promise.race con timeout 3s y reintento 1 vez con backoff 500ms para
+  // errores transitorios (timeouts, errores de red, mensajes que incluyen
+  // "429"/"5xx"/"rate limit"/"timeout"). Sin esto, una estampida de email
+  // a) cuelga el handler 60+ segundos hasta el timeout default del SDK;
+  // b) pierde emails por 429/5xx sin reintentar; c) bloquea el response
+  // HTTP del survey submit mientras espera.
+  const BREVO_TIMEOUT_MS = 3_000;
+  const BREVO_RETRY_DELAY_MS = 500;
+
+  const client = await getClient();
+  if (!client) {
     return {
       ok: false,
       mode: "prod",
-      error: err instanceof Error ? err.message : "Unknown error",
+      error: "Brevo client unavailable",
     };
   }
+  const sender = parseSender(fromRaw);
+
+  let lastErr: unknown = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const sendPromise = client.transactionalEmails.sendTransacEmail({
+        sender,
+        to: to.map((email) => ({ email })),
+        subject: opts.subject,
+        htmlContent: opts.html,
+        textContent: opts.text,
+        replyTo: replyTo ? { email: replyTo } : undefined,
+      });
+      let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(
+          () => reject(new Error("brevo-timeout")),
+          BREVO_TIMEOUT_MS,
+        );
+      });
+      const response = await Promise.race([sendPromise, timeoutPromise]);
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      const messageId = (response as { messageId?: string }).messageId;
+      if (!messageId) {
+        return {
+          ok: false,
+          mode: "prod",
+          error: "Brevo response missing messageId",
+        };
+      }
+      return {
+        ok: true,
+        mode: "prod",
+        id: messageId,
+      };
+    } catch (err) {
+      lastErr = err;
+      const message = err instanceof Error ? err.message : String(err);
+      const isTransient =
+        /timeout|429|5\d\d|rate.?limit|ECONNRESET|ETIMEDOUT|ENOTFOUND/i.test(
+          message,
+        );
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[email/prod] sendEmail attempt ${attempt}/2 threw: ${message}`,
+      );
+      // Solo reintentar si es transitorio y NO fue el último intento.
+      if (isTransient && attempt < 2) {
+        await new Promise((r) => setTimeout(r, BREVO_RETRY_DELAY_MS));
+        continue;
+      }
+      break;
+    }
+  }
+  const errMessage =
+    lastErr instanceof Error ? lastErr.message : "Unknown error";
+  return {
+    ok: false,
+    mode: "prod",
+    error: errMessage,
+  };
 }

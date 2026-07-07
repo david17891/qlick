@@ -243,9 +243,17 @@ export async function POST(req: Request) {
 
   // 8. Promotion Engine — score + status transitions + CRM tasks.
   //    Best-effort: si falla, no rompemos el submit.
+  //
+  // FIX 2026-07-07 (auditoría SRE pre-evento, item C2): applyPromotionRules
+  // puede colgar (DeepSeek lento, survey-tokens.ts lookup colgado). Si lo
+  // hace dentro del await del response, el usuario que envió la encuesta
+  // espera. Ahora: Promise.race 5s. Si timeout, loggeamos y seguimos sin
+  // aplicar reglas (la encuesta queda persistida — el admin puede disparar
+  // el Promotion Engine manualmente desde el CRM).
   const supabase = createSupabaseAdminClient();
   let promotionResultNote = "";
   if (surveyConfig && supabase) {
+    let resolvedLead: { leadId: string; scoreResult: { score: number; qualification: string; reasons: string[] } } | null = null;
     try {
       // Resolver leadId (puede ser del promoResult o lookup por email/phone)
       let leadId: string | null = promoResult.leadId ?? null;
@@ -264,97 +272,79 @@ export async function POST(req: Request) {
           responses as Record<string, string>,
           surveyConfig,
         );
-        const promotionResult = await applyPromotionRules(
-          leadId,
-          scoreResult,
-          {
-            supabase,
-            actorEmail,
-            leadEmail: tokenRow.email,
-            leadName: null, // el admin puede verlo en el drawer
-            eventTitle: event?.title ?? "(sin título)",
-          },
-        );
-        promotionResultNote = promotionResult.notes.join("; ");
-
-        // 9. Follow-up WhatsApp al lead (texto libre con {{1}}).
-        //    Solo si tenemos teléfono + provider configurado.
-        if (tokenRow.phone_normalized) {
-          const bucket = selectFollowUpBucket(scoreResult.score);
-          const followUp = surveyConfig.followUps?.[bucket];
-          if (followUp?.text) {
-            const personalizedText = substituteTemplateVars(followUp.text, {
-              "1": tokenRow.email?.split("@")[0] ?? "ahí",
-            });
-            try {
-              const provider = getActiveWhatsAppProvider();
-              // Si el follow-up tiene templateName y la ventana 24h está
-              // cerrada, idealmente usamos Meta template. Por ahora (Fase 7d.2),
-              // siempre texto libre. La selección templateName vs texto se
-              // agrega en Fase 8+ con window tracking real.
-              await provider.send({
-                to: tokenRow.phone_normalized,
-                body: personalizedText,
-              });
-            } catch (err) {
-              // eslint-disable-next-line no-console
-              console.warn(
-                "[submit-survey] follow-up WhatsApp falló",
-                {
-                  leadId,
-                  error: err instanceof Error ? err.message : String(err),
-                },
-              );
-            }
-          }
-        }
-
-        // 10. Email Brevo al admin si MQL/Hot.
-        if (
-          scoreResult.score >= 40 &&
-          process.env.ADMIN_NOTIFICATION_EMAILS
-        ) {
-          try {
-            const { subject, html } = renderSurveyWithConsentEmail({
-              leadName: tokenRow.email?.split("@")[0] ?? "",
-              leadEmail: tokenRow.email ?? "(sin email)",
-              leadPhone: tokenRow.phone_normalized ?? null,
-              eventTitle: event?.title ?? "(sin título)",
-              commercialInterest: commercialInterest ?? null,
-              leadId,
-            });
-            await sendEmail({
-              to: process.env.ADMIN_NOTIFICATION_EMAILS,
-              subject,
-              html,
-            });
-          } catch (err) {
-            // eslint-disable-next-line no-console
-            console.warn(
-              "[submit-survey] email Brevo al admin falló",
-              {
-                leadId,
-                error: err instanceof Error ? err.message : String(err),
-              },
-            );
-          }
-        }
-
-        // Silenciar warning de variable no usada (buildDynamicSurveyStep
-        // no se usa directamente acá pero la importamos para mantener el
-        // typecheck coherente con la API del builder).
-        void buildDynamicSurveyStep;
+        resolvedLead = { leadId, scoreResult };
       }
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.warn(
-        "[submit-survey] promotion engine falló",
-        {
+      console.warn("[submit-survey] lead lookup falló", {
+        surveyId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    // Aplicar las reglas con timeout defensivo (5s).
+    if (resolvedLead) {
+      try {
+        const promotionResult = await Promise.race([
+          applyPromotionRules(
+            resolvedLead.leadId,
+            resolvedLead.scoreResult as import("@/lib/crm/lead-scoring").SurveyScoreResult,
+            {
+            supabase,
+            actorEmail,
+            leadEmail: tokenRow.email,
+            leadName: null,
+            eventTitle: event?.title ?? "(sin título)",
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(
+              () => reject(new Error("promotion-engine-timeout")),
+              5_000,
+            ),
+          ),
+        ]);
+        promotionResultNote = promotionResult.notes.join("; ");
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn("[submit-survey] promotion engine timeout/falló", {
           surveyId,
           error: err instanceof Error ? err.message : String(err),
-        },
-      );
+        });
+      }
     }
+
+    // 9 + 10. Fire-and-forget: notificaciones salientes (WhatsApp + Email).
+    // FIX 2026-07-07 (auditoría SRE pre-evento, item C1): NO esperamos a
+    // que Brevo o Meta terminen para devolver el 200 al lead. Si Brevo
+    // tarda 30s, el lead NO espera 30s — recibe 200 al instante y las
+    // notificaciones se procesan en background. Si fallan, el operador
+    // las ve en logs y el resumen diario las cubre.
+    if (resolvedLead && tokenRow.phone_normalized) {
+      void runFollowUpWhatsAppBg({
+        surveyConfig,
+        scoreResult: resolvedLead.scoreResult as import("@/lib/crm/lead-scoring").SurveyScoreResult,
+        leadId: resolvedLead.leadId,
+        emailLocalPart: tokenRow.email?.split("@")[0] ?? "",
+        phoneNormalized: tokenRow.phone_normalized,
+      });
+    }
+    if (
+      resolvedLead &&
+      resolvedLead.scoreResult.score >= 40 &&
+      process.env.ADMIN_NOTIFICATION_EMAILS
+    ) {
+      void runAdminNotificationEmailBg({
+        leadId: resolvedLead.leadId,
+        leadEmail: tokenRow.email ?? "(sin email)",
+        leadPhone: tokenRow.phone_normalized ?? null,
+        eventTitle: event?.title ?? "(sin título)",
+        commercialInterest: commercialInterest ?? null,
+      });
+    }
+    // Silenciar warning de variable no usada (buildDynamicSurveyStep
+    // no se usa directamente acá pero la importamos para mantener el
+    // typecheck coherente con la API del builder).
+    void buildDynamicSurveyStep;
   }
 
   // 11. Audit log.
@@ -384,4 +374,89 @@ export async function POST(req: Request) {
     ...(promoResult.leadId ? { leadId: promoResult.leadId } : {}),
     ...(promoResult.reason ? { reason: promoResult.reason } : {}),
   });
+}
+
+/* ─────────────────────────────────────────────────────────────────
+ * Fire-and-forget helpers (FIX 2026-07-07 auditoría SRE pre-evento)
+ *
+ * Las notificaciones salientes NO deben bloquear el response HTTP.
+ * Si Brevo tarda 30s o Meta quota se agotó, el lead ya recibió su
+ * 200 OK — estas funciones corren en background y toleran fallos.
+ * Si fallan, quedan en logs/Vercel; el admin las ve en su resumen
+ * diario (ver cron de mañana).
+ * ───────────────────────────────────────────────────────────────── */
+
+interface RunFollowUpInput {
+  surveyConfig: import("@/types/events").SurveyConfig;
+  // Mantenemos SurveyScoreResult solo para typecheck. Lo re-importamos via
+  // lead-scoring para no acoplar este endpoint a la shape privada de
+  // calculateLeadScoreFromConfig.
+  scoreResult: import("@/lib/crm/lead-scoring").SurveyScoreResult;
+  leadId: string;
+  emailLocalPart: string;
+  phoneNormalized: string;
+}
+
+async function runFollowUpWhatsAppBg(input: RunFollowUpInput): Promise<void> {
+  try {
+    const bucket = selectFollowUpBucket(input.scoreResult.score);
+    const followUp = input.surveyConfig.followUps?.[bucket];
+    if (!followUp?.text) return; // sin template para este bucket, no-op silencioso
+    const personalizedText = substituteTemplateVars(followUp.text, {
+      "1": input.emailLocalPart || "ahí",
+    });
+    const provider = getActiveWhatsAppProvider();
+    // FIX C1: Promise.race con timeout 3s (AbortController sería ideal pero
+    // algunos providers no aceptan AbortSignal — usamos race).
+    await Promise.race([
+      provider.send({
+        to: input.phoneNormalized,
+        body: personalizedText,
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error("wa-followup-timeout")),
+          3_000,
+        ),
+      ),
+    ]);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn("[submit-survey] follow-up WhatsApp bg falló", {
+      leadId: input.leadId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+interface RunAdminEmailInput {
+  leadId: string;
+  leadEmail: string;
+  leadPhone: string | null;
+  eventTitle: string;
+  commercialInterest: string | null;
+}
+
+async function runAdminNotificationEmailBg(input: RunAdminEmailInput): Promise<void> {
+  try {
+    const { subject, html } = renderSurveyWithConsentEmail({
+      leadName: input.leadEmail.split("@")[0] ?? "",
+      leadEmail: input.leadEmail,
+      leadPhone: input.leadPhone,
+      eventTitle: input.eventTitle,
+      commercialInterest: input.commercialInterest,
+      leadId: input.leadId,
+    });
+    await sendEmail({
+      to: process.env.ADMIN_NOTIFICATION_EMAILS ?? "",
+      subject,
+      html,
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn("[submit-survey] email Brevo al admin bg falló", {
+      leadId: input.leadId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }

@@ -1466,6 +1466,102 @@ corta, conversamos antes — no propongo acotar de entrada.
 
 ---
 
+### 🔴 Audit SRE 2026-07-07 ~12:30 — Pre-evento AA4E (sesión gate 11 jul)
+
+Auditoría de carga + SPOFs. Aplicado hoy el paquete caliente **C1+C2+C3+H5**
+(fire-and-forget + Promise.race 5s + Brevo AbortController 3s + retry 429/5xx
++ rate-limit eviction). Los 12 restantes quedan como backlog post-evento,
+priorizados por impacto operacional.
+
+#### C4. UPSERT con email NULL no deduplica attendees
+
+- `src/lib/events/attendees-server.ts:147-160`. `onConflict: "event_id,email"`
+  con `email = NULL` permite múltiples rows en Postgres (UNIQUE trata
+  NULLs como distintos por default). Click rápido en gate virtual de un
+  asistente sin email → 2+ filas en `event_attendees`.
+- **Fix:** cambiar dedup key a `(event_id, phone_normalized)` (ya NOT NULL)
+  o crear UNIQUE index `NULLS NOT DISTINCT` que fuerce dedup.
+- **Riesgo actual:** bajo (AA4E confirmados tienen email), pero si un
+  lead nuevo sin email hace 5 clicks de "SÍ, VOY", quedan 5 filas.
+- **Estimación:** ~30 min (migration aditiva + cambiar el onConflict).
+- **Severidad:** 🟠 — degrada reporting.
+
+#### C5. Race condition en check-in (SELECT+UPDATE sin lock)
+
+- `src/app/api/check-in/[token]/route.ts:232-254`. El `if (found.row.checked_in_at)`
+  se basa en el SELECT inicial. Doble escaneo del mismo QR en <500ms puede
+  ejecutar UPDATE dos veces (idempotente en datos, pero `checked_in_by` se
+  sobrescribe con el último actor).
+- **Fix:** cambiar a UPDATE atómico con `WHERE checked_in_at IS NULL`. Si no
+  matchea, devolver `200 alreadyCheckedIn` con un SELECT pequeño. Aplica
+  también a `src/app/api/staff/check-in/route.ts:204-213`.
+- **Riesgo actual:** bajo (escaneo humano tiene al menos 1-2s entre
+  cada uno), pero con staff scanner puede ser más rápido.
+- **Estimación:** ~20 min.
+
+#### C6. Check-in endpoints hacen 5-7 queries seriales
+
+- `src/app/api/check-in/[token]/route.ts:244-466` y
+  `src/app/api/staff/check-in/route.ts:101-333`. Total: SELECT JOIN +
+  UPDATE token + SELECT event_attendees + UPSERT/CREATE attendee + SELECT leads +
+  UPDATE leads + INSERT audit. ~900ms por check-in en PostgREST con latency 150ms.
+- **Fix:** paralelizar lo posible (`Promise.all([resolveConfirmationId,
+  findLeadByPhone])`). Mover el audit log a fire-and-forget. Reducir a 3-4
+  queries por check-in.
+- **Riesgo actual:** 🟠 — con 200 personas escaneando QR en 5 minutos, la
+  cola puede llegar a 5+ min de espera en el último.
+- **Estimación:** ~1 hora.
+
+#### H1. Gate virtual con 4 queries seriales antes del 302
+
+- `src/app/api/event-gate/[token]/click/route.ts:53-173`. Antes de
+  redireccionar al stream, hace: lookup token + lookup evento + createAttendee +
+  audit log. Latencia 700-900ms con PostgREST.
+- **Fix:** Promise.all(lookup token + lookup event) + fire-and-forget
+  createAttendee/audit. Reducir a <100ms.
+- **Riesgo actual:** 🟡 — los leads individualmente no saturan Vercel.
+
+#### H2. Rate limit in-memory no distribuido en Vercel
+
+- `src/lib/api/rate-limit.ts:33`. Map no compartido entre containers Vercel.
+  En una estampida, un atacante puede multiplicar su cuota por N.
+  Documentado en el propio archivo (líneas 12-14).
+- **Fix:** migrar a Upstash Redis (sliding window distribuido). Costo ~$0
+  para Qlick (free tier cubre). Setup ~2 horas.
+- **Riesgo actual:** bajo. El slot del sábado es 5 calls/60s por IP — no
+  es el target.
+
+#### H3. Híbrido: `source` se pierde en roundtrip físico+virtual
+
+- `src/app/api/event-gate/[token]/click/route.ts:135-168` +
+  `src/app/api/check-in/[token]/route.ts:256-403`. Cuando un asistente
+  hace check-in físico Y luego abre el stream, `source='zoom_export'`
+  queda aunque presencialmente también asistió. Reports "Asistencia
+  virtual vs física" se rompen.
+- **Fix:** cambiar `attendees-server.createAttendee` UPSERT para incluir
+  `update: ["checked_in_at", "source", "checked_in_by"]` en onConflict.
+  O agregar columna `attendance_channels text[]` y append.
+- **Severidad:** 🟡 — afecta reportes pero no bloquea al usuario.
+
+#### H4. WhatsApp provider sin Promise.race en submit-survey (ya cubierto en C1)
+
+- ✅ Resuelto en C1: `runFollowUpWhatsAppBg` ahora tiene timeout 3s.
+
+#### M1-M4. Edge cases de doble submit / dedup por token
+
+- `src/lib/events/surveys-server.ts:111-120` y
+  `src/lib/events/survey-tokens.ts:140`. Race teórica en doble submit
+  del mismo token, pero el código actual la cubre con `UNIQUE token`
+  + check de `status`. Bajo riesgo. Aceptable.
+
+#### M5. getClientIp falsificable (rate limit X-Forwarded-For)
+
+- `src/lib/api/rate-limit.ts:120-128`. Cliente puede rotar el header
+  para evitar rate limit. En el caso de Qlick el tráfico viene de
+  Vercel y CDN reales, mitigable.
+
+---
+
 ## 4. Decisiones pendientes con socios
 
 ### 🟠 Proveedor de pagos

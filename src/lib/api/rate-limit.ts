@@ -32,6 +32,14 @@ const DEFAULT_MAX_CALLS_PER_WINDOW = 5;
 
 const recentByKey = new Map<string, number[]>();
 
+// FIX 2026-07-07 (auditoría SRE pre-evento, item H5): si el Map crece
+// más allá de RATE_LIMIT_MAX_KEYS, eviccionamos las keys expiradas para
+// evitar memory leak en containers long-lived (Vercel corta a los ~15min
+// idle, pero mientras esté vivo este Map crecería sin techo). Umbral
+// elegido: ~50x el cap por defecto (5 calls/60s) → 250 IPs únicas. Tener
+// 5000 keys es señal clara de abuse / long-running, momento de limpiar.
+const RATE_LIMIT_MAX_KEYS = 5_000;
+
 export interface RateLimitDecision {
   allowed: boolean;
   callCount: number;
@@ -61,6 +69,10 @@ export function recordAndCheckRateLimit(
 
   if (fresh.length >= maxCalls) {
     const oldestInWindow = fresh[0] ?? now;
+    // Defense in depth: eviction opportunista si el store creció mucho.
+    if (recentByKey.size > RATE_LIMIT_MAX_KEYS) {
+      cleanupRateLimitStore(options);
+    }
     recentByKey.set(key, fresh);
     return {
       allowed: false,
@@ -69,6 +81,11 @@ export function recordAndCheckRateLimit(
     };
   }
 
+  // Defense in depth: eviction oportunista antes de insertar nueva key
+  // para mantener el Map acotado en containers long-lived.
+  if (recentByKey.size > RATE_LIMIT_MAX_KEYS) {
+    cleanupRateLimitStore(options);
+  }
   fresh.push(now);
   recentByKey.set(key, fresh);
   return {
