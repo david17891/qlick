@@ -36,6 +36,13 @@ interface Props {
    * Bucket del score ("cold"/"warm"/"hot"/"mql"). FIX 2026-07-06 r4.
    */
   qualification?: string | null;
+  /**
+   * FIX 2026-07-06 (Fase 3): SLA ALERTA si el lead está en etapa
+   * `new` o `contacted` con más de 48h sin contacto. El padre
+   * (page.tsx) computa este flag mirando `lead_interactions` y
+   * `updated_at` del lead.
+   */
+  slaOverdue?: boolean;
   /** Slot opcional para acciones (form, botones) debajo del contenido. */
   action?: React.ReactNode;
 }
@@ -50,8 +57,17 @@ export function PipelineCard({
   reviewedAt,
   score,
   qualification,
+  slaOverdue,
   action,
 }: Props) {
+  // FIX 2026-07-06 (Fase 3): HOT incluye tanto `score >= 60` como
+  // `qualification in ('hot','mql')`. Borde cálido para destacar
+  // visualmente.
+  const isHot =
+    (typeof score === "number" && score >= 60) ||
+    qualification === "hot" ||
+    qualification === "mql";
+
   const inner = (
     <>
       <p className="font-semibold text-sm text-ink truncate">{name}</p>
@@ -68,23 +84,36 @@ export function PipelineCard({
           <span className="text-[10px] text-ink-muted ml-auto">{date}</span>
         )}
       </div>
-      {/* FIX 2026-07-06 (audit G-15 r4): score + qualification badges
-          para que el admin sepa si vale la pena contactar al lead
-          sin abrir el drawer. Solo aparecen si los datos están
-          disponibles (lead con survey persistido). */}
-      {(typeof score === "number" || qualification) && (
+      {/* FIX 2026-07-06 (Fase 3): badges de inteligencia comercial.
+          HOT con borde cálido si calificación >= 60. SLA ALERTA si
+          el lead lleva >48h sin contacto. */}
+      {(isHot || slaOverdue || typeof score === "number" || qualification) && (
         <div className="flex flex-wrap gap-1 mt-1.5">
+          {isHot && (
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border border-orange-300 bg-orange-50 text-orange-700"
+              title="Lead caliente — vale la pena contactar hoy"
+            >
+              🔥 HOT
+            </span>
+          )}
+          {slaOverdue && (
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border border-rose-300 bg-rose-50 text-rose-700"
+              title="Más de 48h sin contacto"
+            >
+              ⚠️ SLA
+            </span>
+          )}
           {typeof score === "number" && (
             <Badge tone="brand">🎯 {score}</Badge>
           )}
-          {qualification && (
+          {qualification && !isHot && (
             <Badge
               tone={
-                qualification === "hot" || qualification === "mql"
-                  ? "success"
-                  : qualification === "warm"
-                    ? "warning"
-                    : "neutral"
+                qualification === "warm"
+                  ? "warning"
+                  : "neutral"
               }
             >
               {qualification.toUpperCase()}
@@ -101,8 +130,11 @@ export function PipelineCard({
     </>
   );
 
-  const className =
-    "block p-3 rounded-xl border border-brand-100 bg-white hover:border-brand-300 hover:shadow-sm transition";
+  const className = isHot
+    ? "block p-3 rounded-xl border-2 border-orange-300 bg-orange-50/30 hover:border-orange-400 hover:shadow-sm transition"
+    : slaOverdue
+    ? "block p-3 rounded-xl border-2 border-rose-200 bg-rose-50/20 hover:border-rose-300 hover:shadow-sm transition"
+    : "block p-3 rounded-xl border border-brand-100 bg-white hover:border-brand-300 hover:shadow-sm transition";
 
   if (href) {
     return (

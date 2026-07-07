@@ -11,11 +11,11 @@
  *   `demo: true` para que el cliente sepa que NO debe reemplazar el overview
  *   calculado sobre mocks.
  *
- * Métricas calculadas:
- * - totalLeads, newLeads, contactedLeads, paymentPending, enrolled,
- *   activeStudents, conversionRate → derivadas de `leads` (real).
- * - overdueFollowUps, upcomingAppointments → se devuelven en 0 con
- *   `demoFields: [...]` mientras esas features no migren a Supabase.
+ * Payload (Fase 3 — enriquecido):
+ * - overview: métricas clásicas (totalLeads, conversionRate, etc.).
+ * - intelligence: NUEVO. Incluye LVR (Lead Velocity Rate), SLA Overdue,
+ *   Heat Distribution (hot/warm/cold counts + hotPercentage) y los top 5
+ *   leads Hot Desatendidos para el panel "Acciones Recomendadas para Hoy".
  *
  * Dynamic: evitamos caché estático porque los leads cambian.
  */
@@ -24,6 +24,7 @@ import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { requireAdmin } from "@/lib/auth/session";
 import { getLeads } from "@/lib/crm/leads-server";
 import { calculateConversionRate } from "@/lib/crm/pipeline-utils";
+import { getCrmIntelligence } from "@/lib/crm/crm-intelligence";
 import type { LeadStatus, CRMOverview } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -64,7 +65,10 @@ export async function GET() {
   }
 
   try {
-    const leads = await getLeads();
+    const [leads, intelligence] = await Promise.all([
+      getLeads(),
+      getCrmIntelligence(),
+    ]);
 
     // Métricas reales (derivadas de leads reales).
     const realOverview: CRMOverview = {
@@ -84,6 +88,7 @@ export async function GET() {
       ok: true,
       demo: false,
       overview: realOverview,
+      intelligence,
       // Campos que el cliente debe mostrar como "demo" (no persistidos en BD real).
       demoFields: ["overdueFollowUps", "upcomingAppointments"] as const,
     });

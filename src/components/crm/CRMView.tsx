@@ -7,7 +7,8 @@ import type {
   LeadStatus,
   LeadSource,
   LeadIntent,
-  CRMOverview
+  CRMOverview,
+  Conversation
 } from "@/types";
 import { Container, Card, Badge, Button, Input, EmptyState } from "@/components/ui";
 import { StatCard } from "@/components/dashboard";
@@ -93,7 +94,11 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
   const [realLeadsError, setRealLeadsError] = useState<string | null>(null);
   const [realOverview, setRealOverview] = useState<CRMOverview | null>(null);
   const [realOverviewError, setRealOverviewError] = useState<string | null>(null);
+  // Inteligencia comercial (Fase 3): LVR, SLA Overdue, Heat Distribution,
+  // Hot Desatendidos. Misma forma que el endpoint /api/admin/crm/overview.
+  const [realIntelligence, setRealIntelligence] = useState<unknown | null>(null);
   const [realPendingTasks, setRealPendingTasks] = useState<PendingTasksSplitClient | null>(null);
+  const [realConversations, setRealConversations] = useState<Conversation[] | null>(null);
 
   // Deep-link desde /admin?leadId=... (usado por el funnel de eventos).
   // Cuando los leads reales terminen de cargar, abre el drawer del lead
@@ -150,6 +155,10 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
         if (!cancelled) {
           if (res.ok && data?.ok && data.overview) {
             setRealOverview(data.overview as CRMOverview);
+            // Fase 3: la inteligencia viene en el mismo payload.
+            if (data.intelligence) {
+              setRealIntelligence(data.intelligence);
+            }
           } else if (data?.demo) {
             // Servidor en modo demo: el cliente debe usar el overview mock.
             setRealOverview(null);
@@ -186,6 +195,37 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
     };
   }, [realMode, selectedLead]);
 
+  // Conversaciones reales: las que el bot WhatsApp intercambió + interacciones
+  // manuales del equipo comercial. Server-side lee de lead_whatsapp_conversations
+  // y lead_interactions. Refresca cada vez que cambia el lead seleccionado.
+  useEffect(() => {
+    if (!realMode) return;
+    let cancelled = false;
+    setRealConversations(null); // loading state
+    fetch("/api/admin/crm/conversations", { cache: "no-store" })
+      .then(async (res) => {
+        if (res.status === 401 || res.status === 403) {
+          if (!cancelled) setRealConversations([]);
+          return null;
+        }
+        const data = await res.json();
+        if (!cancelled) {
+          if (res.ok && data?.ok && Array.isArray(data.conversations)) {
+            setRealConversations(data.conversations as Conversation[]);
+          } else {
+            setRealConversations([]);
+          }
+        }
+        return null;
+      })
+      .catch(() => {
+        if (!cancelled) setRealConversations([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [realMode, selectedLead]);
+
   // Leads efectivos: reales si están cargados, null mientras cargan en modo real.
   const mockLeads = getLeads();
   const owners = getSalesOwners();
@@ -193,7 +233,9 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
   // demo si no. La carga inicial en realMode muestra el overview demo brevemente.
   const mockOverview = getCRMOverview();
   const overview = realMode ? (realOverview ?? mockOverview) : mockOverview;
-  const conversations = getConversations();
+  const conversations = realMode
+    ? (realConversations ?? [])
+    : getConversations();
   const upcomingTasks = getUpcomingCRMTasks();
   const overdueTasks = getOverdueCRMTasks();
   const appts = getAppointments();
@@ -271,6 +313,34 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
             <StatCard label="Conversión (simulada)" value={`${overview.conversionRate}%`} hint="ganados / activos" icon="📈" tone="accent" />
             <StatCard label="Seguimientos vencidos" value={overview.overdueFollowUps} hint="tareas atrasadas" icon="⚠️" tone="neutral" />
           </div>
+
+          {/* Fase 3 — Inteligencia comercial: LVR, SLA, Heat, Hot Desatendidos */}
+          {realIntelligence ? (
+            <IntelligenceCards intelligence={realIntelligence as {
+              lvrPercentage: number | null;
+              lvrCurrentWeek: number;
+              lvrPreviousWeek: number;
+              slaOverdueCount: number;
+              heat: { hot: number; warm: number; cold: number; total: number; hotPercentage: number };
+              hotDesatendidos: Array<{
+                id: string;
+                name: string;
+                score: number | null;
+                qualification: string | null;
+                status: string;
+                phone: string | null;
+                lastInteractionAt: string | null;
+                hoursSinceLastContact: number | null;
+              }>;
+            }} />
+          ) : (
+            <Card className="p-5">
+              <p className="text-sm text-ink-muted">
+                Métricas inteligentes (LVR, SLA, Heat) disponibles solo con Supabase
+                configurado en modo real.
+              </p>
+            </Card>
+          )}
 
           <Card className="p-5">
             <h3 className="font-bold text-ink mb-3">Citas próximas</h3>
@@ -1082,13 +1152,239 @@ function LeadsTable({
   );
 }
 
+function formatRelativeTime(iso: string | undefined): string {
+  if (!iso) return "";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const diffMs = Date.now() - then;
+  if (diffMs < 0) return "ahora";
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 1) return "hace segundos";
+  if (mins < 60) return `hace ${mins} min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `hace ${hours} h`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `hace ${days} d`;
+  return new Date(iso).toLocaleDateString();
+}
+
+/**
+ * IntelligenceCards — panel de métricas inteligentes (Fase 3).
+ *
+ * Renderiza:
+ * - 3 stat cards: LVR, SLA Overdue, Heat (hot%)
+ * - Panel "Acciones Recomendadas para Hoy" con los top 5 leads hot
+ *   desatendidos. Cada item tiene botón "💚 Abrir WhatsApp" (wa.me)
+ *   y "📅 Agendar Seguimiento".
+ */
+interface IntelligenceShape {
+  lvrPercentage: number | null;
+  lvrCurrentWeek: number;
+  lvrPreviousWeek: number;
+  slaOverdueCount: number;
+  heat: {
+    hot: number;
+    warm: number;
+    cold: number;
+    total: number;
+    hotPercentage: number;
+  };
+  hotDesatendidos: Array<{
+    id: string;
+    name: string;
+    score: number | null;
+    qualification: string | null;
+    status: string;
+    phone: string | null;
+    lastInteractionAt: string | null;
+    hoursSinceLastContact: number | null;
+  }>;
+}
+
+function IntelligenceCards({
+  intelligence,
+}: {
+  intelligence: IntelligenceShape;
+}) {
+  // Build wa.me link for a hot lead. Solo si tiene phone.
+  const waMeLink = (phone: string | null) => {
+    if (!phone) return null;
+    const digits = phone.replace(/[^\d]/g, "");
+    if (digits.length < 8) return null;
+    return `https://wa.me/${digits}`;
+  };
+
+  return (
+    <>
+      <div className="grid gap-4 sm:grid-cols-3">
+        {/* LVR */}
+        <Card className="p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase text-ink-muted">
+                Velocidad de Leads
+              </p>
+              <p className="text-3xl font-bold text-ink mt-1">
+                {intelligence.lvrPercentage === null
+                  ? "—"
+                  : `${intelligence.lvrPercentage >= 0 ? "+" : ""}${Math.round(intelligence.lvrPercentage)}%`}
+              </p>
+              <p className="text-[11px] text-ink-muted mt-1">
+                {intelligence.lvrCurrentWeek} esta semana · {intelligence.lvrPreviousWeek} la anterior
+              </p>
+            </div>
+            <span
+              className={
+                "text-2xl " +
+                (intelligence.lvrPercentage === null
+                  ? ""
+                  : intelligence.lvrPercentage >= 0
+                  ? "text-emerald-500"
+                  : "text-rose-500")
+              }
+            >
+              {intelligence.lvrPercentage === null
+                ? "📊"
+                : intelligence.lvrPercentage >= 0
+                ? "📈"
+                : "📉"}
+            </span>
+          </div>
+        </Card>
+
+        {/* SLA Overdue */}
+        <Card className="p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase text-ink-muted">
+                Leads Desatendidos (SLA &gt; 48h)
+              </p>
+              <p
+                className={
+                  "text-3xl font-bold mt-1 " +
+                  (intelligence.slaOverdueCount > 0
+                    ? "text-rose-600"
+                    : "text-ink")
+                }
+              >
+                {intelligence.slaOverdueCount}
+              </p>
+              <p className="text-[11px] text-ink-muted mt-1">
+                Sin contacto en 48h y sin tarea pendiente
+              </p>
+            </div>
+            <span className="text-2xl">⚠️</span>
+          </div>
+        </Card>
+
+        {/* Heat */}
+        <Card className="p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase text-ink-muted">
+                Calor del Pipeline
+              </p>
+              <p className="text-3xl font-bold text-orange-600 mt-1">
+                {intelligence.heat.total === 0
+                  ? "—"
+                  : `${Math.round(intelligence.heat.hotPercentage)}% hot`}
+              </p>
+              <p className="text-[11px] text-ink-muted mt-1">
+                🔥 {intelligence.heat.hot} · 🌡 {intelligence.heat.warm} · ❄️{" "}
+                {intelligence.heat.cold}
+              </p>
+            </div>
+            <span className="text-2xl">🌡️</span>
+          </div>
+        </Card>
+      </div>
+
+      {/* Acciones Recomendadas para Hoy — top 5 Hot Desatendidos */}
+      <Card className="p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-bold text-ink">
+            🎯 Acciones Recomendadas para Hoy
+          </h3>
+          <span className="text-xs text-ink-muted">
+            Top {Math.min(5, intelligence.hotDesatendidos.length)} leads Hot
+            desatendidos
+          </span>
+        </div>
+        {intelligence.hotDesatendidos.length === 0 ? (
+          <p className="text-sm text-ink-muted">
+            🎉 No hay leads Hot desatendidos. Todo bajo control.
+          </p>
+        ) : (
+          <ul className="space-y-3">
+            {intelligence.hotDesatendidos.map((l) => {
+              const link = waMeLink(l.phone);
+              return (
+                <li
+                  key={l.id}
+                  className="flex flex-wrap items-center gap-3 p-3 rounded-lg border border-orange-200 bg-orange-50/30"
+                >
+                  <div className="flex-1 min-w-[180px]">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-ink">{l.name}</span>
+                      {typeof l.score === "number" && (
+                        <span className="text-[10px] font-bold uppercase bg-orange-500 text-white px-1.5 py-0.5 rounded">
+                          🔥 {l.score}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-ink-muted mt-0.5">
+                      {l.status} ·{" "}
+                      {l.hoursSinceLastContact === null
+                        ? "sin contacto"
+                        : `último contacto hace ${Math.round(l.hoursSinceLastContact)} h`}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {link ? (
+                      <a
+                        href={link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-emerald-500 text-white text-xs font-semibold hover:bg-emerald-600 transition"
+                      >
+                        💚 Abrir WhatsApp
+                      </a>
+                    ) : (
+                      <span className="text-xs text-ink-muted">sin teléfono</span>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        // Hook para abrir el drawer del lead con foco en
+                        // crear tarea. Por ahora solo lo abre.
+                        window.dispatchEvent(
+                          new CustomEvent("qlick:schedule-followup", {
+                            detail: { leadId: l.id },
+                          }),
+                        );
+                      }}
+                    >
+                      📅 Agendar Seguimiento
+                    </Button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Card>
+    </>
+  );
+}
+
 function ConversationsView({
   conversations,
   leads,
   owners,
   onSelectLead
 }: {
-  conversations: ReturnType<typeof getConversations>;
+  conversations: Conversation[];
   leads: Lead[];
   owners: SalesOwner[];
   onSelectLead: (lead: Lead) => void;
@@ -1098,11 +1394,80 @@ function ConversationsView({
   );
   const active = conversations.find((c) => c.id === activeId) ?? conversations[0];
   const lead = active ? leads.find((l) => l.id === active.leadId) : undefined;
-  const suggestions = lead ? getAISuggestionsForLead(lead.id) : [];
+
+  // Sugerencias IA: si hay lead, intentar cargar las dinámicas vía API
+  // real (Fase 3). Si falla o Supabase no está, caer al mock fallback.
+  const [aiSuggestions, setAiSuggestions] = useState<Array<{
+    intent: string;
+    label: string;
+    angle: string;
+    message: string;
+    whatsappUrl: string;
+  }> | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const leadId = lead?.id;
+    if (!leadId) {
+      setAiSuggestions(null);
+      return;
+    }
+    let cancelled = false;
+    setAiError(null);
+    fetch(`/api/admin/crm/ai-suggestions?leadId=${encodeURIComponent(leadId)}`, {
+      cache: "no-store",
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!cancelled && data?.ok && Array.isArray(data.suggestions)) {
+          setAiSuggestions(data.suggestions);
+        } else if (!cancelled) {
+          setAiSuggestions([]);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setAiSuggestions([]);
+          setAiError(err instanceof Error ? err.message : String(err));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [lead?.id]);
+
+  // Resolver lista de sugerencias a renderizar.
+  // Si tenemos AI real, usamos eso. Si no, fallback al mock.
+  const realSuggestions = aiSuggestions ?? [];
+  const mockSuggestions = lead
+    ? getAISuggestionsForLead(lead.id).map((s) => ({
+        intent: s.type,
+        label: "Demo",
+        angle: "",
+        message: s.content,
+        whatsappUrl: "",
+      }))
+    : [];
+  const suggestions =
+    realSuggestions.length > 0
+      ? realSuggestions
+      : aiSuggestions === null
+      ? mockSuggestions
+      : [];
 
   if (!active) {
-    return <EmptyState title="Sin conversaciones" description="No hay conversaciones demo todavía." />;
+    return (
+      <EmptyState
+        title="Sin conversaciones"
+        description="Cuando un lead escriba por WhatsApp o se registre una interacción manual, aparecerá aquí."
+      />
+    );
   }
+
+  // Calcular tiempo desde el último mensaje (relativo, en español).
+  const lastMessage = active.messages[0];
+  const lastRelative = formatRelativeTime(lastMessage?.at);
 
   return (
     <div className="grid lg:grid-cols-3 gap-4">
@@ -1111,6 +1476,8 @@ function ConversationsView({
         <ul className="space-y-1">
           {conversations.map((c) => {
             const l = leads.find((x) => x.id === c.leadId);
+            const cLastMsg = c.messages[0];
+            const cLastRel = formatRelativeTime(cLastMsg?.at);
             return (
               <li key={c.id}>
                 <button
@@ -1124,10 +1491,10 @@ function ConversationsView({
                     <span className="font-semibold text-ink text-sm">
                       {l?.name ?? "Lead"}
                     </span>
-                    <Badge tone="success">mock</Badge>
+                    <span className="text-[10px] text-ink-muted">{cLastRel}</span>
                   </div>
                   <p className="text-xs text-ink-muted line-clamp-1">
-                    {c.summary ?? "Sin resumen"}
+                    {cLastMsg?.body ?? c.summary ?? "Sin mensajes"}
                   </p>
                 </button>
               </li>
@@ -1142,12 +1509,29 @@ function ConversationsView({
           <div>
             <p className="font-bold text-ink">{lead?.name ?? "Lead"}</p>
             <p className="text-xs text-ink-muted">
-              WhatsApp · {active.summary ?? ""}
+              {active.channel === "whatsapp" ? "WhatsApp" : active.channel}
+              {lastRelative ? ` · Último mensaje ${lastRelative}` : ""}
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Badge tone={active.status === "escalated" ? "danger" : "info"}>
-              {active.status}
+            <Badge
+              tone={
+                active.status === "waiting_reply"
+                  ? "warning"
+                  : active.status === "escalated"
+                  ? "danger"
+                  : active.status === "resolved"
+                  ? "neutral"
+                  : "info"
+              }
+            >
+              {active.status === "waiting_reply"
+                ? "Esperando respuesta"
+                : active.status === "open"
+                ? "Abierta"
+                : active.status === "resolved"
+                ? "Resuelta"
+                : "Escalada"}
             </Badge>
             {lead && (
               <Button size="sm" variant="outline" onClick={() => onSelectLead(lead)}>
@@ -1157,7 +1541,7 @@ function ConversationsView({
           </div>
         </div>
 
-        <div className="space-y-2 mb-4">
+        <div className="space-y-2 mb-4 max-h-[420px] overflow-y-auto">
           {active.messages.map((m) => (
             <div
               key={m.id}
@@ -1168,9 +1552,9 @@ function ConversationsView({
                   : "bg-brand-500 text-white ml-auto")
               }
             >
-              {m.aiSuggested && (
-                <span className="block text-[10px] uppercase opacity-80 mb-0.5">
-                  Sugerencia IA (demo)
+              {m.author && (
+                <span className="block text-[10px] uppercase opacity-70 mb-0.5">
+                  {m.author}
                 </span>
               )}
               {m.body}
@@ -1182,19 +1566,57 @@ function ConversationsView({
         </div>
 
         {suggestions.length > 0 && (
-          <div className="mt-auto rounded-xl border border-brand-100 p-3 bg-brand-50/30">
-            <p className="text-xs font-bold uppercase text-brand-600 mb-1">
-              Sugerencia IA (demo)
+          <div className="mt-auto space-y-2">
+            <p className="text-xs font-bold uppercase text-brand-600">
+              🤖 Sugerencias del Agente IA ({suggestions.length})
             </p>
-            <p className="text-sm text-ink-soft">{suggestions[0].content}</p>
-            <p className="text-xs text-ink-muted mt-1">
-              Revisa antes de enviar. El agente IA no envía mensajes automáticamente.
+            {suggestions.map((s, idx) => (
+              <div
+                key={idx}
+                className="rounded-xl border border-brand-100 p-3 bg-brand-50/30"
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-bold uppercase text-brand-700">
+                    {s.label}
+                  </span>
+                  {s.angle && (
+                    <span className="text-[10px] text-ink-muted italic">
+                      {s.angle}
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm text-ink-soft whitespace-pre-wrap">
+                  {s.message}
+                </p>
+                <div className="flex items-center gap-2 mt-2">
+                  {s.whatsappUrl ? (
+                    <a
+                      href={s.whatsappUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-emerald-500 text-white text-xs font-semibold hover:bg-emerald-600 transition"
+                    >
+                      💚 Enviar por WhatsApp
+                    </a>
+                  ) : (
+                    <span className="text-[10px] text-ink-muted">
+                      sin teléfono
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+            <p className="text-[10px] text-ink-muted pt-1">
+              Revisa antes de enviar. El agente IA no envía mensajes
+              automáticamente.
             </p>
+            {aiError && (
+              <p className="text-[10px] text-rose-600">
+                ⚠️ AI endpoint: {aiError} (mostrando sugerencias demo).
+              </p>
+            )}
           </div>
         )}
-        <p className="text-xs text-ink-muted mt-3">
-          Conversaciones demo. No hay conexión a WhatsApp Business API todavía.
-        </p>
       </Card>
     </div>
   );
