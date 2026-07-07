@@ -2547,3 +2547,24 @@ sustituir el ciclo con templates". Ejecuté 4 bloques sincrónicamente.
   - Captura de asistencia virtual = responder Sí a "¿Asististe?" en survey (trigger INSERT attendee con `source='zoom_export'` — pendiente en próxima sesión).
   - Constraint DB garantiza que no se puede crear evento virtual sin streaming_url.
 - **Trigger:** Análisis conjunto con David sobre modalidad mixta + conferencia 10 jul confirmada como virtual. Branch `feat/eventos-virtual-y-formato` creada. Commit `5a49b3c` con migration + types + server lib (validado: type-check + lint + 545/545 tests + build).
+
+---
+
+## 2026-07-07 ~01:10 · Cierre conversaciones v2: smoke E2E 6/6 verde + cierre administrativo
+
+- **Pregunta:** ¿el feature conversaciones v2 funciona end-to-end en producción, considerando el problema operativo con `vercel env pull` que rompió el `.env.local` y el secret rotado?
+- **Decisión:**
+  - Restaurar `SUPABASE_PROJECT_REF` y `SUPABASE_SECRET_KEY` desde `.env.local.bak-20260704-050148` (originales perdidos por pull que miente para sensitive vars).
+  - Rotar `DEV_ADMIN_SECRET` en Vercel dashboard y propagar via redeploy.
+  - Correr smoke E2E con creds fresh: login → pick lead → POST append manual → GET presencia → DELETE soft-archive → GET post-DELETE vacío.
+  - Cerrar ciclo con commit final de docs (PROJECT-LOG.md entry, sin tocar código).
+- **Razón:**
+  - DB-level smoke 6/6 verde ya validaba el path core (INSERT/UPDATE/SELECT con `deleted_at IS NULL`); faltaba validar el runtime E2E real con HTTP.
+  - El secret `qlick-secure-dev-bypass-2026-wer` que David tipeó en el modal de Rotate se autenticó contra Vercel production (login 200 OK) — confirma que la rotación funcionó y el feature de conversaciones v2 responde correctamente.
+  - Lead de prueba smoke archivado: `024e56fa-0a03-4209-b8c5-68446163c826` (rMmJBkrNrcNQuJXpXejkJj) con razón `smoke_test_mavis_2026_07_07_e2e_final`.
+- **Impacto:**
+  - Feature conversaciones v2 cerrado end-to-end. CRUD completo operativo en producción.
+  - Compliance LGPD/LFPDPPP respetado (rows preservados, soft-delete auditado).
+  - Bot engine intacto (política de aislamiento confirmada).
+  - 545/545 tests verde, type-check OK, lint OK, build OK.
+- **Trigger:** Cierre administrativo solicitado explícitamente por David después de 3 horas de fricción operativa con `.env.local` y `vercel env pull`.
