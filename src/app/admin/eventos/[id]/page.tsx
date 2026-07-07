@@ -17,6 +17,7 @@ import { formatDate, appBaseUrl } from "@/lib/utils";
 import { filterConfirmations, resolveConfirmationSource } from "@/lib/events/confirmation-filter";
 import { PipelineColumn } from "./_components/PipelineColumn";
 import { PipelineCard } from "./_components/PipelineCard";
+import { PipelineLeadsPromovidosBoard } from "./_components/PipelineLeadsPromovidosBoard";
 import {
   markSurveyReviewedAction,
   unmarkSurveyReviewedAction,
@@ -231,6 +232,38 @@ export default async function AdminEventoDetailPage({
   });
   /** Formatea un rate o devuelve "—" si es null (sin datos). */
   const fmtRate = (r: number | null): string => (r === null ? "—" : `${r}%`);
+
+  // FIX 2026-07-06 ~19:00 — datos pre-computados en server-side para el
+  // client board (PipelineLeadsPromovidosBoard). El waLink se calcula
+  // acá (no en el cliente) para no arrastrar helpers de WhatsApp al
+  // bundle del cliente. Se normaliza cada campo nullable con `?? null`
+  // para que el shape sea estable al cruzar el límite server→client.
+  // Se filtran los leads con `status='archived'` (que vienen de bulk
+  // archive y soft delete) para que `router.refresh()` post-archivado
+  // muestre el board limpio sin fantasmas. El tab "Leads promovidos"
+  // del modo "tabs" sigue mostrando TODOS (incluyendo archivados) por
+  // decisión de UX previa — ese contrato no cambia.
+  const pipelineLeadsData = leadsWithLinks
+    .filter(({ lead }) => lead.status !== "archived")
+    .map(({ lead, links }) => {
+    const outreachMessage = buildLeadOutreachMessage({
+      leadName: lead.name,
+      eventTitle: event.title,
+      commercialInterest: lead.courseOfInterest ?? undefined,
+    });
+    const waLink = buildDirectWhatsAppLink(lead.phone, outreachMessage);
+    return {
+      id: lead.id,
+      name: lead.name,
+      email: lead.email ?? null,
+      phone: lead.phone ?? null,
+      source: (links[0]?.linkType ?? lead.source) ?? null,
+      score: lead.score ?? null,
+      qualification: lead.qualification ?? null,
+      whatsappStatus: lead.whatsappStatus ?? null,
+      waLink: waLink ?? null,
+    };
+  });
 
   // Pills de tabs. Mismo patrón visual que `AdminView.tsx` (pills
   // redondos, activo lleno de brand, inactivos hover brand-50).
@@ -1257,7 +1290,14 @@ export default async function AdminEventoDetailPage({
                 )}
               </PipelineColumn>
 
-              {/* Columna 4: Leads promovidos */}
+              {/* Columna 4: Leads promovidos.
+                  FIX 2026-07-06 ~19:00 — el render de tarjetas se delega
+                  al client board `PipelineLeadsPromovidosBoard` para
+                  soportar selección múltiple + bulk archive. La data
+                  se pre-computa server-side arriba (`pipelineLeadsData`)
+                  con waLink serializado. La server action
+                  `markWhatsAppStatusAction` se pasa como prop (compatible
+                  porque el archivo _actions.ts tiene "use server"). */}
               <PipelineColumn
                 icon="🧲"
                 title="Leads promovidos"
@@ -1269,78 +1309,14 @@ export default async function AdminEventoDetailPage({
                     Aun sin leads
                   </p>
                 ) : (
-                  leadsWithLinks.map(({ lead, links }) => {
-                    // Sub-bloque C base: link wa.me al numero del LEAD.
-                    const message = buildLeadOutreachMessage({
-                      leadName: lead.name,
-                      eventTitle: event.title,
-                      commercialInterest: lead.courseOfInterest ?? undefined,
-                    });
-                    const waLink = buildDirectWhatsAppLink(lead.phone, message);
-                    const leadStatus = (lead.whatsappStatus ?? "no_contactado") as WhatsAppStatus;
-                    return (
-                      <PipelineCard
-                        key={lead.id}
-                        name={lead.name}
-                        email={lead.email}
-                        phone={lead.phone}
-                        source={links[0]?.linkType ?? lead.source}
-                        score={lead.score ?? null}
-                        qualification={lead.qualification ?? null}
-                        action={
-                          <div className="flex flex-col gap-1.5">
-                            <Badge tone={WHATSAPP_STATUS_TONE[leadStatus]}>
-                              💬 {WHATSAPP_STATUS_LABEL[leadStatus]}
-                            </Badge>
-                            <form
-                              action={markWhatsAppStatusAction.bind(null, null)}
-                              className="flex gap-1"
-                            >
-                              <input type="hidden" name="leadId" value={lead.id} />
-                              <input type="hidden" name="eventId" value={event.id} />
-                              <select
-                                name="newStatus"
-                                defaultValue={leadStatus}
-                                className="text-xs border border-brand-200 rounded-md px-1 py-0.5 bg-white flex-1 min-w-0"
-                              >
-                                {WHATSAPP_STATUSES.map((s) => (
-                                  <option key={s} value={s}>
-                                    {WHATSAPP_STATUS_LABEL[s]}
-                                  </option>
-                                ))}
-                              </select>
-                              <SubmitButton
-                                pendingLabel="..."
-                                className="text-[10px] px-1.5 py-0.5"
-                              >
-                                ✓
-                              </SubmitButton>
-                            </form>
-                            {waLink ? (
-                              <a
-                                href={waLink}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-500 text-white hover:bg-emerald-600 transition"
-                              >
-                                📱 WhatsApp
-                              </a>
-                            ) : (
-                              <p className="text-[10px] text-ink-muted text-center">
-                                sin telefono
-                              </p>
-                            )}
-                            <Link
-                              href={`/admin?tab=crm&leadId=${lead.id}`}
-                              className="text-[10px] text-brand-700 hover:underline text-center"
-                            >
-                              Ver en CRM →
-                            </Link>
-                          </div>
-                        }
-                      />
-                    );
-                  })
+                  <PipelineLeadsPromovidosBoard
+                    leads={pipelineLeadsData}
+                    markWhatsAppStatusAction={markWhatsAppStatusAction.bind(
+                      null,
+                      null,
+                    )}
+                    eventId={event.id}
+                  />
                 )}
               </PipelineColumn>
 

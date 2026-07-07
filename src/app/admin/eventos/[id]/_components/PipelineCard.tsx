@@ -11,6 +11,15 @@
 
 import { Badge } from "@/components/ui";
 
+interface SelectableProps {
+  /** ID único del item (lead.id, etc.). Se usa como key del state del padre. */
+  id: string;
+  /** Si está seleccionado actualmente. */
+  selected: boolean;
+  /** Toggle de selección. Lo llama el padre (board client component). */
+  onToggle: () => void;
+}
+
 interface Props {
   /** Nombre de la persona (puede ser "Sin nombre" si no hay dato). */
   name: string;
@@ -45,6 +54,13 @@ interface Props {
   slaOverdue?: boolean;
   /** Slot opcional para acciones (form, botones) debajo del contenido. */
   action?: React.ReactNode;
+  /**
+   * FIX 2026-07-06 ~19:00 — habilita modo selección múltiple en la
+   * columna. Cuando está definido, se renderiza un checkbox en la
+   * esquina superior derecha y se resalta el borde si está
+   * seleccionado. El padre (board cliente) controla el state.
+   */
+  selectable?: SelectableProps;
 }
 
 export function PipelineCard({
@@ -59,6 +75,7 @@ export function PipelineCard({
   qualification,
   slaOverdue,
   action,
+  selectable,
 }: Props) {
   // FIX 2026-07-06 (Fase 3): HOT incluye tanto `score >= 60` como
   // `qualification in ('hot','mql')`. Borde cálido para destacar
@@ -70,7 +87,30 @@ export function PipelineCard({
 
   const inner = (
     <>
-      <p className="font-semibold text-sm text-ink truncate">{name}</p>
+      {selectable && (
+        <div className="absolute top-2 right-2 z-10">
+          <label
+            className="inline-flex items-center justify-center w-7 h-7 rounded-md bg-white border border-brand-300 cursor-pointer shadow-sm hover:border-brand-500 transition"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <input
+              type="checkbox"
+              checked={selectable.selected}
+              onChange={selectable.onToggle}
+              aria-label={`Seleccionar ${name}`}
+              className="w-4 h-4 accent-brand-600 cursor-pointer"
+            />
+          </label>
+        </div>
+      )}
+      <p
+        className={
+          "font-semibold text-sm text-ink truncate " +
+          (selectable ? "pr-9" : "")
+        }
+      >
+        {name}
+      </p>
       {(email || phone) && (
         <p className="text-xs text-ink-muted truncate">
           {email && <span>{email}</span>}
@@ -130,11 +170,22 @@ export function PipelineCard({
     </>
   );
 
-  const className = isHot
-    ? "block p-3 rounded-xl border-2 border-orange-300 bg-orange-50/30 hover:border-orange-400 hover:shadow-sm transition"
-    : slaOverdue
-    ? "block p-3 rounded-xl border-2 border-rose-200 bg-rose-50/20 hover:border-rose-300 hover:shadow-sm transition"
-    : "block p-3 rounded-xl border border-brand-100 bg-white hover:border-brand-300 hover:shadow-sm transition";
+  // FIX 2026-07-06 ~19:00 — selección múltiple: borde resaltado en
+  // brand cuando la tarjeta está seleccionada (independiente de HOT/SLA).
+  let className: string;
+  if (selectable?.selected) {
+    className =
+      "relative block p-3 rounded-xl border-2 border-brand-500 bg-brand-50/40 shadow-md transition";
+  } else if (isHot) {
+    className =
+      "relative block p-3 rounded-xl border-2 border-orange-300 bg-orange-50/30 hover:border-orange-400 hover:shadow-sm transition";
+  } else if (slaOverdue) {
+    className =
+      "relative block p-3 rounded-xl border-2 border-rose-200 bg-rose-50/20 hover:border-rose-300 hover:shadow-sm transition";
+  } else {
+    className =
+      "relative block p-3 rounded-xl border border-brand-100 bg-white hover:border-brand-300 hover:shadow-sm transition";
+  }
 
   if (href) {
     return (
