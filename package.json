@@ -16,12 +16,14 @@
     "seed:demo": "node scripts/seed-demo.mjs",
     "seed:demo:reset": "node scripts/seed-demo.mjs --reset",
     "seed:demo:cleanup": "node scripts/seed-demo.mjs --cleanup",
+    "db:wipe": "node scripts/db-wipe.mjs",
     "smoke:audit": "node --import ./tests/loader-register.mjs --experimental-strip-types scratch/audit-edge-cases.mjs",
     "smoke:scenarios": "node --import ./tests/loader-register.mjs --experimental-strip-types scratch/simulate-scenarios.mjs",
     "smoke": "npm run test && npm run type-check && npm run lint && npm run smoke:scenarios && npm run smoke:audit"
   },
   "dependencies": {
     "@getbrevo/brevo": "^5.0.4",
+    "@stripe/stripe-js": "^9.9.0",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.108.2",
     "html5-qrcode": "^2.3.8",
@@ -29,6 +31,7 @@
     "qrcode": "^1.5.4",
     "react": "18.3.1",
     "react-dom": "18.3.1",
+    "stripe": "^22.3.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
