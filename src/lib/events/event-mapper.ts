@@ -55,6 +55,19 @@ export function mapEventRowToEvent(row: EventRow): Event {
     startsAt: row.starts_at,
     endsAt: row.ends_at ?? undefined,
     location: row.location ?? undefined,
+    // FIX 2026-07-07 (feat/eventos-virtual-y-formato): typegen queda stale
+    // hasta que David regenere con `npx supabase gen types`. Cast seguro
+    // siguiendo el patrón de `short_code` y `survey_config`.
+    format:
+      ((row as unknown as { format?: Event["format"] }).format as Event["format"]) ??
+      "in_person",
+    streamingUrl: (row as unknown as { streaming_url?: string | null })
+      .streaming_url ?? undefined,
+    streamingProvider: (row as unknown as {
+      streaming_provider?: Event["streamingProvider"];
+    }).streaming_provider as Event["streamingProvider"] | undefined,
+    streamingAccessNote: (row as unknown as { streaming_access_note?: string | null })
+      .streaming_access_note ?? undefined,
     coverImageUrl: row.cover_image_url ?? undefined,
     status: row.status,
     createdAt: row.created_at,

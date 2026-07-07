@@ -67,6 +67,14 @@ export interface CreateEventInput {
    * Si no se pasa, default a { personality: '', rules: [] }.
    */
   eventRules?: import("@/types/events").EventBotRules;
+  /**
+   * Modalidad del evento (migration 20260707000000). Default 'in_person'.
+   * Si format ∈ {virtual, hybrid}, streamingUrl es requerido (validado en DB).
+   */
+  format?: import("@/types/events").EventFormat;
+  streamingUrl?: string;
+  streamingProvider?: import("@/types/events").EventStreamingProvider;
+  streamingAccessNote?: string;
 }
 
 /** Input para editar un evento (admin). Todos los campos opcionales salvo los requeridos. */
@@ -78,6 +86,11 @@ export interface UpdateEventInput {
   location?: string | null;
   coverImageUrl?: string | null;
   eventRules?: import("@/types/events").EventBotRules | null;
+  /** Modalidad del evento. Si se cambia a virtual/hybrid, streamingUrl requerido. */
+  format?: import("@/types/events").EventFormat;
+  streamingUrl?: string | null;
+  streamingProvider?: import("@/types/events").EventStreamingProvider | null;
+  streamingAccessNote?: string | null;
 }
 
 /** Resultado de operaciones admin sobre eventos. */
@@ -344,7 +357,13 @@ export async function createEvent(
     location: input.location?.trim() || null,
     cover_image_url: input.coverImageUrl?.trim() || null,
     status: input.status ?? "draft",
-    event_rules: input.eventRules ?? { personality: "", rules: [] }
+    event_rules: input.eventRules ?? { personality: "", rules: [] },
+    // Streaming (migration 20260707000000). Solo se incluyen si vienen
+    // en el input — el default `in_person` lo aplica la DB.
+    format: input.format ?? "in_person",
+    streaming_url: input.streamingUrl?.trim() || null,
+    streaming_provider: input.streamingProvider ?? null,
+    streaming_access_note: input.streamingAccessNote?.trim() || null,
   };
   // Solo agregar short_code si el generador devolvió algo válido.
   if (shortCode) insertPayload.short_code = shortCode;
@@ -371,6 +390,10 @@ export async function createEvent(
       cover_image_url: input.coverImageUrl?.trim() || null,
       status: input.status ?? "draft",
       event_rules: input.eventRules ?? { personality: "", rules: [] },
+      format: input.format ?? "in_person",
+      streaming_url: input.streamingUrl?.trim() || null,
+      streaming_provider: input.streamingProvider ?? null,
+      streaming_access_note: input.streamingAccessNote?.trim() || null,
       short_code: retryCode
     };
     const retry = await supabase
@@ -454,6 +477,12 @@ export async function updateEvent(
     location?: string | null;
     cover_image_url?: string | null;
     event_rules?: unknown;
+    // Streaming (migration 20260707000000). Cast seguro hasta que
+    // David regenere el typegen con `npx supabase gen types`.
+    format?: unknown;
+    streaming_url?: string | null;
+    streaming_provider?: string | null;
+    streaming_access_note?: string | null;
   } = {};
   // Patch se construye arriba; al final hacemos `as never` para el .update().
   const changes: Record<string, { from: string | null; to: string | null }> = {};
@@ -488,6 +517,21 @@ export async function updateEvent(
         .filter((r) => r.length > 0);
       patch.event_rules = { personality, rules } as never;
     }
+  }
+  // Streaming (migration 20260707000000). Patch aditivo — solo aplica si
+  // el campo viene en el input. Validacion de constraint (streaming_url
+  // requerido si format != in_person) la hace la DB.
+  if (input.format !== undefined) {
+    patch.format = input.format;
+  }
+  if (input.streamingUrl !== undefined) {
+    patch.streaming_url = input.streamingUrl?.trim() || null;
+  }
+  if (input.streamingProvider !== undefined) {
+    patch.streaming_provider = input.streamingProvider ?? null;
+  }
+  if (input.streamingAccessNote !== undefined) {
+    patch.streaming_access_note = input.streamingAccessNote?.trim() || null;
   }
 
   if (Object.keys(patch).length === 0) {
@@ -565,6 +609,13 @@ export async function updateEvent(
       ends_at: nextRow.ends_at,
       location: nextRow.location,
       cover_image_url: nextRow.cover_image_url,
+      // Streaming (migration 20260707000000). Cast `as unknown` porque
+      // el typegen no los incluye todavia. La columna existe en DB.
+      format: (nextRow as unknown as { format?: string }).format ?? null,
+      streaming_url: (nextRow as unknown as { streaming_url?: string | null })
+        .streaming_url ?? null,
+      streaming_provider: (nextRow as unknown as { streaming_provider?: string | null })
+        .streaming_provider ?? null,
     },
   });
 
