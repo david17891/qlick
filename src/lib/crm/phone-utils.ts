@@ -58,6 +58,16 @@ export function normalizePhone(
     } else if (digits.length === 11 && digits.startsWith("1")) {
       // +1XXXXXXXXXX (formato US/Canada con 1) → NO es MX, devolvemos null
       normalized = null;
+    } else if (digits.length >= 8 && digits.length <= 15 && !digits.startsWith("1")) {
+      // FIX 2026-07-07 (whatsapp webhook international): aceptar números
+      // internacionales con + explícito (ej. Meta UK +44..., España +34...).
+      // Sin este fallback, los números no-MX quedaban en null y el bot los
+      // descartaba silenciosamente. La regla:
+      //   - El caller puso un `+` explícito (señal de intención internacional).
+      //   - 8-15 dígitos total (E.164: hasta 15).
+      //   - NO empieza con "1" (porque `+1` lo manejamos arriba como rechazo).
+      // Si llega algo más raro (demasiado corto/largo), devolvemos null.
+      normalized = `+${digits}`;
     }
   } else {
     // Sin +. Asumimos que es MX.
@@ -73,10 +83,6 @@ export function normalizePhone(
       // 521XXXXXXXXXX (legacy mobile con 1-prefix y country code)
       normalized = `+52${digits.slice(3)}`;
     }
-  }
-  
-  if (normalized === null && digits.length >= 7) {
-    normalized = `+${digits}`;
   }
 
   return normalized;
