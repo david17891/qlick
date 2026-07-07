@@ -9,19 +9,75 @@
 
 import type { Coupon, PaymentMethod, PaymentStatus } from "@/types";
 
+/* ------------------------------------------------------------------ */
+/* Polimorfismo: cursos / eventos / masterclass                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * `productRef` describe QUÉ se está comprando. Es un discriminated union
+ * por `kind` para que el compilador fuerce a los providers a manejar
+ * cada tipo explícitamente.
+ *
+ * Forma intención (Fase 1 de Stripe real): todo cobro pasa por
+ * `productRef`. Los campos legacy `courseId`/`courseSlug`/`amountMXN`
+ * se dejaron opcionales en `CreateCheckoutInput` solo para compatibilidad
+ * con el mock provider preexistente.
+ */
+export interface ProductRefBase {
+  /** Identificador estable (UUID en DB). */
+  id: string;
+  /** Slug público (para construir success/cancel URLs). */
+  slug: string;
+  /** Título legible para mostrar en checkout y metadata. */
+  title: string;
+  /** Precio en MXN. En Fase 1 single-price; precios múltiples son Fase 2. */
+  priceMXN: number;
+}
+
+export interface ProductRefCourse extends ProductRefBase {
+  kind: "course";
+}
+
+export interface ProductRefEvent extends ProductRefBase {
+  kind: "event";
+  /** Fecha ISO del evento (informativa para el checkout). */
+  startsAt?: string;
+}
+
+export interface ProductRefMasterclass extends ProductRefBase {
+  kind: "masterclass";
+  /** URL del video (informativa — el access real se entrega tras pago). */
+  videoUrl?: string;
+}
+
+export type ProductRef =
+  | ProductRefCourse
+  | ProductRefEvent
+  | ProductRefMasterclass;
+
 export interface CreateCheckoutInput {
-  courseId: string;
-  courseSlug: string;
-  courseTitle: string;
+  /** Lo que se compra (polimórfico). OBLIGATORIO en providers nuevos. */
+  productRef: ProductRef;
+  /** Identidad del comprador. */
   userId: string;
   userEmail: string;
-  amountMXN: number;
+  /** Método preferido (afecta payment_method_types en providers redirect). */
   method: PaymentMethod;
+  /** Cupón aplicado (opcional). Se procesa vía `applyCoupon()`. */
   coupon?: Coupon;
   /** URLs de retorno para flujos redirect (3DS, OXXO, SPEI). */
   successUrl?: string;
   cancelUrl?: string;
   pendingUrl?: string;
+
+  /* ----------------- LEGACY (mock provider) ---------------------- *
+   * Mantener como opcionales unicamente para que el mock provider
+   * pueda seguir funcionando con callers que pasen shape viejo.
+   * Eliminar cuando todos los callers se migren. */
+  courseId?: string;
+  courseSlug?: string;
+  courseTitle?: string;
+  amountMXN?: number;
 }
 
 export interface CheckoutResult {

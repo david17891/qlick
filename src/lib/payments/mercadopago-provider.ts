@@ -30,10 +30,8 @@ export const mercadopagoProvider: PaymentProvider = {
   supportedMethods: ["card", "oxxo", "spei", "wallet"],
 
   async createCheckout(input: CreateCheckoutInput): Promise<CheckoutResult> {
-    const { finalAmountMXN, discountMXN } = applyCoupon(
-      input.amountMXN,
-      input.coupon
-    );
+    const amount = input.productRef?.priceMXN ?? input.amountMXN ?? 0;
+    const { finalAmountMXN, discountMXN } = applyCoupon(amount, input.coupon);
 
     if (!process.env.MERCADOPAGO_ACCESS_TOKEN) {
       throw new Error(
@@ -46,10 +44,11 @@ export const mercadopagoProvider: PaymentProvider = {
     //   const result = await preference.create({ items, payer, back_urls, ... });
     //   return { flow: "redirect", redirectUrl: result.init_point, ... };
 
+    const productId = input.productRef?.id ?? input.courseId ?? "unknown";
     void input;
     return {
       paymentId: `mp_pending_${Date.now()}`,
-      externalReference: `MP-STUB-${input.courseId}`,
+      externalReference: `MP-STUB-${productId}`,
       status: "pending",
       flow: "redirect",
       redirectUrl: input.successUrl ?? "#",

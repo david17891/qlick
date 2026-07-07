@@ -31,10 +31,8 @@ export const conektaProvider: PaymentProvider = {
   supportedMethods: ["card", "oxxo", "spei", "wallet"],
 
   async createCheckout(input: CreateCheckoutInput): Promise<CheckoutResult> {
-    const { finalAmountMXN, discountMXN } = applyCoupon(
-      input.amountMXN,
-      input.coupon
-    );
+    const amount = input.productRef?.priceMXN ?? input.amountMXN ?? 0;
+    const { finalAmountMXN, discountMXN } = applyCoupon(amount, input.coupon);
 
     if (!process.env.CONEKTA_API_KEY) {
       throw new Error(
@@ -46,10 +44,11 @@ export const conektaProvider: PaymentProvider = {
     //   const conekta = new Conekta({ apiKey: process.env.CONEKTA_API_KEY });
     //   const order = await conekta.orders.create({ line_items, charges, ... });
 
+    const productId = input.productRef?.id ?? input.courseId ?? "unknown";
     void input;
     return {
       paymentId: `conekta_pending_${Date.now()}`,
-      externalReference: `CONEKTA-STUB-${input.courseId}`,
+      externalReference: `CONEKTA-STUB-${productId}`,
       status: "pending",
       flow: "redirect",
       redirectUrl: input.successUrl ?? "#",
