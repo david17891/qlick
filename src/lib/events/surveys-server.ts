@@ -267,6 +267,81 @@ export async function createSurvey(
     }
     // Silenciar import warning
     void calculateLeadScore;
+
+    // ────── Post-hook: attendance check (migration 20260707000000) ──────
+    // Si la survey tiene una pregunta con `isAttendanceCheck=true` y el
+    // usuario respondió la opción positiva (score > 0), marcamos
+    // `event_attendees.checked_in_at = now()` para confirmar asistencia
+    // real. Esto es el segundo proxy de asistencia virtual: el gate
+    // (click en SÍ, VOY) ya creó el attendee con checked_in_at=null;
+    // la survey lo confirma como realmente presente.
+    //
+    // Best-effort: si falla, la encuesta YA está persistida. El attendee
+    // queda con checked_in_at=null (sin confirmar), pero el survey ya
+    // capturó la respuesta del usuario.
+    if (input.surveyConfig) {
+      const attQ = input.surveyConfig.questions.find(
+        (q) => q.isAttendanceCheck === true,
+      );
+      if (attQ) {
+        const respValue = responses[attQ.id];
+        const respOption = attQ.options?.find((o) => o.id === respValue);
+        const attended = respOption && respOption.score > 0;
+        if (attended && (input.respondentEmail || input.phoneNormalized)) {
+          const supabase2 = createSupabaseAdminClient();
+          let query = supabase2
+            .from("event_attendees")
+            .update({ checked_in_at: new Date().toISOString() } as never)
+            .eq("event_id" as never, input.eventId);
+          // Match por email O phone (PostgREST or).
+          // Construimos dos queries separadas y usamos la primera que
+          // matchee (más simple que OR con PostgREST filters).
+          if (input.respondentEmail) {
+            const { error: emailErr } = await supabase2
+              .from("event_attendees")
+              .update({ checked_in_at: new Date().toISOString() } as never)
+              .eq("event_id" as never, input.eventId)
+              .eq("email" as never, input.respondentEmail.trim().toLowerCase())
+              .is("checked_in_at" as never, null);
+            if (emailErr) {
+              // eslint-disable-next-line no-console
+              console.warn("[surveys-server] attendance check email update falló", {
+                code: emailErr.code,
+              });
+            }
+          }
+          if (input.phoneNormalized) {
+            const { error: phoneErr } = await supabase2
+              .from("event_attendees")
+              .update({ checked_in_at: new Date().toISOString() } as never)
+              .eq("event_id" as never, input.eventId)
+              .eq("phone_normalized" as never, input.phoneNormalized)
+              .is("checked_in_at" as never, null);
+            if (phoneErr) {
+              // eslint-disable-next-line no-console
+              console.warn("[surveys-server] attendance check phone update falló", {
+                code: phoneErr.code,
+              });
+            }
+          }
+          // `query` lo construimos para el typecheck — la lógica real
+          // está arriba (email + phone separados). Marcamos `void` para
+          // silenciar lint.
+          void query;
+          // eslint-disable-next-line no-console
+          console.info(
+            "[surveys-server] attendance check: attendee confirmado via survey",
+            {
+              eventId: input.eventId,
+              questionId: attQ.id,
+              response: respValue,
+              email: input.respondentEmail ?? null,
+              phone: input.phoneNormalized ?? null,
+            },
+          );
+        }
+      }
+    }
   } catch (postHookErr) {
     // eslint-disable-next-line no-console
     console.warn(
