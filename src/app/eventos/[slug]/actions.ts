@@ -18,9 +18,68 @@
  *   recordatorios del evento (email/WhatsApp con info logística).
  */
 
+import { randomBytes } from "node:crypto";
 import { createConfirmation } from "@/lib/events/confirmations-server";
 import { getPublishedEventBySlug } from "@/lib/events/events-server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { checkSupabaseConfig } from "@/lib/supabase/health";
+import { normalizePhone } from "@/lib/crm/phone-utils";
+import { appBaseUrl } from "@/lib/utils";
 import type { EventConfirmationSource } from "@/types/events";
+
+/**
+ * Genera un QR token ad-hoc para una confirmación recién creada y devuelve
+ * la URL del gate virtual "SÍ, VOY". Se usa en eventos virtuales/híbridos
+ * para que el visitante pueda confirmar intención de entrar sin esperar
+ * el email.
+ *
+ * Si Supabase no está configurado, devuelve undefined (modo demo).
+ */
+async function generateGateUrlForConfirmation(args: {
+  eventId: string;
+  confirmationId: string;
+  attendeeName: string;
+  attendeeEmail: string | null;
+  attendeePhoneRaw: string | null;
+}): Promise<string | undefined> {
+  if (!checkSupabaseConfig().configured) return undefined;
+  const phoneNormalized = normalizePhone(args.attendeePhoneRaw ?? null);
+  if (!phoneNormalized) return undefined; // necesitamos phone para el token
+
+  const supabase = createSupabaseAdminClient();
+  const token = randomBytes(24).toString("base64url");
+
+  // expires_at: evento.ends_at + 6h, igual que generateEventQrTokens.
+  // Si el evento no tiene ends_at, +24h del starts_at. Si tampoco,
+  // +7 días del now.
+  const { data: eventRow } = await supabase
+    .from("events")
+    .select("ends_at, starts_at")
+    .eq("id", args.eventId)
+    .maybeSingle();
+  const ev = eventRow as unknown as { ends_at: string | null; starts_at: string } | null;
+  const baseIso = ev?.ends_at ?? ev?.starts_at ?? new Date().toISOString();
+  const expiresAt = new Date(new Date(baseIso).getTime() + 6 * 60 * 60 * 1000).toISOString();
+
+  const { error } = await supabase.from("event_qr_tokens" as never).insert({
+    event_id: args.eventId,
+    attendee_phone_normalized: phoneNormalized,
+    attendee_name: args.attendeeName,
+    attendee_email: args.attendeeEmail,
+    token,
+    expires_at: expiresAt,
+  } as never);
+
+  if (error) {
+    // eslint-disable-next-line no-console
+    console.error("[eventos/actions] generateGateUrlForConfirmation falló", {
+      code: error.code,
+    });
+    return undefined;
+  }
+
+  return `${appBaseUrl()}/api/event-gate/${encodeURIComponent(token)}/click`;
+}
 
 export interface SubmitEventRegistrationInput {
   /** Slug del evento (URL pública). El server action hace lookup del id. */
@@ -42,6 +101,13 @@ export interface SubmitEventRegistrationResult {
   persisted: boolean;
   /** Mensaje listo para mostrar al usuario. */
   note: string;
+  /**
+   * URL del gate virtual "SÍ, VOY" (`/api/event-gate/[token]/click`).
+   * Solo presente si el evento es virtual o híbrido Y el resultado es
+   * exitoso. El handler registra intent_attended y redirige al
+   * streaming_url del evento.
+   */
+  gateUrl?: string;
 }
 
 // Email regex laxo (mismo criterio que ContactForm). Validación real la hace
@@ -138,6 +204,22 @@ export async function submitEventRegistration(
     };
   }
 
+  // Si el evento es virtual o híbrido (migration 20260707000000),
+  // generamos un QR token ad-hoc para que el visitante pueda usar el
+  // gate "SÍ, VOY" desde la página pública (sin esperar el email).
+  // El mismo token sirve para el check-in presencial si después
+  // decides ir físicamente (caso híbrido).
+  let gateUrl: string | undefined;
+  if (event.format !== "in_person" && event.streamingUrl) {
+    gateUrl = await generateGateUrlForConfirmation({
+      eventId: event.id,
+      confirmationId: result.confirmation?.id ?? "",
+      attendeeName: name,
+      attendeeEmail: email ?? null,
+      attendeePhoneRaw: phone ?? null,
+    });
+  }
+
   // created=false → ya estaba registrada (dedup atómico por email/phone).
   // Lo tratamos como éxito con copy distinto: no la "molestamos" con otro
   // email de bienvenida, pero sí confirmamos que sigue vigente.
@@ -148,5 +230,6 @@ export async function submitEventRegistration(
     note: result.created
       ? "¡Listo! Confirmamos tu asistencia. Te enviaremos los detalles antes del evento."
       : "Ya estás registrada en este evento. Te esperamos.",
+    gateUrl,
   };
 }
