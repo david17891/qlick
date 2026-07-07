@@ -303,9 +303,11 @@ export async function loadActiveEventContext(
     // FIX 2026-07-05 (sesión David, "ya estás registrado" con nombre duplicado):
     // incluimos `short_code` (4 chars base32) en el SELECT para que el bot
     // pueda desambiguar eventos por código único, no por título.
+    // FIX 2026-07-07: typegen regenerado, ya no necesitamos `from("events" as never)`
+    // ni el cast inline del row — todo infiere directo del Row type.
     const { data, error } = slug
       ? await supabase
-          .from("events" as never)
+          .from("events")
           .select(
             "id, slug, short_code, title, description, starts_at, ends_at, location, status, requires_name, event_rules, format, streaming_url, streaming_provider, streaming_access_note"
           )
@@ -314,7 +316,7 @@ export async function loadActiveEventContext(
           .limit(1)
           .maybeSingle()
       : await supabase
-          .from("events" as never)
+          .from("events")
           .select(
             "id, slug, short_code, title, description, starts_at, ends_at, location, status, requires_name, event_rules, format, streaming_url, streaming_provider, streaming_access_note"
           )
@@ -327,7 +329,7 @@ export async function loadActiveEventContext(
       return fallbackFromEnv();
     }
 
-    const evt = data as {
+    const evt = data as unknown as {
       id: string;
       slug: string;
       short_code?: string | null;
@@ -338,11 +340,15 @@ export async function loadActiveEventContext(
       location: string | null;
       requires_name?: boolean;
       event_rules?: unknown;
-      // Streaming (migration 20260707000000). Cast `as never` por typegen
-      // stale, pero las columnas ya existen en DB.
-      format?: string | null;
+      // Streaming (migration 20260707000000).
+      format?: "in_person" | "virtual" | "hybrid" | null;
       streaming_url?: string | null;
-      streaming_provider?: string | null;
+      streaming_provider?:
+        | "youtube_live"
+        | "facebook_live"
+        | "zoom"
+        | "other"
+        | null;
       streaming_access_note?: string | null;
     };
 
@@ -363,7 +369,7 @@ export async function loadActiveEventContext(
     return {
       id: evt.id,
       slug: evt.slug,
-      shortCode: (evt.short_code ?? null) as string | null,
+      shortCode: evt.short_code ?? null,
       title: evt.title,
       description: evt.description,
       startsAt: new Date(evt.starts_at),
@@ -377,16 +383,10 @@ export async function loadActiveEventContext(
       // Solo false si la columna esta explicitamente en false.
       requiresName: evt.requires_name !== false,
       eventRules,
-      // Streaming (migration 20260707000000). Defaults seguros para
-      // legacy: in_person si la columna es null (eventos previos).
-      format: (evt.format ?? "in_person") as "in_person" | "virtual" | "hybrid",
+      // Streaming (migration 20260707000000).
+      format: evt.format ?? "in_person",
       streamingUrl: evt.streaming_url ?? null,
-      streamingProvider: (evt.streaming_provider ?? null) as
-        | "youtube_live"
-        | "facebook_live"
-        | "zoom"
-        | "other"
-        | null,
+      streamingProvider: evt.streaming_provider ?? null,
       streamingAccessNote: evt.streaming_access_note ?? null,
     };
   } catch {
@@ -420,10 +420,11 @@ export async function loadAllActiveEvents(): Promise<ActiveEventContext[]> {
   }
 
   try {
+    // FIX 2026-07-07: typegen regenerado, sin `as never` ni casts inline.
     const { data, error } = await supabase
-      .from("events" as never)
+      .from("events")
       .select(
-        "id, slug, short_code, title, description, starts_at, ends_at, location, status, requires_name, event_rules"
+        "id, slug, short_code, title, description, starts_at, ends_at, location, status, requires_name, event_rules, format, streaming_url, streaming_provider, streaming_access_note"
       )
       .eq("status", "published")
       .order("starts_at", { ascending: true });
@@ -433,7 +434,7 @@ export async function loadAllActiveEvents(): Promise<ActiveEventContext[]> {
     }
 
     const { normalizeEventRules } = await import("../events/event-mapper");
-    return (data as Array<{
+    type Row = {
       id: string;
       slug: string;
       short_code?: string | null;
@@ -444,12 +445,17 @@ export async function loadAllActiveEvents(): Promise<ActiveEventContext[]> {
       location: string | null;
       requires_name?: boolean;
       event_rules?: unknown;
-      // Streaming (migration 20260707000000).
-      format?: string | null;
+      format?: "in_person" | "virtual" | "hybrid" | null;
       streaming_url?: string | null;
-      streaming_provider?: string | null;
+      streaming_provider?:
+        | "youtube_live"
+        | "facebook_live"
+        | "zoom"
+        | "other"
+        | null;
       streaming_access_note?: string | null;
-    }>).map((evt) => {
+    };
+    return (data as unknown as Row[]).map((evt) => {
       const humanStartsAt = formatHumanDate(evt.starts_at);
       const humanDuration = formatHumanDuration(evt.starts_at, evt.ends_at);
       const location = evt.location?.trim() || "Por confirmar";
@@ -465,7 +471,7 @@ export async function loadAllActiveEvents(): Promise<ActiveEventContext[]> {
       return {
         id: evt.id,
         slug: evt.slug,
-        shortCode: (evt.short_code ?? null) as string | null,
+        shortCode: evt.short_code ?? null,
         title: evt.title,
         description: evt.description,
         startsAt: new Date(evt.starts_at),
@@ -475,19 +481,12 @@ export async function loadAllActiveEvents(): Promise<ActiveEventContext[]> {
         humanDuration,
         promptBlock,
         source: "db" as const,
-        // FIX 2026-07-06: default true si la columna es null/undefined.
         requiresName: evt.requires_name !== false,
-        // Streaming (migration 20260707000000).
-        format: (evt.format ?? "in_person") as "in_person" | "virtual" | "hybrid",
+        format: evt.format ?? "in_person",
         streamingUrl: evt.streaming_url ?? null,
-        streamingProvider: (evt.streaming_provider ?? null) as
-          | "youtube_live"
-          | "facebook_live"
-          | "zoom"
-          | "other"
-          | null,
+        streamingProvider: evt.streaming_provider ?? null,
         streamingAccessNote: evt.streaming_access_note ?? null,
-        eventRules
+        eventRules,
       };
     });
   } catch {

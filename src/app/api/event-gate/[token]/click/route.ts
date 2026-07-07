@@ -90,10 +90,13 @@ export async function GET(
     );
   }
 
-  const event = eventRow as unknown as {
+  // FIX 2026-07-07: typegen regenerado, formato infiere directo del Row.
+  // El cast residual es para narrowed type en este punto (TS no propaga
+  // el null check via destructure en una sola expresión).
+  const event = eventRow as {
     id: string;
     slug: string;
-    format: string;
+    format: "in_person" | "virtual" | "hybrid";
     streaming_url: string | null;
   };
 
@@ -123,13 +126,18 @@ export async function GET(
   // createAttendee existente que hace UPSERT por (event_id, email).
   // Si email es null, el UPSERT inserta sin conflicto (Postgres permite
   // múltiples NULLs en UNIQUE constraint).
+  //
+  // Migration 20260707090000: checked_in_at ahora es nullable sin default,
+  // así que para eventos virtuales el gate crea attendee SIN timestamp
+  // de check-in (el gate solo es intent_attended). La survey Q0 lo setea
+  // después si el usuario responde Sí.
   const result = await createAttendee({
     eventId: event.id,
     name: row.attendee_name,
     email: row.attendee_email,
     phoneNormalized: row.attendee_phone_normalized,
     source: "zoom_export",
-    // checkedInAt queda null hasta que confirmen con la survey post-evento.
+    checkedInAt: null, // explicito: gate no es check-in confirmado
   });
 
   if (!result.ok) {

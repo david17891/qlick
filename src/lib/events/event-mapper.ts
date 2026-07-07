@@ -45,44 +45,24 @@ export function mapEventRowToEvent(row: EventRow): Event {
   return {
     id: row.id,
     slug: row.slug,
-    // FIX 2026-07-05 (sesión David, ya-esta-registrado por nombre duplicado):
-    // `short_code` agregado en migration 20260705120000. El typegen puede no
-    // incluirlo todavía (se regenera con `npx supabase gen types`); casteamos
-    // con `as never` para no romper builds mientras el typegen queda stale.
-    shortCode: (row as unknown as { short_code?: string | null }).short_code ?? undefined,
+    shortCode: row.short_code ?? undefined,
     title: row.title,
     description: row.description ?? undefined,
     startsAt: row.starts_at,
     endsAt: row.ends_at ?? undefined,
     location: row.location ?? undefined,
-    // FIX 2026-07-07 (feat/eventos-virtual-y-formato): typegen queda stale
-    // hasta que David regenere con `npx supabase gen types`. Cast seguro
-    // siguiendo el patrón de `short_code` y `survey_config`.
-    format:
-      ((row as unknown as { format?: Event["format"] }).format as Event["format"]) ??
-      "in_person",
-    streamingUrl: (row as unknown as { streaming_url?: string | null })
-      .streaming_url ?? undefined,
-    streamingProvider: (row as unknown as {
-      streaming_provider?: Event["streamingProvider"];
-    }).streaming_provider as Event["streamingProvider"] | undefined,
-    streamingAccessNote: (row as unknown as { streaming_access_note?: string | null })
-      .streaming_access_note ?? undefined,
+    // Streaming (migration 20260707000000). Typegen regenerado 2026-07-07,
+    // columnas disponibles nativamente en row.
+    format: row.format ?? "in_person",
+    streamingUrl: row.streaming_url ?? undefined,
+    streamingProvider: row.streaming_provider ?? undefined,
+    streamingAccessNote: row.streaming_access_note ?? undefined,
     coverImageUrl: row.cover_image_url ?? undefined,
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     eventRules: normalizeEventRules(row.event_rules),
-    // FIX 2026-07-05 (feat/funnel-dynamic-surveys-crm, commit 3): el typegen
-    // puede no incluir `survey_config` todavía (migration 20260705220000).
-    // Casteamos con `as never` para no romper builds mientras el typegen
-    // queda stale. Cuando David regenere el typegen, este cast se quita.
-    surveyConfig: resolveSurveyConfig(
-      (row as unknown as { survey_config?: unknown }).survey_config,
-      // Migration 20260707000000: pasamos format para que el resolver
-      // elija el template correcto (con/sin pregunta de asistencia).
-      (row as unknown as { format?: Event["format"] }).format as Event["format"],
-    )
+    surveyConfig: resolveSurveyConfig(row.survey_config, row.format),
   };
 }
 
@@ -131,7 +111,7 @@ export function mapEventAttendeeRowToEventAttendee(
     name: row.name ?? undefined,
     email: row.email ?? undefined,
     phoneNormalized: row.phone_normalized ?? undefined,
-    checkedInAt: row.checked_in_at,
+    checkedInAt: row.checked_in_at ?? undefined,
     checkedInBy: row.checked_in_by ?? undefined,
     source: row.source,
     importBatchId: row.import_batch_id ?? undefined,

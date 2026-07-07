@@ -609,13 +609,10 @@ export async function updateEvent(
       ends_at: nextRow.ends_at,
       location: nextRow.location,
       cover_image_url: nextRow.cover_image_url,
-      // Streaming (migration 20260707000000). Cast `as unknown` porque
-      // el typegen no los incluye todavia. La columna existe en DB.
-      format: (nextRow as unknown as { format?: string }).format ?? null,
-      streaming_url: (nextRow as unknown as { streaming_url?: string | null })
-        .streaming_url ?? null,
-      streaming_provider: (nextRow as unknown as { streaming_provider?: string | null })
-        .streaming_provider ?? null,
+      // Streaming (migration 20260707000000). Typegen regenerado.
+      format: nextRow.format ?? null,
+      streaming_url: nextRow.streaming_url ?? null,
+      streaming_provider: nextRow.streaming_provider ?? null,
     },
   });
 
@@ -926,6 +923,7 @@ export async function cloneEvent(
     ? ` (Copia ${slugSuffixMatch[1]})`
     : " (Copia)";
   const newTitle = `${source.title}${titleSuffix}`;
+  const newShortCode = generateShortCode();
 
   // 4. Insertar el clon.
   const { data: insertData, error: insertErr } = await supabase
@@ -939,6 +937,7 @@ export async function cloneEvent(
       location: source.location,
       cover_image_url: source.cover_image_url,
       status: "draft", // forzado — el clon debe revisarse antes de publicar
+      short_code: newShortCode,
     })
     .select("*")
     .single();

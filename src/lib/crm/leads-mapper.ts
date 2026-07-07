@@ -63,7 +63,7 @@ export function mapLeadRowToLead(row: LeadRow): Lead {
     email: row.email,
     phone: row.phone ?? undefined,
     courseOfInterest: row.course_of_interest ?? undefined,
-    status: row.status,
+    status: row.status as LeadStatus,
     source: row.source,
     intent: row.intent,
     ownerId: row.owner_id ?? undefined,

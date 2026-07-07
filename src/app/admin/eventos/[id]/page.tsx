@@ -825,7 +825,7 @@ export default async function AdminEventoDetailPage({
                       )}
                     </td>
                     <td className="px-5 py-3 text-ink-muted text-xs">
-                      {formatDate(a.checkedInAt)}
+                      {a.checkedInAt ? formatDate(a.checkedInAt) : "—"}
                       {a.checkedInBy && (
                         <span className="text-ink-muted">
                           {" "}por {a.checkedInBy}
@@ -1241,7 +1241,7 @@ export default async function AdminEventoDetailPage({
                       email={a.email}
                       phone={a.phoneNormalized}
                       source={a.source}
-                      date={formatDate(a.checkedInAt)}
+                      date={a.checkedInAt ? formatDate(a.checkedInAt) : null}
                     />
                   ))
                 )}

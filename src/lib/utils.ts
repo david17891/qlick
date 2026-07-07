@@ -66,7 +66,8 @@ export function appBaseUrl(): string {
  * client (timezone del browser). Sin esto, fechas cerca de medianoche
  * UTC se renderizan distinto en server vs client → React error #425.
  */
-export function formatDate(iso: string): string {
+export function formatDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
   try {
     return new Date(iso).toLocaleDateString("es-MX", {
       day: "numeric",

@@ -113,6 +113,14 @@ dev-*.log
 
 # --- Artefactos de presentaciones a socios (no van al repo) ---
 /junta-socios-*
+
+# --- Scratch / tmp locales de sesiones de auditoría o experimentación ---
+# `scratch/` contiene scripts one-shot (audits, parches, smoke tests) que se
+# regeneran fácil desde la sesión; no aportan al producto ni a los docs.
+# `.tmp/` queda de comandos que escupen archivos sueltos (estilo copy-paste
+# de headers, dumps intermedios). Ambos son ruido local.
+/scratch/
+/.tmp/
 # --- Scripts temporales generados por sesiones Mavis (cookies, evals, etc.) ---
 # Patr+�n: archivos en scripts/ que arrancan con tmp- (cookies, login JSON, etc.).
 /scripts/tmp-*.json

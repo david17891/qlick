@@ -21,6 +21,7 @@ export type LeadStatus =
   | "new"
   | "contacted"
   | "interested"
+  | "qualified"
   | "info_requested"
   | "payment_pending"
   | "enrolled"

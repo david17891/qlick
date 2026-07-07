@@ -39,6 +39,13 @@ export interface CreateAttendeeInput {
   phoneNormalized?: string | null;
   source?: EventAttendeeSource;
   importBatchId?: string | null;
+  /**
+   * Migration 20260707090000: checked_in_at es nullable. Por default
+   * NULL (no asumimos check-in). Para check-in presencial, el caller
+   * pasa `new Date().toISOString()`. Para virtual/hybrid via gate,
+   * el caller pasa null explícito.
+   */
+  checkedInAt?: string | null;
   checkedInBy?: string | null;
 }
 
@@ -133,6 +140,9 @@ export async function createAttendee(
 
   const supabase = createSupabaseAdminClient();
   // UPSERT con ignore: si ya existe (UNIQUE por event_id + email), no inserta.
+  // Migration 20260707090000: checked_in_at ahora es nullable. Si el caller
+  // pasa checkedInAt explicito (gate virtual = null, check-in = Date.now()),
+  // lo respetamos. Si no, dejamos null (no se asume nada).
   const { data, error } = await supabase
     .from("event_attendees")
     .upsert(
@@ -144,6 +154,7 @@ export async function createAttendee(
         phone_normalized: phoneNormalized,
         source: input.source ?? "check_in",
         import_batch_id: input.importBatchId ?? null,
+        checked_in_at: input.checkedInAt ?? null,
         checked_in_by: input.checkedInBy ?? null,
       },
       { onConflict: "event_id,email", ignoreDuplicates: true },

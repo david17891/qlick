@@ -314,7 +314,15 @@ export interface EventAttendee {
   name?: string;
   email?: string;
   phoneNormalized?: string;
-  checkedInAt: string;
+  /**
+   * Timestamp del check-in real. NULL hasta que (a) el staff escanea
+   * el QR en puerta, o (b) el usuario confirma asistencia via survey
+   * Q0. Para el flujo virtual, queda NULL entre el click del gate y
+   * la confirmación de la survey.
+   *
+   * Migration 20260707090000: la columna es nullable.
+   */
+  checkedInAt?: string;
   /** Email del admin que marcó (audit). */
   checkedInBy?: string;
   source: EventAttendeeSource;

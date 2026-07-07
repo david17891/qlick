@@ -26,7 +26,8 @@ export const leadStatusLabel: Record<LeadStatus, string> = {
   event_attended: "Asistió al evento",
   survey_completed: "Encuesta completada",
   lost: "Perdido",
-  archived: "Archivado"
+  archived: "Archivado",
+  qualified: "Calificado"
 };
 
 export const leadSourceLabel: Record<LeadSource, string> = {
@@ -68,7 +69,8 @@ export const statusTone: Record<
   event_attended: "success",
   survey_completed: "success",
   lost: "danger",
-  archived: "neutral"
+  archived: "neutral",
+  qualified: "brand"
 };
 
 /* --------------------- Qualification (post-survey) --------------------- */
