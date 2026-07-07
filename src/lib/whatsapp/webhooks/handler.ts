@@ -48,6 +48,43 @@ export function handleWebhookPayload(payload: unknown): WebhookHandleResult {
                 button_reply?: { id?: string; title?: string };
                 list_reply?: { id?: string; title?: string; description?: string };
               };
+              // FIX 2026-07-07 (whatsapp webhook): extraer también image,
+              // document y audio. Antes se descartaban y solo persistíamos
+              // el `type`, perdiendo el caption del lead (el "código" que
+              // llegó como foto) y el media_id (para luego descargar el
+              // archivo desde Meta). Ver
+              // src/lib/whatsapp/webhooks/types.ts para el shape.
+              image?: {
+                id?: string;
+                mime_type?: string;
+                sha256?: string;
+                caption?: string;
+              };
+              document?: {
+                id?: string;
+                mime_type?: string;
+                sha256?: string;
+                filename?: string;
+                caption?: string;
+              };
+              audio?: {
+                id?: string;
+                mime_type?: string;
+                sha256?: string;
+                voice?: boolean;
+              };
+              video?: {
+                id?: string;
+                mime_type?: string;
+                sha256?: string;
+                caption?: string;
+              };
+              sticker?: {
+                id?: string;
+                mime_type?: string;
+                sha256?: string;
+                animated?: boolean;
+              };
             }>;
             contacts?: Array<{
               wa_id?: string;
@@ -75,11 +112,45 @@ export function handleWebhookPayload(payload: unknown): WebhookHandleResult {
             buttonId = msg.interactive?.list_reply?.id;
             buttonTitle = msg.interactive?.list_reply?.title;
           }
-          // El body es el título del botón/fila (lo que el usuario "dijo").
+          // El body es: text plano, o título del botón/fila, o caption del
+          // adjunto (image/document/video). El caption es texto real del
+          // lead y debe ser buscable → va a `body`.
           const text =
             msg.text?.body ??
             msg.interactive?.button_reply?.title ??
-            msg.interactive?.list_reply?.title;
+            msg.interactive?.list_reply?.title ??
+            msg.image?.caption ??
+            msg.document?.caption ??
+            msg.video?.caption;
+
+          // FIX 2026-07-07: extraer sub-shapes para image/document/audio/
+          // video/sticker. Solo construimos el sub-shape si Meta mandó al
+          // menos el `id` (sin id no hay nada útil que persistir).
+          const image = msg.image?.id
+            ? {
+                id: msg.image.id,
+                mimeType: msg.image.mime_type,
+                sha256: msg.image.sha256,
+                caption: msg.image.caption,
+              }
+            : undefined;
+          const document = msg.document?.id
+            ? {
+                id: msg.document.id,
+                mimeType: msg.document.mime_type,
+                sha256: msg.document.sha256,
+                filename: msg.document.filename,
+                caption: msg.document.caption,
+              }
+            : undefined;
+          const audio = msg.audio?.id
+            ? {
+                id: msg.audio.id,
+                mimeType: msg.audio.mime_type,
+                sha256: msg.audio.sha256,
+                voice: msg.audio.voice,
+              }
+            : undefined;
 
           // FIX 2026-07-04 (auditoria nocturna, outbound idempotency):
           // Si Meta omite el wamid (msg.id), NO sintetizamos "unknown".
@@ -99,7 +170,10 @@ export function handleWebhookPayload(payload: unknown): WebhookHandleResult {
             type: (msg.type as IncomingWhatsAppMessage["type"]) ?? "unknown",
             text,
             buttonId,
-            buttonTitle
+            buttonTitle,
+            image,
+            document,
+            audio,
           });
         }
       }

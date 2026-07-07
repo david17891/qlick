@@ -41,6 +41,40 @@ interface WhatsAppConvRow {
   created_at: string;
 }
 
+/**
+ * Extrae un placeholder legible cuando `body` viene vacío (ej. el lead
+ * mandó una imagen sin caption, o un audio). Devuelve algo tipo
+ * "📷 Imagen" o "🎤 Audio (nota de voz)" para que el admin tenga contexto.
+ * FIX 2026-07-07: antes body=null → burbuja vacía, parecía un bug.
+ */
+function placeholderForMessage(
+  messageType: string,
+  metadata: unknown,
+): string | null {
+  switch (messageType) {
+    case "image": {
+      // Si hay filename en metadata.image, lo agregamos.
+      const m = metadata as { image?: { filename?: string } } | null;
+      return m?.image?.filename ? `📷 ${m.image.filename}` : "📷 Imagen";
+    }
+    case "document": {
+      const m = metadata as { document?: { filename?: string } } | null;
+      const fn = m?.document?.filename;
+      return fn ? `📄 ${fn}` : "📄 Documento";
+    }
+    case "audio": {
+      const m = metadata as { audio?: { voice?: boolean } } | null;
+      return m?.audio?.voice ? "🎤 Nota de voz" : "🎤 Audio";
+    }
+    case "video":
+      return "🎬 Video";
+    case "sticker":
+      return "🎭 Sticker";
+    default:
+      return null;
+  }
+}
+
 interface LeadInteractionRow {
   id: string;
   lead_id: string;
@@ -78,12 +112,18 @@ function inferStatus(lastDir: "inbound" | "outbound" | "system" | null, lastAt: 
 }
 
 function whatsappRowToMessage(row: WhatsAppConvRow): ConversationMessage {
+  // FIX 2026-07-07: si body está vacío (ej. imagen sin caption), generar
+  // un placeholder con icono + filename según message_type para que la
+  // burbuja no se vea vacía. Si body tiene texto (caption, texto, botón),
+  // se usa tal cual.
+  const body = row.body ?? placeholderForMessage(row.message_type, row.metadata) ?? "";
   return {
     id: row.id,
     conversationId: row.lead_id ?? row.phone_normalized,
     direction: row.direction,
-    body: row.body ?? "",
+    body,
     author: row.direction === "inbound" ? "Lead" : "Qlick",
+    messageType: row.message_type,
     aiSuggested: false,
     at: row.created_at,
   };
@@ -96,6 +136,7 @@ function interactionRowToMessage(row: LeadInteractionRow): ConversationMessage {
     direction: row.direction === "system" ? "outbound" : row.direction,
     body: row.summary,
     author: row.created_by_email,
+    messageType: row.channel, // ej. "internal", "email", "phone"
     aiSuggested: false,
     at: row.created_at,
   };

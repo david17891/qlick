@@ -1764,12 +1764,26 @@ function ConversationsView({
                   : "bg-brand-500 text-white ml-auto")
               }
             >
-              {m.author && (
+              {/*
+                FIX 2026-07-07: solo mostramos el author cuando es un actor
+                distinto al placeholder "Lead"/"Qlick". El color/dirección
+                de la burbuja ya indica quién habla, y mostrar "QUICK"
+                (CSS uppercase) como header del bot era confuso — parecía
+                texto del mensaje. Mismo patrón que LeadDetailDrawer.tsx.
+              */}
+              {m.author && m.author !== "Lead" && m.author !== "Qlick" && (
                 <span className="block text-[10px] uppercase opacity-70 mb-0.5">
                   {m.author}
                 </span>
               )}
-              {m.body}
+              {/*
+                FIX 2026-07-07: si body está vacío (poco común porque el
+                mapper ya inyecta placeholder por messageType), mostramos
+                fallback genérico para no renderizar burbuja en blanco.
+              */}
+              {m.body || (
+                <span className="italic opacity-80">[Mensaje sin texto]</span>
+              )}
               <span className="block text-[10px] opacity-60 mt-1">
                 {formatDate(m.at)}
               </span>
