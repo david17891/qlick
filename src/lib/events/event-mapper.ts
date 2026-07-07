@@ -79,6 +79,9 @@ export function mapEventRowToEvent(row: EventRow): Event {
     // queda stale. Cuando David regenere el typegen, este cast se quita.
     surveyConfig: resolveSurveyConfig(
       (row as unknown as { survey_config?: unknown }).survey_config,
+      // Migration 20260707000000: pasamos format para que el resolver
+      // elija el template correcto (con/sin pregunta de asistencia).
+      (row as unknown as { format?: Event["format"] }).format as Event["format"],
     )
   };
 }

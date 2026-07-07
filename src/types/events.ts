@@ -131,6 +131,9 @@ export type SurveyQuestionType = "buttons" | "text";
  * Flags exclusivos (validados por Zod en runtime):
  * - Como máximo 1 pregunta con `isConsent: true`.
  * - Como máximo 1 pregunta con `isBusinessDescription: true`.
+ * - Como máximo 1 pregunta con `isAttendanceCheck: true` (migration
+ *   20260707000000_event_format_and_streaming). La respuesta "Sí"
+ *   marca al attendee como realmente presente (checked_in_at).
  */
 export interface SurveyQuestion {
   id: string;
@@ -141,6 +144,14 @@ export interface SurveyQuestion {
   options?: SurveyQuestionOption[];
   /** Marca esta pregunta como descripción del negocio (se guarda en lead.description). */
   isBusinessDescription?: boolean;
+  /**
+   * Marca esta pregunta como verificación de asistencia real (Sí/No).
+   * Usado en encuestas de eventos virtuales/híbridos como Q1.
+   * La respuesta "Sí" actualiza `checked_in_at` en event_attendees
+   * (defense-in-depth: ya tenemos el intent del gate, esto confirma
+   * el ingreso real).
+   */
+  isAttendanceCheck?: boolean;
 }
 
 /**
