@@ -8,11 +8,23 @@ import { createEvent, type CreateEventInput } from "@/lib/events/events-server";
  *
  * POST /api/admin/events
  *   body: CreateEventInput (slug, title, description?, startsAt, endsAt?,
- *                            location?, coverImageUrl?, status?)
+ *                            location?, coverImageUrl?, status?,
+ *                            eventRules?, format?, streamingUrl?,
+ *                            streamingProvider?, streamingAccessNote?)
  *   -> { ok: true, event }
  *
  * Server-only, admin (defensa en profundidad). Usado por el drawer de
  * creación en /admin/eventos.
+ *
+ * FIX 2026-07-07 (sesión David — AA4E quedó mal configurado):
+ *   El handler original solo propagaba 8 campos legacy al
+ *   `createEvent()` de la lib server, descartando silenciosamente
+ *   los 5 campos nuevos que el drawer ya enviaba (eventRules,
+ *   format, streamingUrl, streamingProvider, streamingAccessNote).
+ *   Síntomas: `format` caía al default DB `in_person` aunque el
+ *   admin eligiera `virtual`; `eventRules` quedaba `{}` (sin
+ *   personalidad ni reglas); `streamingUrl` quedaba `null`. Ahora
+ *   propagamos todo el body casteado al shape `CreateEventInput`.
  */
 
 export const dynamic = "force-dynamic";
@@ -46,6 +58,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // FIX 2026-07-07: propagar todos los campos al createEvent. Antes
+  // solo pasábamos 8 legacy — los 5 nuevos (eventRules, format,
+  // streamingUrl, streamingProvider, streamingAccessNote) llegaban
+  // acá pero se descartaban, dejando el evento incompleto en DB.
+  // El lib server ya tiene defaults seguros para cada uno, así que
+  // podemos pasar el body completo sin filtrar manualmente.
   const result = await createEvent(
     {
       slug: body.slug,
@@ -56,6 +74,12 @@ export async function POST(req: NextRequest) {
       location: body.location,
       coverImageUrl: body.coverImageUrl,
       status: body.status,
+      // Nuevos (Fase 7 + migration 20260707000000):
+      eventRules: body.eventRules,
+      format: body.format,
+      streamingUrl: body.streamingUrl,
+      streamingProvider: body.streamingProvider,
+      streamingAccessNote: body.streamingAccessNote,
     },
     admin.email,
   );
