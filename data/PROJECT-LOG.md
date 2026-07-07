@@ -2655,3 +2655,25 @@ sustituir el ciclo con templates". Ejecuté 4 bloques sincrónicamente.
   - Branch lista para commit + push.
 
 - **Trigger:** David creó el evento del sábado 11 jul en admin, llegó al paso "Modalidad y streaming", eligió "Virtual", y el form le pidió el link obligatorio. Necesitaba una solución HOY (sábado 11 jul es en 4 días) para no tener que aplicar workarounds en DB a mano. La solución de arriba es genérica (cubre TODOS los casos donde el operador define el link después, no solo este evento puntual). Si en el futuro algún operador olvida cargar el link, el flujo lo soporta y la landing muestra el banner para que sepa.
+
+---
+
+## 2026-07-07 ~10:30 · fix(webhook): normalización de teléfonos internacionales y logs de webhook crudos
+
+- **Pregunta:** David reportó que llegó un código al WhatsApp del bot (desde Meta / Facebook oficial con número de Reino Unido +44...) pero no se veía en la conversación de Qlick ni se guardaba en la base de datos. Al enviar una imagen de prueba, salía vacía en la interfaz del CRM.
+
+- **Decisión:**
+  1. **Normalización de Teléfonos** (`src/lib/crm/phone-utils.ts`): Modificado `normalizePhone` para que, en caso de recibir un número internacional (cuyo país no sea México `+52`), no lo descarte como `null`, sino que retorne un fallback con formato genérico `+<dígitos>` (si tiene al menos 7 dígitos).
+  2. **Registro de Webhook Crudo** (`src/app/api/whatsapp/webhook/route.ts`): Agregado `console.log("[whatsapp/webhook] RAW WEBHOOK PAYLOAD:", JSON.stringify(payload))` al momento de recibir y parsear cualquier payload en el webhook. Esto permite inspeccionar textos, imágenes (media IDs) y otros metadatos directamente en los logs del servidor (Vercel).
+  3. **Despliegue y Verificación**: Compilado localmente (`npm run build` exitoso) y desplegado tanto a la rama `main` de producción como a la rama de preview `feat/pagos-stripe-real` (`qlick-three.vercel.app` alias), asegurando que el webhook registrado en Meta reciba el código actualizado.
+  4. **Recuperación exitosa**: Se verificó la recepción de un código de confirmación de Facebook (`66088`) y una imagen de prueba (carrito de juguete verde, guardado localmente como `test-image.jpg` en los artefactos) descargada de Meta usando el token de acceso.
+
+- **Razón:** El bot de WhatsApp debe ser capaz de procesar e ingresar en la base de datos mensajes entrantes de cualquier número (incluyendo los números oficiales de Meta/Facebook que son de UK `+44...`) para auditoría y debug, en lugar de ignorar silenciosamente números que no son de México. La adición del log de payloads crudos provee observabilidad inmediata.
+
+- **Impacto:**
+  - El webhook procesa y registra correctamente mensajes internacionales en `lead_whatsapp_conversations`.
+  - El payload crudo completo de cada mensaje de WhatsApp entrante queda guardado en los logs del servidor de Vercel.
+  - Se recuperó el código de confirmación de Meta solicitado por el usuario.
+
+- **Trigger:** Solicitud de David de recuperar el último código enviado al WhatsApp del bot que no aparecía en el CRM.
+
