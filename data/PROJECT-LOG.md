@@ -2471,3 +2471,66 @@ sustituir el ciclo con templates". Ejecuté 4 bloques sincrónicamente.
   a v0.8.0.
 
 `
+
+---
+
+## 2026-07-06 ~17:00 · CRM Fase 1: Borrado Lógico, Optimistic Locking y Streaming CSV
+
+- **Pregunta:** Cómo dar control de borrado, actualización masiva y exportación de leads al admin sin arriesgar colapso de memoria en Vercel, colisiones con el bot o violaciones de privacidad (LGPD / LFPDPPP).
+- **Decisión:**
+  - **Prohibir hard delete** en favor de soft delete (`archiveLead` con `status='archived'`). El borrado físico queda bloqueado en código.
+  - **Replicar patrón de optimistic lock** (`WHERE status = prevStatus`) en operaciones masivas (`bulkArchiveLeads`, `bulkUpdateStatus`) y puntuales (`archiveOneLead`).
+  - **Exportar vía `ReadableStream` chunked** con paginación `.range()` en bloques de 1.000 filas, tope defensivo de 100k, y BOM UTF-8 (`\uFEFF`) para que Excel detecte acentos correctamente.
+  - **Filtro default `consent_to_contact=true`** en todos los exports (privacidad por default).
+  - **Exigir confirmación textual** *"ARCHIVAR N"* antes de disparar el server action de bulk archive.
+- **Razón:**
+  - El hard delete borraba en CASCADE el `lead_consent_log` (ilegal bajo LFPDPPP / LGPD).
+  - El `SELECT *` previo de 10k+ leads colapsaba Vercel Hobby (1024 MB RAM / 10s timeout).
+  - La falta de `WHERE status = prev` causaba race conditions con el bot de WhatsApp que escribe a la misma tabla.
+- **Impacto:**
+  - Admin tiene **control masivo seguro** sobre leads (archivar, cambiar status, exportar).
+  - Exportaciones CSV limpias para Excel que respetan el consentimiento del lead.
+  - **0 regresiones en el bot** — `bot-engine.ts` intacto, aislamiento verificado con `git diff`.
+  - Suite de tests **sin regresión** (535 → 535 con la migración).
+- **Trigger:** Commit `d150d9d` (Fase 1). Sesión post-v0.8.0, necesidad operativa explícita de David para no arriesgar compliance ni runtime Vercel Hobby.
+
+---
+
+## 2026-07-06 ~18:30 · CRM Fases 2 y 3: Conversaciones Reales, Inteligencia LVR/SLA y Agente IA
+
+- **Pregunta:** Cómo conectar el historial de chat real del bot y dotar al CRM de inteligencia accionable para cierre de ventas rápidas, sin sacrificar la separación de responsabilidades del bot engine ni introducir mocks frágiles.
+- **Decisión:**
+  - **Conectar pestaña Conversaciones y cajón del lead** a `lead_whatsapp_conversations` + `lead_interactions` (con fallback por `phone_normalized` para pre-leads). Status inferido por dirección y edad del último mensaje (`open`/`waiting_reply`/`resolved`).
+  - **Calcular LVR, SLA Overdue y Heat** en `overview` (`crm-intelligence.ts`):
+    - **LVR** = `(leads_7d - leads_7d_prev) / leads_7d_prev * 100`, edge case prev=0 + current>0 → 100%.
+    - **SLA Overdue** = leads `new|contacted` con `MAX(updated_at, last_interaction) > 48h` Y sin `crm_tasks.done=false`.
+    - **Heat** = bucket del score (≥60 hot, ≥40 warm, resto cold).
+  - **Evolucionar Agente IA** leyendo perfil del lead + respuestas de encuesta (`event_surveys`) y emitiendo **3 plantillas diferenciadas** por score (`close`/`value`/`reactivate`), cada una con `buildWhatsAppLink(phone, message)` listo para WhatsApp Web/Desktop (encoding RFC 3986).
+  - **Separación arquitectónica**: lógica pura (`sales-templates.ts`, `crm-intelligence.ts`) SIN imports de Supabase. La capa I/O (`ai-sales-server.ts`) solo lee datos y delega al puro. Permite testing del audit script y de la suite sin mocks frágiles.
+- **Razón:**
+  - Eliminar datos demo del CRM y dar a ventas contexto total de lo que el lead respondió en marketing sin salir de la plataforma.
+  - El estándar de "lógica pura sin I/O" (testable directo) reduce duplicación entre audit script, server libs y (futuros) tests unitarios.
+- **Impacto:**
+  - **Ventas ataca leads calientes desatendidos con 1 clic en WhatsApp** (clic en sugerencia IA abre WhatsApp pre-armado).
+  - **18/18 aserciones E2E** verdes contra DB real (script `scratch/qlick-crm-ai-audit.mjs`, escenarios I1-I4).
+  - Bot engine **INTACTO** (`git diff v1.1-crm1-stable HEAD -- src/lib/whatsapp/bot-engine.ts` → 0 hits).
+  - Suite **545/545 tests verde** sin regresión vs v0.8.0.
+  - `PipelineCard` ahora señala urgencia con badges 🔥 HOT + ⚠️ SLA.
+- **Trigger:** Commit `ec9eb55` (Fases 2-3). Sesión de cierre v0.9.0 orquestada por Mavis root.
+
+---
+
+## 2026-07-06 ~18:42 · Cierre de gobierno y handoff canónico v0.9.0 (CRM Inteligente)
+
+- **Pregunta:** Cumplir las **Reglas de Oro de Qlick** (AGENTS.md): tras un release importante debe haber (1) snapshot vivo, (2) log append-only, (3) roadmap sincronizado, y (4) handoff canónico — todo coherente y verificable.
+- **Decisión:** Generar los 4 documentos canónicos en una sola pasada, sin tocar una sola línea de `src/`, `tests/`, `supabase/` ni `scripts/`:
+  - `docs/STATUS.md` → sobreescrito con snapshot de v0.9.0 (release point, tags de rollback, métricas, capacidades, deuda).
+  - `data/PROJECT-LOG.md` → 2 entradas append-only con formato de casa (Fecha · Título, Pregunta, Decisión, Razón, Impacto, Trigger) + esta entrada de cierre.
+  - `docs/ROADMAP.md` → CRM (Fases 1+2+3) movido a **Completados / Estado Actual**, nueva sección **Fase 4 — Calendario Real, Tareas y Notificaciones Proactivas** con 3 mejoras programadas.
+  - `docs/HANDOFF_v0.9.0_CRM_INTELIGENTE.md` (nuevo, ~280 líneas) → resumen ejecutivo + arquitectura puro vs I/O + inventario de archivos + guía operativa de rollback + checklist de verificación rápida en 1 minuto.
+- **Razón:** Política explícita en AGENTS.md ("Cada cierre de fase → `docs/HANDOFF_<version>_<fase>.md` + update de `docs/ROADMAP.md`" + "Reglas de Oro #1, #2, #3"). Modo `/goal` autónomo: la documentación canónica es la ÚLTIMA acción antes de pedir luz verde para merge/push.
+- **Impacto:**
+  - Repo queda **listo para commit de gobierno** (`docs: cierre de gobierno y handoff canónico v0.9.0`) y tag final `v0.9.0` con `git tag -a v0.9.0 ec9eb55 -m "..."`.
+  - Working tree muestra solo archivos en `docs/` + `data/` modificados — confirmado con `git status`.
+  - Suite **545/545 tests verde** post-cierre documental (verificado antes y después del cambio).
+- **Trigger:** Ingreso en modo `/goal` con brief explícito de David (cerrar 4 docs canónicos sin tocar código).

@@ -1,16 +1,41 @@
 # Qlick LMS — Roadmap
 
 > Fuente de verdad del plan del LMS. Cualquier desvío se conversa y se actualiza acá.
-> Última revisión: 2026-07-06 (sesión tarde) — **v0.8.0 Wizard WhatsApp funcional + Español MX** cerrado y taggeado.
+> Última revisión: 2026-07-06 18:42 — **v0.9.0 (CRM Inteligente v2.0)** cerrado. Fase 4 (Calendario + Tareas + Notificaciones) planificada.
 
 ---
 
 ## Estado actual
 
+- [x] **v0.9.0 — CRM Inteligente v2.0 (Fases 1 + 2 + 3)** — release cerrado el 2026-07-06 (HEAD `main`, commit `ec9eb55`, tag `v1.1-crm1-stable` para pre-Fase 2-3)
+  - Handoff completo: `docs/HANDOFF_v0.9.0_CRM_INTELIGENTE.md` ← **leer primero**
+  - Status vivo: `docs/STATUS.md` (snapshot del release)
+  - Log de cierre: `data/PROJECT-LOG.md` (entradas `~17:00` Fase 1 + `~18:30` Fases 2-3)
+  - **Qué incluye (Fase 1 — Compliance + Operatividad, commit `d150d9d`):**
+    - **Soft delete obligatorio**: `archiveLead` con `status='archived'`; hard delete bloqueado en código (LFPDPPP / LGPD)
+    - **Optimistic locking** (`WHERE status = prevStatus`) en `bulkArchiveLeads`, `bulkUpdateStatus`, `archiveOneLead`
+    - **Export CSV streaming chunked**: `ReadableStream` + `.range(0, 999)` recursivo + tope 100k filas + BOM UTF-8 (`\uFEFF`) para Excel
+    - **Privacidad por default**: filtro `consent_to_contact=true` en exports
+    - **Confirmación textual** *"ARCHIVAR N"* antes de bulk archive
+  - **Qué incluye (Fase 2 — Inteligencia Comercial, commit `ec9eb55`):**
+    - Pestaña **Conversaciones reales** conectada a `lead_whatsapp_conversations` + `lead_interactions` (fallback por phone para pre-leads)
+    - **LVR** (Lead Velocity Rate): `(leads_7d - leads_7d_prev) / leads_7d_prev * 100`
+    - **Radar SLA Overdue**: leads `new|contacted` con `MAX(updated_at, last_interaction) > 48h` sin tarea abierta
+    - **Distribución de Calor** (Hot / Warm / Cold) por score ≥60/≥40/resto
+    - `PipelineCard` con badges 🔥 HOT + ⚠️ SLA + bordes cálidos
+  - **Qué incluye (Fase 3 — Agente IA de Ventas, mismo commit `ec9eb55`):**
+    - 3 plantillas dinámicas por score: `close` / `value` / `reactivate`
+    - Personalización con respuestas de `event_surveys` (q_business, q1_clarity, etc.)
+    - Links `wa.me` pre-armados con encoding RFC 3986 (`buildWhatsAppLink`)
+    - Endpoint `/api/admin/crm/ai-suggestions?leadId=X` con rate limit 30/min
+    - Separación arquitectónica: lógica pura (`sales-templates.ts`) vs I/O (`ai-sales-server.ts`)
+  - **Validación E2E**: script `scratch/qlick-crm-ai-audit.mjs` corre **18/18 aserciones OK** contra DB real (escenarios I1-I4)
+  - **Tests**: **545/545 verde** · type-check ✓ · lint ✓ · build ✓
+  - **Bot engine INTACTO** (política de aislamiento verificada con `git diff v1.1-crm1-stable HEAD -- src/lib/whatsapp/bot-engine.ts` → 0 hits)
 - [x] **v0.8.0 — Wizard WhatsApp funcional + Español MX** — release cerrado y taggeado el 2026-07-06 (HEAD `main`, tag `v0.8.0`)
-  - Handoff completo: `docs/HANDOFF_v0.8.0_FUNCIONAL.md` ← **leer primero**
+  - Handoff completo: `docs/HANDOFF_v0.8.0_FUNCIONAL.md`
   - 21 commits del cluster G-15 (r1-r7) + Fase name capture + auditoría nocturna
-  - 535/535 tests verde · type-check ✓ · lint ✓ · build ✓
+  - 535/535 tests verde (base antes de Fases 1+2+3 del CRM)
   - **Qué incluye:**
     - Wizard post-evento end-to-end funcional (Q1→Q2→Q3→q_consent→q_business→cierre)
     - Detección de buttonId formato dinámico (`survey_q1_clarity_very_clear`) + legacy
@@ -19,7 +44,7 @@
     - Tab Leads promovidos con badges score/qualification/consent
     - Cierre sin mensaje duplicado (solo thank-you, follow-up bucket removido)
     - Copy 100% español mexicano consistente (bot WhatsApp + emails + web pages)
-  - **Tag:** `v0.8.0` (rollback target estable)
+  - **Tag:** `v0.8.0` (rollback target estable, pre-CRM-Inteligente)
 - [x] **Events Funnel Foundation v0.7.0** — fase cerrada y mergeada a `main` (rama `feat/events-funnel-foundation`) el 2026-06-26
   - 12 commits: migration (6 tablas + RLS) → tipos dominio → mapper → 5 server libs (events/confirmations/attendees/surveys/promotion) → refactor `linkLeadToEventRecord` (cierra H2 de Fase 2) → importer CLI con `xlsx` → 23 unit tests del importer → barrel + doc
   - **Cierre del H2 del QA Fase 2** (race condition en tags) por construcción: `linkLeadToEventRecord` ahora usa `lead_event_links` (INSERT-only con UNIQUE)
@@ -57,7 +82,37 @@
 
 ## En curso
 
-- **Fase 4: UI admin `/admin/eventos` + WhatsApp manual** — branch `feat/admin-eventos`, **18+ commits desde 2026-06-27, cerrado y mergeado a `main`** el 2026-06-28 (sesión madrugada + tarde).
+- **Fase 4 (CRM Próximo Ciclo): Calendario Real, Tareas y Notificaciones Proactivas** — planificada post-v0.9.0.
+  - **Objetivo:** cerrar el último tramo del CRM "real" reemplazando los mocks restantes (Calendario + Broadcast) y subir proactividad (no solo el admin mira el CRM, el CRM le avisa).
+  - **Branch destino (a crear):** `feat/crm-fase-4-calendario-tareas`.
+  - **Mejoras programadas:**
+    1. **Paginación server-side en tabla de leads del CRM** — migrar `CRMView.tsx` a paginación por cursores/páginas server-side (`?page=N&size=50` o `?cursor=…`) consumiendo el endpoint `/api/admin/crm/leads` con `.range()`. Escalar a >5,000 leads sin ralentizar navegador. Reusar el patrón de paginación por `.range()` ya validado en el export CSV streaming.
+    2. **Refactor de nombres en DB** — separar columna `name` en `first_name` + `last_name` en tabla `leads` (migration aditiva + `view` de compatibilidad). Resuelve la fragilidad de `firstName()` (split por espacio) que asume primer token = first name, bug activo que falsifica saludos para nombres con prefijos (ej. "I3 David Martínez" → "Hola I3"). Pendiente detectado en iter 4 del audit script v0.9.0.
+    3. **Alertas proactivas SLA** — conectar el radar de SLA Overdue (>48h sin contacto) con notificaciones salientes automáticas:
+       - **Email** (default) via Brevo/Resend, mismo pipeline que `event_reminder_log` (idempotente, rate limited).
+       - **Slack** (opcional) via webhook URL configurada por env var (`SLACK_LEAD_ALERT_WEBHOOK`).
+       - Trigger: cron job diario que consulta `crm_tasks.done=false AND leads.status IN (new, contacted) AND MAX(updated_at, last_interaction) > 48h` y notifica al vendedor responsable (campo `sales_owner` — pendiente asignar real).
+  - **Capacidades nuevas que se conectan:**
+    - Reemplazar vista demo de Calendario/Citas por **Google Calendar integration** (OAuth + watch events + crear eventos desde UI admin).
+    - Tareas CRM (`crm_tasks` ya existentes en schema) con UI para crear/asignar/completar sin salir del drawer del lead.
+  - **Criterios de éxito verificables (Fase 4):**
+    - Tabla de leads carga <200ms para 5,000 filas (medido con Playwright MCP).
+    - `lead.first_name` y `lead.last_name` poblados al 100% para leads nuevos (`mapLeadRowToLead` actualizado).
+    - Cron job SLA dispara emails reales a `david17891@gmail.com` cuando se crea un lead sintético con `updated_at > 48h ago`.
+    - El módulo Calendario deja de leer `src/lib/data/crm-data.ts` y pasa a `event_qr_tokens` + nueva tabla `calendar_events` (si se decide).
+  - **Dependencias externas:**
+    - Google Calendar API credentials (requiere setup OAuth consent screen — ~1h).
+    - Decisión de producto sobre destinatario SLA (¿solo vendedor? ¿también al admin?).
+  - **Tags de respaldo esperados:** `v1.2-crm1-stable` (post-Fase 4) como nuevo rollback target.
+  - **Trigger:** Deuda activa documentada en handoff canónico v0.9.0 §"Pendientes documentados".
+
+---
+
+## ✅ Cerradas (histórico de Fases admin-eventos)
+
+Las 3 fases siguientes se completaron durante el sprint 2026-06-27 → 2026-07-01 y se mergea­ron progresivamente a `main`. Se listan aquí solo como contexto histórico.
+
+- **Fase 4 vieja: UI admin `/admin/eventos` + WhatsApp manual** — branch `feat/admin-eventos`, cerrada y mergeada a `main` el 2026-06-28.
   - ✅ **Bloque 1**: detalle del evento con tabs (Confirmados/Asistentes/Encuestas/Leads) + búsqueda + match manual + des-marcar encuestas
   - ✅ **Bloque 1C**: métricas de conversión del funnel (4 ratios)
   - ✅ **Bloque 2**: estados de WhatsApp follow-up + audit log (`lead_whatsapp_log`)
@@ -70,26 +125,8 @@
   - ✅ **Bloque 3F**: mobile polish (375×812 verificado en Playwright MCP)
   - ✅ **Bloque 4 (cierre)**: docs (EVENTS_ADMIN_GUIDE.md 620 líneas, CHANGELOG.md, PRE_MERGE_CHECKLIST.md, demo-socios.html). 19 commits ahead of origin. Pendiente: push de David + PR + merge.
 
-- **Fase 5: Notificaciones + admin CRUD + audit log + clone/undo** — branch `feat/fase-5-planning`, **11 commits desde 2026-06-28**. Cierre total:
-  - ✅ **Paquete A**: setup (`.env.example` con vars Resend + admin notifications)
-  - ✅ **Paquete B**: notificaciones por email (Resend wrapper + template + trigger + SMTP_SETUP.md)
-  - ✅ **Paquete C**: audit log admin (migration additive + `logAdminAction` extendido + `listAuditLogs` + `/admin/system/audit-log` page con diff view)
-  - ✅ **Paquete D**: clone + undo archivar (`cloneEvent` server lib + POST route + EventDrawer botón + toast no-bloqueante con auto-dismiss 5s + accesibilidad aria)
-  - ✅ **Paquete E**: polish (mobile 375px verified, EVENTS_ADMIN_GUIDE actualizado, OPEN_ITEMS cierre, ROADMAP, CHANGELOG v0.11.0, PRE_MERGE_CHECKLIST)
-  - Tests: 110/110 ✅. Type-check ✅. Lint ✅. Build ✅.
-  - Pendiente: push de David + PR + merge a `main` (después de merge de Fase 4).
-
-- **Fase 6: Polish + auditoría + métricas globales** — branch `feat/fase-6-hitos`, **siguiente sprint**. Cierre total:
-  - ✅ **Hito A**: auditoría completa de Fase 6 work (`docs/FASE-6-AUDIT.md`) — 4 críticos, 11 medios, 8 bajos.
-  - ✅ **Hito B**: login alumno con magic link reactivado como fallback (`StudentLoginCard`) — Google OAuth sigue siendo el principal. State preservation entre modos.
-  - ✅ **Hito C**: header de métricas globales en `/admin/eventos` (6 stat cards con tooltips) + búsqueda libre `q` en audit log + seed demo realista con idempotencia.
-  - ✅ **Críticos cerrados**: C-1 (audit log idempotente), C-2 (WhatsApp log idempotente), C-3 (docstring honesto de `q`), C-4 (entityId null check).
-  - ✅ **Medios cerrados**: M-1 (real randomness con crypto.randomInt), M-2 (PRNG determinístico para sort), M-5 (Tooltip aria-describedby), M-7 (conversion solo eventos pasados), M-8 (MagicLinkForm state preservation), M-10 (escape wildcards en búsqueda libre), M-11 (`ignoreDuplicates: true` para preservar cambios manuales).
-  - ✅ **Bajos cerrados**: L-6 (`loading.tsx` para `/admin/eventos`, pre-existente de Fase 4 Bloque 3D).
-  - ⏳ **Pendientes (no bloquean demo ni merge)**: M-6 (viewport collision Tooltip — requiere Floating UI), M-9 (DiffView truncation en entries grandes), L-1, L-2, L-3, L-4, L-5, L-7, L-8 (cosméticos).
-  - Score: 9/10 (refresh post-triage 2026-06-28).
-  - Tests: 110/110 ✅. Type-check ✅.
-  - Pendiente: push de David + PR + merge a `main` (después de merge de Fase 5).
+- **Fase 5 vieja: Notificaciones + admin CRUD + audit log + clone/undo** — branch `feat/fase-5-planning`, cerrada el 2026-06-28. Tests: 110/110 ✅.
+- **Fase 6 vieja: Polish + auditoría + métricas globales** — branch `feat/fase-6-hitos`, cerrada el 2026-07-01. Tests: 110/110 ✅, score 9/10.
 
 ## Pendientes — features
 
@@ -157,14 +194,17 @@ El cliente reposicionó Qlick: no es solo un LMS, es una **plataforma propia** q
 
 **Flujo objetivo:** Evento/campaña → prospecto → CRM → seguimiento WhatsApp → inscripción → pago → acceso al curso → progreso → futuras ventas.
 
-### Lo que ya existe (parcialmente)
+### Lo que ya existe (post-v0.9.0 — 2026-07-06)
 - LMS funcional (catálogo, detalle, login, dashboard, lecciones, progreso).
 - Auth con Supabase + roles admin/student.
-- CRM con **dominio + UI en demo mode** (`src/lib/crm/`, 16 archivos, 17 tipos, sin persistencia real).
-- WhatsApp: 10 intents, `wa.me` manual provider activo, stubs de Meta Cloud API / BSP.
-- Agente IA: heurísticas deterministas, stubs de OpenRouter, guardrails.
-- Supabase: 9 migrations, RLS, typegen, server actions.
-- Pago simulado funcional.
+- CRM con **persistencia real** post-v0.9.0: conversaciones del bot, LVR/SLA/Heat intelligence, agente IA con 3 sugerencias dinámicas y wa.me pre-armados.
+- Admin `/admin/eventos/[id]` con tabs (Encuestas, Leads, Pipeline, Conversaciones, Resumen) + SLA Overdue + Heat distribution.
+- Wizard WhatsApp funcional + copia 100% español MX.
+- WhatsApp Cloud API operativa (inbound + outbound). Bot engine intacto a través del release v0.9.0.
+- Supabase: schema sincronizado, 24 tablas, RLS activo, typegen regenerable, soft delete + optimistic locking + CSV streaming.
+- Pago simulado funcional (Entitlements v1.0.0+).
+- Pipeline de email transaccional (Brevo) + recordatorios de evento (`event_reminder_log`).
+- Pendientes (no hecho todavía): Calendario real (Google Calendar), Broadcast WhatsApp masivo, alertas SLA outbound. → **Fase 4 (CRM Próximo Ciclo)**.
 
 ### Roadmap priorizado (acordado con David, 2026-06-26)
 
@@ -177,8 +217,10 @@ El cliente reposicionó Qlick: no es solo un LMS, es una **plataforma propia** q
 | 4 | **UI admin `/admin/eventos` + WhatsApp manual workflow** | ✅ hecho (Fase 4) | CRUD + tabs + Pipeline view + métricas + WhatsApp follow-up. Branch `feat/admin-eventos` cerrado. |
 | 5 | **Notificaciones + audit log + clone/undo** | ✅ hecho (Fase 5) | Resend wrapper + audit log con diff view + clone + undo archivar. Branch `feat/fase-5-planning` cerrado. |
 | 6 | **Polish + auditoría + métricas globales** | ✅ hecho (Fase 6) | métricas globales con tooltips + búsqueda libre `q` en audit log + login magic-link fallback + seed demo idempotente. Branch `feat/fase-6-hitos` cerrado. 4 críticos + 7 medios + 1 bajo cerrados. Score 9/10. |
-| 7 | **Pagos reales** (Stripe / MercadoPago / Conekta) | ⚪ futuro | reemplazar simulador |
-| 7 | **WhatsApp Business API** | ⚪ futuro | webhooks, plantillas, Meta Cloud API |
+| 7-9 | **CRM Inteligente v2.0 (Fases 1+2+3)** | ✅ hecho (v0.9.0) | borrado lógico + bulk optimistic lock + CSV streaming + conversaciones reales + LVR/SLA/Heat + agente IA. Commits `d150d9d` + `ec9eb55`. 545/545 tests verde. |
+| 10 | **CRM Próximo Ciclo — Calendario Real + Tareas + Notificaciones Proactivas** | ⚪ planeada | paginación server-side tabla leads + refactor `name` → `first_name`/`last_name` + alertas SLA outbound (Email + Slack). Ver bloque **En curso** arriba. |
+| 11 | **Pagos reales** (Stripe / MercadoPago / Conekta) | ⚪ futuro | reemplazar simulador |
+| 11 | **WhatsApp Business API** (templates Meta aprobadas) | ⚪ futuro | outreach proactivo requiere `conf_*` templates |
 
 **Lo que NO se hace todavía** (decisión explícita del cliente):
 - Enviar mensajes automáticos por WhatsApp.
