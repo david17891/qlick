@@ -228,6 +228,27 @@ export interface EventFormInput {
     personality: string;
     rules: string[];
   };
+  /**
+   * Modalidad del evento (migration 20260707000000). Default `in_person`.
+   * Si es `virtual` o `hybrid`, `streamingUrl` es obligatorio (validado
+   * en DB por `events_streaming_url_required`).
+   */
+  format?: "in_person" | "virtual" | "hybrid";
+  /**
+   * Link de streaming (YouTube Live, Zoom, FB Live, etc.).
+   * En update: `null` lo limpia, undefined lo deja igual.
+   */
+  streamingUrl?: string | null;
+  /**
+   * Provider declarado (analítica + hints en admin UI).
+   * En update: `null` lo limpia, undefined lo deja igual.
+   */
+  streamingProvider?: "youtube_live" | "facebook_live" | "zoom" | "other" | null;
+  /**
+   * Nota visible para el asistente (ej: "el link se desbloquea 10 min antes").
+   * En update: `null` lo limpia, undefined lo deja igual.
+   */
+  streamingAccessNote?: string | null;
 }
 
 /** POST /api/admin/events → crea un evento. */
