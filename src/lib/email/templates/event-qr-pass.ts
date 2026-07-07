@@ -30,10 +30,39 @@ export interface EventQrPassInput {
    * (`data:image/png;base64,...`) que NO se renderizaba en Gmail/Outlook.
    * Ahora el QR se sirve desde un endpoint publico y se referencia
    * por URL. Compatible con todos los clientes de email.
+   *
+   * Solo se usa si format === 'in_person' o 'hybrid'. Para eventos
+   * puramente virtuales este campo se ignora.
    */
   qrImageUrl: string;
   /** URL pública del pase (la misma que codifica el QR). */
   checkInUrl: string;
+  /**
+   * Modalidad del evento (migration 20260707000000). Si no viene, se
+   * asume 'in_person' (legacy compat).
+   *
+   * - `in_person` → muestra el QR como siempre.
+   * - `virtual`   → muestra el bloque gate "SÍ, VOY" + reveal link.
+   * - `hybrid`    → muestra ambos bloques.
+   */
+  format?: "in_person" | "virtual" | "hybrid";
+  /**
+   * URL pública del gate "SÍ, VOY" (`/api/event-gate/[token]/click`).
+   * El handler registra intent_attended y redirige al streaming_url.
+   *
+   * Requerido si format !== 'in_person'.
+   */
+  gateUrl?: string;
+  /**
+   * Link de streaming directo (solo para mostrar en copy secundario,
+   * el botón principal SIEMPRE va al gate).
+   */
+  streamingUrl?: string;
+  /**
+   * Nota visible al asistente sobre el acceso al streaming
+   * (ej: "el link se desbloquea 10 min antes").
+   */
+  streamingAccessNote?: string;
 }
 
 export interface RenderedEmail {
@@ -79,10 +108,10 @@ function formatEventTime(iso: string): string {
   /**
    * Render del email de pase digital.
    *
-   * El QR está embebido inline (`<img src="data:image/png;base64,...">`)
-   * porque adjuntar imágenes vía email requiere subir el asset a un CDN
-   * primero (más fricción). Para un QR de 512px (~10KB) inline es la
-   * opción más simple.
+   * Soporta 3 modalidades (migration 20260707000000):
+   * - in_person: solo QR como antes
+   * - virtual: bloque gate "SÍ, VOY" + reveal link streaming
+   * - hybrid: ambos bloques
    *
    * Si `eventLocation` es null, esa fila se omite (no se muestra línea vacía).
    */
@@ -96,6 +125,15 @@ export function renderEventQrPassEmail(
   const eventTime = formatEventTime(input.eventStartsAt);
   const eventLocation = input.eventLocation ? esc(input.eventLocation) : null;
   const checkInUrl = esc(input.checkInUrl);
+  // Format default = in_person para legacy compat. Si viene "hybrid" o
+  // "virtual" y no hay gateUrl, caemos a in_person con warning silencioso
+  // (no rompemos el render — el admin probablemente olvidó pasar el campo).
+  const format = input.format ?? "in_person";
+  const gateUrl = input.gateUrl ? esc(input.gateUrl) : null;
+  const streamingNote = input.streamingAccessNote
+    ? esc(input.streamingAccessNote)
+    : null;
+
   // El QR image URL es publica (https://...). Validamos que sea absoluta
   // por seguridad (no inline data URLs que algunos clientes no renderizan).
   // FIX 2026-07-02: ahora se sirve desde /api/qr/[token].png en vez de
@@ -107,7 +145,13 @@ export function renderEventQrPassEmail(
   // Subject: copy genérico, sin PII (anti-spam). El subject también se
   // inyecta en <title>...</title> del HTML, así que lo escapamos para
   // que un eventTitle con "<" o ">" no rompa el markup.
-  const subject = `Tu pase para "${esc(input.eventTitle)}"`;
+  // Adapt copy al formato (el subject refleja la modalidad).
+  const subject =
+    format === "virtual"
+      ? `Tu acceso para "${esc(input.eventTitle)}"`
+      : format === "hybrid"
+        ? `Tu pase + acceso para "${esc(input.eventTitle)}"`
+        : `Tu pase para "${esc(input.eventTitle)}"`;
 
   const html = `
 <!DOCTYPE html>
@@ -126,7 +170,11 @@ export function renderEventQrPassEmail(
           <tr>
             <td style="background:linear-gradient(135deg,#6d28d9 0%,#c026d3 50%,#f97316 100%);padding:24px 32px;text-align:center;">
               <h1 style="margin:0;font-size:24px;font-weight:700;color:#ffffff;">Qlick Marketing</h1>
-              <p style="margin:8px 0 0;font-size:14px;color:#ffffff;opacity:0.95;">Tu pase está listo</p>
+              <p style="margin:8px 0 0;font-size:14px;color:#ffffff;opacity:0.95;">
+            ${format === "virtual" ? "Tu acceso virtual está listo" :
+              format === "hybrid" ? "Tu pase + acceso virtual" :
+              "Tu pase está listo"}
+          </p>
             </td>
           </tr>
 
@@ -137,11 +185,19 @@ export function renderEventQrPassEmail(
                 Hola, ${name}
               </p>
               <p style="margin:0 0 24px;font-size:16px;line-height:1.5;">
-                Confirmamos tu registro a <strong>"${eventTitle}"</strong>.
-                Tu pase digital está acá. Muéstralo en la entrada — el staff
-                lo escanea y listo.
+                ${
+                  format === "virtual"
+                    ? `Confirmamos tu registro a <strong>"${eventTitle}"</strong>. Este evento es virtual — confirmá tu asistencia con el botón de abajo para recibir el link de acceso al stream.`
+                    : format === "hybrid"
+                      ? `Confirmamos tu registro a <strong>"${eventTitle}"</strong>. Podés ir presencialmente (mostrá el QR en la entrada) o sumarte virtualmente (confirmá con el botón de abajo).`
+                      : `Confirmamos tu registro a <strong>"${eventTitle}"</strong>. Tu pase digital está acá. Muéstralo en la entrada — el staff lo escanea y listo.`
+                }
               </p>
 
+              ${
+                /* Bloque QR: solo para in_person o hybrid. */
+                format !== "virtual"
+                  ? `
               <!-- QR (centrado, en card blanca con borde) -->
               <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:12px;margin-bottom:24px;">
                 <tr>
@@ -162,6 +218,41 @@ export function renderEventQrPassEmail(
                   </td>
                 </tr>
               </table>
+              `
+                  : ""
+              }
+
+              ${
+                /* Bloque gate "SÍ, VOY": solo para virtual o hybrid. */
+                format !== "in_person" && gateUrl
+                  ? `
+              <!-- Gate virtual: "SÍ, VOY A ENTRAR" -->
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:linear-gradient(135deg,#faf5ff 0%,#fdf2f8 100%);border:2px solid #6d28d9;border-radius:12px;margin-bottom:24px;">
+                <tr>
+                  <td align="center" style="padding:28px 24px;">
+                    <p style="margin:0 0 8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#6d28d9;">
+                      Acceso al evento virtual
+                    </p>
+                    <p style="margin:0 0 20px;font-size:14px;color:#1e293b;line-height:1.5;">
+                      Confirmá que vas a entrar al stream para recibir el link de acceso.
+                      ${
+                        streamingNote
+                          ? `<br><span style="color:#6d28d9;font-weight:600;">${streamingNote}</span>`
+                          : ""
+                      }
+                    </p>
+                    <a href="${gateUrl}" target="_blank" rel="noopener" style="display:inline-block;background:linear-gradient(135deg,#6d28d9 0%,#c026d3 100%);color:#ffffff;font-weight:700;font-size:18px;padding:18px 40px;border-radius:9999px;text-decoration:none;box-shadow:0 6px 20px -4px rgba(192,38,211,0.4);">
+                      🎥 SÍ, VOY A ENTRAR
+                    </a>
+                    <p style="margin:16px 0 0;font-size:11px;color:#64748b;">
+                      Al confirmar, te llevamos al stream en vivo.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+              `
+                  : ""
+              }
 
               <!-- Card con datos del evento -->
               <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:12px;margin-bottom:24px;">
@@ -183,7 +274,11 @@ export function renderEventQrPassEmail(
                 </tr>
               </table>
 
-              <!-- CTA secundario: ver pase online -->
+              <!-- CTA secundario: ver pase online (solo para in_person o hybrid).
+                   Para virtual, el botón principal es el gate de arriba. -->
+              ${
+                format !== "virtual"
+                  ? `
               <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-bottom:24px;">
                 <tr>
                   <td align="center">
@@ -193,6 +288,9 @@ export function renderEventQrPassEmail(
                   </td>
                 </tr>
               </table>
+              `
+                  : ""
+              }
 
               <p style="margin:0;font-size:13px;color:#64748b;line-height:1.5;">
                 Si no puedes asistir, no hace falta que hagas nada. Si tienes

@@ -4108,6 +4108,12 @@ export async function processInboundMessage(
         if (lead.email && !lead.email.endsWith("@placeholder.local")) {
           try {
             const qrImageUrl = `${appBaseUrl()}/api/event-qr/${existing.token}.png`;
+            // Gate URL para eventos virtuales/híbridos (migration 20260707000000).
+            // El handler registra intent_attended y redirige al streaming_url.
+            const gateUrl =
+              evt?.format && evt.format !== "in_person"
+                ? `${appBaseUrl()}/api/event-gate/${encodeURIComponent(existing.token)}/click`
+                : undefined;
             // FIX P1 2026-07-03: pasamos eventId + tokenId para que el
             // resultado se loggee en event_email_log (visibilidad admin).
             await sendEventQrPassEmail(
@@ -4121,6 +4127,10 @@ export async function processInboundMessage(
                 eventLocation: evt?.location ?? null,
                 qrImageUrl,
                 checkInUrl: existing.url,
+                // Streaming (migration 20260707000000).
+                format: evt?.format ?? "in_person",
+                gateUrl,
+                streamingAccessNote: evt?.streamingAccessNote ?? undefined,
               },
               {
                 eventId: existing.eventId,
@@ -4497,6 +4507,11 @@ export async function processInboundMessage(
         // FIX 2026-07-02: usar URL publica del QR en vez de data URL.
         // Los data URLs no se renderizan en Gmail/Outlook.
         const qrImageUrl = `${appBaseUrl()}/api/event-qr/${qr.token}.png`;
+        // Gate URL para eventos virtuales/híbridos (migration 20260707000000).
+        const gateUrl =
+          event?.format && event.format !== "in_person"
+            ? `${appBaseUrl()}/api/event-gate/${encodeURIComponent(qr.token)}/click`
+            : undefined;
         // FIX P1 2026-07-03: pasamos eventId + tokenId para que el
         // resultado se loggee en event_email_log (visibilidad admin).
         // `generateQrToken` no devuelve el token.id (PK), solo el string —
@@ -4512,6 +4527,10 @@ export async function processInboundMessage(
             eventLocation: event?.location ?? null,
             qrImageUrl,
             checkInUrl: qrUrl,
+            // Streaming (migration 20260707000000).
+            format: event?.format ?? "in_person",
+            gateUrl,
+            streamingAccessNote: event?.streamingAccessNote ?? undefined,
           },
           {
             eventId: event?.id ?? null,
