@@ -127,6 +127,7 @@ export function LeadDetailDrawer({
   const [conversationMsg, setConversationMsg] = useState<string | null>(null);
   const [newMessageBody, setNewMessageBody] = useState("");
   const [newMessageDirection, setNewMessageDirection] = useState<"inbound" | "outbound">("outbound");
+  const [showConfirm, setShowConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleteState, setDeleteState] = useState<OpStatus>("idle");
 
@@ -952,17 +953,34 @@ export function LeadDetailDrawer({
               <Empty text={realMode ? "Sin conversación registrada. Anotá el primer mensaje abajo." : "Sin conversación registrada."} />
             ) : (
               <div className="space-y-2 mb-3">
-                <div className="flex items-center gap-2 mb-1">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
                   <Badge tone={conversation.status === "escalated" ? "danger" : "info"}>
                     {conversation.status}
                   </Badge>
                   {conversation.summary && (
                     <span className="text-xs text-ink-muted">{conversation.summary}</span>
                   )}
-                  <span className="ml-auto text-[10px] text-ink-muted">
+                  <span className="ml-auto text-[10px] text-ink-muted whitespace-nowrap">
                     {conversation.messages.length} mensaje
                     {conversation.messages.length === 1 ? "" : "s"}
                   </span>
+                  {realMode && conversation.messages.length > 0 && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="danger"
+                      onClick={() => {
+                        setShowConfirm(true);
+                        setDeleteConfirmText("");
+                      }}
+                      disabled={deleteState === "loading" || conversationState === "loading"}
+                      aria-label={`Eliminar la conversación completa del lead ${currentLead.name}`}
+                      title="Soft delete: oculta los mensajes del CRM preservando el audit log (LGPD)"
+                      className="text-xs"
+                    >
+                      🗑️ Eliminar conversación
+                    </Button>
+                  )}
                 </div>
                 {conversation.messages.map((m: ConversationMessage) => (
                   <div
@@ -1064,29 +1082,71 @@ export function LeadDetailDrawer({
               </form>
             )}
 
-            {/* FIX 2026-07-06 — soft-delete de toda la conversación.
-                Confirmación textual "ARCHIVAR" (mismo patrón canónico). */}
-            {realMode && conversation && conversation.messages.length > 0 && (
-              <details className="mt-3 border-t border-brand-100 pt-3 text-xs">
-                <summary className="cursor-pointer text-ink-muted hover:text-ink select-none font-semibold">
-                  ⚠️ Archivar conversación completa
-                </summary>
-                <div className="mt-2 space-y-2 p-3 rounded-lg bg-rose-50 border border-rose-200">
-                  <p className="text-rose-800">
+            {/* FIX 2026-07-07 ~01:34 — soft-delete de toda la conversación.
+                Botón ahora vive en el header de la sección (visible sin
+                necesidad de expandir nada). La confirmación textual
+                "ARCHIVAR" sigue siendo el guard anti-click-accidental,
+                dentro del modal que se abre al click del botón. */}
+            {realMode && showConfirm && conversation && (
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="bulk-archive-conv-title"
+                onClick={() => deleteState !== "loading" && setShowConfirm(false)}
+              >
+                <div
+                  className="bg-white rounded-2xl p-5 sm:p-6 max-w-md w-full shadow-2xl"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <h2
+                    id="bulk-archive-conv-title"
+                    className="text-lg font-bold text-ink mb-1"
+                  >
+                    ¿Eliminar la conversación de {currentLead.name}?
+                  </h2>
+                  <p className="text-sm text-ink-muted mb-3">
                     Esto <strong>oculta</strong> los {conversation.messages.length}{" "}
-                    mensaje{conversation.messages.length === 1 ? "" : "s"} del
-                    CRM. Los rows siguen existiendo (compliance LGPD) y el
-                    audit log registra tu email.
+                    mensaje{conversation.messages.length === 1 ? "" : "s"} de la
+                    UI del CRM. Los rows siguen existiendo en la base de datos
+                    (compliance LFPDPPP/LGPD) y el audit log registra tu
+                    email + razón.
                   </p>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input
-                      type="text"
-                      value={deleteConfirmText}
-                      onChange={(e) => setDeleteConfirmText(e.target.value)}
-                      placeholder='Escribí "ARCHIVAR" para confirmar'
-                      className="flex-1 min-w-[180px] rounded-lg border border-rose-200 bg-white px-2 py-1.5 text-xs focus:outline-none focus:border-rose-400"
+                  <p className="text-sm text-ink-soft mb-2">
+                    Para confirmar, escribí{" "}
+                    <code className="bg-brand-50 px-1.5 py-0.5 rounded text-xs font-bold text-brand-700">
+                      ARCHIVAR
+                    </code>{" "}
+                    abajo:
+                  </p>
+                  <input
+                    type="text"
+                    value={deleteConfirmText}
+                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                    className="w-full px-3 py-2 border border-rose-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-rose-300 mb-3 font-mono"
+                    placeholder="ARCHIVAR"
+                    autoFocus
+                    disabled={deleteState === "loading"}
+                    aria-label="Frase de confirmación"
+                  />
+                  {conversationMsg && conversationState === "error" && (
+                    <div className="mb-3 p-3 rounded-lg bg-rose-50 border border-rose-200 text-sm text-rose-700" role="alert">
+                      {conversationMsg}
+                    </div>
+                  )}
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setShowConfirm(false);
+                        setDeleteConfirmText("");
+                      }}
                       disabled={deleteState === "loading"}
-                    />
+                    >
+                      Cancelar
+                    </Button>
                     <Button
                       type="button"
                       size="sm"
@@ -1094,17 +1154,14 @@ export function LeadDetailDrawer({
                       onClick={handleDeleteConversation}
                       disabled={
                         deleteState === "loading" ||
-                        conversationState === "loading" ||
                         deleteConfirmText.trim().toUpperCase() !== "ARCHIVAR"
                       }
                     >
-                      {deleteState === "loading"
-                        ? "Archivando…"
-                        : "Archivar conversación"}
+                      {deleteState === "loading" ? "Archivando…" : "🗑️ Eliminar"}
                     </Button>
                   </div>
                 </div>
-              </details>
+              </div>
             )}
           </Section>
 
