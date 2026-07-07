@@ -3003,7 +3003,7 @@ case "interactive_event_inscribir": {
         ? `\n\nEs un evento virtual. Te enviamos el link de acceso al stream por correo. Cuando estés listo, haz click y entras.${regEvt?.streamingAccessNote ? `\n\n${regEvt.streamingAccessNote}` : ""}`
         : isVirtual
           ? `\n\nEs un evento virtual. ${regEvt?.streamingAccessNote ? `${regEvt.streamingAccessNote}\n\n` : ""}Aún no tenemos el link del stream configurado — te lo enviamos por correo y por aquí el día del evento. Guarda tu pase con QR, lo vas a necesitar para confirmar asistencia.`
-          : `\n\nTambién te enviamos el pase con el QR a tu correo. Es el link de check-in para que lo presentes el día del evento.`;
+          : `\n\nTambién te enviamos el pase con el QR a tu correo. Lo vas a necesitar el día del evento.`;
       const bodyText = qrUrl
         ? `Listo${clean ? " " + clean : ""}, te registramos para el evento. Tu pase (link de check-in): ${qrUrl}${eventLine}`
         : `Listo${clean ? " " + clean : ""}, registramos tu email ${email}. Te esperamos el ${evt.date} en ${evt.location}.`;
