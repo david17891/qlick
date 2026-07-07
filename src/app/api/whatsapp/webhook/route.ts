@@ -115,9 +115,14 @@ export async function POST(req: NextRequest) {
   }
 
   const parsed = handleWebhookPayload(payload);
-  
-  // Log raw payload for visibility of incoming webhook messages (e.g. verification codes)
-  console.log("[whatsapp/webhook] RAW WEBHOOK PAYLOAD:", JSON.stringify(payload));
+
+  // FIX 2026-07-07 (audit fase revision 2): el log en texto plano del payload
+  // completo del webhook filtra PII (telefono, contenido del mensaje, profile
+  // name) a Vercel logs en produccion. Riesgo de compliance LFPDPPP/LGPD.
+  // Migrado a debugLog() que solo loggea en dev (NODE_ENV !== "production").
+  // Si necesitas ver el payload crudo en prod, configura un sampling log
+  // retenido en Vercel con PII redactada — NO este console.log.
+  debugLog("[whatsapp/webhook] RAW WEBHOOK PAYLOAD", payload as unknown as Record<string, unknown>);
 
   // 4. Persistir inbound messages + encolar bot (fire-and-forget).
   const supabase = await getSupabase();

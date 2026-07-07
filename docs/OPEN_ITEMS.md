@@ -1299,6 +1299,84 @@ del Calendario.
 
 ---
 
+### 🔴 Audit 2026-07-07 — D + E + F (deuda post-evento, priorizar en Fase 4)
+
+Hallazgos del segundo health audit (sesión 2026-07-07 ~12:00). NO son
+bloqueantes para el 11-jul (evento AA4E), pero se arrastran. Cerrados los
+items A + B + C en el commit del mismo día.
+
+#### D. Tests de integración contra DB real (cobertura de los 3 bugs de ayer)
+
+- **Problema:** los 3 bugs que migramos (`lead_whatsapp_log`, enum `qualified`,
+  `survey_reviewed_at/by`) NO eran detectables por `npm test`. Los tests
+  unitarios mockean el cliente Supabase, así que `update status='qualified'`
+  con un enum que no tiene el valor pasa el test aunque la DB real la
+  rechace con `22P02` en runtime. Misma historia con los otros 2.
+- **Riesgo:** si reaplican mal una migration o alguien rebautiza una columna,
+  los tests siguen verdes y producción se rompe silenciosamente.
+- **Setup requerido:** CI matrix con `services: supabase:postgres:14`, fixtures
+  que crean schema + datos mínimos, tests E2E que ejecutan el path completo.
+  Patrón reusable para futuros cambios de schema.
+- **Estimación:** ~medio día setup + 2-3 horas escribir tests para los 3 paths
+  (promotion engine, whatsapp-status, markSurveyReviewed).
+- **Severidad:** 🟠 Media (no urgente pero importante).
+- **Refs:** `tests/promotion-engine.test.mjs:107` (mock-based, no integration);
+  `tests/whatsapp-status.test.mjs` (solo helpers puros); `scratch/` audits
+  manuales son el único coverage real hoy.
+- **Prioridad:** post-evento 11-jul, junto con Fase 4.
+
+#### E. `as any` huérfanos post-typegen-refresh
+
+- **Problema:** 32 ocurrencias de `as any` en `src/`. Después del typegen
+  refresh (`chore(typegen)` hoy), varios son innecesarios (compensaban
+  typegen stale). Quedan ~10 legítimos (snake_case↔camelCase mapping entre
+  `crm-rows` y el resto) + ~7 quecompensan nombres legacy.
+- **Acciones:** pasada selectiva removiendo los que ya no son necesarios.
+  Cada cambio requiere re-verificar que el código compila con `as any`
+  removido (algunos casts estaban ocultando tipos reales).
+- **Estimación:** ~30 min por cada subconjunto de ~5 archivos. Total ~2-3h
+  en chunks pequeños.
+- **Severidad:** 🟡 Deuda pura (no afecta runtime).
+- **Prioridad:** post-evento (no bloqueante).
+
+#### F. Policies RLS explícitas "deny all" en ~10 tablas sin policy
+
+- **Problema:** 32 tablas tienen `enable row level security` pero solo
+  21 tienen `create policy` explícita. Las 10 huérfanas quedan con
+  default-deny implícito. NO es bug actual porque todo el código usa
+  `createSupabaseAdminClient()` (service role bypassa RLS), pero cualquier
+  futuro caller con `createServerComponentClient()` se topa con permission
+  denied silencioso.
+- **Tablas sin policy explícita (verificado grep):** `crm_notes`,
+  `crm_tasks`, `lead_interactions`, `admin_audit_log`,
+  `bot_context_overrides`, `event_reminder_log`, `event_email_log`,
+  `event_survey_tokens`, `event_staff_links`, `event_qr_tokens`,
+  `lead_whatsapp_conversations`, `lead_consent_log`, `lead_whatsapp_log`.
+  (Las 9 primeras son admin-only; las 4 últimas son inbound-only.)
+- **Fix:** agregar `create policy ... for select to authenticated using (...)`
+  con `is_admin()` para las admin, y policy deny-all explícito para las
+  inbound-only (para que el default-deny sea visible, no implícito).
+- **Estimación:** ~1h con la migration ya mastica el patrón.
+- **Severidad:** 🟡 Media (defense in depth, no urgente).
+- **Prioridad:** post-evento (backlog Fase 4).
+
+#### G. Backend surface de `partial` sin UI consumer
+
+- **Problema:** el package C del audit (commit 2026-07-07) agregó
+  `partial?: boolean` y `warning?: string` al return de `markWhatsAppStatus`
+  y al `FormState` del server action `markWhatsAppStatusAction`. Sin
+  embargo, el UI consumer (`PipelineLeadsPromovidosBoard.tsx`) sigue
+  ignorando estos campos — solo lee `ok` y `note`.
+- **Implicación:** el admin sigue viendo "Estado actualizado" sin enterarse
+  si el log forense falló. El backend ya emite la señal correcta; falta el
+  toast amarillo en la UI.
+- **Fix:** modificar `PipelineLeadsPromovidosBoard.tsx` para surface un
+  toast/warning amarillo cuando `state.partial === true`. ~10 min.
+- **Severidad:** 🟡 (el fix ya está a medias — completar UI es trivial).
+- **Prioridad:** post-evento, hacer junto con E.
+
+---
+
 ## 2. Features pendientes por fase
 
 ### Fase 4 — UI Admin `/admin/eventos` + WhatsApp manual

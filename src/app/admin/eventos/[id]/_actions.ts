@@ -29,6 +29,10 @@ import { promoteSurveyToLead } from "@/lib/events/promotion";
 export interface FormState {
   ok: boolean;
   note: string;
+  /** True cuando la operacion tuvo exito parcial (ej. cambio aplicado pero audit log fallo). */
+  partial?: boolean;
+  /** Mensaje tecnico del partial-success. UI-toast friendly. */
+  warning?: string;
 }
 
 /**
@@ -244,7 +248,14 @@ export async function markWhatsAppStatusAction(
   if (typeof eventId === "string" && eventId) {
     revalidatePath(`/admin/eventos/${eventId}`);
   }
-  return { ok: result.ok, note: result.note };
+  return {
+    ok: result.ok,
+    note: result.note,
+    // FIX 2026-07-07 (audit fase revision 2): surface partial-success al admin
+    // cuando el cambio de estado persistio pero el audit log fallo.
+    partial: result.partial,
+    warning: result.warning,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────

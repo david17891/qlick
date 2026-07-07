@@ -85,6 +85,19 @@ export interface MarkWhatsAppStatusResult {
   ok: boolean;
   newStatus: WhatsAppStatus | null;
   note: string;
+  /**
+   * true cuando el cambio de estado persistio pero el audit log
+   * (INSERT en `lead_whatsapp_log`) fallo. La UI debe surface esto
+   * como un warning amarillo — el admin sabe que el estado cambio
+   * pero el log forense quedo incompleto. Tipico: transient DB error
+   * justo despues del UPDATE.
+   *
+   * FIX 2026-07-07 (audit fase revision 2): el bug previo devolvia
+   * `ok: true` aunque el log fallara, ocultando el problema al admin.
+   */
+  partial?: boolean;
+  /** Mensaje tecnico cuando `partial=true`. UI-toast friendly. */
+  warning?: string;
 }
 
 export interface MarkWhatsAppStatusInput {
@@ -188,13 +201,21 @@ export async function markWhatsAppStatus(
     metadata: (input.metadata ?? {}) as unknown as import("../../types/supabase").Json,
   });
   if (logErr) {
-    // El UPDATE ya paso. Loggeamos el error pero devolvemos OK parcial.
-    // El admin ve el estado nuevo en el dropdown y puede consultar el log.
+    // El UPDATE ya paso. Loggeamos el error y devolvemos `partial: true`
+    // para que la UI lo surface como warning amarillo. Antes el bug era
+    // devolver `ok: true` sin flag — el admin no se enteraba.
     // eslint-disable-next-line no-console
     console.error("[leads/whatsapp-status] markWhatsAppStatus log falló", {
       code: logErr.code,
       leadId: input.leadId,
     });
+    return {
+      ok: true,
+      newStatus: input.newStatus,
+      partial: true,
+      warning: `El estado cambio, pero el log forense no se persistio (${logErr.code ?? "unknown"}). Contacta a soporte si necesitas trazabilidad.`,
+      note: `Estado actualizado a "${WHATSAPP_STATUS_LABEL[input.newStatus]}" (sin log).`,
+    };
   }
 
   return {
