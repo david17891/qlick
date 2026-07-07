@@ -2587,3 +2587,23 @@ sustituir el ciclo con templates". Ejecuté 4 bloques sincrónicamente.
   - Eliminación de chats en un flujo simplificado desde el panel de conversación principal.
   - Proyecto compila exitosamente (Next.js build limpio) y todas las 545 pruebas unitarias continúan pasando.
 - **Trigger:** Solicitud del usuario para mejorar la experiencia de eliminación e interacción en el CRM.
+---
+
+## 2026-07-07 ~02:30 · Sesion /GOAL: typegen regen + E2E audit + push a main
+
+- **Pregunta:** El usuario pidio en modo /GOAL: (1) regenerar typegen Supabase y limpiar castings temporales `as unknown as`, (2) auditoria E2E del flujo virtual V1-V5 (triangulacion de asistencia), (3) push a origin, todo en self-healing loop.
+- **Decisión:**
+  1. **Typegen regenerado** con `npx supabase gen types typescript --project-id ugpejblymtbwtsoiykyj` + 4 patches manuales (events.format/streaming_*, enums event_format/event_streaming_provider, event_surveys.reviewed_at, leads.status qualified) porque el CLI no detecta columnas/enums de migrations previas.
+  2. **Casts `as unknown as` eliminados** en event-mapper.ts, events-server.ts (audit log), event-context-loader.ts (loadActiveEventContext + loadAllActiveEvents), event-gate/click/route.ts.
+  3. **Migration aditiva `20260707090000_event_attendees_checked_in_nullable.sql`** aplicada via Management API: ALTER COLUMN checked_in_at DROP NOT NULL, DROP DEFAULT. El flow virtual necesita INSERT con checked_in_at=NULL (gate = intent_attended). La survey Q0 lo setea despues a now() cuando el usuario confirma.
+  4. **CreateAttendeeInput.checkedInAt explicito** agregado al server lib. Default null. Para check-in presencial el caller pasa `new Date().toISOString()`.
+  5. **Domain types actualizados:** EventAttendee.checkedInAt es opcional, formatDate acepta null/undefined (muestra "—"), LeadStatus incluye "qualified".
+  6. **Auditoria E2E V1-V5** (scratch/qlick-virtual-funnel-audit.mjs): validacion contra DB real.
+  7. **Push a origin/main exitoso** (commit `65223eb feat(eventos-virtuales)...`).
+- **Razón:** El audit V3 descubrio bug real: el schema original declaraba `checked_in_at NOT NULL DEFAULT now()`, lo que hacia imposible representar el estado "intent_attended" entre el click del gate y la confirmacion de la survey. Sin fix, todos los attendees virtuales quedaban con checked_in_at=now() (incorrecto). La migration aditiva lo resuelve sin tocar datos legacy.
+- **Impacto:**
+  - Code base libre de casts `as unknown as` para format/streaming_*. TypeScript infiere del typegen regenerado.
+  - Triangulacion de asistencia virtual verificada contra DB real: gate → NULL → survey → now(). 5/5 escenarios PASS.
+  - Pipeline completo verde: type-check / lint / 545+545 tests / build OK.
+  - Schema `event_attendees.checked_in_at` ahora nullable. NO afecta registros legacy (todos tienen valor previo).
+- **Trigger:** Brief /GOAL explicito del usuario al final de la sesion anterior de eventos virtuales. Auto-reparacion en bucle hasta 100% verde.
