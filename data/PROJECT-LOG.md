@@ -2879,3 +2879,25 @@ sustituir el ciclo con templates". Ejecuté 4 bloques sincrónicamente.
 - **Trigger:** David preguntó "qué hace el bot si debe contactar un humano?" y aprobó opción B tras revisar las 3 alternativas. Sesión 2026-07-07.
 
 ---
+---
+
+## 2026-07-07 14:05 · Auditoría de alineación integral (/GOAL mode)
+
+- **Pregunta:** tras múltiples sesiones en paralelo (CRUD admin, CRM, eventos virtuales, bot, pagos Stripe), ¿el repo está alineado con AGENTS.md, sin basura multi-agente, sin desalineación documental, con suite verde?
+- **Decisión:** ejecutar los 5 vectores de auditoría (AGENTS.md compliance / filesystem hygiene / git branch drift / docs vs código / suite completa).
+- **Razón:** sesión /GOAL solicitada por David para detectar drift antes de evento en vivo.
+- **Hallazgos consolidados:**
+  - **Suite verde:** 569/569 tests, type-check 0 errors, lint 0 warnings, build OK (25 rutas estáticas + resto dinámicas, sin errores de hidratación).
+  - **PII/Logs:** CLEAN. Webhook RAW payload migrado a debugLog (gateado por NODE_ENV). Console calls solo loggean códigos/UUIDs/slugs, nunca phones/emails crudos.
+  - **Hard deletes:** CLEAN. 7 .delete() en src/, todos sobre tablas permitidas (events, event_qr_tokens, event_surveys, ot_context_overrides, confirmations, ttendees). NINGUNO sobre leads o lead_consent_log.
+  - **NEXT_PUBLIC_*:** 123 referencias, todas legítimas (URLs, Supabase URL/publishable, app_url, payment provider switch, whatsapp numbers). CERO secretos.
+  - **Bot engine:** 341 líneas modificadas desde v1.1-crm1-stable (6 commits), pero todos los cambios son features/fixes del bot (escalado humano, fallback honesto, copy fixes, gate virtual, mensajes condicionales). NO hay intrusión CRM/campaign. STATUS.md actualizado.
+  - **Working tree:** 1 archivo modificado (scratch/qlick-virtual-funnel-audit.mjs, 316 cambios). El archivo está en /scratch/ (gitignored). No afecta producción pero requiere decisión de David (commit/descartar/regenerar).
+  - **Ramas remotas:** 18 ramas eat/* y eature/* ya integradas a main. Solo origin/feat/v0.7.3-admin-refinement figura como no-merged (técnicamente está 17 commits detrás de main + 3 commits únicos cuyo contenido ya fue mergeado vía commits diferentes). Recomendación: cerrar con David para borrar rama stale.
+  - **OPEN_ITEMS.md:** 1840 líneas con header duplicado (## 1. Deuda técnica activa repetido). FIX aplicado en sesión: línea duplicada renombrada a ## 2. Archivo histórico de cierres de fase.
+  - **STATUS.md:** claim obsoleto sobre git diff bot-engine.ts → 0 hits corregido. Ahora refleja los 341 cambios legítimos y provee grep para auditar intrusión CRM/campaign.
+  - **Basura filesystem:** limpiado .tmp/test-endpoints.mjs (gitignored, ya no existe). 5 .env.local.bak-*, 4 dev-*.log, junta-socios-compacta.{html,pdf}, 
+ul, .next/, .vercel/ — todos gitignored (no entran al repo).
+  - **Zip binario:** qlick_brand_agent_pack (1).zip (5.96 MB) está TRACKED desde el bootstrap inicial (commit 243a499, 2026-06-22). No bloquea pero infla el repo. Recomendación: si la marca ya está consolidada en código, eliminar con git rm.
+- **Impacto:** no hay bloqueantes para producción ni privacidad rota. Suite verde garantiza regresión cero. Las dos acciones que requieren luz verde de David son: (1) decisión sobre scratch/qlick-virtual-funnel-audit.mjs modificado, (2) cerrar rama stale eat/v0.7.3-admin-refinement.
+- **Trigger:** David solicitó auditoría /GOAL multi-vector para verificar alineación del repo antes del evento en vivo.

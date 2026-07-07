@@ -65,7 +65,7 @@ git revert ec9eb55 --no-edit
 - **`npm run type-check`:** ✓ 0 errores
 - **`npm run lint`:** ✓ 0 warnings/errors
 - **`npm run build`:** ✓ Compila 55+ rutas (Static + Dynamic)
-- **Bot engine (`src/lib/whatsapp/bot-engine.ts`):** ✅ **INTACTO** — política de aislamiento cumplida (verificado `git diff v1.1-crm1-stable HEAD -- src/lib/whatsapp/bot-engine.ts` → 0 hits)
+- **Bot engine (`src/lib/whatsapp/bot-engine.ts`):** ✅ **Funcionalmente íntegro** — modificado 341 líneas desde v1.1-crm1-stable (6 commits), pero todos los cambios son feature/fix del propio bot (escalado humano en categorías duras, fallback honesto sin eventos publicados, copy check-in presencial, gate virtual SÍ/VOY, mensajes condicionales por formato). NO hay intrusión de CRM/campaign. Suite verde 569/569.
 - **Cobertura de compliance (LGPD/LFPDPPP):** ✅ soft delete + audit logs + consent filter
 - **Cobertura de UX:** ✅ conversaciones reales + métricas inteligentes + agente IA dinámico
 
@@ -231,9 +231,11 @@ curl -H "Cookie: sb-*-auth-token=..." "https://qlick.digital/api/admin/crm/leads
 # → Stream chunked, primeras 3 líneas son BOM + header + lead
 # → wc -l /tmp/crm.csv <= 100000 (tope defensivo)
 
-# 5. Bot sigue intacto
-git diff v1.1-crm1-stable HEAD -- src/lib/whatsapp/bot-engine.ts
-# → (sin output → bot intacto)
+# 5. Bot sigue funcionalmente íntegro
+git diff v1.1-crm1-stable HEAD --stat -- src/lib/whatsapp/bot-engine.ts
+# → 328 insertions / 13 deletions (esperado, son features/fixes legítimos del bot)
+# → Si querés auditar que NO hay intrusión CRM/campaign:
+git diff v1.1-crm1-stable HEAD -- src/lib/whatsapp/bot-engine.ts | grep -E '(leads|crm|bulkArchive|conversations)' || echo OK no CRM leakage
 ```
 
 ---

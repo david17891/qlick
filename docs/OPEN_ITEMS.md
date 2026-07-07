@@ -228,7 +228,7 @@
 
 ### ✅ Sesión 2026-06-28 (domingo, tarde) — Fase 5 Paquete A+B+C+D+E cerrado
 
-## 1. Deuda técnica activa
+## 2. Archivo histórico de cierres de fase
 
 ### ✅ Sesión 2026-06-28 (domingo, tarde-noche) — Fase 6 Hitos A+B+C cerrado
 
