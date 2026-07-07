@@ -2534,3 +2534,16 @@ sustituir el ciclo con templates". Ejecuté 4 bloques sincrónicamente.
   - Working tree muestra solo archivos en `docs/` + `data/` modificados — confirmado con `git status`.
   - Suite **545/545 tests verde** post-cierre documental (verificado antes y después del cambio).
 - **Trigger:** Ingreso en modo `/goal` con brief explícito de David (cerrar 4 docs canónicos sin tocar código).
+---
+
+## 2026-07-07 00:15 · Eventos virtuales + soporte de streaming
+
+- **Pregunta:** Algunos eventos futuros (incluyendo la conferencia del 10 jul) son virtuales. No hay sede física para escanear QR. ¿Cómo soportar modalidades mixtas (presencial/virtual/híbrido) y capturar asistencia virtual?
+- **Decisión:** Schema aditivo en `events` con `format` enum (in_person|virtual|hybrid), `streaming_url`, `streaming_provider` enum (youtube_live|facebook_live|zoom|other), `streaming_access_note`. Default `in_person` = no rompe eventos legacy. Constraint: `streaming_url IS NOT NULL` cuando format != in_person. Plataforma primaria recomendada: YouTube Live (costo $0, friction cero). NO Zoom para 10 jul (costo + friction). Survey como proxy de asistencia virtual con pregunta configurable "¿Asististe?" en `survey_config` (infra ya existía, falta cablear).
+- **Razón:** Necesidad inmediata (10 jul virtual). Stack ya tenía `event_attendee_source.zoom_export` en enum (alguien anticipó esto pero no cerró el flow). Schema aditivo = cero impacto en eventos presenciales existentes. Captura virtual via survey es menos precisa que Zoom Reports pero suficiente para MVP y no requiere inversión.
+- **Impacto:**
+  - David puede configurar eventos virtuales/híbridos sin tocar el modelo físico existente.
+  - Asistentes reciben link streaming en email/WhatsApp en lugar de QR cuando format=virtual.
+  - Captura de asistencia virtual = responder Sí a "¿Asististe?" en survey (trigger INSERT attendee con `source='zoom_export'` — pendiente en próxima sesión).
+  - Constraint DB garantiza que no se puede crear evento virtual sin streaming_url.
+- **Trigger:** Análisis conjunto con David sobre modalidad mixta + conferencia 10 jul confirmada como virtual. Branch `feat/eventos-virtual-y-formato` creada. Commit `5a49b3c` con migration + types + server lib (validado: type-check + lint + 545/545 tests + build).
