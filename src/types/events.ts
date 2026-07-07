@@ -20,6 +20,25 @@
 /** Estado del evento en el ciclo de vida. */
 export type EventStatus = "draft" | "published" | "archived";
 
+/**
+ * Modalidad del evento (migration 20260707000000_event_format_and_streaming).
+ *
+ * - `in_person`  → presencial, check-in por QR en puerta (default legacy)
+ * - `virtual`    → 100% online, no hay sede física
+ * - `hybrid`     → presencial + online simultáneamente
+ */
+export type EventFormat = "in_person" | "virtual" | "hybrid";
+
+/**
+ * Provider de streaming (migration 20260707000000). Para analytics y
+ * hints en admin UI. `other` cubre providers no listados explícitamente.
+ */
+export type EventStreamingProvider =
+  | "youtube_live"
+  | "facebook_live"
+  | "zoom"
+  | "other";
+
 /** Cómo entró la confirmación al sistema (auditoría). */
 export type EventConfirmationSource =
   | "imported_excel"
@@ -112,6 +131,9 @@ export type SurveyQuestionType = "buttons" | "text";
  * Flags exclusivos (validados por Zod en runtime):
  * - Como máximo 1 pregunta con `isConsent: true`.
  * - Como máximo 1 pregunta con `isBusinessDescription: true`.
+ * - Como máximo 1 pregunta con `isAttendanceCheck: true` (migration
+ *   20260707000000_event_format_and_streaming). La respuesta "Sí"
+ *   marca al attendee como realmente presente (checked_in_at).
  */
 export interface SurveyQuestion {
   id: string;
@@ -122,6 +144,14 @@ export interface SurveyQuestion {
   options?: SurveyQuestionOption[];
   /** Marca esta pregunta como descripción del negocio (se guarda en lead.description). */
   isBusinessDescription?: boolean;
+  /**
+   * Marca esta pregunta como verificación de asistencia real (Sí/No).
+   * Usado en encuestas de eventos virtuales/híbridos como Q1.
+   * La respuesta "Sí" actualiza `checked_in_at` en event_attendees
+   * (defense-in-depth: ya tenemos el intent del gate, esto confirma
+   * el ingreso real).
+   */
+  isAttendanceCheck?: boolean;
 }
 
 /**
@@ -205,6 +235,22 @@ export interface Event {
   endsAt?: string;
   /** Lugar físico o link de Zoom/Meet. */
   location?: string;
+  /**
+   * Modalidad del evento (migration 20260707000000).
+   * Default `in_person` para preservar eventos legacy.
+   */
+  format?: EventFormat;
+  /**
+   * Link de streaming (YouTube Live, Zoom, FB Live, etc.).
+   * Requerido si format ∈ {virtual, hybrid}. Libre para in_person.
+   */
+  streamingUrl?: string;
+  /** Provider declarado (analytics + hints UI). */
+  streamingProvider?: EventStreamingProvider;
+  /**
+   * Nota visible al asistente (ej: "el link se desbloquea 10 min antes").
+   */
+  streamingAccessNote?: string;
   /** URL de la imagen de portada. */
   coverImageUrl?: string;
   /** Estado de publicación. Solo `published` es lectura pública. */

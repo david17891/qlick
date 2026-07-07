@@ -141,3 +141,4 @@ dev-*.log
 /preview
 
 scripts/verify-brevo.mjs
+.env*

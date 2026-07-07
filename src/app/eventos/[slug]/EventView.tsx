@@ -62,6 +62,12 @@ export function EventView({ event, pastEvent }: Props) {
   const [hp, setHp] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [resultNote, setResultNote] = useState<string | null>(null);
+  /**
+   * URL del gate virtual "SÍ, VOY" (migration 20260707000000). Solo
+   * presente si el evento es virtual/híbrido y el visitante confirmó
+   * asistencia. Si está set, mostramos el bloque CTA de acceso al stream.
+   */
+  const [gateUrl, setGateUrl] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -104,6 +110,12 @@ export function EventView({ event, pastEvent }: Props) {
         // status distinto para que la UI lo pueda diferenciar.
         setStatus(result.created ? "success" : "already-registered");
         setResultNote(result.note);
+        // Gate virtual (migration 20260707000000). Si el server action
+        // devolvió una URL (evento virtual/híbrido), la guardamos para
+        // mostrar el botón "SÍ, VOY" en el bloque de éxito.
+        if (result.gateUrl) {
+          setGateUrl(result.gateUrl);
+        }
         // Limpiamos el form solo si fue una creación real.
         if (result.created) {
           setName("");
@@ -250,6 +262,38 @@ export function EventView({ event, pastEvent }: Props) {
                     </>
                   )}
                 </p>
+
+                {/* Bloque gate virtual (migration 20260707000000): solo
+                    visible si el evento es virtual o híbrido Y el server
+                    action devolvió una URL del gate. */}
+                {gateUrl && event.format && event.format !== "in_person" && (
+                  <div className="mt-6 rounded-2xl border-2 border-brand-500 bg-gradient-to-br from-brand-50 to-pink-50 p-6 text-left">
+                    <p className="text-xs font-bold uppercase tracking-wider text-brand-600">
+                      🎥 Acceso al evento virtual
+                    </p>
+                    <p className="mt-2 text-sm text-ink-soft">
+                      Cuando estés listo para entrar al stream, hacé click en
+                      el botón. Te contamos como asistencia y te llevamos al
+                      vivo.
+                    </p>
+                    {event.streamingAccessNote && (
+                      <p className="mt-2 text-xs font-semibold text-brand-700">
+                        {event.streamingAccessNote}
+                      </p>
+                    )}
+                    <a
+                      href={gateUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-4 inline-block w-full text-center bg-gradient-to-r from-brand-600 to-pink-600 hover:from-brand-700 hover:to-pink-700 text-white font-bold text-lg py-3 px-6 rounded-full shadow-lg transition"
+                    >
+                      🎥 SÍ, VOY A ENTRAR
+                    </a>
+                    <p className="mt-3 text-[11px] text-ink-muted text-center">
+                      Al confirmar, te llevamos al stream. Solo se cuenta 1 vez.
+                    </p>
+                  </div>
+                )}
               </div>
             </Card>
           ) : (

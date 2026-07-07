@@ -1584,6 +1584,13 @@ async function buildResponsePlan(args: {
    *  wizard_qN_* puedan persistir (insert en event_surveys + update
    *  leads) sin tener que re-crear la conexión. NULL en modo demo. */
   supabase?: SupabaseAdmin | null;
+  /**
+   * Evento del registro detectado (migration 20260707000000). Lo pasa
+   * processInboundMessage cuando hace match con findEventInConversation.
+   * Útil para que el handler `provide_email` sepa si el evento es virtual
+   * o híbrido y mande el link streaming en vez del QR pass.
+   */
+  registrationEvent?: import("../ai/event-context-loader").ActiveEventContext | null;
 }): Promise<OutboundPlan> {
   const { intent, lead, body, phoneNormalized, buttonId } = args;
   const provider = getActiveWhatsAppProvider();
@@ -2976,7 +2983,17 @@ case "interactive_event_inscribir": {
       // El "Por" del lead legacy causaba "Listo Por..." en este mensaje.
       // Ver constante de módulo PLACEHOLDER_NAMES.
       const clean = cleanFirstName(firstName);
-      const eventLine = `\n\nTambien te enviamos el pase con el QR a tu correo. Es el link de check-in para que lo presentes el dia del evento.`;
+      // FIX 2026-07-07 (feat/eventos-virtual-y-formato): si el evento del
+      // registro es virtual o híbrido, mandamos el link streaming en el
+      // mensaje de WhatsApp en lugar del link de check-in (no aplica a
+      // eventos 100% presenciales). WhatsApp es un canal íntimo donde
+      // el link directo está OK — el gate "SÍ, VOY" se reserva para email
+      // (donde el link se puede re-enviar y compartir).
+      const regEvt = args.registrationEvent;
+      const isVirtual = regEvt?.format === "virtual" || regEvt?.format === "hybrid";
+      const eventLine = isVirtual
+        ? `\n\nEs un evento virtual. Te enviamos el link de acceso al stream por correo. Cuando estes listo, hace click y entras.${regEvt?.streamingAccessNote ? `\n\n${regEvt.streamingAccessNote}` : ""}`
+        : `\n\nTambien te enviamos el pase con el QR a tu correo. Es el link de check-in para que lo presentes el dia del evento.`;
       const bodyText = qrUrl
         ? `Listo${clean ? " " + clean : ""}, te registramos para el evento. Tu pase (link de check-in): ${qrUrl}${eventLine}`
         : `Listo${clean ? " " + clean : ""}, registramos tu email ${email}. Te esperamos el ${evt.date} en ${evt.location}.`;
@@ -4108,6 +4125,12 @@ export async function processInboundMessage(
         if (lead.email && !lead.email.endsWith("@placeholder.local")) {
           try {
             const qrImageUrl = `${appBaseUrl()}/api/event-qr/${existing.token}.png`;
+            // Gate URL para eventos virtuales/híbridos (migration 20260707000000).
+            // El handler registra intent_attended y redirige al streaming_url.
+            const gateUrl =
+              evt?.format && evt.format !== "in_person"
+                ? `${appBaseUrl()}/api/event-gate/${encodeURIComponent(existing.token)}/click`
+                : undefined;
             // FIX P1 2026-07-03: pasamos eventId + tokenId para que el
             // resultado se loggee en event_email_log (visibilidad admin).
             await sendEventQrPassEmail(
@@ -4121,6 +4144,10 @@ export async function processInboundMessage(
                 eventLocation: evt?.location ?? null,
                 qrImageUrl,
                 checkInUrl: existing.url,
+                // Streaming (migration 20260707000000).
+                format: evt?.format ?? "in_person",
+                gateUrl,
+                streamingAccessNote: evt?.streamingAccessNote ?? undefined,
               },
               {
                 eventId: existing.eventId,
@@ -4307,6 +4334,13 @@ export async function processInboundMessage(
   let registrationEventSlug: string | null = null;
   let registrationEventTitle: string | null = null;
   let registrationEventRequiresName: boolean = false;
+  /**
+   * Evento del registro completo (con format, streamingUrl, etc). Se carga
+   * en el bloque `if (intent === "provide_email" && supabase)` y se pasa
+   * a buildResponsePlan para que el handler sepa si el evento es virtual
+   * (migration 20260707000000).
+   */
+  let matchedEvent: ActiveEventContext | null = null;
   if (intent === "provide_email" && supabase) {
     // FIX 2026-07-05 (sesion David): extraer email del body, no usar el
     // body completo. Si el usuario mando contexto extra ("me equivoque, es X"),
@@ -4330,7 +4364,7 @@ export async function processInboundMessage(
     // Cargar todos los eventos publicados para identificar el correcto.
     const allEvents = await loadAllActiveEvents().catch(() => [] as ActiveEventContext[]);
     // Buscar el evento en la conversacion (ultimo outbound del bot).
-    const matchedEvent = findEventInConversation(convWindowForEvent, allEvents);
+    matchedEvent = findEventInConversation(convWindowForEvent, allEvents);
     registrationEventSlug = matchedEvent?.slug ?? null;
     registrationEventTitle = matchedEvent?.title ?? null;
     registrationEventRequiresName = matchedEvent?.requiresName === true;
@@ -4497,6 +4531,11 @@ export async function processInboundMessage(
         // FIX 2026-07-02: usar URL publica del QR en vez de data URL.
         // Los data URLs no se renderizan en Gmail/Outlook.
         const qrImageUrl = `${appBaseUrl()}/api/event-qr/${qr.token}.png`;
+        // Gate URL para eventos virtuales/híbridos (migration 20260707000000).
+        const gateUrl =
+          event?.format && event.format !== "in_person"
+            ? `${appBaseUrl()}/api/event-gate/${encodeURIComponent(qr.token)}/click`
+            : undefined;
         // FIX P1 2026-07-03: pasamos eventId + tokenId para que el
         // resultado se loggee en event_email_log (visibilidad admin).
         // `generateQrToken` no devuelve el token.id (PK), solo el string —
@@ -4512,6 +4551,10 @@ export async function processInboundMessage(
             eventLocation: event?.location ?? null,
             qrImageUrl,
             checkInUrl: qrUrl,
+            // Streaming (migration 20260707000000).
+            format: event?.format ?? "in_person",
+            gateUrl,
+            streamingAccessNote: event?.streamingAccessNote ?? undefined,
           },
           {
             eventId: event?.id ?? null,
@@ -4542,6 +4585,12 @@ export async function processInboundMessage(
     phoneNormalized,
     qrUrl,
     leadProfile,
+    // FIX 2026-07-07 (feat/eventos-virtual-y-formato): pasamos el evento
+    // del registro (si lo detectamos) para que el handler provide_email
+    // sepa si el evento es virtual y mande el link streaming en vez del
+    // QR pass. El matchedEvent ya incluye format/streamingUrl/nota porque
+    // ActiveEventContext se actualizó con esos campos en esta sesión.
+    registrationEvent: matchedEvent ?? null,
     // FIX 2026-07-02 (sesion David, "Ver eventos muestra los 3"): pasamos
     // el buttonId para que handlers como interactive_event_yes puedan
     // extraer el slug del evento cuando el lead selecciona uno especifico

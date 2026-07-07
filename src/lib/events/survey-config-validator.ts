@@ -52,6 +52,7 @@ export function validateSurveyConfig(raw: unknown): SurveyConfig | null {
   const questions: SurveyQuestion[] = [];
   let consentCount = 0;
   let businessDescCount = 0;
+  let attendanceCheckCount = 0;
 
   for (const q of obj.questions) {
     if (!q || typeof q !== "object") return null;
@@ -92,7 +93,7 @@ export function validateSurveyConfig(raw: unknown): SurveyConfig | null {
         if (oo.isCommercialInterest === true) {
           // OK — commercial interest puede estar en varias opciones.
         }
-        if (consentCount > 1 || businessDescCount > 1) return null;
+        if (consentCount > 1 || businessDescCount > 1 || attendanceCheckCount > 1) return null;
         options.push({
           id: oo.id,
           title: oo.title,
@@ -104,9 +105,10 @@ export function validateSurveyConfig(raw: unknown): SurveyConfig | null {
       }
     }
 
-    // Flags exclusivos en question (isBusinessDescription).
+    // Flags exclusivos en question (isBusinessDescription, isAttendanceCheck).
     // isConsent se chequea en options arriba.
     if (qq.isBusinessDescription === true) businessDescCount++;
+    if (qq.isAttendanceCheck === true) attendanceCheckCount++;
     if (businessDescCount > 1) return null;
 
     const question: SurveyQuestion = {
@@ -116,6 +118,9 @@ export function validateSurveyConfig(raw: unknown): SurveyConfig | null {
       ...(options ? { options } : {}),
       ...(qq.isBusinessDescription === true
         ? { isBusinessDescription: true }
+        : {}),
+      ...(qq.isAttendanceCheck === true
+        ? { isAttendanceCheck: true }
         : {}),
     };
     questions.push(question);
@@ -169,7 +174,7 @@ function parseFollowUp(raw: Record<string, unknown>): SurveyFollowUp {
  *
  * 5 preguntas (3 buttons + 1 button consent + 1 text libre):
  * 1. Claridad del contenido (Muy claro 20 / Claro 15 / Confuso 5)
- * 2. Aplicabilidad (Sí 30 / Tal vez 15 / No 0) — Sí/Tal vez son commercial interest
+ * 2. Aplicabilidad (Sí 30 / Tal vez 15 / No 0) — Sí/Talvez son commercial interest
  * 3. Fuente (Facebook-IG 5 / Referido 10 / Otro 0)
  * 4. Consentimiento (Sí 10 / No 0) — Sí tiene isConsent=true (auto-promoción)
  * 5. Negocio (texto libre, isBusinessDescription=true)
@@ -253,6 +258,110 @@ export function getDefaultSurveyConfig(): SurveyConfig {
   };
 }
 
+/**
+ * Plantilla por defecto para eventos virtuales / híbridos (migration
+ * 20260707000000_event_format_and_streaming).
+ *
+ * Diferencia clave vs `getDefaultSurveyConfig`:
+ * - Q0 (attendance_check) ANTES de las preguntas de calidad:
+ *   "¿Ingresaste al evento?" Sí (20) / No (0)
+ *   - isAttendanceCheck=true → al submitir la survey, el sistema
+ *     actualiza `event_attendees.checked_in_at` para confirmar
+ *     asistencia real (defense-in-depth vs el click del gate).
+ * - Las preguntas 2-5 son las mismas que el default.
+ *
+ * Max score con attendance: 20 (attendance) + 20+30+10+10 = 90 (clamped 0-100).
+ */
+export function getDefaultSurveyConfigForVirtual(): SurveyConfig {
+  return {
+    questions: [
+      {
+        // Q0 — pregunta de control de asistencia (Sí/No). Marcada con
+        // isAttendanceCheck=true para que el handler de submit la
+        // detecte y actualice event_attendees.checked_in_at.
+        id: "q0_attended",
+        text: "¿Ingresaste al evento en vivo?",
+        type: "buttons",
+        isAttendanceCheck: true,
+        options: [
+          { id: "yes_attended", title: "Sí, ingresé", score: 20 },
+          { id: "no_attended", title: "No pude", score: 0 },
+        ],
+      },
+      {
+        id: "q1_clarity",
+        text: "¿Qué tan claro te quedó el contenido del evento?",
+        type: "buttons",
+        options: [
+          { id: "very_clear", title: "Muy claro", score: 20 },
+          { id: "clear", title: "Claro", score: 15 },
+          { id: "confusing", title: "Confuso", score: 5 },
+        ],
+      },
+      {
+        id: "q2_apply",
+        text: "¿Lo aplicarías a tu negocio o proyecto?",
+        type: "buttons",
+        options: [
+          {
+            id: "yes",
+            title: "Sí",
+            score: 30,
+            isCommercialInterest: true,
+          },
+          {
+            id: "maybe",
+            title: "Tal vez",
+            score: 15,
+            isCommercialInterest: true,
+          },
+          { id: "no", title: "No", score: 0 },
+        ],
+      },
+      {
+        id: "q3_source",
+        text: "¿Cómo conociste este evento?",
+        type: "buttons",
+        options: [
+          { id: "meta", title: "Facebook-IG", score: 5 },
+          { id: "referred", title: "Referido", score: 10 },
+          { id: "other", title: "Otro", score: 0 },
+        ],
+      },
+      {
+        id: "q_consent",
+        text: "¿Aceptas que te contactemos por WhatsApp para enviarte información de cursos?",
+        type: "buttons",
+        options: [
+          { id: "yes", title: "Sí", score: 10, isConsent: true },
+          { id: "no", title: "No", score: 0 },
+        ],
+      },
+      {
+        id: "q_business",
+        text: "Contanos brevemente sobre tu negocio o a qué te dedicas (o 'saltar').",
+        type: "text",
+        isBusinessDescription: true,
+      },
+    ],
+    followUps: {
+      mql: {
+        text: "¡Excelente {{1}}! Veo que te interesa bastante. Un asesor de Qlick se pondrá en contacto contigo muy pronto por esta vía.",
+        templateName: "conf_bienvenida",
+        templateLanguage: "es_MX",
+      },
+      hot: {
+        text: "¡Buenísimo {{1}}! Te comparto el temario del curso para que lo revises: https://qlick.digital/cursos",
+        templateName: null,
+      },
+      coldWarm: {
+        text: "¡Gracias por tu feedback {{1}}! Tomamos nota para mejorar nuestros próximos eventos.",
+        templateName: null,
+      },
+    },
+  };
+}
+
 // ─────────────────────────────────────────────────────────────
 // Resolución segura (con fallback)
 // ─────────────────────────────────────────────────────────────
@@ -261,12 +370,17 @@ export function getDefaultSurveyConfig(): SurveyConfig {
  * Resuelve el `SurveyConfig` para un evento.
  *
  * Si `events.survey_config` está vacío o falla la validación, devuelve
- * la plantilla Default. Loggea un warning si el JSON era inválido (sin
- * exponer el contenido — solo genérico).
+ * la plantilla Default (o `getDefaultSurveyConfigForVirtual` si el
+ * evento es virtual/híbrido — migration 20260707000000). Loggea un
+ * warning si el JSON era inválido (sin exponer el contenido — solo
+ * genérico).
  *
  * Server-only.
  */
-export function resolveSurveyConfig(raw: unknown): SurveyConfig {
+export function resolveSurveyConfig(
+  raw: unknown,
+  format?: "in_person" | "virtual" | "hybrid",
+): SurveyConfig {
   const validated = validateSurveyConfig(raw);
   if (validated !== null) return validated;
 
@@ -285,5 +399,12 @@ export function resolveSurveyConfig(raw: unknown): SurveyConfig {
     }
   }
 
+  // Migration 20260707000000: para eventos virtuales/híbridos, la
+  // plantilla Default debe incluir la pregunta de control de asistencia
+  // (isAttendanceCheck=true). Para presenciales, mantenemos el flujo
+  // legacy sin esa pregunta (el check-in es por QR en puerta).
+  if (format === "virtual" || format === "hybrid") {
+    return getDefaultSurveyConfigForVirtual();
+  }
   return getDefaultSurveyConfig();
 }

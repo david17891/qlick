@@ -60,7 +60,20 @@ export interface ActiveEventContext {
    * del bot para este evento (personalidad + reglas libres). Inyectado
    * al system prompt via `promptBlock`. Default: empty.
    */
-  eventRules: import("@/types/events").EventBotRules;
+eventRules: import("@/types/events").EventBotRules;
+  /**
+   * Modalidad del evento (migration 20260707000000).
+   * - "in_person": presencial, default legacy
+   * - "virtual": 100% online
+   * - "hybrid": presencial + online
+   */
+  format: "in_person" | "virtual" | "hybrid";
+  /** Link de streaming (YouTube Live, Zoom, FB Live, etc.). Solo si format != in_person. */
+  streamingUrl: string | null;
+  /** Provider declarado (analítica + hints en admin UI). */
+  streamingProvider: "youtube_live" | "facebook_live" | "zoom" | "other" | null;
+  /** Nota visible para el asistente (ej: "el link se desbloquea 10 min antes"). */
+  streamingAccessNote: string | null;
 }
 
 type SupabaseAdmin = SupabaseClient<Database>;
@@ -110,7 +123,13 @@ function fallbackFromEnv(): ActiveEventContext {
     // FIX 2026-07-05: el placeholder NO tiene short_code real (es ficticio).
     // El bot cae al fallback chain sin esta capa, pero al ser placeholder
     // no debería recibir WhatsApps reales — es solo safety net para tests.
-    shortCode: null
+    shortCode: null,
+    // Streaming (migration 20260707000000): defaults seguros. El bot no
+    // sabe que es virtual en modo placeholder — solo el admin ve esto.
+    format: "in_person",
+    streamingUrl: null,
+    streamingProvider: null,
+    streamingAccessNote: null,
   };
 }
 
@@ -288,7 +307,7 @@ export async function loadActiveEventContext(
       ? await supabase
           .from("events" as never)
           .select(
-            "id, slug, short_code, title, description, starts_at, ends_at, location, status, requires_name, event_rules"
+            "id, slug, short_code, title, description, starts_at, ends_at, location, status, requires_name, event_rules, format, streaming_url, streaming_provider, streaming_access_note"
           )
           .eq("status", "published")
           .eq("slug", slug)
@@ -297,7 +316,7 @@ export async function loadActiveEventContext(
       : await supabase
           .from("events" as never)
           .select(
-            "id, slug, short_code, title, description, starts_at, ends_at, location, status, requires_name, event_rules"
+            "id, slug, short_code, title, description, starts_at, ends_at, location, status, requires_name, event_rules, format, streaming_url, streaming_provider, streaming_access_note"
           )
           .eq("status", "published")
           .order("starts_at", { ascending: true })
@@ -319,6 +338,12 @@ export async function loadActiveEventContext(
       location: string | null;
       requires_name?: boolean;
       event_rules?: unknown;
+      // Streaming (migration 20260707000000). Cast `as never` por typegen
+      // stale, pero las columnas ya existen en DB.
+      format?: string | null;
+      streaming_url?: string | null;
+      streaming_provider?: string | null;
+      streaming_access_note?: string | null;
     };
 
     const humanStartsAt = formatHumanDate(evt.starts_at);
@@ -351,7 +376,18 @@ export async function loadActiveEventContext(
       // FIX 2026-07-06: si requires_name es null/undefined, default true.
       // Solo false si la columna esta explicitamente en false.
       requiresName: evt.requires_name !== false,
-      eventRules
+      eventRules,
+      // Streaming (migration 20260707000000). Defaults seguros para
+      // legacy: in_person si la columna es null (eventos previos).
+      format: (evt.format ?? "in_person") as "in_person" | "virtual" | "hybrid",
+      streamingUrl: evt.streaming_url ?? null,
+      streamingProvider: (evt.streaming_provider ?? null) as
+        | "youtube_live"
+        | "facebook_live"
+        | "zoom"
+        | "other"
+        | null,
+      streamingAccessNote: evt.streaming_access_note ?? null,
     };
   } catch {
     return fallbackFromEnv();
@@ -408,6 +444,11 @@ export async function loadAllActiveEvents(): Promise<ActiveEventContext[]> {
       location: string | null;
       requires_name?: boolean;
       event_rules?: unknown;
+      // Streaming (migration 20260707000000).
+      format?: string | null;
+      streaming_url?: string | null;
+      streaming_provider?: string | null;
+      streaming_access_note?: string | null;
     }>).map((evt) => {
       const humanStartsAt = formatHumanDate(evt.starts_at);
       const humanDuration = formatHumanDuration(evt.starts_at, evt.ends_at);
@@ -436,6 +477,16 @@ export async function loadAllActiveEvents(): Promise<ActiveEventContext[]> {
         source: "db" as const,
         // FIX 2026-07-06: default true si la columna es null/undefined.
         requiresName: evt.requires_name !== false,
+        // Streaming (migration 20260707000000).
+        format: (evt.format ?? "in_person") as "in_person" | "virtual" | "hybrid",
+        streamingUrl: evt.streaming_url ?? null,
+        streamingProvider: (evt.streaming_provider ?? null) as
+          | "youtube_live"
+          | "facebook_live"
+          | "zoom"
+          | "other"
+          | null,
+        streamingAccessNote: evt.streaming_access_note ?? null,
         eventRules
       };
     });

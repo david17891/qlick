@@ -35,6 +35,9 @@ import {
 
 type Mode = "create" | "edit";
 
+type EventFormat = "in_person" | "virtual" | "hybrid";
+type EventStreamingProvider = "youtube_live" | "facebook_live" | "zoom" | "other";
+
 interface FormState {
   title: string;
   slug: string;
@@ -48,6 +51,18 @@ interface FormState {
   /** Fase 7b: reglas del bot para este evento. */
   botPersonality: string;
   botRulesText: string; // textarea: 1 regla por linea
+  /**
+   * Modalidad del evento (migration 20260707000000). Default `in_person`
+   * para preservar el comportamiento legacy de todos los eventos
+   * presenciales que ya están en producción.
+   */
+  format: EventFormat;
+  /** Link de streaming (YouTube Live, Zoom, FB Live, etc.). Requerido si format != in_person. */
+  streamingUrl: string;
+  /** Provider declarado (analítica + hints en admin UI). */
+  streamingProvider: EventStreamingProvider;
+  /** Nota visible para el asistente (ej: "el link se abre 10 min antes"). */
+  streamingAccessNote: string;
 }
 
 function eventToForm(e: Event): FormState {
@@ -72,7 +87,13 @@ function eventToForm(e: Event): FormState {
     coverImageUrl: e.coverImageUrl ?? "",
     status: e.status,
     botPersonality: e.eventRules?.personality ?? "",
-    botRulesText: (e.eventRules?.rules ?? []).join("\n")
+    botRulesText: (e.eventRules?.rules ?? []).join("\n"),
+    // Streaming (migration 20260707000000). Defaults seguros:
+    // in_person si no hay format legacy, provider=other si no estaba seteado.
+    format: (e.format ?? "in_person") as EventFormat,
+    streamingUrl: e.streamingUrl ?? "",
+    streamingProvider: (e.streamingProvider ?? "other") as EventStreamingProvider,
+    streamingAccessNote: e.streamingAccessNote ?? "",
   };
 }
 
@@ -87,7 +108,14 @@ function emptyForm(): FormState {
     coverImageUrl: "",
     status: "draft",
     botPersonality: "",
-    botRulesText: ""
+    botRulesText: "",
+    // Default `in_person` para preservar eventos presenciales legacy
+    // (todos los que ya están creados). El admin cambia a virtual/hybrid
+    // explícitamente cuando configura un evento online.
+    format: "in_person",
+    streamingUrl: "",
+    streamingProvider: "youtube_live",
+    streamingAccessNote: "",
   };
 }
 
@@ -223,6 +251,14 @@ export function EventDrawer({
         durationParsed = n;
       }
     }
+    // Streaming (migration 20260707000000): si la modalidad es virtual o
+    // hybrid, el streaming_url es obligatorio. La DB también lo valida
+    // (events_streaming_url_required), pero validamos acá para feedback
+    // inline más rápido.
+    if (form.format !== "in_person" && !form.streamingUrl.trim()) {
+      errs.streamingUrl =
+        "Para eventos virtuales o híbridos, el link de streaming es obligatorio.";
+    }
     if (Object.keys(errs).length > 0) {
       setFieldErrors(errs);
       return;
@@ -259,7 +295,16 @@ export function EventDrawer({
           eventRules: {
             personality: form.botPersonality.trim(),
             rules: rulesArr
-          }
+          },
+          // Streaming (migration 20260707000000). Solo mandamos si format
+          // != in_person para no contaminar requests innecesariamente.
+          format: form.format,
+          streamingUrl: form.streamingUrl.trim() || undefined,
+          streamingProvider: form.format !== "in_person" ? form.streamingProvider : undefined,
+          streamingAccessNote:
+            form.format !== "in_person" && form.streamingAccessNote.trim()
+              ? form.streamingAccessNote.trim()
+              : undefined,
         });
         setSuccess("Evento creado.");
         onSaved(created);
@@ -275,6 +320,15 @@ export function EventDrawer({
             rules: rulesArr
           },
           coverImageUrl: form.coverImageUrl.trim() || undefined,
+          // Streaming: mandamos siempre los nuevos valores para que cambiar
+          // de in_person a virtual persista el link correctamente.
+          format: form.format,
+          streamingUrl: form.streamingUrl.trim() || null,
+          streamingProvider: form.format !== "in_person" ? form.streamingProvider : null,
+          streamingAccessNote:
+            form.format !== "in_person" && form.streamingAccessNote.trim()
+              ? form.streamingAccessNote.trim()
+              : null,
         });
         setSuccess("Cambios guardados.");
         onSaved(updated);
@@ -556,6 +610,98 @@ export function EventDrawer({
               disabled={saving}
             />
           </Field>
+
+          {/* ────── Modalidad + streaming (migration 20260707000000) ────── */}
+          <fieldset className="border-t border-brand-100 pt-4 mt-2 space-y-3">
+            <legend className="text-xs font-bold uppercase tracking-wider text-brand-600 px-2">
+              🎥 Modalidad y streaming
+            </legend>
+            <Field
+              label="Modalidad"
+              htmlFor="evt-format"
+              hint="Define si los asistentes reciben QR (presencial), link streaming (virtual), o ambos (híbrido)."
+            >
+              <select
+                id="evt-format"
+                value={form.format}
+                onChange={(e) => set("format", e.target.value as EventFormat)}
+                disabled={saving}
+                className="w-full rounded-xl border border-brand-100 bg-white px-4 py-3 text-ink focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+              >
+                <option value="in_person">📍 Presencial (QR en puerta)</option>
+                <option value="virtual">💻 Virtual (link streaming)</option>
+                <option value="hybrid">🔀 Híbrido (QR + link)</option>
+              </select>
+            </Field>
+
+            {/* Campos streaming: SOLO visibles si format != in_person.
+                El constraint events_streaming_url_required se valida
+                inline (errs.streamingUrl) y en DB. */}
+            {form.format !== "in_person" && (
+              <>
+                <Field
+                  label="Link de streaming"
+                  htmlFor="evt-streaming-url"
+                  hint="YouTube Live, Zoom, Facebook Live, o cualquier link público/privado."
+                  error={fieldErrors.streamingUrl}
+                  required
+                >
+                  <Input
+                    id="evt-streaming-url"
+                    type="url"
+                    value={form.streamingUrl}
+                    onChange={(e) => set("streamingUrl", e.target.value)}
+                    placeholder="https://youtu.be/XXXXXXX"
+                    required
+                    disabled={saving}
+                  />
+                </Field>
+
+                <Field
+                  label="Provider"
+                  htmlFor="evt-streaming-provider"
+                  hint="Para analítica + hints en el admin. Elegí `Otro` si no está listado."
+                >
+                  <select
+                    id="evt-streaming-provider"
+                    value={form.streamingProvider}
+                    onChange={(e) =>
+                      set("streamingProvider", e.target.value as EventStreamingProvider)
+                    }
+                    disabled={saving}
+                    className="w-full rounded-xl border border-brand-100 bg-white px-4 py-3 text-ink focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
+                  >
+                    <option value="youtube_live">YouTube Live</option>
+                    <option value="facebook_live">Facebook Live</option>
+                    <option value="zoom">Zoom (Webinar / Meeting)</option>
+                    <option value="other">Otro</option>
+                  </select>
+                </Field>
+
+                <Field
+                  label="Nota de acceso (opcional)"
+                  htmlFor="evt-streaming-note"
+                  hint="Visible para el asistente. Ej: 'El link se desbloquea 10 minutos antes del inicio'."
+                >
+                  <Textarea
+                    id="evt-streaming-note"
+                    rows={2}
+                    value={form.streamingAccessNote}
+                    onChange={(e) => set("streamingAccessNote", e.target.value)}
+                    placeholder="El link se desbloquea 10 minutos antes del inicio."
+                    disabled={saving}
+                  />
+                </Field>
+
+                <div className="rounded-lg bg-brand-50 border border-brand-100 px-3 py-2 text-xs text-brand-800">
+                  💡 <strong>Tip Qlick:</strong> YouTube Live es gratis y de cero
+                  fricción para el attendee. Configurá el stream como
+                  &quot;Unlisted&quot; en YouTube Studio para que solo con el link
+                  se pueda ver.
+                </div>
+              </>
+            )}
+          </fieldset>
 
           <Field label="Imagen de portada (URL)" htmlFor="evt-cover" hint="Opcional. Se mostrará en la card del admin.">
             <Input
