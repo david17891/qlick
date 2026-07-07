@@ -2677,3 +2677,30 @@ sustituir el ciclo con templates". Ejecuté 4 bloques sincrónicamente.
 
 - **Trigger:** Solicitud de David de recuperar el último código enviado al WhatsApp del bot que no aparecía en el CRM.
 
+---
+
+## 2026-07-07 ~10:40 — fix(whatsapp webhook): persistir caption de image/document + placeholder CRM por messageType
+
+- **Pregunta:** El fix anterior (10:30, normalización de teléfonos internacionales + log RAW WEBHOOK PAYLOAD) recuperó el caso del código 66088 que llegó al bot. Pero quedaron dos huecos que harían que el bug se repita con cualquier lead que mande una imagen:
+  1. El handler de WhatsApp (`src/lib/whatsapp/webhooks/handler.ts`) solo extraía `text`, `buttonId` y `buttonTitle` del payload de Meta. **Descartaba completamente `msg.image.caption` y `msg.image.id`** — el caption del lead (ej. "mi código es QLICK-12345") se perdía para siempre, y el `media_id` para descargar la foto tampoco quedaba guardado.
+  2. El componente del CRM (`src/components/crm/CRMView.tsx`) mostraba siempre el campo `author` como header arriba del body. Cuando el body estaba vacío (porque la imagen no tenía caption), el usuario veía "QUICK" o "LEAD" en mayúsculas arriba de una burbuja vacía — parecía que ese fuera el texto del mensaje. Era confuso. La pantalla hermana (`LeadDetailDrawer.tsx`) ya filtraba correctamente "Lead"/"Qlick"; faltaba homogeneizar.
+
+- **Decisión:**
+  1. **Tipos extendidos** (`src/lib/whatsapp/webhooks/types.ts`): nuevas interfaces `IncomingWhatsAppImage`, `IncomingWhatsAppDocument`, `IncomingWhatsAppAudio`. El tipo `IncomingWhatsAppMessage.type` ahora cubre todos los tipos válidos del CHECK constraint (`text | button | interactive | image | document | audio | video | sticker | unknown`).
+  2. **Handler extrae media** (`src/lib/whatsapp/webhooks/handler.ts`): ahora se leen `msg.image.{id, mime_type, sha256, caption}`, `msg.document.{id, mime_type, sha256, filename, caption}`, `msg.audio.{id, mime_type, sha256, voice}`. El `text` del mensaje ahora se resuelve como fallback chain: `text.body ?? interactive.title ?? image.caption ?? document.caption ?? video.caption`. El caption es texto real del lead → debe ser buscable → va a `body` en DB.
+  3. **Persistencia** (`src/app/api/whatsapp/webhook/route.ts`): `persistInboundIfPossible` ahora agrega `metadata.image/document/audio` cuando existen. El `body` ya queda OK porque el handler.ts resuelve el caption como `text`.
+  4. **Mapper CRM** (`src/lib/crm/conversations-server.ts`): `whatsappRowToMessage` ahora prefiere el `body` si existe, y si está vacío genera un placeholder contextual con icono según `messageType` ("📷 Imagen", "🎤 Nota de voz", "📄 documento.pdf", etc.). También propaga `messageType` al tipo `ConversationMessage`.
+  5. **Tipo `ConversationMessage`** (`src/types/crm.ts`): agregado `messageType?: string` opcional para que el front pueda condicionar el render.
+  6. **UI CRM** (`src/components/crm/CRMView.tsx`): el header `author` solo se renderiza si NO es "Lead"/"Qlick" (mismo patrón que `LeadDetailDrawer.tsx:1004`). El body vacío muestra fallback "[Mensaje sin texto]" en cursiva (caso edge, el mapper ya inyecta placeholder en el 99% de los casos).
+  7. **Teléfono internacional refinado** (`src/lib/crm/phone-utils.ts`): el fallback genérico del fix 10:30 era demasiado permisivo (`digits.length >= 7` aceptaba cualquier cosa). Lo apreté a: **solo aplica si tiene `+` explícito + 8-15 dígitos + NO empieza con "1"**. Así `+44...` (UK), `+34...` (España), `+57...` (Colombia) se aceptan, pero `+1...` (US/CA) sigue siendo rechazado (mantiene contrato del test existente) y `12345678901234` (14 dígitos sin +) sigue siendo null.
+
+- **Razón:** El lead del caso 66088 mandó un código como IMAGEN con caption. La pantalla actual muestra "QUICK" arriba del vacío porque el caption nunca se persistió. Sin este fix, el próximo lead que mande una foto con texto va a perder la info igual — solo que esta vez sí hay log del payload para detectarlo en retrospectiva, no para salvarlo. Mejor guardar bien desde el origen.
+
+- **Impacto:**
+  - Cualquier `image`/`document`/`video` que llegue al webhook ahora persiste: `body` = caption (texto buscable del lead), `metadata.image/document/video` = id + mime + sha + filename (para descargar el archivo desde Meta vía `/{media_id}`).
+  - El CRM muestra placeholders legibles ("📷 Imagen", "🎤 Nota de voz") en vez de burbujas vacías, y ya no muestra "QUICK" / "LEAD" como header confuso.
+  - LeadDetailDrawer y CRMView ahora son consistentes (ambos filtran el author "Lead"/"Qlick").
+  - Suite verde: `type-check` + `lint` + `545/545 tests` + `build` (48/48 rutas).
+  - Cero breakage de contrato: el campo `messageType` en `ConversationMessage` es opcional, los callers existentes siguen funcionando.
+
+- **Trigger:** David vio en pantalla la conversación de `+526861187731` mostrando "QUICK" y "LEAD" como si fueran los textos del bot y del lead, cuando en realidad el mensaje del lead era una imagen. Análisis de DB confirmó que `body=null` y `metadata` solo tenía `{timestamp: "..."}`. Diagnóstico: el handler nunca leyó `msg.image.*`. El fix 10:30 (log RAW WEBHOOK PAYLOAD) ya estaba deployado pero para el caso 66088 ese mensaje llegó 13 min ANTES del deploy — el log no ayuda retroactivamente. Solución: guardar bien desde el origen para que no se repita.

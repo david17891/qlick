@@ -27,6 +27,43 @@ export interface WebhookVerifyResult {
   note: string;
 }
 
+/**
+ * Sub-shape de un mensaje entrante de tipo `image` (Cloud API de Meta).
+ * Los campos vienen como `msg.image = { id, mime_type, sha256, caption? }`
+ * en el payload crudo. Los persistimos tal cual en `metadata.image`
+ * (más el caption en `body` si existe, porque es texto del lead).
+ */
+export interface IncomingWhatsAppImage {
+  /** Media ID de Meta. Sirve para descargar el archivo vía `/{media_id}`. */
+  id: string;
+  mimeType?: string;
+  sha256?: string;
+  /** Caption que el usuario escribió acompañando la foto. Texto buscable. */
+  caption?: string;
+}
+
+/**
+ * Sub-shape de un mensaje entrante de tipo `document` (PDF, etc).
+ */
+export interface IncomingWhatsAppDocument {
+  id: string;
+  mimeType?: string;
+  sha256?: string;
+  filename?: string;
+  caption?: string;
+}
+
+/**
+ * Sub-shape de un mensaje entrante de tipo `audio` (incluye voice notes).
+ */
+export interface IncomingWhatsAppAudio {
+  id: string;
+  mimeType?: string;
+  sha256?: string;
+  /** true = voice note (push-to-talk); false = audio file. */
+  voice?: boolean;
+}
+
 /** Un mensaje entrante parseado desde el payload del webhook. */
 export interface IncomingWhatsAppMessage {
   /** WhatsApp Message ID (wamid). */
@@ -35,16 +72,35 @@ export interface IncomingWhatsAppMessage {
   from: string;
   /** Nombre del contacto (profile name), si viene. */
   contactName?: string;
-  /** Texto del mensaje (solo tipo text). Para interactive, usar `buttonId` o `selectedRowId`. */
+  /**
+   * Texto del mensaje. Para `text` es el body. Para `interactive` es el
+   * título del botón/fila (lo que el usuario "dijo"). Para `image`/`document`
+   * es el caption si viene (texto acompañando el archivo).
+   */
   text?: string;
   /** Timestamp de Meta (segundos). */
   timestamp?: string;
-  /** Tipo de mensaje. */
-  type: "text" | "button" | "interactive" | "image" | "unknown";
+  /** Tipo de mensaje (alineado con CHECK constraint `message_type`). */
+  type:
+    | "text"
+    | "button"
+    | "interactive"
+    | "image"
+    | "document"
+    | "audio"
+    | "video"
+    | "sticker"
+    | "unknown";
   /** ID del botón clickeado (Reply Button) o fila seleccionada (List). Solo si type=interactive. */
   buttonId?: string;
   /** Título legible del botón/fila (para logging y fallback). */
   buttonTitle?: string;
+  /** Sub-shape para mensajes tipo `image`. */
+  image?: IncomingWhatsAppImage;
+  /** Sub-shape para mensajes tipo `document`. */
+  document?: IncomingWhatsAppDocument;
+  /** Sub-shape para mensajes tipo `audio`. */
+  audio?: IncomingWhatsAppAudio;
 }
 
 /** Resultado de procesar un POST del webhook. */

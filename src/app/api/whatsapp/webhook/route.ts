@@ -245,6 +245,8 @@ async function persistInboundIfPossible(
         message_type: VALID_INBOUND_TYPES.has(msg.type)
           ? msg.type
           : "interactive",
+        // body ya viene con caption (si lo hubo) porque el handler.ts
+        // hace text = msg.text?.body ?? msg.image?.caption ?? ...
         body: msg.text ?? null,
         whatsapp_message_id: msg.messageId,
         metadata: {
@@ -258,6 +260,15 @@ async function persistInboundIfPossible(
           // `metadata.buttonId` ausente, sabemos que Meta cambió el
           // contrato o hay un problema en su pipeline.
           ...(msg.buttonId ? { buttonId: msg.buttonId } : {}),
+          // FIX 2026-07-07 (whatsapp webhook): persistimos los sub-shapes
+          // de media (image/document/audio). Antes se descartaban y el
+          // caption del lead (ej. "mi código es QLICK-12345") se perdía
+          // para siempre. Ahora: caption va a `body` (texto buscable) y
+          // el resto (id/mime/sha/filename) queda en metadata para que el
+          // admin pueda descargar el archivo desde Meta vía `/{media_id}`.
+          ...(msg.image ? { image: msg.image } : {}),
+          ...(msg.document ? { document: msg.document } : {}),
+          ...(msg.audio ? { audio: msg.audio } : {}),
         }
       } as never,
       { onConflict: "whatsapp_message_id", ignoreDuplicates: true } as never

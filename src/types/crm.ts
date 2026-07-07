@@ -212,8 +212,13 @@ export interface ConversationMessage {
   id: string;
   conversationId: string;
   direction: "inbound" | "outbound";
-  /** Texto del mensaje. */
+  /** Texto del mensaje. Si está vacío y hay `messageType`, la UI puede
+   *  renderizar un placeholder contextual (ej. "📷 Imagen" si type=image). */
   body: string;
+  /** Tipo de mensaje (alineado con `lead_whatsapp_conversations.message_type`).
+   *  FIX 2026-07-07: agregado para que el CRM pueda mostrar placeholders
+   *  cuando body viene vacío (imagen sin caption, audio, etc.). */
+  messageType?: string;
   /** Autor (nombre del lead o del responsable). */
   author?: string;
   /** Si el mensaje fue sugerido por el agente IA (no enviado por API real). */
