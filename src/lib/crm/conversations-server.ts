@@ -162,6 +162,7 @@ export async function listRealConversations(): Promise<Conversation[]> {
       "id, lead_id, phone_normalized, direction, message_type, body, metadata, created_at",
     )
     .is("deleted_at", null)
+    .is("metadata->>status" as never, null)
     .order("created_at", { ascending: false });
 
   if (waErr) {
