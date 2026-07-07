@@ -74,6 +74,10 @@ export function normalizePhone(
       normalized = `+52${digits.slice(3)}`;
     }
   }
+  
+  if (normalized === null && digits.length >= 7) {
+    normalized = `+${digits}`;
+  }
 
   return normalized;
 }

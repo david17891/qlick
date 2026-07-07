@@ -115,6 +115,9 @@ export async function POST(req: NextRequest) {
   }
 
   const parsed = handleWebhookPayload(payload);
+  
+  // Log raw payload for visibility of incoming webhook messages (e.g. verification codes)
+  console.log("[whatsapp/webhook] RAW WEBHOOK PAYLOAD:", JSON.stringify(payload));
 
   // 4. Persistir inbound messages + encolar bot (fire-and-forget).
   const supabase = await getSupabase();
