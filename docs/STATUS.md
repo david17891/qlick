@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-06 18:42 — Release **`v0.9.0`** *(alias interno CRM Inteligente v2.0)* cerrado y documentado. Bot engine intacto, **545/545 tests verde**, **38/38 checks de auditoría E2E** contra DB real superados.
+> **Última actualización:** 2026-07-07 11:20 — Hotfix post-v0.9.0: fix crítico en `POST /api/admin/events` que descartaba silenciosamente los 5 campos nuevos (`format`, `eventRules`, `streamingUrl`, `streamingProvider`, `streamingAccessNote`). Aplicar el fix en el admin (Editar AA4E → guardar) ahora persiste correctamente. Suite sigue verde: 545/545 tests + 48/48 rutas + Vercel Production Ready.
 
 ---
 
@@ -16,7 +16,9 @@
 
 **Tag Git de respaldo (HEAD estable):** *(se crea en commit de cierre de gobierno — apunta al commit `ec9eb55`)*
 **Commits relevantes en `main`:**
-- `ec9eb55` — `feat(crm): Fase 2-3 - Conversaciones reales + inteligencia comercial + agente IA dinamico` ← **HEAD actual**
+- `dc74db1` — `fix(admin/events): propagar format/streaming/eventRules al POST` ← **HEAD actual** *(hotfix post-v0.9.0)*
+- `7188289` — `fix(bot): fallback honesto cuando no hay eventos publicados (no evento fantasma)`
+- `ec9eb55` — `feat(crm): Fase 2-3 - Conversaciones reales + inteligencia comercial + agente IA dinamico`
 - `d150d9d` — `feat(crm): Fase 1 - Archivado logico, bulk actions con optimistic lock, export CSV streaming`
 - `cc320fc` — `docs(release): v0.8.0 - Wizard WhatsApp funcional + Español MX`
 
@@ -76,9 +78,9 @@ git revert ec9eb55 --no-edit
 | **Dominio** | `https://www.qlick.digital` (apex redirect www→apex en Vercel) |
 | **Dominio Vercel (auto)** | `qlick-three.vercel.app` (legacy, sigue activo) |
 | **Branch** | `main` |
-| **Último push** | `ec9eb55` *(HEAD que se va a taggear como `v0.9.0` en el commit de gobierno)* |
-| **Commits ahead of origin** | **0** — working tree clean post-v0.9.0 |
-| **Build status** | ✅ READY + PROMOTED + aliasAssigned |
+| **Último push** | `dc74db1` *(hotfix post-v0.9.0 — propagación de campos nuevos en POST /api/admin/events)* |
+| **Commits ahead of origin** | **0** — working tree clean post-hotfix |
+| **Build status** | ✅ READY + PROMOTED + aliasAssigned (deployment `qlick-ntjo2dm7i`, 44s) |
 
 ### Dominio `qlick.digital` (sin cambios desde sesión 2026-07-02)
 

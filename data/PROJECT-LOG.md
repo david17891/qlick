@@ -2732,3 +2732,28 @@ sustituir el ciclo con templates". Ejecuté 4 bloques sincrónicamente.
   - Cero breakage de contrato: el campo `messageType` en `ConversationMessage` es opcional, los callers existentes siguen funcionando.
 
 - **Trigger:** David vio en pantalla la conversación de `+526861187731` mostrando "QUICK" y "LEAD" como si fueran los textos del bot y del lead, cuando en realidad el mensaje del lead era una imagen. Análisis de DB confirmó que `body=null` y `metadata` solo tenía `{timestamp: "..."}`. Diagnóstico: el handler nunca leyó `msg.image.*`. El fix 10:30 (log RAW WEBHOOK PAYLOAD) ya estaba deployado pero para el caso 66088 ese mensaje llegó 13 min ANTES del deploy — el log no ayuda retroactivamente. Solución: guardar bien desde el origen para que no se repita.
+
+---
+
+## 2026-07-07 ~11:15 · fix(admin/events): propagar format/streaming/eventRules al POST (AA4E quedó in_person)
+
+- **Pregunta:** El evento AA4E (sábado 11 jul) quedó configurado en DB como `format = in_person` aunque David lo había configurado virtual desde el drawer. El location decía "Zoom (link se manda 24h antes)", el `streaming_url` quedó `null`, y la duración quedó en 11:00–14:00 (en vez de 10:00–13:00). Además, al abrir Editar sobre cualquier evento, las reglas del bot que David había puesto aparecían vacías. ¿Bug del form o de la API?
+
+- **Decisión:** Fix quirúrgico en `src/app/api/admin/events/route.ts` — el handler POST solo propagaba 8 campos legacy al `createEvent()` de la lib server. Los 5 nuevos (eventRules, format, streamingUrl, streamingProvider, streamingAccessNote) llegaban al handler pero **se descartaban silenciosamente** al construir el payload. Ahora se propagan todos. Cero cambios en el lib server ni en `EventDrawer.tsx` ni en las migraciones (todo lo de abajo ya estaba listo desde 2026-07-07 — faltaba el cable).
+
+- **Razón:**
+  - El admin UI (`EventDrawer.tsx`) ya enviaba los 5 campos nuevos correctamente (`format`, `streamingUrl`, `streamingProvider`, `streamingAccessNote`, `eventRules`).
+  - El lib server (`events-server.ts → createEvent()`) ya los aceptaba y los persistía.
+  - Las migraciones `20260707000000` (agrega columnas + constraint) y `20260707093000` (relaja `streaming_url` opcional) ya estaban en producción.
+  - Faltaba el único eslabón: el API route. Single point of failure que rompía todo lo de arriba sin error visible (HTTP 200, evento "creado", pero incompleto).
+
+- **Impacto:**
+  - Crear evento nuevo desde el drawer ahora persiste: `format` correcto, `event_rules` con personalidad + reglas, `streaming_url` + provider + nota.
+  - Editar evento existente (PATCH) **NO estaba roto** — `events-server.updateEvent()` ya manejaba todo el body; el bug era solo del POST. Verificado por grep: línea 524 `if (input.format !== undefined) patch.format = input.format;`.
+  - AA4E queda arreglado al **editarlo y guardar de nuevo** (el PATCH ya estaba sano). Cambio necesario en el admin: format → Virtual, streamingUrl → https://…, duración → 10:00–13:00. Yo no toqué la DB porque no me autorizaste — son datos tuyos.
+  - Suite verde: `type-check` (0) + `lint` (0) + `545/545 tests` + `build` (48/48 rutas) + Vercel Production ready.
+  - Cero nuevos tests agregados (no había tests del POST de `/api/admin/events`; el contrato del PATCH ya estaba cubierto indirectamente).
+
+- **Trigger:** David reportó los 3 síntomas juntos (format mal + reglas vacías al editar + link streaming vacío) y preguntó si era bug de código o de configuración. Confirmé bug único en API route tras grep en `src/app/api/admin/events/route.ts` líneas 49–61 (payload incompleto).
+
+---
