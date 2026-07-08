@@ -6,15 +6,15 @@
  * 2. Si el curso es free → redirect a `/inscripcion/[slug]` (no necesita pago).
  * 3. Si NO hay sesión → redirect a `/login?next=/pagar/[slug]`.
  * 4. Si ya tiene course_access activo → redirect a `/dashboard?already_paid=1`.
- * 5. Si todo OK → renderiza preview del curso + SimulatorForm con 3 botones
- *    (éxito, fallo, pendiente) que llama a `/api/dev/simulate-webhook`.
+ * 5. Si todo OK → renderiza preview del curso + componente de checkout:
+ *      - `NEXT_PUBLIC_PAYMENT_PROVIDER === "mock"` (default dev) →
+ *        SimulatorForm con 3 botones (éxito/fallo/pendiente) que llama a
+ *        `/api/dev/simulate-webhook`.
+ *      - cualquier otro valor (stripe, mercadopago, conekta) → CheckoutButton
+ *        que dispara `/api/payments/create-checkout` y redirige al provider.
  *
- * DEV-ONLY: la página usa el simulador de pagos. En producción, se reemplaza
- * por el flujo real del provider (Stripe Checkout, MercadoPago Checkout Pro,
- * Conekta OXXO flow, etc.).
- *
- * Server Component. La lógica de auth y decisión corre 100% en server.
- * Solo el SimulatorForm es Client Component (botones que llaman al endpoint).
+ * Server Component. La decisión de provider corre 100% en server. Tanto
+ * SimulatorForm como CheckoutButton son Client Components.
  */
 
 import { redirect } from "next/navigation";
@@ -25,6 +25,11 @@ import { getCurrentStudent } from "@/lib/auth/session";
 import { getCourseBySlug } from "@/lib/lms/courses-server";
 import { checkCourseAccess } from "@/lib/lms/entitlements";
 import { SimulatorForm } from "./SimulatorForm";
+import { CheckoutButton } from "./CheckoutButton";
+
+// Provider activo leído en build/runtime. Default "mock" para dev local.
+const PAYMENT_PROVIDER = (process.env.NEXT_PUBLIC_PAYMENT_PROVIDER ?? "mock").toLowerCase();
+const IS_MOCK = PAYMENT_PROVIDER === "mock";
 
 export async function generateMetadata({
   params,
@@ -94,10 +99,16 @@ export default async function PayPage({
           <div className="max-w-2xl mx-auto">
             <Card className="p-8">
               <div className="mb-5">
-                <Badge tone="warning">
-                  Modo simulación · reemplazaremos esto cuando integremos
-                  Stripe/MercadoPago/Conekta
-                </Badge>
+                {IS_MOCK ? (
+                  <Badge tone="warning">
+                    Modo simulación · reemplazaremos esto cuando integremos
+                    Stripe/MercadoPago/Conekta
+                  </Badge>
+                ) : (
+                  <Badge tone="success">
+                    Pago seguro · {PAYMENT_PROVIDER}
+                  </Badge>
+                )}
               </div>
 
               <h1 className="text-3xl font-bold text-ink leading-tight">
@@ -136,11 +147,19 @@ export default async function PayPage({
               </div>
 
               <div className="mt-8">
-                <SimulatorForm
-                  courseSlug={courseSlug}
-                  courseTitle={course.title}
-                  amountMxn={course.priceMXN ?? 0}
-                />
+                {IS_MOCK ? (
+                  <SimulatorForm
+                    courseSlug={courseSlug}
+                    courseTitle={course.title}
+                    amountMxn={course.priceMXN ?? 0}
+                  />
+                ) : (
+                  <CheckoutButton
+                    courseSlug={courseSlug}
+                    courseTitle={course.title}
+                    amountMxn={course.priceMXN ?? 0}
+                  />
+                )}
               </div>
 
               <p className="mt-6 text-sm text-ink-muted text-center">
