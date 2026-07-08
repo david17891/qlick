@@ -210,6 +210,75 @@ async function processStripeEvent(
 /* ------------------------------------------------------------------ */
 
 type CheckoutSession = Stripe.Checkout.Session;
+type AdminClient = ReturnType<typeof createSupabaseAdminClient>;
+
+/**
+ * Resuelve el user_id de un Checkout Session:
+ * - Si metadata.user_id está presente (usuario logueado al pagar), lo usa.
+ * - Si no (guest checkout desde 2026-07-08), busca al user por email y
+ *   si no existe lo crea con email_confirm: true.
+ * - Si no hay ni user_id ni email, devuelve null (caller decide qué hacer).
+ *
+ * Idempotencia: si el user ya existe, no se crea duplicado. El lookup usa
+ * listUsers paginado (suficiente para volumen actual; migrar a getUserById
+ * cuando Supabase JS lo exponga).
+ */
+async function resolveOrCreateUserId(
+  supabase: AdminClient,
+  metadataUserId: string,
+  sessionEmail: string | null
+): Promise<string | null> {
+  if (metadataUserId) return metadataUserId;
+  if (!sessionEmail) return null;
+
+  // 1. Buscar user existente por email.
+  try {
+    const { data: listData } = await supabase.auth.admin.listUsers({
+      page: 1,
+      perPage: 500,
+    });
+    const existing = listData?.users?.find(
+      (u) => u.email?.toLowerCase() === sessionEmail.toLowerCase()
+    );
+    if (existing) return existing.id;
+  } catch {
+    // Si falla el lookup, seguimos a crear (puede que la cuenta exista
+    // pero falle el list por permisos o tamaño). createUser error lo
+    // manejamos abajo.
+  }
+
+  // 2. Crear user nuevo con email confirmado (guest puede recibir magic
+  //    link inmediatamente).
+  const { data: created, error: createError } = await supabase.auth.admin.createUser({
+    email: sessionEmail,
+    email_confirm: true,
+  });
+  if (created?.user?.id) return created.user.id;
+
+  // 3. Si createUser falló por "already exists" (carrera concurrente),
+  //    intentar el lookup otra vez.
+  if (createError && /already.*registered|already.*exists/i.test(createError.message)) {
+    try {
+      const { data: listData } = await supabase.auth.admin.listUsers({
+        page: 1,
+        perPage: 500,
+      });
+      const existing = listData?.users?.find(
+        (u) => u.email?.toLowerCase() === sessionEmail.toLowerCase()
+      );
+      if (existing) return existing.id;
+    } catch {
+      // ignore
+    }
+  }
+
+  // eslint-disable-next-line no-console
+  console.error("[stripe-webhook] resolveOrCreateUserId falló", {
+    email: sessionEmail,
+    error: createError?.message ?? "unknown",
+  });
+  return null;
+}
 
 async function handleCheckoutCompleted(
   event: Stripe.Event,
@@ -231,14 +300,44 @@ async function handleCheckoutCompleted(
     };
   }
 
-  // 1. Persistir payment (idempotente por event.id).
+  // 1. Resolver user_id (puede venir de metadata o ser guest checkout).
+  //    Guest checkout (desde 2026-07-08): metadata.user_id es "" y
+  //    session.customer_email tiene el email del comprador. Buscamos al
+  //    usuario por email; si no existe, lo creamos.
   const supabase = createSupabaseAdminClient();
-  const userId = (session.metadata?.user_id as string | undefined) ?? "";
-  const userEmail = (session.customer_email as string | undefined) ?? null;
+  const metadataUserId = (session.metadata?.user_id as string | undefined) ?? "";
+  const sessionEmail =
+    (session.customer_email as string | undefined) ??
+    (session.customer_details?.email as string | undefined) ??
+    null;
 
-  if (!userId) {
-    throw new Error("Falta user_id en metadata del Checkout Session.");
+  const resolvedUserId = await resolveOrCreateUserId(
+    supabase,
+    metadataUserId,
+    sessionEmail
+  );
+  if (!resolvedUserId) {
+    // No hay forma de grant access sin un user_id. Loggeamos y retornamos
+    // 200 para que Stripe no reintente, pero marcamos el fallo.
+    // eslint-disable-next-line no-console
+    console.error("[stripe-webhook] sin user_id ni email resolvable", {
+      event_id: event.id,
+      session_id: session.id,
+      metadata_user_id: metadataUserId || null,
+      session_email: sessionEmail,
+    });
+    return {
+      status: 200,
+      body: {
+        ok: false,
+        mode: "no_user_resolvable",
+        event_id: event.id,
+        note:
+          "No se pudo resolver user_id ni crear cuenta (sin email). Investigar manualmente.",
+      },
+    };
   }
+  const userId = resolvedUserId;
 
   // amount_total en centavos. Convertir a MXN.
   const amountTotalMXN =

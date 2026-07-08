@@ -33,9 +33,11 @@
  *   - 409: ya tiene access (ya pagó)
  *   - 500: error del provider o de DB
  *
- * AUTH: requiere sesión de estudiante (no admin). Si no, 401. El grant del
- * access lo hace el webhook del provider real, no este endpoint — este solo
- * inicia el checkout.
+ * AUTH: sesión OPCIONAL desde 2026-07-08 (guest checkout). Si hay sesión,
+ * pasamos su userId al provider (queda en metadata y evita duplicados). Si
+ * NO hay sesión, el webhook crea la cuenta con el email de Stripe al
+ * confirmarse el pago. El grant del access lo hace el webhook, no este
+ * endpoint — este solo inicia el checkout.
  *
  * SCOPE: solo cursos en esta versión. Eventos/masterclass requieren agregar
  * `price_mxn` a la tabla `events` (migration pendiente) antes de poder usar
@@ -70,14 +72,8 @@ function isValidMethod(m: unknown): m is PaymentMethod {
 }
 
 export async function POST(req: NextRequest) {
-  // 1. Auth: requiere sesión de estudiante.
+  // 1. Auth: sesión opcional (guest checkout).
   const session = await getCurrentStudent();
-  if (!session) {
-    return NextResponse.json(
-      { ok: false, error: "Necesitás iniciar sesión para iniciar un pago." },
-      { status: 401 },
-    );
-  }
 
   // 2. Parse body.
   let body: CreateCheckoutBody;
@@ -117,17 +113,21 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Idempotencia: si ya tiene access activo, no dejamos pagar dos veces.
-  const access = await checkCourseAccess(session.userId, course.id);
-  if (access.hasAccess) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "Ya tenés acceso a este curso.",
-        alreadyPaid: true,
-      },
-      { status: 409 },
-    );
+// Idempotencia: si ya tiene access activo y hay sesión, no dejamos pagar
+  // dos veces. Sin sesión (guest) no podemos chequear, así que dejamos que
+  // el webhook detecte duplicados via metadata.user_id cuando se resuelva.
+  if (session) {
+    const access = await checkCourseAccess(session.userId, course.id);
+    if (access.hasAccess) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Ya tenés acceso a este curso.",
+          alreadyPaid: true,
+        },
+        { status: 409 }
+      );
+    }
   }
 
   const productRef: ProductRef = {
@@ -154,8 +154,8 @@ export async function POST(req: NextRequest) {
   try {
     const result = await provider.createCheckout({
       productRef,
-      userId: session.userId,
-      userEmail: session.email ?? "",
+      userId: session?.userId ?? null,
+      userEmail: session?.email ?? "",
       method,
       successUrl,
       cancelUrl,
