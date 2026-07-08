@@ -3052,3 +3052,23 @@ ul, .next/, .vercel/ — todos gitignored (no entran al repo).
   4. Decidir si se hace emisión automática post-check-in (hook en `CheckInTab.tsx`) o se deja como acción manual del admin. Default: manual, para evitar emisiones accidentales.
 
 - **Trigger:** David dijo "estabamos haciendo esto Concept C... vamos a retomar, terminas de cablear, con cuidado de no romper nada, el objetivo es poder generar los certificados para los asistentes, solo para pruebas podemos usar registrados para generar y revisar, pero debe quedar cableado final para asistentes".
+
+---
+
+## 2026-07-08 ~15:21 · Sprint Concept C — pivote de PDF nativo a HTML imprimible
+
+- **Pregunta:** El sprint Concept C llevaba 2 sesiones intentando emitir PDFs nativos con @react-pdf/renderer (commit da06af2). En runtime fallaba con errores opacos de pdfkit ("missing required error components") y perdiamos fidelidad visual del design aprobado (gradientes, font weight 900, clip-path diagonal, sparkles). Ademas Vercel Hobby no aguanta headless browsers (@sparticuz/chromium / playwright / puppeteer).
+
+- **Decision:** Pivote total — la app entrega la pagina HTML identica a docs/qlick-cert-system/03-concept-c-dynamic-authority.html y vos la convertis a PDF localmente con Ctrl+P → Guardar como PDF. Fidelity 100% porque es el mismo motor del browser rendereando el mismo HTML. Cero costo de compute en Vercel. Endpoint viejo /api/events/[id]/certificate/[attendeeId] deprecado a redirect HTML informativo.
+
+- **Razon:** Vercel Hobby + la densidad visual del Concept C hacen inviable cualquier opcion server-side de generacion de PDF. La conversion local es deterministica, gratis, y mantiene fidelidad perfecta del design aprobado por vos y Paul.
+
+- **Impacto:** Nueva pagina /cert/[folio] (server component, auth admin por cookie). Replica 1:1 el Concept C: panel morado diagonal con chevrons, brand block, course-info (con auto-wrap del titulo si es largo), hero name partido en 2 lineas (accent en segunda palabra), deco-line con estrella amarilla, reason, signature de Paul Velasquez, QR hacia qlick.digital/filosofia, sparkles decorativos. El boton Certificado del admin (/admin/eventos/[id]) ahora apunta a /cert/[folio] con fallback al endpoint viejo si no hay folio. Fonts Plus Jakarta Sans + Inter + JetBrains Mono cargadas desde Google Fonts CDN. Como bonus, corregir 2 PNGs que estaban corruptos en UTF-16 desde el commit original (paul-signature.png y qlick-q-icon.png).
+
+- **Trigger:** Sesiones paralelas del cert se paraban pidiendo visualizacion vs iterando PDF. David pidio explicitamente "centremonos en que tu haces las pruebas si necesitas validacion visual me dices ve a revisarlo y donde" y cerro el loop: yo hice el screenshot, lo mostre, David valido visualmente, hicimos cleanup del cert debug y commit.
+
+- **Validacion:** Screenshot full-page de localhost:3000/cert/QLK-2026-69164 (folio de prueba, attendee Mavis Demo Test, evento Marketing IA para Emprendedores) — renderizado completo, layout identico al design aprobado, isotipo Q + firma de Paul visibles, datos inyectados correctos. Commit 8454577 en feat/certificados-concept-c.
+
+- **Cleanup:** Cert debug QLK-2026-69164 + attendee mavis+test@qlick.app eliminados de la DB via SQL Editor (David). ADMIN_EMAIL_ALLOWLIST revertido a vacio en .env.local (estaba seteado a mavis+debug@qlick.app solo para validacion local). Dev server detenido.
+
+- **Coordinacion con otro agente:** Sesion paralela mvs_84fdd5764db0416195a07ed2f351c8cf (rama feat/event-reminders-whatsapp) hizo cross-branch accidental, sus archivos terminaron en mi working tree. Resolvimos via chat: yo no commitee sus archivos (event-reminders.ts, email/reminder.ts, templates/reminder.ts, vercel.json, tests/cron-event-reminders.test.mjs), los deje como modified para que los recupere al checkout de su rama. Mi commit cc03c0f se hizo por error en su rama (working tree estaba ahi) — movido a feat/certificados-concept-c via reset --hard ea4f096 + cherry-pick 8454577.
