@@ -527,6 +527,16 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
           onSelectLead={setSelectedLead}
           onDeleteConversation={handleDeleteConversation}
           onMessageSent={() => setConversationsRev((r) => r + 1)}
+          // FIX 2026-07-08: cuando David pausa/reanuda el bot desde
+          // ConversationsView, actualizamos la lista de leads in-place
+          // para que al cambiar de conversación y volver, el switch
+          // muestre el estado real (DB). Sin esto, el lead viejo en
+          // la lista tiene bot_paused=false y el switch miente.
+          onLeadChanged={(updated) =>
+            setLeads((prev) =>
+              prev.map((l) => (l.id === updated.id ? { ...l, ...updated } : l)),
+            )
+          }
         />
       )}
 
@@ -1561,6 +1571,7 @@ function ConversationsView({
   onSelectLead,
   onDeleteConversation,
   onMessageSent,
+  onLeadChanged,
 }: {
   conversations: Conversation[];
   leads: Lead[];
@@ -1570,6 +1581,10 @@ function ConversationsView({
   /** FIX 2026-07-08: callback después de enviar un WhatsApp manual,
    *  para que el padre refetchee la lista. */
   onMessageSent?: () => void;
+  /** FIX 2026-07-08: callback cuando el admin pausa/reanuda el bot
+   *  o edita un campo del lead. El padre actualiza su lista para que
+   *  el estado persista entre cambios de conversación. */
+  onLeadChanged?: (lead: Lead) => void;
 }) {
   const [activeId, setActiveId] = useState<string | null>(
     conversations[0]?.id ?? null
@@ -1687,6 +1702,16 @@ function ConversationsView({
         setBotPauseMsg(data.error ?? `HTTP ${res.status}`);
         return;
       }
+      // FIX 2026-07-08: notificar al padre para que actualice la lista
+      // de leads in-place. Sin esto, al cambiar de conversación y
+      // volver, el switch mostraría el estado viejo (no la pausa real
+      // en DB). El bug fue reportado por David: "se queda en pausa
+      // pero al regresar marca como que ya no esta en pausa".
+      onLeadChanged?.({
+        ...lead,
+        botPaused: nextPaused,
+        botPausedAt: nextPaused ? new Date().toISOString() : null,
+      });
       setBotPauseState("ok");
       setBotPauseMsg(nextPaused ? "Bot pausado." : "Bot reanudado.");
       setTimeout(() => setBotPauseState("idle"), 2500);
