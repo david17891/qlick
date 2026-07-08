@@ -37,6 +37,8 @@ import { CheckInTab } from "./_components/CheckInTab";
 import { DeleteRowButton } from "./_components/DeleteRowButton";
 import { DeleteSurveyButton } from "./_components/DeleteSurveyButton";
 import { SendSurveyOffersButton } from "@/components/events/SendSurveyOffersButton";
+import { AddConfirmationButton } from "./_components/AddConfirmationButton";
+import { ResendQrPassButton } from "./_components/ResendQrPassButton";
 import { formatSurveyResponses } from "@/lib/events/survey-display";
 import { SurveyEditor } from "@/components/events/SurveyEditor";
 import { getDefaultSurveyConfig } from "@/lib/events/survey-config-validator";
@@ -516,23 +518,28 @@ export default async function AdminEventoDetailPage({
                   <p className="text-xs text-ink-muted">
                     Recordatorio masivo por WhatsApp a los confirmados con telefono.
                   </p>
-                  {showBroadcast ? (
-                    <Link
-                      href={`/admin/eventos/${params.id}?tab=confirmations${searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : ""}${activeSource ? `&source=${activeSource}` : ""}`}
-                      scroll={false}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold border border-brand-200 text-ink-soft hover:bg-brand-50 transition"
-                    >
-                      ← Volver a la lista
-                    </Link>
-                  ) : (
-                    <Link
-                      href={`/admin/eventos/${params.id}?tab=confirmations&broadcast=1${searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : ""}${activeSource ? `&source=${activeSource}` : ""}`}
-                      scroll={false}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600 transition shadow-sm"
-                    >
-                      📱 Generar broadcast de WhatsApp
-                    </Link>
-                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* FIX 2026-07-07: alta manual de confirmados desde el
+                        panel admin (no solo via Excel/WhatsApp bot). */}
+                    <AddConfirmationButton eventId={event.id} />
+                    {showBroadcast ? (
+                      <Link
+                        href={`/admin/eventos/${params.id}?tab=confirmations${searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : ""}${activeSource ? `&source=${activeSource}` : ""}`}
+                        scroll={false}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold border border-brand-200 text-ink-soft hover:bg-brand-50 transition"
+                      >
+                        ← Volver a la lista
+                      </Link>
+                    ) : (
+                      <Link
+                        href={`/admin/eventos/${params.id}?tab=confirmations&broadcast=1${searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : ""}${activeSource ? `&source=${activeSource}` : ""}`}
+                        scroll={false}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600 transition shadow-sm"
+                      >
+                        📱 Generar broadcast de WhatsApp
+                      </Link>
+                    )}
+                  </div>
                 </div>
 
                 {/* Panel broadcast: ?broadcast=1 muestra la lista pre-armada
@@ -746,14 +753,25 @@ export default async function AdminEventoDetailPage({
                           {formatDate(c.confirmedAt)}
                         </td>
                         <td className="px-5 py-3 text-right">
-                          <DeleteRowButton
-                            action={deleteConfirmationAction.bind(null, null)}
-                            itemId={c.id}
-                            eventId={event.id}
-                            itemName={c.name}
-                            itemType="confirmado"
-                            cascadeNote="Esto borra también sus QR tokens asociados."
-                          />
+                          <div className="inline-flex items-center gap-2 justify-end">
+                            {/* FIX 2026-07-07: botón de reenvío de email
+                                (sender noreply@qlick.digital + plantilla
+                                oficial) por cada confirmado. */}
+                            <ResendQrPassButton
+                              eventId={event.id}
+                              attendeeEmail={c.email ?? null}
+                              attendeePhone={c.phoneNormalized ?? c.phoneRaw ?? null}
+                              attendeeName={c.name}
+                            />
+                            <DeleteRowButton
+                              action={deleteConfirmationAction.bind(null, null)}
+                              itemId={c.id}
+                              eventId={event.id}
+                              itemName={c.name}
+                              itemType="confirmado"
+                              cascadeNote="Esto borra también sus QR tokens asociados."
+                            />
+                          </div>
                         </td>
                       </tr>
                     ))}
