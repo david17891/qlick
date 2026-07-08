@@ -10,7 +10,7 @@ import type {
   CRMOverview,
   Conversation
 } from "@/types";
-import { Container, Card, Badge, Button, Input, EmptyState } from "@/components/ui";
+import { Container, Card, Badge, Button, Input, Textarea, EmptyState } from "@/components/ui";
 import { StatCard } from "@/components/dashboard";
 import {
   getLeads,
@@ -104,6 +104,11 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
   const [realIntelligence, setRealIntelligence] = useState<unknown | null>(null);
   const [realPendingTasks, setRealPendingTasks] = useState<PendingTasksSplitClient | null>(null);
   const [realConversations, setRealConversations] = useState<Conversation[] | null>(null);
+  // FIX 2026-07-08: trigger manual de refetch de conversaciones (se
+  // incrementa después de enviar un WhatsApp desde ConversationsView
+  // para que el mensaje nuevo aparezca en la lista sin esperar al
+  // cambio de selectedLead).
+  const [conversationsRev, setConversationsRev] = useState(0);
 
   // Estados locales para la interactividad dinâmica.
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -309,7 +314,7 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
     return () => {
       cancelled = true;
     };
-  }, [realMode, selectedLead]);
+  }, [realMode, selectedLead, conversationsRev]);
 
   const owners = getSalesOwners();
   // Overview: real si está cargado (incluso durante carga para no parpadear);
@@ -521,6 +526,7 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
           owners={owners}
           onSelectLead={setSelectedLead}
           onDeleteConversation={handleDeleteConversation}
+          onMessageSent={() => setConversationsRev((r) => r + 1)}
         />
       )}
 
@@ -1554,12 +1560,16 @@ function ConversationsView({
   owners,
   onSelectLead,
   onDeleteConversation,
+  onMessageSent,
 }: {
   conversations: Conversation[];
   leads: Lead[];
   owners: SalesOwner[];
   onSelectLead: (lead: Lead) => void;
   onDeleteConversation?: (leadId: string) => void;
+  /** FIX 2026-07-08: callback después de enviar un WhatsApp manual,
+   *  para que el padre refetchee la lista. */
+  onMessageSent?: () => void;
 }) {
   const [activeId, setActiveId] = useState<string | null>(
     conversations[0]?.id ?? null
@@ -1568,6 +1578,124 @@ function ConversationsView({
   const lead = active ? leads.find((l) => l.id === active.leadId) : undefined;
 
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+
+  // FIX 2026-07-08 (sesión madrugada David "que yo pueda escribir y
+  // mandar mensaje" desde la conversación inline): estado del form
+  // "Enviar por WhatsApp" + toggle "Pausar bot" per-lead.
+  const [composeBody, setComposeBody] = useState("");
+  const [composeState, setComposeState] = useState<
+    "idle" | "sending" | "ok" | "error"
+  >("idle");
+  const [composeMsg, setComposeMsg] = useState<string | null>(null);
+  /** Pause-bot per-lead. Cacheado localmente para que el toggle sea
+   *  instantáneo; refetch al cambiar de conversación activa. */
+  const [botPaused, setBotPaused] = useState(false);
+  const [botPauseState, setBotPauseState] = useState<
+    "idle" | "loading" | "ok" | "error"
+  >("idle");
+  const [botPauseMsg, setBotPauseMsg] = useState<string | null>(null);
+
+  /** Sincroniza el flag botPaused del lead activo cuando cambia la
+   *  conversación seleccionada. */
+  useEffect(() => {
+    setBotPaused(lead?.botPaused === true);
+    setComposeBody("");
+    setComposeState("idle");
+    setComposeMsg(null);
+    setBotPauseState("idle");
+    setBotPauseMsg(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead?.id]);
+
+  async function handleSendWhatsApp() {
+    if (!lead) return;
+    const text = composeBody.trim();
+    if (!text) {
+      setComposeState("error");
+      setComposeMsg("El mensaje no puede estar vacío.");
+      return;
+    }
+    if (text.length > 4000) {
+      setComposeState("error");
+      setComposeMsg("Máximo 4000 caracteres.");
+      return;
+    }
+    setComposeState("sending");
+    setComposeMsg(null);
+    try {
+      const res = await fetch(
+        `/api/admin/crm/conversations/${encodeURIComponent(lead.id)}/send-whatsapp`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ body: text }),
+        },
+      );
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        provider?: string;
+        demo?: boolean;
+        externalId?: string;
+      };
+      if (!res.ok || data.ok === false) {
+        setComposeState("error");
+        setComposeMsg(data.error ?? `HTTP ${res.status}: error al enviar.`);
+        return;
+      }
+      setComposeState("ok");
+      const demoTag = data.demo ? " (modo demo)" : "";
+      const idTag = data.externalId
+        ? ` · ${data.externalId.slice(0, 12)}…`
+        : "";
+      setComposeMsg(
+        `✓ Enviado por ${data.provider ?? "WhatsApp"}${demoTag}${idTag}`,
+      );
+      setComposeBody("");
+      // Refetch conversaciones para que el nuevo mensaje aparezca en la
+      // lista. Trigger via callback al padre.
+      onMessageSent?.();
+      setTimeout(() => setComposeState("idle"), 4000);
+    } catch (err) {
+      setComposeState("error");
+      setComposeMsg(err instanceof Error ? err.message : "Error de red.");
+    }
+  }
+
+  async function handleToggleBotPause() {
+    if (!lead || botPauseState === "loading") return;
+    const nextPaused = !botPaused;
+    setBotPaused(nextPaused);
+    setBotPauseState("loading");
+    setBotPauseMsg(null);
+    try {
+      const res = await fetch(
+        `/api/admin/leads/${encodeURIComponent(lead.id)}/bot-pause`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ botPaused: nextPaused }),
+        },
+      );
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+      };
+      if (!res.ok || data.ok === false) {
+        setBotPaused(!nextPaused); // rollback
+        setBotPauseState("error");
+        setBotPauseMsg(data.error ?? `HTTP ${res.status}`);
+        return;
+      }
+      setBotPauseState("ok");
+      setBotPauseMsg(nextPaused ? "Bot pausado." : "Bot reanudado.");
+      setTimeout(() => setBotPauseState("idle"), 2500);
+    } catch (err) {
+      setBotPaused(!nextPaused); // rollback
+      setBotPauseState("error");
+      setBotPauseMsg(err instanceof Error ? err.message : "Error de red.");
+    }
+  }
 
   useEffect(() => {
     if (isConfirmingDelete) {
@@ -1721,8 +1849,38 @@ function ConversationsView({
                 ? "Resuelta"
                 : "Escalada"}
             </Badge>
+            {/* FIX 2026-07-08: badge visible + switch per-lead del bot,
+                accesible desde la vista inline de conversaciones (no
+                solo desde el drawer). */}
+            {lead && botPaused && (
+              <Badge tone="warning">🤖 bot en pausa</Badge>
+            )}
             {lead && (
               <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => void handleToggleBotPause()}
+                  disabled={botPauseState === "loading"}
+                  aria-pressed={botPaused}
+                  title={
+                    botPaused
+                      ? "Click para que el bot vuelva a responder a este lead"
+                      : "Click para pausar el bot en este lead"
+                  }
+                  className={
+                    "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold border transition disabled:opacity-50 " +
+                    (botPaused
+                      ? "bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200"
+                      : "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100")
+                  }
+                >
+                  <span aria-hidden="true">{botPaused ? "⏸" : "▶"}</span>
+                  {botPauseState === "loading"
+                    ? "…"
+                    : botPaused
+                      ? "Reanudar"
+                      : "Pausar"}
+                </button>
                 <Button size="sm" variant="outline" onClick={() => onSelectLead(lead)}>
                   Ver lead
                 </Button>
@@ -1790,6 +1948,64 @@ function ConversationsView({
             </div>
           ))}
         </div>
+
+        {/* FIX 2026-07-08 (sesión madrugada): form inline para enviar
+            WhatsApp manualmente. Disponible en la vista de conversaciones
+            sin necesidad de abrir el drawer. */}
+        {lead && lead.phone && (
+          <div className="mb-4 border-t border-brand-50 pt-3">
+            <label
+              htmlFor="crm-compose-body"
+              className="block text-[11px] font-bold uppercase text-brand-600 mb-1"
+            >
+              ✉️ Enviar WhatsApp al lead
+            </label>
+            <Textarea
+              id="crm-compose-body"
+              value={composeBody}
+              onChange={(e) => {
+                setComposeBody(e.target.value);
+                if (composeState === "error") {
+                  setComposeState("idle");
+                  setComposeMsg(null);
+                }
+              }}
+              placeholder={`Escribe el mensaje que querés enviar a ${lead.name}…`}
+              rows={3}
+              disabled={composeState === "sending"}
+              className="w-full"
+              maxLength={4000}
+            />
+            <div className="flex items-center gap-2 mt-2">
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => void handleSendWhatsApp()}
+                disabled={
+                  composeState === "sending" || composeBody.trim().length === 0
+                }
+              >
+                {composeState === "sending" ? "Enviando…" : "📤 Enviar"}
+              </Button>
+              {composeMsg && (
+                <span
+                  className={
+                    "text-xs " +
+                    (composeState === "error"
+                      ? "text-rose-700"
+                      : "text-emerald-700")
+                  }
+                  role={composeState === "error" ? "alert" : "status"}
+                >
+                  {composeMsg}
+                </span>
+              )}
+              <span className="ml-auto text-[10px] text-ink-muted">
+                {composeBody.length}/4000
+              </span>
+            </div>
+          </div>
+        )}
 
         {suggestions.length > 0 && (
           <div className="mt-auto space-y-2">
