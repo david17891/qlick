@@ -418,7 +418,15 @@ export function matchInscriptionIntent(body: string): boolean {
         "me\\s+interesa\\s+(?:inscribirme|el\\s+evento|el\\s+curso|apartar|reservar)|" +
         "inscribirme?\\s+(?:al?\\s*)?(?:evento|curso|taller)?|" +
         "reg(?:i[sz]?t(?:r|rr)?ar?|istrar)me?\\s+(?:al?\\s*)?(?:evento|curso|taller)?|" +
-        "(?:apartar|reservar|dame)\\s+(?:mi\\s+)?lugar)\\b"
+        "(?:apartar|reservar|dame)\\s+(?:mi\\s+)?lugar)\\b",
+      // Rama 4 (FIX 2026-07-08): verbos sueltos coloquiales que NO
+      // matchean las ramas anteriores porque no tienen "quiero" antes
+      // y/o no siguen la forma estándar. Casos reales del chat de México
+      // que David reporto 2026-07-08: "Registrame", "Inscribime",
+      // "Anotame", "Me apunto", "Apuntame". Sin esta rama, el LLM
+      // tomaba el control y respondia con "ok, te registro, dame tu
+      // email", saltandose la captura de nombre.
+      "\\b(?:registrame\\b|registrame\\b|inscribime\\b|anotame\\b|apuntame\\b|me\\s+apunto\\b|apunto\\b)"
     ].join("|"),
     "i"
   );
@@ -1792,6 +1800,56 @@ async function buildResponsePlan(args: {
       };
     }
     case "register": {
+      // FIX 2026-07-08 (sesion David, "Quiero registrarme" salta directo a pedir nombre):
+      // Cuando el lead dice "Quiero registrarme" / "Registrame" /
+      // "Me apunto" sin haber dado nombre, el `detectIntent` lo
+      // clasifica como intent="register" (matchea REGISTER_RE). Antes
+      // el handler register mostraba un LIST de eventos para que el
+      // lead eligiera uno — pero los LISTs en WhatsApp son friccion:
+      // la mayoria de los leads no toca los botones, manda otro texto
+      // libre. El bot terminaba en un loop de LIST → LLM → "Hola
+      // WhatsApp" cada vez.
+      //
+      // Fix: si el lead NO tiene nombre (placeholder) Y el body
+      // matchea `matchInscriptionIntent` (afirmativo aislado, o
+      // afirmativo+verbo, o frase directa de inscripcion), skipear
+      // el LIST y disparar el mismo plan que `interactive_event_inscribir`:
+      // pedir nombre completo + set `awaiting_field="name"` en metadata.
+      //
+      // Si el lead YA tiene nombre, mantener el flow original (LIST de
+      // eventos) — eso sigue siendo util para que el lead elija a cual
+      // evento inscribirse.
+      const cleanLeadNameForRegister = cleanFirstName(firstName);
+      if (cleanLeadNameForRegister === "" && matchInscriptionIntent(body)) {
+        const evtRealRegister = await loadActiveEventContext(
+          args.requestedEventSlug ?? undefined
+        ).catch(() => null);
+        if (!evtRealRegister || evtRealRegister.source === "no_events") {
+          const evtFb = getActiveEvent();
+          if (evtFb.source === "no_events") {
+            const noEvents = noEventsText();
+            return {
+              kind: "text",
+              body: noEvents,
+              send: () =>
+                provider.send({ to: phoneNormalized, body: noEvents })
+            };
+          }
+        }
+        const evtFb = getActiveEvent();
+        const evtName = evtRealRegister?.title ?? evtFb.name;
+        const evtDate = evtRealRegister?.humanStartsAt ?? evtFb.date;
+        const bodyText =
+          `¡Hola! Para inscribirte a "${evtName}" el ${evtDate}, ` +
+          `primero dime tu nombre completo. Después te pido tu email.`;
+        return {
+          kind: "text",
+          body: bodyText,
+          metadata: { awaiting_field: "name" },
+          send: () =>
+            provider.send({ to: phoneNormalized, body: bodyText })
+        };
+      }
       // FIX 2026-07-02 (sesion David, "register hardcodea placeholder"):
       // antes este caso listaba UN solo evento hardcoded desde
       // `getActiveEvent()` (placeholder de env vars: "IA y Marketing

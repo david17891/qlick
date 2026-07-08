@@ -536,3 +536,112 @@ test("SIM 6.2 — Reverso: lead da email ANTES de nombre → bot redirige a pedi
   assert.equal(lead.email, null,
     "Email NO debe guardarse antes de tener nombre");
 });
+
+/* -----------------------------------------------------------------------------
+ * SIM 7: FIX 2026-07-08 (sesion David, "Quiero registrarme" sin nombre debe
+ * ir directo a pedir nombre, NO al LIST de eventos).
+ *
+ * Caso reportado en conversaciones reales del evento "Marketing + IA para
+ * Emprendedores" (11 julio 2026). Antes el bot mostraba un LIST de eventos
+ * y los leads no tocaban los botones -> loop. Ahora el `case "register"`
+ * intercepta y dispara el mismo plan que `interactive_event_inscribir`.
+ * --------------------------------------------------------------------------- */
+
+test("SIM 7.1 - Lead sin nombre + 'Quiero registrarme' -> pedir nombre (NO list)", () => {
+  const lead = makeLead("WhatsApp Lead");
+  const t1 = runTurn(lead, "hola", true);
+  applyTurn(lead, t1);
+
+  const t2 = runTurn(lead, "Quiero registrarme", false);
+  applyTurn(lead, t2);
+
+  // detectIntent("Quiero registrarme", false) -> "register"
+  // El nuevo fix en `case "register"` debe interceptar: pedir nombre.
+  assert.equal(t2.intent, "interactive_event_inscribir",
+    `intent debe ser "interactive_event_inscribir" (intercept), fue "${t2.intent}"`);
+  assert.equal(t2.botMetadata.awaiting_field, "name",
+    "Bot debe setear awaiting_field='name'");
+  assert.ok(/nombre completo/i.test(t2.botBody),
+    `Bot debe pedir nombre. Bot dijo: "${t2.botBody}"`);
+  assert.ok(!/Elegilo|Elegí|elegir|próximos eventos/i.test(t2.botBody),
+    `Bot NO debe mostrar LIST de eventos. Bot dijo: "${t2.botBody}"`);
+  assert.ok(!/WhatsApp/i.test(t2.botBody),
+    `Bot NO debe mencionar "WhatsApp". Bot dijo: "${t2.botBody}"`);
+});
+
+test("SIM 7.2 - Lead sin nombre + 'Registrame' -> pedir nombre", () => {
+  const lead = makeLead("WhatsApp Lead");
+  const t1 = runTurn(lead, "hola", true);
+  applyTurn(lead, t1);
+
+  const t2 = runTurn(lead, "Registrame", false);
+  applyTurn(lead, t2);
+
+  assert.equal(t2.intent, "interactive_event_inscribir");
+  assert.equal(t2.botMetadata.awaiting_field, "name");
+  assert.ok(/nombre completo/i.test(t2.botBody));
+});
+
+test("SIM 7.3 - Lead sin nombre + 'Me apunto' -> pedir nombre (variante coloquial)", () => {
+  const lead = makeLead("WhatsApp Lead");
+  const t1 = runTurn(lead, "hola", true);
+  applyTurn(lead, t1);
+
+  const t2 = runTurn(lead, "Me apunto", false);
+  applyTurn(lead, t2);
+
+  assert.ok(
+    t2.botMetadata.awaiting_field === "name" || /nombre/i.test(t2.botBody),
+    `Bot debe pedir nombre. Bot dijo: "${t2.botBody}"`
+  );
+});
+
+test("SIM 7.4 - Lead CON nombre + 'Quiero registrarme' -> cerrar (no intercept)", () => {
+  // Caso inverso: el lead YA tiene nombre. El flow normal de register
+  // (cerrar con QR) sigue siendo util.
+  const lead = makeLead("David Esparza");
+  const t1 = runTurn(lead, "hola", true);
+  applyTurn(lead, t1);
+
+  const t2 = runTurn(lead, "Quiero registrarme", false);
+  applyTurn(lead, t2);
+
+  assert.equal(t2.intent, "register");
+  assert.ok(/David|cerrado|registrado|QR/i.test(t2.botBody),
+    `Cierre debe incluir nombre o QR. Bot dijo: "${t2.botBody}"`);
+});
+
+test("SIM 7.5 - Conversacion 'Quiero registrarme' completa: 4 turnos vs 7 antes", () => {
+  const lead = makeLead("WhatsApp Lead");
+  const transcript = [];
+
+  function step(body, isFirst = false) {
+    const turn = runTurn(lead, body, isFirst);
+    applyTurn(lead, turn);
+    transcript.push({ body, intent: turn.intent, intercepted: turn.intercepted });
+    return turn;
+  }
+
+  const t1 = step("Hola! Quiero mas informacion", true);
+  assert.equal(t1.intent, "welcome");
+  assert.ok(!/WhatsApp/i.test(t1.botBody));
+
+  const t2 = step("Quiero registrarme");
+  assert.equal(t2.intent, "interactive_event_inscribir");
+  assert.ok(!/Elegilo|Elegí|elegir/i.test(t2.botBody),
+    "Bot NO debe mostrar LIST de eventos");
+
+  const t3 = step("Yesenia Lopez Nemecio");
+  assert.equal(t3.intent, "provide_name");
+  assert.ok(/Yesenia/.test(t3.botBody));
+  assert.equal(lead.name, "Yesenia Lopez Nemecio");
+
+  const t4 = step("yesy087@hotmail.com");
+  assert.equal(t4.intent, "provide_email");
+  assert.ok(/Yesenia/.test(t4.botBody));
+  assert.ok(!/WhatsApp/i.test(t4.botBody));
+  assert.match(t4.botBody, /check-in/);
+
+  assert.equal(transcript.length, 4,
+    `Total turnos: ${transcript.length}. Esperado: 4.`);
+});

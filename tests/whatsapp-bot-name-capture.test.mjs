@@ -340,3 +340,43 @@ test("matchInscriptionIntent(null) → false (input null)", () => {
 test("matchInscriptionIntent(undefined) → false (input undefined)", () => {
   assert.equal(matchInscriptionIntent(undefined), false);
 });
+
+/* ─────────────────────────────────────────────────────────────
+ * 9. FIX 2026-07-08 (rama 4 de matchInscriptionIntent): verbos
+ *    sueltos coloquiales del chat de Mexico. Casos reportados
+ *    por David: "Registrame", "Inscribime", "Anotame",
+ *    "Apuntame", "Me apunto". Sin esta rama, el LLM saltaba
+ *    la captura de nombre.
+ * ───────────────────────────────────────────────────────────── */
+
+test("matchInscriptionIntent('Registrame') → true (r4 verbo suelto)", () => {
+  assert.equal(matchInscriptionIntent("Registrame"), true);
+});
+
+test("matchInscriptionIntent('registrame') → true (r4 lowercase)", () => {
+  assert.equal(matchInscriptionIntent("registrame"), true);
+});
+
+test("matchInscriptionIntent('Inscribime') → true (r4)", () => {
+  assert.equal(matchInscriptionIntent("Inscribime"), true);
+});
+
+test("matchInscriptionIntent('inscribime') → true (r4)", () => {
+  assert.equal(matchInscriptionIntent("inscribime"), true);
+});
+
+test("matchInscriptionIntent('Me apunto') → true (r4 variante)", () => {
+  assert.equal(matchInscriptionIntent("Me apunto"), true);
+});
+
+test("matchInscriptionIntent('me apunto') → true (r4)", () => {
+  assert.equal(matchInscriptionIntent("me apunto"), true);
+});
+
+test("matchInscriptionIntent('Anotame') → true (r4)", () => {
+  assert.equal(matchInscriptionIntent("Anotame"), true);
+});
+
+test("matchInscriptionIntent('Apuntame') → true (r4)", () => {
+  assert.equal(matchInscriptionIntent("Apuntame"), true);
+});
