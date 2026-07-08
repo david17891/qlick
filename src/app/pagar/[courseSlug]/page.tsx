@@ -95,6 +95,7 @@ export default async function PayPage({
 
   let alreadyPurchased = false;
   let purchaseEmail: string | null = null;
+  let processingPayment = false;
   if (session) {
     const access = await checkCourseAccess(session.userId, course.id);
     alreadyPurchased = access.hasAccess;
@@ -113,7 +114,30 @@ export default async function PayPage({
         if (user) {
           const access = await checkCourseAccess(user.id, course.id);
           alreadyPurchased = access.hasAccess;
-          if (alreadyPurchased) purchaseEmail = recentEmail;
+          if (alreadyPurchased) {
+            purchaseEmail = recentEmail;
+          } else {
+            // Race condition: cookie seteada pero webhook aún no creó
+            // course_access. Chequeamos payments recientes (última 1h).
+            // Si hay un payment approved/pending para este user+curso,
+            // mostramos "procesando" en vez del botón de pago.
+            const oneHourAgo = new Date(
+              Date.now() - 60 * 60 * 1000
+            ).toISOString();
+            const recentPay = await admin
+              .from("payments")
+              .select("id, status, created_at")
+              .eq("user_id", user.id)
+              .eq("course_id", course.id)
+              .gte("created_at", oneHourAgo)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (recentPay?.data) {
+              processingPayment = true;
+              purchaseEmail = recentEmail;
+            }
+          }
         }
       } catch {
         // Si falla el lookup (admin client no configurado, etc.), seguimos
@@ -122,8 +146,17 @@ export default async function PayPage({
     }
   }
 
-  if (alreadyPurchased) {
-    // Mostramos UI "ya compraste" en lugar del botón de pago.
+  if (alreadyPurchased || processingPayment) {
+    // Mostramos UI "ya compraste" / "procesando" en lugar del botón de pago.
+    const badgeTone: "success" | "warning" = alreadyPurchased
+      ? "success"
+      : "warning";
+    const badgeText = alreadyPurchased
+      ? "Ya tenés este curso"
+      : "Procesando tu pago";
+    const headerText = alreadyPurchased
+      ? `Tu pago fue confirmado${purchaseEmail ? ` para ${purchaseEmail}` : ""}. El curso ya está disponible en tu dashboard.`
+      : `Recibimos tu pago${purchaseEmail ? ` de ${purchaseEmail}` : ""}. El webhook de Stripe está terminando de procesarlo —en unos segundos deberías ver el curso en tu dashboard. Si después de 1 minuto no aparece, contactános.`;
     return (
       <>
         <Navbar />
@@ -132,7 +165,7 @@ export default async function PayPage({
             <div className="max-w-2xl mx-auto">
               <Card className="p-8">
                 <div className="mb-5">
-                  <Badge tone="success">Ya tenés este curso</Badge>
+                  <Badge tone={badgeTone}>{badgeText}</Badge>
                 </div>
                 <h1 className="text-3xl font-bold text-ink leading-tight">
                   {course.title}
@@ -140,39 +173,27 @@ export default async function PayPage({
                 {course.subtitle && (
                   <p className="text-lg text-ink-soft mt-2">{course.subtitle}</p>
                 )}
-                <p className="text-ink-muted mt-6">
-                  {purchaseEmail && !session ? (
-                    <>
-                      Tu pago fue confirmado para{" "}
-                      <strong>{purchaseEmail}</strong>. Te enviamos un link
-                      de acceso al email. Si no te llegó, podés reenviarlo
-                      desde{" "}
-                      <a
-                        href={`/pagar/${courseSlug}/exito?session_id=auto&resend=1`}
-                        className="font-semibold text-brand-600 hover:underline"
-                      >
-                        acá
-                      </a>
-                      .
-                    </>
-                  ) : (
-                    <>
-                      Tu pago fue confirmado. El curso ya está disponible
-                      en tu dashboard.
-                    </>
-                  )}
-                </p>
+                <p className="text-ink-muted mt-6">{headerText}</p>
                 <div className="mt-8 flex flex-col sm:flex-row gap-3">
                   <Button href="/dashboard" className="flex-1 text-center">
                     Ir al dashboard
                   </Button>
-                  {purchaseEmail && !session && (
+                  {alreadyPurchased && purchaseEmail && !session && (
                     <Button
                       href={`/pagar/${courseSlug}/exito?session_id=auto&resend=1`}
                       variant="ghost"
                       className="flex-1 text-center"
                     >
                       Reenviar link de acceso
+                    </Button>
+                  )}
+                  {processingPayment && (
+                    <Button
+                      href={`/pagar/${courseSlug}`}
+                      variant="ghost"
+                      className="flex-1 text-center"
+                    >
+                      Refrescar
                     </Button>
                   )}
                   <Button href="/cursos" variant="ghost" className="flex-1 text-center">
