@@ -115,6 +115,13 @@ export function LeadDetailDrawer({
   const [realTasks, setRealTasks] = useState<TaskView[] | null>(null);
   const [realInteractions, setRealInteractions] = useState<InteractionView[] | null>(null);
   const [dataError, setDataError] = useState<string | null>(null);
+  // FIX 2026-07-08 (sesión madrugada): toggle de "bot pausado para este
+  // lead". Estado local (optimistic + rollback en error). La fuente de
+  // verdad es la columna `leads.bot_paused` en DB; la API PATCH vive en
+  // `/api/admin/leads/[id]/bot-pause`. El bot-engine chequea este flag
+  // antes de procesar cada inbound.
+  const [botPauseState, setBotPauseState] = useState<OpStatus>("idle");
+  const [botPauseMsg, setBotPauseMsg] = useState<string | null>(null);
   /** Contexto del evento del que provino el lead (badge en el header).
    *  Cargado solo en modo real; null si el lead no tiene origen de evento. */
   const [fetchedEventContext, setFetchedEventContext] =
@@ -257,6 +264,58 @@ export function LeadDetailDrawer({
       setCurrentLead((c) => ({ ...c, status: prevStatus }));
       setArchiveState("error");
       setArchiveMsg(err instanceof Error ? err.message : "No se pudo archivar.");
+    }
+  }
+
+  /**
+   * FIX 2026-07-08: toggle "bot pausado para este lead".
+   * - Solo funciona en modo real (la UI mock no tiene endpoint).
+   * - Optimistic: actualiza el lead local al instante; rollback en error.
+   * - Cuando está pausado, el bot NO responde nuevos mensajes de este
+   *   contacto (los persiste igual con metadata bot_paused_skip=true).
+   * - Otros leads siguen funcionando normal.
+   */
+  async function handleToggleBotPause() {
+    if (botPauseState === "loading") return;
+    if (!realMode) return;
+    const prevPaused = currentLead.botPaused === true;
+    const nextPaused = !prevPaused;
+    const optimistic = {
+      ...currentLead,
+      botPaused: nextPaused,
+      botPausedAt: nextPaused ? new Date().toISOString() : null,
+    };
+    setCurrentLead(optimistic);
+    setBotPauseState("loading");
+    setBotPauseMsg(null);
+    try {
+      const res = await fetch(
+        `/api/admin/leads/${currentLead.id}/bot-pause`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ botPaused: nextPaused }),
+        },
+      );
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        botPaused?: boolean;
+        error?: string;
+      };
+      if (!res.ok || data.ok === false) {
+        // Rollback.
+        setCurrentLead((c) => ({ ...c, botPaused: prevPaused }));
+        setBotPauseState("error");
+        setBotPauseMsg(data.error ?? `Error ${res.status}`);
+        return;
+      }
+      setBotPauseState("success");
+      setBotPauseMsg(nextPaused ? "Bot pausado." : "Bot reanudado.");
+      setTimeout(() => setBotPauseState("idle"), 2500);
+    } catch (err) {
+      setCurrentLead((c) => ({ ...c, botPaused: prevPaused }));
+      setBotPauseState("error");
+      setBotPauseMsg(err instanceof Error ? err.message : "Error de red.");
     }
   }
 
@@ -475,11 +534,70 @@ export function LeadDetailDrawer({
               ) : (
                 <Badge tone="warning">demo</Badge>
               )}
+              {/* FIX 2026-07-08: badge visible del estado del bot
+                  per-lead. Cuando está pausado, el bot NO responde
+                  automáticamente este contacto. */}
+              {realMode && currentLead.botPaused === true && (
+                <Badge tone="warning" title={`Bot pausado${currentLead.botPausedAt ? ` · ${new Date(currentLead.botPausedAt).toLocaleString("es-MX")}` : ""}`}>
+                  🤖 bot en pausa
+                </Badge>
+              )}
             </div>
             <h2 className="text-xl font-bold text-ink truncate">{currentLead.name}</h2>
             <p className="text-sm text-ink-muted truncate">
               {currentLead.courseOfInterest ?? "Sin curso de interés"}
             </p>
+            {/* FIX 2026-07-08: switch per-lead "Pausar bot". Solo en modo
+                real (en demo no hay endpoint). Estado actual se ve en el
+                badge del header. Click → optimistic update + PATCH. */}
+            {realMode && (
+              <div className="mt-2 inline-flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleToggleBotPause()}
+                  disabled={botPauseState === "loading"}
+                  aria-pressed={currentLead.botPaused === true}
+                  aria-label={
+                    currentLead.botPaused === true
+                      ? "Reanudar bot para este lead"
+                      : "Pausar bot para este lead"
+                  }
+                  title={
+                    currentLead.botPaused === true
+                      ? "Click para que el bot vuelva a responder a este lead"
+                      : "Click para pausar el bot en este lead (los mensajes se guardan pero el bot no responde)"
+                  }
+                  className={
+                    "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border transition disabled:opacity-50 " +
+                    (currentLead.botPaused === true
+                      ? "bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200"
+                      : "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100")
+                  }
+                >
+                  <span aria-hidden="true">
+                    {currentLead.botPaused === true ? "⏸" : "▶"}
+                  </span>
+                  {botPauseState === "loading"
+                    ? "Guardando…"
+                    : currentLead.botPaused === true
+                      ? "Reanudar bot"
+                      : "Pausar bot"}
+                </button>
+                {botPauseMsg && (
+                  <span
+                    className={
+                      "text-[11px] " +
+                      (botPauseState === "error"
+                        ? "text-rose-700"
+                        : "text-emerald-700")
+                    }
+                    role={botPauseState === "error" ? "alert" : "status"}
+                  >
+                    {botPauseMsg}
+                  </span>
+                )}
+              </div>
+            )}
             {/*
               Badge de origen del evento (Sub-bloque B de Fase 4). Solo se
               muestra si el lead tiene un link a un evento en
