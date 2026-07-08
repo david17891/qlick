@@ -102,11 +102,13 @@ export default async function CourseDetailPage({
     : null;
 
   // CTA dinámico.
+  // Bug fix 2026-07-08: cursos pagos van a /pagar (no /inscripcion, que es
+  // solo para cursos gratis vía Google login).
   const cta =
     alreadyHasAccess && firstLessonHref
       ? { href: firstLessonHref, label: "Continuar curso", tone: "primary" as const }
       : course.accessType === "paid"
-        ? { href: `/inscripcion/${course.slug}`, label: `Comprar curso · ${formatMXN(course.priceMXN ?? 0)}`, tone: "primary" as const }
+        ? { href: `/pagar/${course.slug}`, label: `Comprar curso · ${formatMXN(course.priceMXN ?? 0)}`, tone: "primary" as const }
         : { href: `/inscripcion/${course.slug}`, label: "Empezar gratis", tone: "primary" as const };
 
   return (
