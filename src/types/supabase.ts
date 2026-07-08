@@ -431,6 +431,54 @@ export type Database = {
           },
         ]
       }
+      event_certificates: {
+        Row: {
+          attendee_id: string
+          event_id: string
+          folio: string
+          id: string
+          issued_at: string
+          issued_by_admin_id: string | null
+          metadata: Json | null
+          template_variant: string
+        }
+        Insert: {
+          attendee_id: string
+          event_id: string
+          folio: string
+          id?: string
+          issued_at?: string
+          issued_by_admin_id?: string | null
+          metadata?: Json | null
+          template_variant?: string
+        }
+        Update: {
+          attendee_id?: string
+          event_id?: string
+          folio?: string
+          id?: string
+          issued_at?: string
+          issued_by_admin_id?: string | null
+          metadata?: Json | null
+          template_variant?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_certificates_attendee_id_fkey"
+            columns: ["attendee_id"]
+            isOneToOne: false
+            referencedRelation: "event_attendees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_certificates_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       event_confirmations: {
         Row: {
           confirmed_at: string
@@ -1185,6 +1233,9 @@ export type Database = {
       }
       leads: {
         Row: {
+          bot_paused: boolean
+          bot_paused_at: string | null
+          bot_paused_by_email: string | null
           consent_to_contact: boolean
           course_of_interest: string | null
           created_at: string
@@ -1210,6 +1261,9 @@ export type Database = {
           whatsapp_status: string
         }
         Insert: {
+          bot_paused?: boolean
+          bot_paused_at?: string | null
+          bot_paused_by_email?: string | null
           consent_to_contact?: boolean
           course_of_interest?: string | null
           created_at?: string
@@ -1235,6 +1289,9 @@ export type Database = {
           whatsapp_status?: string
         }
         Update: {
+          bot_paused?: boolean
+          bot_paused_at?: string | null
+          bot_paused_by_email?: string | null
           consent_to_contact?: boolean
           course_of_interest?: string | null
           created_at?: string
@@ -1591,6 +1648,25 @@ export type Database = {
           context_key: string
           context_value: string
           priority: number
+        }[]
+      }
+      issue_event_certificate: {
+        Args: {
+          p_admin_user_id?: string
+          p_attendee_id: string
+          p_event_id: string
+          p_folio: string
+          p_metadata: Json
+          p_template_variant: string
+        }
+        Returns: {
+          attendee_id: string
+          event_id: string
+          folio: string
+          issued_at: string
+          metadata: Json
+          template_variant: string
+          was_inserted: boolean
         }[]
       }
     }

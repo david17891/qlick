@@ -15,11 +15,9 @@
  *
  * NOTA sobre el typegen:
  *   La tabla `event_certificates` y la RPC `issue_event_certificate` son
- *   NUEVAS — todavia no aparecen en `src/types/supabase.ts`. Despues de
- *   aplicar la migration, regenerar el typegen con `supabase gen types`.
- *   Mientras tanto, este archivo usa casts `as any` SOLO para los queries
- *   a la tabla nueva. Los queries a `event_attendees` y `events` mantienen
- *   type safety completa.
+ *   typesafe via `src/types/supabase.ts` (regenerado con
+ *   `supabase gen types typescript --project-id <ref>` el 2026-07-08).
+ *   Los queries a `event_attendees` y `events` tambien son typesafe.
  */
 
 import {
@@ -191,8 +189,9 @@ async function callIssueRpcWithRetry(
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const candidateFolio = generateFolio();
-    // Cast a `any` para tablas/RPC nuevas (ver NOTA sobre typegen).
-    const { data, error } = await (supabase as any).rpc(
+    // RPC espera `undefined` cuando el param es opcional, no `null`.
+    // El default de la PL/pgSQL ya es NULL — omitir la key es equivalente.
+    const { data, error } = await supabase.rpc(
       "issue_event_certificate",
       {
         p_event_id: input.eventId,
@@ -200,7 +199,9 @@ async function callIssueRpcWithRetry(
         p_folio: candidateFolio,
         p_template_variant: TEMPLATE_VARIANT,
         p_metadata: metadata,
-        p_admin_user_id: input.adminUserId ?? null,
+        ...(input.adminUserId != null
+          ? { p_admin_user_id: input.adminUserId }
+          : {}),
       },
     );
 
