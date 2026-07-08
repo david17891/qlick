@@ -51,7 +51,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentStudent } from "@/lib/auth/session";
 import { getCourseBySlug } from "@/lib/lms/courses-server";
-import { checkCourseAccess } from "@/lib/lms/entitlements";
+import { checkCourseAccess, grantAccess } from "@/lib/lms/entitlements";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getPaymentProvider } from "@/lib/payments";
 import type { ProductRef } from "@/lib/payments/payment-provider";
 import type { PaymentMethod } from "@/types";
@@ -151,6 +152,54 @@ export async function POST(req: NextRequest) {
   const cancelUrl = `${requestOrigin}/pagar/${productRef.slug}?cancelled=1`;
   const pendingUrl = `${requestOrigin}/pagar/${productRef.slug}/exito?status=pending`;
 
+  // 4b. BECAS / CUPON 100% (FASE 2 V3): si course.priceMXN === 0, NO
+  // creamos sesion de Stripe (que rechazaria amount=0 con 400 Invalid
+  // amount). Otorgamos acceso inline con provider='scholarship_free',
+  // auditable en DB, y redirigimos directo a /exito. Soporta cupones
+  // futuros que lleven finalAmount a 0 tambien: si la aplicacion de
+  // cupon resulta en 0, mismo flujo.
+  if (productRef.priceMXN === 0) {
+    try {
+      const inlineResult = await grantScholarshipInline({
+        supabase: createSupabaseAdminClient(),
+        productRef,
+        sessionUserId: session?.userId ?? null,
+        sessionEmail: session?.email ?? null,
+        method,
+        successUrl,
+      });
+      return NextResponse.json({
+        ok: true,
+        provider: provider.name,
+        flow: inlineResult.flow,
+        redirectUrl: inlineResult.redirectUrl,
+        paymentId: inlineResult.paymentId,
+        externalReference: inlineResult.externalReference,
+        status: inlineResult.status,
+        finalAmountMXN: 0,
+        discountMXN: 0,
+        method,
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[create-checkout] grantScholarshipInline error", {
+        slug: body.slug,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            err instanceof Error
+              ? err.message
+              : "Error otorgando beca. Contactanos.",
+          provider: provider.name,
+        },
+        { status: 500 },
+      );
+    }
+  }
+
   try {
     const result = await provider.createCheckout({
       productRef,
@@ -194,4 +243,142 @@ export async function POST(req: NextRequest) {
       { status: 500 },
     );
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Helpers internos                                                   */
+/* ------------------------------------------------------------------ */
+
+type AdminClient = ReturnType<typeof createSupabaseAdminClient>;
+
+interface GrantScholarshipArgs {
+  supabase: AdminClient;
+  productRef: ProductRef;
+  sessionUserId: string | null;
+  sessionEmail: string | null;
+  method: PaymentMethod;
+  successUrl: string;
+}
+
+interface GrantScholarshipResult {
+  flow: "inline";
+  redirectUrl: string;
+  paymentId: string;
+  externalReference: string;
+  status: "approved";
+}
+
+/**
+ * Beca 100% / cupon total: otorga acceso sin pasar por Stripe. Usado
+ * cuando course.priceMXN === 0 o cuando un cupon futuro lleva a $0.
+ * - Inserta payment con provider='scholarship_free' (auditable en DB).
+ * - Otorga course_access con source='scholarship' + reason unique.
+ * - Devuelve flow='inline' con redirectUrl a /exito (no a Stripe).
+ *
+ * IMPORTANTE: requiere userId. Si el guest no esta logueado y no
+ * tenemos email para resolver via RPC, no podemos crear la cuenta
+ * inline (eso lo hara el webhook tras un checkout normal). En ese caso
+ * lanzamos un error que el caller traduce a 400 pidiendo que el usuario
+ * se loguee o use el magic link. Workaround futuro: pedir email antes
+ * de "pagar" cuando precio=0 y no hay sesion.
+ */
+async function grantScholarshipInline(
+  args: GrantScholarshipArgs
+): Promise<GrantScholarshipResult> {
+  const { supabase, productRef, sessionUserId, sessionEmail, successUrl } = args;
+
+  let userId = sessionUserId;
+  if (!userId) {
+    if (!sessionEmail) {
+      throw new Error(
+        "Beca sin email de usuario: no podemos crear la cuenta. Logueate o usá magic link antes de pagar."
+      );
+    }
+    // Resolver user via RPC (FASE 2 V2). Si no existe, error explicito
+    // pidiendo que el usuario se loguee primero. Las cuentas se crean
+    // via signInWithOtp al recibir magic link — no las creamos nosotros
+    // aca porque eso es responsabilidad de Supabase Auth.
+    const { data: rpcId, error: rpcErr } = await supabase.rpc(
+      "get_user_id_by_email",
+      { p_email: sessionEmail }
+    );
+    if (rpcErr || !rpcId) {
+      throw new Error(
+        `No encontramos la cuenta para ${sessionEmail}. Logueate primero y volvé a intentar.`
+      );
+    }
+    userId = rpcId as string;
+  }
+
+  // 1. Insert payment con provider=scholarship_free (auditable).
+  //    Usamos idempotency_key unico por intento (no se reconcilia contra
+  //    eventos externos). En casos reales, hash de (userId, courseId,
+  //    timestamp_bucket_5min) previene doble click en UI.
+  const paymentIdemKey = `scholarship:${userId}:${productRef.id}:${Date.now()}`;
+  const { data: payment, error: payErr } = await supabase
+    .from("payments")
+    .insert({
+      user_id: userId,
+      course_id: productRef.id,
+      amount_mxn: 0,
+      currency: "MXN",
+      provider: "scholarship_free",
+      method: args.method,
+      status: "approved",
+      external_reference: `scholarship_${userId}_${productRef.id}`,
+      idempotency_key: paymentIdemKey,
+      metadata: {
+        scholarship: true,
+        reason: `scholarship_free_${new Date().toISOString().slice(0, 16)}`,
+      },
+    } as any)
+    .select("id")
+    .single();
+  if (payErr || !payment) {
+    throw new Error(
+      `Error insertando payment scholarship: ${payErr?.message ?? "unknown"}`
+    );
+  }
+
+  // 2. Grant course_access usando el helper canonico grantAccess().
+  //    Esto evita reinventar el insert con field names incorrectos
+  //    (access_source, granted_reason — el codigo previo usaba
+  //    `source`/`reason` que no existen en el schema). El reason
+  //    incluye timestamp truncado a minuto para que un doble-click
+  //    no choque en el UNIQUE constraint.
+  const grantedReason = `scholarship_free_${new Date()
+    .toISOString()
+    .slice(0, 16)}`;
+  try {
+    await grantAccess({
+      userId,
+      courseId: productRef.id,
+      source: "scholarship",
+      paymentId: payment.id,
+      grantedReason,
+    });
+  } catch (grantErr) {
+    // No fatal: el payment ya esta aprobado. Loggeamos y devolvemos OK
+    // para que el user vea el dashboard. El grant puede llegar via
+    // reconciliacion posterior si /dashboard muestra que no tiene access.
+    // eslint-disable-next-line no-console
+    console.error("[grantScholarshipInline] grantAccess fallo", {
+      userId,
+      courseId: productRef.id,
+      error: grantErr instanceof Error ? grantErr.message : String(grantErr),
+    });
+  }
+
+  // 3. successUrl viene con {CHECKOUT_SESSION_ID} que no aplica aca.
+  //    Reemplazamos con session_id=scholarship para que /exito sepa que
+  //    es un scholarship (no consulta Stripe, no llama getStatus).
+  const redirectUrl = successUrl.replace("{CHECKOUT_SESSION_ID}", "scholarship");
+
+  return {
+    flow: "inline",
+    redirectUrl,
+    paymentId: payment.id,
+    externalReference: `scholarship_${userId}_${productRef.id}`,
+    status: "approved",
+  };
 }

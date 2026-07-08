@@ -355,6 +355,75 @@ async function handleCheckoutCompleted(
   const amountTotalMXN =
     typeof session.amount_total === "number" ? session.amount_total / 100 : 0;
 
+  // FASE 2 V1: VALIDACION DE MONTO EXACTO (anti-fraude).
+  // Comparamos session.amount_total (lo que Stripe realmente cobbro)
+  // contra productRef.priceMXN (lo que el sistema creo como esperado).
+  // Si difieren, NO otorgamos access: insertamos payment con status
+  // 'suspicious_amount_discrepancy' para auditoria y devolvemos 200
+  // (Stripe no debe reintentar eventos legitimos).
+  //
+  // Razon: si alguien manipula la sesion (via extension, MITM, bug),
+  // podria pagar $1 en vez de $200. Sin esta validacion, le dariamos
+  // el curso igual. Con esta validacion, el grant se bloquea y queda
+  // traza forense.
+  //
+  // Edge case: scholarships (productRef.priceMXN === 0) NO deberian
+  // llegar al webhook (se otorgan inline en /create-checkout). Si llegan,
+  // es bug — loggeamos y dejamos pasar (la UI de scholarship ya otorgo
+  // access, duplicar el grant daria unique constraint violation).
+  const expectedAmountCentavos = Math.round(productRef.priceMXN * 100);
+  const actualAmountCentavos =
+    typeof session.amount_total === "number" ? session.amount_total : 0;
+  if (
+    productRef.priceMXN > 0 &&
+    actualAmountCentavos !== expectedAmountCentavos
+  ) {
+    // eslint-disable-next-line no-console
+    console.error("[stripe-webhook] AMOUNT DISCREPANCY (anti-fraude)", {
+      event_id: event.id,
+      session_id: session.id,
+      user_id: userId,
+      product_kind: productRef.kind,
+      product_id: productRef.id,
+      expected_mxn: productRef.priceMXN,
+      actual_mxn: actualAmountCentavos / 100,
+      expected_centavos: expectedAmountCentavos,
+      actual_centavos: actualAmountCentavos,
+      delta_centavos: actualAmountCentavos - expectedAmountCentavos,
+    });
+    // Insertar payment como suspicious para auditoria. NO grant access.
+    await supabase.from("payments").insert({
+      user_id: userId,
+      course_id: productRef.kind === "course" ? productRef.id : null,
+      provider: "stripe",
+      external_reference: session.id,
+      amount_mxn: actualAmountCentavos / 100,
+      discount_mxn: 0,
+      currency: session.currency ?? "MXN",
+      status: "suspicious_amount_discrepancy",
+      method: detectMethodFromSession(session),
+      idempotency_key: `suspicious:${idempotencyKey}`,
+      metadata: {
+        flagged: "amount_discrepancy",
+        expected_mxn: productRef.priceMXN,
+        actual_mxn: actualAmountCentavos / 100,
+        flagged_at: new Date().toISOString(),
+      },
+    } as any);
+    return {
+      status: 200,
+      body: {
+        ok: false,
+        mode: "amount_discrepancy_blocked",
+        event_id: event.id,
+        note:
+          "Monto de Stripe no coincide con precio del curso. Grant bloqueado. Investigar.",
+        expected_mxn: productRef.priceMXN,
+        actual_mxn: actualAmountCentavos / 100,
+      },
+    };
+  }
+
   const { data: payment, error: payErr } = await supabase
     .from("payments")
     // @ts-ignore — payments.course_id es nullable en DB (migration 20260707110000)

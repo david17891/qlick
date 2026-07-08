@@ -104,15 +104,15 @@ export default async function PayPage({
     if (recentEmail) {
       try {
         const admin = createSupabaseAdminClient();
-        const { data: listData } = await admin.auth.admin.listUsers({
-          page: 1,
-          perPage: 500,
-        });
-        const user = listData?.users?.find(
-          (u) => u.email?.toLowerCase() === recentEmail.toLowerCase()
+        // FASE 2 V2: usar RPC get_user_id_by_email (O(1)) en vez de
+        // listUsers paginado (O(n) + timeout >500 users). Ver
+        // supabase/migrations/20260708040000_get_user_id_by_email.sql.
+        const { data: userId, error: rpcErr } = await admin.rpc(
+          "get_user_id_by_email",
+          { p_email: recentEmail }
         );
-        if (user) {
-          const access = await checkCourseAccess(user.id, course.id);
+        if (!rpcErr && userId) {
+          const access = await checkCourseAccess(userId as string, course.id);
           alreadyPurchased = access.hasAccess;
           if (alreadyPurchased) {
             purchaseEmail = recentEmail;
@@ -127,7 +127,7 @@ export default async function PayPage({
             const recentPay = await admin
               .from("payments")
               .select("id, status, created_at")
-              .eq("user_id", user.id)
+              .eq("user_id", userId as string)
               .eq("course_id", course.id)
               .gte("created_at", oneHourAgo)
               .order("created_at", { ascending: false })

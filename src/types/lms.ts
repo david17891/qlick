@@ -61,7 +61,8 @@ export type CourseAccessSource =
   | "stripe"
   | "mercadopago"
   | "conekta"
-  | "coupon";
+  | "coupon"
+  | "scholarship";
 
 /**
  * Re-export de types legacy de pagos para que el código LMS importe de un

@@ -1,4 +1,4 @@
-export type Json =
+﻿export type Json =
   | string
   | number
   | boolean
@@ -1585,6 +1585,7 @@ export type Database = {
     }
     Functions: {
       generate_event_short_code: { Args: never; Returns: string }
+      get_user_id_by_email: { Args: { p_email: string }; Returns: string }
       get_active_bot_overrides: {
         Args: { p_bot_name: string }
         Returns: {
