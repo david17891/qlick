@@ -17,6 +17,7 @@
  * SimulatorForm como CheckoutButton son Client Components.
  */
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { Navbar, Footer } from "@/components/layout";
@@ -24,6 +25,7 @@ import { Container, Card, Button, Badge } from "@/components/ui";
 import { getCurrentStudent } from "@/lib/auth/session";
 import { getCourseBySlug } from "@/lib/lms/courses-server";
 import { checkCourseAccess } from "@/lib/lms/entitlements";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { SimulatorForm } from "./SimulatorForm";
 import { CheckoutButton } from "./CheckoutButton";
 
@@ -85,9 +87,106 @@ export default async function PayPage({
   // Cualquiera puede ver la página y pagar. Si hay sesión, igual la usamos
   // para evitar pagar dos veces (idempotencia). Si no hay sesión, el
   // webhook crea la cuenta con el email de Stripe al confirmarse el pago.
-  // NOTA: NO llamamos a checkCourseAccess() acá (la verificación la hace
-  // el cliente después del pago vía /exito).
+  //
+  // Detección de "ya compraste": si hay sesión o si hay cookie
+  // qlick_recent_purchase (de un pago guest reciente), consultamos
+  // course_access y mostramos UI distinto en vez del botón "Pagar ahora".
   const session = await getCurrentStudent();
+
+  let alreadyPurchased = false;
+  let purchaseEmail: string | null = null;
+  if (session) {
+    const access = await checkCourseAccess(session.userId, course.id);
+    alreadyPurchased = access.hasAccess;
+  } else {
+    const recentEmail = cookies().get("qlick_recent_purchase")?.value;
+    if (recentEmail) {
+      try {
+        const admin = createSupabaseAdminClient();
+        const { data: listData } = await admin.auth.admin.listUsers({
+          page: 1,
+          perPage: 500,
+        });
+        const user = listData?.users?.find(
+          (u) => u.email?.toLowerCase() === recentEmail.toLowerCase()
+        );
+        if (user) {
+          const access = await checkCourseAccess(user.id, course.id);
+          alreadyPurchased = access.hasAccess;
+          if (alreadyPurchased) purchaseEmail = recentEmail;
+        }
+      } catch {
+        // Si falla el lookup (admin client no configurado, etc.), seguimos
+        // con el flujo normal de compra.
+      }
+    }
+  }
+
+  if (alreadyPurchased) {
+    // Mostramos UI "ya compraste" en lugar del botón de pago.
+    return (
+      <>
+        <Navbar />
+        <section className="bg-brand-50/40 min-h-[calc(100vh-4rem)]">
+          <Container className="py-14">
+            <div className="max-w-2xl mx-auto">
+              <Card className="p-8">
+                <div className="mb-5">
+                  <Badge tone="success">Ya tenés este curso</Badge>
+                </div>
+                <h1 className="text-3xl font-bold text-ink leading-tight">
+                  {course.title}
+                </h1>
+                {course.subtitle && (
+                  <p className="text-lg text-ink-soft mt-2">{course.subtitle}</p>
+                )}
+                <p className="text-ink-muted mt-6">
+                  {purchaseEmail && !session ? (
+                    <>
+                      Tu pago fue confirmado para{" "}
+                      <strong>{purchaseEmail}</strong>. Te enviamos un link
+                      de acceso al email. Si no te llegó, podés reenviarlo
+                      desde{" "}
+                      <a
+                        href={`/pagar/${courseSlug}/exito?session_id=auto&resend=1`}
+                        className="font-semibold text-brand-600 hover:underline"
+                      >
+                        acá
+                      </a>
+                      .
+                    </>
+                  ) : (
+                    <>
+                      Tu pago fue confirmado. El curso ya está disponible
+                      en tu dashboard.
+                    </>
+                  )}
+                </p>
+                <div className="mt-8 flex flex-col sm:flex-row gap-3">
+                  <Button href="/dashboard" className="flex-1 text-center">
+                    Ir al dashboard
+                  </Button>
+                  {purchaseEmail && !session && (
+                    <Button
+                      href={`/pagar/${courseSlug}/exito?session_id=auto&resend=1`}
+                      variant="ghost"
+                      className="flex-1 text-center"
+                    >
+                      Reenviar link de acceso
+                    </Button>
+                  )}
+                  <Button href="/cursos" variant="ghost" className="flex-1 text-center">
+                    Ver más cursos
+                  </Button>
+                </div>
+              </Card>
+            </div>
+          </Container>
+        </section>
+        <Footer />
+      </>
+    );
+  }
 
   return (
     <>

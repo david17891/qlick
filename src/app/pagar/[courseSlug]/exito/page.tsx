@@ -32,6 +32,8 @@ import { getCourseBySlug } from "@/lib/lms/courses-server";
 import { checkCourseAccess } from "@/lib/lms/entitlements";
 import { getPaymentProvider } from "@/lib/payments";
 import type { PaymentStatus } from "@/types";
+import { resendGuestAccessLink } from "./actions";
+import { MarkRecentPurchase } from "./MarkRecentPurchase";
 
 export async function generateMetadata({
   params,
@@ -48,49 +50,6 @@ export async function generateMetadata({
 interface ExitoPageProps {
   params: { courseSlug: string };
   searchParams: { session_id?: string; status?: string; resend?: string };
-}
-
-/**
- * Server action: re-envía el magic link de acceso al email que el
- * comprador usó en Stripe Checkout. Solo aplica para guest checkout
- * (sin sesión de Supabase). Si el usuario ya tiene sesión, el botón
- * "Reenviar link" ni siquiera aparece.
- */
-async function resendGuestAccessLink(sessionId: string): Promise<{
-  ok: boolean;
-  email?: string;
-  error?: string;
-}> {
-  "use server";
-  try {
-    const provider = getPaymentProvider();
-    const result = await provider.getStatus(sessionId);
-    const email = result.customerEmail;
-    if (!email) {
-      return { ok: false, error: "No pudimos recuperar el email del pago." };
-    }
-    // El email ya existe como user (lo creó el webhook). Le mandamos
-    // magic link vía Supabase.
-    const { createSupabaseServerClient } = await import("@/lib/supabase/server");
-    const supabase = await createSupabaseServerClient();
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${
-          process.env.NEXT_PUBLIC_APP_URL ?? "https://www.qlick.digital"
-        }/dashboard?paid=ok`,
-      },
-    });
-    if (error) {
-      return { ok: false, error: error.message };
-    }
-    return { ok: true, email };
-  } catch (err) {
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : "Error inesperado.",
-    };
-  }
 }
 
 export default async function ExitoPage({ params, searchParams }: ExitoPageProps) {
@@ -251,6 +210,14 @@ export default async function ExitoPage({ params, searchParams }: ExitoPageProps
                 </div>
               )}
             </Card>
+
+            {/* Cookie marker: en cuanto carga /exito, dejamos una cookie
+                httpOnly con el email del comprador (7 días) para que
+                /pagar/[slug] lo reconozca como "ya compró este curso" en
+                visitas futuras sin requerir loguearse. */}
+            {customerEmail && !session && (
+              <MarkRecentPurchase email={customerEmail} />
+            )}
           </div>
         </Container>
       </section>
