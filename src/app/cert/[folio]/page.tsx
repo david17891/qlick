@@ -354,7 +354,10 @@ export default async function CertPage({ params }: CertPageProps) {
             <div className="meta">
               {certData.eventDateLong} · {certData.eventTime} hrs · {certData.eventDuration}
             </div>
-            <div className="meta">{certData.eventLocation}</div>
+            {/* FIX 2026-07-08: eventLocation removido del cert. La ubicación
+                logística ("Zoom (link se manda 24h antes)", "Sala X", etc.)
+                no es info del cert — el cert es la constancia, no el
+                itinerario. El metadata sigue guardándola para auditoría. */}
           </div>
 
           {/* RIGHT CONTENT */}
@@ -398,15 +401,18 @@ export default async function CertPage({ params }: CertPageProps) {
               </div>
 
               <div className="verify-block">
+                {/* FIX 2026-07-08: QR centrado, sin texto de URL.
+                    El URL completo se sigue codificando en el QR
+                    (qlick.digital/filosofia) pero NO se imprime como
+                    texto — antes se cortaba en "qlick.digital/fil osofia".
+                    El texto ahora es solo "Escanea" arriba y "Emitido DD-MMM-YYYY"
+                    abajo, ambos centrados. */}
+                <div className="label">Escanea</div>
                 <div className="qr">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={certData.qrDataUrl} alt="QR del certificado" />
                 </div>
-                <div className="text">
-                  <div className="label">Escanea</div>
-                  <div className="url">qlick.digital/filosofia</div>
-                  <div className="date">Emitido {certData.issueDateShort}</div>
-                </div>
+                <div className="date">Emitido {certData.issueDateShort}</div>
               </div>
             </div>
           </div>
