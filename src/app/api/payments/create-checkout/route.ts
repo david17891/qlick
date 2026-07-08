@@ -141,18 +141,25 @@ export async function POST(req: NextRequest) {
   // 4. Crear el checkout en el provider activo.
   const provider = getPaymentProvider();
 
+  // success/cancel URLs: armamos URLs absolutas usando el origin del request
+  // actual. Funciona en local (localhost:3000), preview (hash.vercel.app) y
+  // prod (qlick.digital) sin depender de NEXT_PUBLIC_APP_URL (que no está
+  // seteado en Preview). Stripe API rechaza URLs relativas con "Not a valid
+  // URL", por eso armamos el absoluto acá.
+  const requestOrigin = new URL(req.url).origin;
+  const successUrl = `${requestOrigin}/pagar/${productRef.slug}/exito?session_id={CHECKOUT_SESSION_ID}`;
+  const cancelUrl = `${requestOrigin}/pagar/${productRef.slug}?cancelled=1`;
+  const pendingUrl = `${requestOrigin}/pagar/${productRef.slug}/exito?status=pending`;
+
   try {
     const result = await provider.createCheckout({
       productRef,
       userId: session.userId,
       userEmail: session.email ?? "",
       method,
-      // success/cancel URLs: URLs relativas — Stripe Checkout las acepta y
-      // resuelve contra el origen del request, así funcionan igual en local,
-      // preview y producción sin depender de NEXT_PUBLIC_APP_URL.
-      successUrl: `/pagar/${productRef.slug}/exito?session_id={CHECKOUT_SESSION_ID}`,
-      cancelUrl: `/pagar/${productRef.slug}?cancelled=1`,
-      pendingUrl: `/pagar/${productRef.slug}/exito?status=pending`,
+      successUrl,
+      cancelUrl,
+      pendingUrl,
     });
 
     return NextResponse.json({
