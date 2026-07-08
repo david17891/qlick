@@ -3525,6 +3525,52 @@ export async function processInboundMessage(
   const { lead, created } = upsert;
   const isFirstMessage = created;
 
+  // FIX 2026-07-08 (sesión madrugada David "poder apagar y encender el bot
+  // por momentos, por conversación"): si el admin (David) tiene pausado el
+  // bot para ESTE lead, NO procesamos el intent ni respondemos. El inbound
+  // se persiste igual (con metadata `bot_paused_skip: true`) para que David
+  // vea el historial completo en el panel CRM. David puede responderle
+  // manualmente desde su WhatsApp o desde la UI cuando esté listo.
+  //
+  // Otros leads siguen funcionando normal — el bypass es per-lead.
+  if (lead.botPaused === true) {
+    // eslint-disable-next-line no-console
+    debugLog("[whatsapp/bot] bot_paused_for_lead: skipping auto-response", {
+      leadId: lead.id,
+      phoneNormalized,
+    });
+    // Persistir el inbound con flag visible.
+    if (supabase && lead.id) {
+      try {
+        await persistConversation(supabase, {
+          lead_id: lead.id,
+          phone_normalized: phoneNormalized,
+          direction: "inbound",
+          message_type: message.type === "interactive" ? "interactive" : "text",
+          body,
+          whatsapp_message_id: message.messageId ?? null,
+          metadata: {
+            bot_paused_skip: true,
+            ...(message.buttonId ? { buttonId: message.buttonId } : {}),
+            ...(message.buttonTitle ? { buttonTitle: message.buttonTitle } : {}),
+          },
+        });
+      } catch (err) {
+        errorLog("[whatsapp/bot] bot_paused: persist inbound falló", {
+          leadId: lead.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    return {
+      ok: true,
+      intent: "question",
+      leadId: lead.id ?? null,
+      responseKind: "none",
+      note: "bot_paused_for_lead: admin tiene el bot pausado para este contacto",
+    };
+  }
+
   // 1.5 Cargar perfil persistente del lead (memoria larga entre sesiones).
   // Best-effort: si falla o no hay profile todavía, seguimos sin él.
   // Solo cargamos si el lead tiene id real (no en fallback con id=null).

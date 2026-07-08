@@ -158,6 +158,20 @@ export interface Lead {
   qualification?: LeadQualification;
   /** Timestamp del ultimo survey offer que mando el bot. Anti-spam. */
   surveyOfferSentAt?: string;
+  /**
+   * FIX 2026-07-08 (sesión madrugada): si true, el bot NO procesa
+   * nuevos mensajes de este lead. El admin (David) activa este flag
+   * cuando toma control manual de la conversación desde el panel CRM
+   * (LeadDetailDrawer). El inbound igual se persiste (con metadata
+   * `bot_paused_skip: true`) para que David vea el historial.
+   *
+   * Safe default: false. Migration: 20260708010000_leads_bot_paused.sql.
+   */
+  botPaused?: boolean;
+  /** Timestamp del último toggle a true. */
+  botPausedAt?: string | null;
+  /** Email del admin que pausó (audit). */
+  botPausedByEmail?: string | null;
 }
 
 /* ------------------------------------------------------------------ */
