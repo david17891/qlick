@@ -2901,3 +2901,76 @@ ul, .next/, .vercel/ — todos gitignored (no entran al repo).
   - **Zip binario:** qlick_brand_agent_pack (1).zip (5.96 MB) está TRACKED desde el bootstrap inicial (commit 243a499, 2026-06-22). No bloquea pero infla el repo. Recomendación: si la marca ya está consolidada en código, eliminar con git rm.
 - **Impacto:** no hay bloqueantes para producción ni privacidad rota. Suite verde garantiza regresión cero. Las dos acciones que requieren luz verde de David son: (1) decisión sobre scratch/qlick-virtual-funnel-audit.mjs modificado, (2) cerrar rama stale eat/v0.7.3-admin-refinement.
 - **Trigger:** David solicitó auditoría /GOAL multi-vector para verificar alineación del repo antes del evento en vivo.
+
+
+---
+
+## 2026-07-07 ~14:35 - Fase 1 Stripe pagos: integracion lista, pendiente deploy
+
+- **Pregunta:** David volvio con cuenta Stripe creada (sin keys todavia).
+  El plan de Fase 1 era cablear Stripe al flujo /pagar/[slug] manteniendo
+  SimulatorForm para dev. La auditoria mostro que el adapter Stripe + webhook
+  handler YA estaban escritos en sesiones previas - faltaba el pegamento.
+- **Decision:** Construir endpoint orquestador /api/payments/create-checkout
+  + CheckoutButton client component que redirige a Stripe Checkout + pagina
+  /pagar/[slug]/exito que consulta getStatus + branching mock vs stripe
+  segun NEXT_PUBLIC_PAYMENT_PROVIDER.
+- **Codigo nuevo:**
+  - src/app/api/payments/create-checkout/route.ts (POST, 200 lineas)
+  - src/app/pagar/[courseSlug]/CheckoutButton.tsx (client, 130 lineas)
+  - src/app/pagar/[courseSlug]/exito/page.tsx (server, 130 lineas)
+- **Codigo modificado:**
+  - src/app/pagar/[courseSlug]/page.tsx (branching + ?cancelled=1 banner)
+  - src/app/api/webhooks/stripe/route.ts (removed 3 @ts-ignore obsoletos)
+- **Migrations aplicadas en Supabase:** event_access + payments.course_id nullable
+  (ya aplicadas por David en sesion anterior). Archivo
+  20260707100000_event_access.sql corregido en repo: patron inline
+  (auth.jwt()->>'app_role') in ('admin','instructor') en lugar de
+  public.is_admin() que no existe.
+- **Tests:** +14 en 	ests/payments-registry.test.mjs cubriendo provider
+  registry, applyCoupon (5 escenarios), mockProvider.createCheckout
+  (card/oxxo/free). 583/583 verde.
+- **Validacion:** type-check OK, lint OK, build OK (58 rutas incluyendo
+  /pagar/[courseSlug]/exito nueva).
+- **Impacto:** Flujo Stripe listo end-to-end. Pendiente: pegar keys en
+  .env.local + Vercel, registrar webhook en Stripe Dashboard, E2E con
+  test cards (4242, 4000 9995, 0341).
+- **Trigger:** David pidio "vamos montando todo" tras confirmar cuenta
+  Stripe creada (sin datos).
+
+## 2026-07-07 ~21:35 · Bot WhatsApp: captura desordenada + precio/constancia del evento 11 jul
+
+- **Pregunta:** David reportó (sesión 2026-07-07 ~21:19, transcripts WhatsApp del 8 de julio para el evento "Marketing + IA para Emprendedores" 11 jul) tres problemas urgentes a 4 días del evento:
+  1. **Datos faltantes en DB**: precio, constancia, link Zoom, cupo NO cargados en `events.description` → bot improvisaba con "lo reviso con el equipo".
+  2. **Lead manda nombre + email juntos (caso Sitlalic)**: el bot-engine guardaba el body entero (`"Sitlalic Guzmán ramos sitlalic.guzman@uabc.edu.mx"`) como nombre y volvía a pedir email. Email embebido ignorado.
+  3. **Loop "Si"**: el LLM alucinaba "ya tienes tu lugar apartado" sin haber completado el flow. El bot re-preguntaba "¿confirmas?" infinitamente porque el affirmative corto (`isAffirmative`) tiraba `intent=interactive_event_inscribir` saltándose la captura.
+
+- **Decisión (3 frentes, 1 sesión)**:
+  - **A. Cargar info oficial del evento 11 jul en DB** (script `scripts/_patch-event-jul11-info.mjs`): prepend al `events.description` con bloque "Precios y logística (información oficial)" — costo: gratuito, constancia: sí emitida por la empresa (sin validez oficial), modalidad: virtual Zoom, link Zoom: 24h antes. Temario existente preservado.
+  - **B. Code fix en `src/lib/whatsapp/bot-engine.ts`**:
+    - Handler `provide_name`: extraer email embebido (`extractEmailFromText(body)`) si existe; si el resto del texto es nombre válido (`isValidHumanName`), separar y devolver plan con `metadata.implicit_capture = { name, email }`. processInboundMessage ejecuta side-effects de provide_email (update lead, generateQrToken, createConfirmation, sendEventQrPassEmail) cuando el plan tiene ese flag.
+    - Pre-procesador (línea ~3859, override `interactive_event_inscribir` por `awaitingConfirmationForSlug` + affirmative): si hay `awaitingField` activo, NO saltar a `interactive_event_inscribir` — re-clasificar con `detectIntent` (flujo normal: provide_name/email/question). Bloquea el loop "Si" durante captura.
+    - Handler `question`: aceptar nuevo arg `pendingAwaitingField`. Si está, preservar `awaiting_field` en metadata del outbound (no se pierde el flow cuando lead hace pregunta intermedia). Inyectar instrucción al LLM como sufijo de `lastIncomingMessage` para que cierre re-preguntando el campo.
+    - `event_rules` del evento: agregar 6 reglas nuevas (anti-alucinación "ya tienes tu lugar apartado" sin email capturado + reglas de captura desordenada + reglas de affirmative loop).
+  - **C. Handler provide_name frente a pregunta intermedia**: si body es pregunta (no nombre), devolver mensaje que reconoce la pregunta y promete responderla al completar registro, manteniendo `awaiting_field="name"`. Refactor futuro: invocar LLM desde provide_name para responder preguntas frecuentes mientras se completa la captura.
+
+- **Razón:** David explícitamente pidió "arreglar todo ya, además... capacidad de atrapar datos aunque no estén en orden, prioridad capturar datos y cerrar lead". El funnel actual tenía fugas críticas 4 días antes del evento.
+
+- **Impacto:**
+  - Bot contesta precio/constancia/Zoom/temario del evento 11 jul con datos oficiales (sin improvisar).
+  - Lead que manda nombre + email juntos se registra en 1 turno (QR generado, email enviado, confirmation creada). Antes: 3-4 turnos con fricción.
+  - "Si" durante captura de nombre/email NO dispara inscripción falsa — mantiene el flow actual.
+  - Pregunta intermedia mientras se espera nombre/email YA NO pierde el awaiting_field — próximo turno re-entra como provide_name/provide_email.
+
+- **Archivos tocados:**
+  - `src/lib/whatsapp/bot-engine.ts` (~250 líneas modificadas, todas con comentarios FIX 2026-07-07).
+  - `tests/whatsapp-bot-capture-disorderly.test.mjs` (nuevo, 23 tests).
+  - `scripts/_inspect-event-for-bot.mjs` (nuevo, diagnóstico DB).
+  - `scripts/_patch-event-jul11-info.mjs` (nuevo, UPDATE DB con info del evento).
+  - `scripts/_patch-event-rules-no-affirm.mjs` (nuevo, UPDATE event_rules del evento).
+
+- **Validación:** type-check ✓ (0 errores), lint ✓ (0 warnings), 606/606 tests ✓ (583 → 606, +23 nuevos), build ✓. DB cambios aplicados (description + event_rules del evento AA4E / id `eeb2070e-...`).
+
+- **Trigger:** David pidió resolver las dudas básicas del evento del 11 jul a 4 días de la fecha.
+
+- **Pendiente post-evento 11 jul:** refactor para extraer la lógica duplicada del side-effect chain de provide_email (update email + QR + confirmation + email) en una helper `executeEmailRegistration` llamada desde ambos paths (case provide_email + bloque implicit_capture). Hoy son ~80 líneas duplicadas con comentario "REFACTOR: extract to helper".

@@ -1646,6 +1646,16 @@ async function buildResponsePlan(args: {
    * o híbrido y mande el link streaming en vez del QR pass.
    */
   registrationEvent?: import("../ai/event-context-loader").ActiveEventContext | null;
+  /**
+   * FIX 2026-07-07 (sesion David "captura desordenada"): si el último
+   * outbound del bot tenía metadata.awaiting_field='name' o 'email',
+   * propagamos ese estado al handler `question` para que el bot NO
+   * pierda el flow de captura cuando el lead hace una pregunta
+   * intermedia. Si el LLM responde, el outbound mantiene el
+   * awaiting_field pendiente y el próximo turno entra de nuevo como
+   * provide_name / provide_email.
+   */
+  pendingAwaitingField?: string | null;
 }): Promise<OutboundPlan> {
   const { intent, lead, body, phoneNormalized, buttonId } = args;
   const provider = getActiveWhatsAppProvider();
@@ -2926,14 +2936,45 @@ case "interactive_event_inscribir": {
       //     debería haberlo clasificado como provide_email).
       //   - Que tenga al menos 2 palabras (Juan, no "j").
       //   - Que no supere 100 chars.
-      const name = body.trim();
-      const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(name);
+      const rawBody = body.trim();
+      const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawBody);
+      // FIX 2026-07-07: si NO es solo email pero contiene uno embebido,
+      // extraerlo. Si el resto es nombre válido, los capturamos juntos
+      // (caso típico: "Sitlalic Guzman ramos sitlalic.guzman@uabc.edu.mx").
+      const embeddedEmail = looksLikeEmail
+        ? null
+        : extractEmailFromText(rawBody);
+      let name = rawBody;
+      let implicitEmail: string | null = null;
+      if (embeddedEmail) {
+        const withoutEmail = rawBody
+          .replace(embeddedEmail, "")
+          .replace(/[,;]+\s*/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+        // Solo procesamos implicit capture si el resto es un nombre válido.
+        // Si `withoutEmail` no pasa validación, caemos al path normal
+        // (name = rawBody, sin email) y el bot vuelve a pedir el email
+        // en el siguiente turno.
+        if (withoutEmail.length >= 2 && isValidHumanName(withoutEmail)) {
+          name = withoutEmail;
+          implicitEmail = embeddedEmail.toLowerCase().trim();
+        }
+      }
       // E6: detectar preguntas / dudas — NO guardar como nombre.
       if (isQuestionOrIntent(name)) {
+        // FIX 2026-07-07 (sesion David "captura desordenada + prioridad
+        // cerrar lead"): el bot reconoce la pregunta y le dice al lead
+        // que se la contesta, pero mantiene la captura activa. NO ignora
+        // la pregunta (antes parecia que el bot estaba sordo); tampoco
+        // la responde (no tenemos LLM desde este handler — el flujo
+        // correcto es que el lead primero complete el registro y luego
+        // pueda preguntar con el contexto conversacional cargado).
         const bodyText =
-          `Buena pregunta. Para poder emitir tu certificado de asistencia ` +
-          `necesitamos tu nombre completo (nombre y apellido). ` +
-          `¿Me lo pasás así: "Juan Pérez"?`;
+          `Buena pregunta. Te la respondo cuando completemos tu ` +
+          `registro (asi puedo darte una respuesta personalizada). ` +
+          `Por ahora solo necesito tu nombre completo (nombre y ` +
+          `apellido) para el certificado. ¿Me lo pasás así: "Juan Pérez"?`;
         return {
           kind: "text",
           body: bodyText,
@@ -3010,6 +3051,32 @@ case "interactive_event_inscribir": {
       // Nombre válido. El processInboundMessage va a persistirlo.
       // Acá solo retornamos el plan para pedir el email.
       const clean = cleanFirstName(name);
+      // FIX 2026-07-07 (sesion David "lead manda nombre + email juntos"):
+      // Si capturamos email embebido en el body, vamos directo a cierre
+      // + generación de QR. processInboundMessage detecta
+      // metadata.implicit_capture y ejecuta los side-effects de
+      // provide_email (update email, generateQrToken, sendEventQrPassEmail,
+      // createConfirmation) sin pedir el email en un turno separado.
+      if (implicitEmail) {
+        const saludoIc = clean ? `¡Excelente ${clean}!` : "¡Excelente!";
+        const bodyText =
+          `${saludoIc} Ya te tengo registrado. Te enviamos tu QR al ` +
+          `correo ${implicitEmail} y el link de Zoom 24 horas antes. ` +
+          `Si me confirmas con "Si", queda cerrado.`;
+        return {
+          kind: "text",
+          body: bodyText,
+          metadata: {
+            awaiting_field: null,
+            implicit_capture: {
+              name: name.trim(),
+              email: implicitEmail
+            }
+          },
+          send: () =>
+            provider.send({ to: phoneNormalized, body: bodyText })
+        };
+      }
       const saludo = clean ? `Gracias ${clean}.` : "Gracias.";
       const bodyText =
         `${saludo} Ahora mándame tu email y te paso tu QR de entrada.`;
@@ -3185,12 +3252,21 @@ case "interactive_event_inscribir": {
         `qlick-bot:${phoneNormalized ?? lead.id ?? "unknown"}`
       );
       let result: Awaited<ReturnType<typeof agent.run>>;
+      // FIX 2026-07-07 (sesion David "captura desordenada"): si el último
+      // outbound del bot marcó awaiting_field (name/email), el LLM debe
+      // responder la pregunta del lead Y cerrar el turno pidiendo el campo
+      // pendiente. Inyectamos esa instrucción como un sufijo en
+      // lastIncomingMessage para que el LLM la vea en su contexto.
+      const pendingAwaitingField = args.pendingAwaitingField ?? null;
+      const lastIncomingMessageWithReminder = pendingAwaitingField
+        ? `${body}\n\n[Recordatorio interno: el bot está esperando que el lead entregue su ${pendingAwaitingField}. Después de responder la duda, cierra el mensaje pidiendo ese dato.]`
+        : body;
       if (rateLimit.allowed) {
         result = await agent.run("suggest_reply", {
           profile,
           leadName: cleanLeadName,
           courseOfInterest: lead.courseOfInterest,
-          lastIncomingMessage: body,
+          lastIncomingMessage: lastIncomingMessageWithReminder,
           activeEvent,
           eventsListBlock,
           conversationWindow,
@@ -3276,7 +3352,13 @@ case "interactive_event_inscribir": {
       // "va", "si señor", "claro que sí" que el bot tiene que matchear
       // con regex). El buttonId `confirm_inscription_<slug>` viaja a
       // processInboundMessage que lo trata como `interactive_event_inscribir`.
-      if (closedQuestion.isClosed && closedQuestion.eventSlug) {
+      //
+      // FIX 2026-07-07: si hay awaiting_field pendiente (captura
+      // desordenada), NO forzamos interactive de confirmacion. El flow
+      // de inscripcion no esta completo todavia (falta nombre/email), y
+      // mandar al usuario a un boton "Si, inscribirme" seria una
+      // alucinacion. Volvemos a texto plano que mantenga awaiting_field.
+      if (closedQuestion.isClosed && closedQuestion.eventSlug && !pendingAwaitingField) {
         const confirmId = `confirm_inscription_${closedQuestion.eventSlug}`;
         const interactive: import("../whatsapp/providers/whatsapp-provider").InteractiveMessage = {
           type: "button" as const,
@@ -3313,7 +3395,14 @@ case "interactive_event_inscribir": {
       return {
         kind: "text",
         body: content,
-        metadata: closedQuestion.isClosed
+        // FIX 2026-07-07 (sesion David "captura desordenada"): si el bot
+        // estaba esperando un campo de captura (awaiting_field) y el lead
+        // hizo una pregunta intermedia, preservamos el awaiting_field
+        // para que el proximo turno entre como provide_name/email otra
+        // vez (no como question libre).
+        metadata: pendingAwaitingField
+          ? { awaiting_field: pendingAwaitingField }
+          : closedQuestion.isClosed
           ? { awaiting_confirmation_for_event_slug: closedQuestion.eventSlug }
           : undefined,
         send: () =>
@@ -3861,13 +3950,41 @@ export async function processInboundMessage(
       isAffirmative &&
       !looksLikeEmail
     ) {
-      intent = "interactive_event_inscribir";
-      // FIX 2026-07-02: persistimos el slug en metadata del inbound
-      // para que `buildResponsePlan` (via `args.requestedEventSlug`)
-      // sepa a qué evento inscribir sin re-preguntar.
-      // Tambien lo guardamos en una variable local que pasamos al
-      // buildResponsePlan más abajo.
-      requestedEventSlug = awaitingConfirmationForSlug;
+      // FIX 2026-07-07 (sesion David "loop Si tras pedir nombre/email"):
+      // Si hay un `awaitingField` activo (bot esperando nombre o email)
+      // y el lead responde "Si", NO saltar a `interactive_event_inscribir`
+      // — eso rompe la captura (bypass del nombre, sin email). En su lugar,
+      // dejamos que el intent fluya normal: si el body parece nombre/email,
+      // cae a provide_name/provide_email; si no, va a question (LLM).
+      //
+      // Sin este guard, una conversacion normal
+      //   bot: "dime tu nombre completo"
+      //   lead: "David"
+      //   bot: "gracias David. ahora tu email"
+      //   lead: "Si"  <- cae en interactive_event_inscribir, salta todo.
+      // NO debe disparar interactive_event_inscribir si hay awaitingField.
+      if (awaitingField) {
+        // Mantenemos el intent que detectaria normalmente (provide_name,
+        // provide_email, question). El LLM vera awaitingField en el
+        // lastOutbound y mantendra el flow.
+        // Re-clasificamos segun el body para no dejarlo como null.
+        if (looksLikeEmail) {
+          intent = "provide_email";
+        } else {
+          // Dejar que detectIntent clasifique el body normalmente.
+          // Esto cae al flujo natural (provide_name si parece nombre,
+          // question si es texto libre / "Si" aislado).
+          intent = detectIntent(body, isFirstMessage);
+        }
+      } else {
+        intent = "interactive_event_inscribir";
+        // FIX 2026-07-02: persistimos el slug en metadata del inbound
+        // para que `buildResponsePlan` (via `args.requestedEventSlug`)
+        // sepa a qué evento inscribir sin re-preguntar.
+        // Tambien lo guardamos en una variable local que pasamos al
+        // buildResponsePlan más abajo.
+        requestedEventSlug = awaitingConfirmationForSlug;
+      }
       // FIX 2026-07-02: tambien marcamos el whatsapp_status del lead
       // como "interesado" para reflejar que ya está en flow de inscripción.
       // (Esto se hace más abajo en la sección 4 via intent != question,
@@ -4899,6 +5016,19 @@ export async function processInboundMessage(
             undefined
         }
       : null,
+    // FIX 2026-07-07 (sesion David "captura desordenada"): propagamos el
+    // awaiting_field del último outbound al plan builder, para que el
+    // handler `question` (LLM) pueda mantener el flow de captura cuando
+    // el lead hace una pregunta intermedia en vez de entregar el campo
+    // esperado.
+    pendingAwaitingField:
+      (earlyWindowGlobal
+        ? (
+            earlyWindowGlobal.messages
+              .filter((m) => m.direction === "outbound")
+              .slice(-1)[0]?.metadata as { awaiting_field?: string | null } | null
+          )?.awaiting_field ?? null
+        : null),
     supabase
   });
 
@@ -4919,6 +5049,180 @@ export async function processInboundMessage(
       leadId: lead.id,
       error: err instanceof Error ? err.message : String(err)
     });
+  }
+
+  // 6.5. FIX 2026-07-07 (sesion David "lead manda nombre + email juntos"):
+  // Si el handler provide_name capturó nombre + email embebido
+  // (metadata.implicit_capture), ejecutamos el mismo chain de side-effects
+  // que provide_email:
+  //   - update lead.email/name/consent_to_contact
+  //   - persist consent log
+  //   - generate QR token
+  //   - createConfirmation (registra al lead en event_confirmations)
+  //   - sendEventQrPassEmail (pase digital por correo)
+  //
+  // Lo hacemos aqui (post-plan) en vez de duplicar el case provide_email
+  // para mantener el handler provide_name "single responsibility".
+  // Refactor futuro: extraer la logica de provide_email a una helper
+  // compartida `executeEmailRegistration` y llamarla desde ambos paths.
+  const planMeta = plan.metadata as { implicit_capture?: { name: string; email: string } } | null;
+  if (
+    planMeta?.implicit_capture &&
+    typeof planMeta.implicit_capture.email === "string" &&
+    supabase &&
+    lead.id
+  ) {
+    const ic = planMeta.implicit_capture;
+    const capturedEmail = ic.email.toLowerCase().trim();
+    const capturedName = ic.name.trim();
+    try {
+      // a) Update lead con email + nombre + consent.
+      const { error: leadUpdateErr } = await supabase
+        .from("leads")
+        .update({
+          email: capturedEmail,
+          name: capturedName,
+          consent_to_contact: true
+        })
+        .eq("id", lead.id);
+      if (leadUpdateErr) {
+        errorLog("[whatsapp/bot] implicit_capture: lead update falló", {
+          leadId: lead.id,
+          code: (leadUpdateErr as { code?: string }).code
+        });
+      }
+      // b) Persist consent log.
+      await persistConsent(supabase, {
+        lead_id: lead.id,
+        phone_normalized: phoneNormalized,
+        consent_granted: true,
+        consent_source: "whatsapp_bot",
+        consent_text: CONSENT_DISCLOSURE,
+        metadata: {
+          intent: "provide_name_with_implicit_email",
+          messageId: message.messageId,
+          eventSlug: registrationEventSlug,
+          eventTitle: registrationEventTitle
+        }
+      });
+      // c) Identificar evento del registro (mismo flujo que provide_email).
+      // Si no hay matchedEvent del bloque provide_email (porque intent era
+      // provide_name), lo calculamos acá para que createConfirmation apunte
+      // al evento correcto.
+      let icMatchedEvent: ActiveEventContext | null = matchedEvent;
+      if (!icMatchedEvent) {
+        try {
+          const convWindowForIc = await loadConversationWindow(phoneNormalized, 8).catch(
+            () => undefined
+          );
+          const allEventsForIc = await loadAllActiveEvents().catch(() => [] as ActiveEventContext[]);
+          icMatchedEvent = findEventInConversation(convWindowForIc, allEventsForIc);
+        } catch (icResolveErr) {
+          errorLog("[whatsapp/bot] implicit_capture: findEventInConversation falló", {
+            leadId: lead.id,
+            error: icResolveErr instanceof Error ? icResolveErr.message : String(icResolveErr)
+          });
+        }
+      }
+      const icEventSlug = icMatchedEvent?.slug ?? registrationEventSlug;
+      const icEventTitle = icMatchedEvent?.title ?? registrationEventTitle;
+      // d) Generate QR token.
+      const qr = await generateQrToken(
+        supabase,
+        phoneNormalized,
+        capturedName,
+        capturedEmail,
+        icEventSlug
+      ).catch((qrErr) => {
+        errorLog("[whatsapp/bot] implicit_capture: generateQrToken threw", {
+          leadId: lead.id,
+          error: qrErr instanceof Error ? qrErr.message : String(qrErr)
+        });
+        return null;
+      });
+      const icQrUrl = qr?.url ?? null;
+      // e) Create confirmation en event_confirmations.
+      if (qr && icEventSlug) {
+        try {
+          const regEvt = await loadActiveEventContext(icEventSlug).catch(() => null);
+          if (regEvt?.id) {
+            const confResult = await createConfirmation({
+              eventId: regEvt.id,
+              name: capturedName || "Asistente",
+              email: capturedEmail,
+              phoneRaw: phoneNormalized,
+              phoneNormalized,
+              source: "whatsapp_bot"
+            });
+            debugLog("[whatsapp/bot] implicit_capture: confirmation registrada", {
+              leadId: lead.id,
+              eventId: regEvt.id,
+              created: confResult.created,
+              persisted: confResult.persisted,
+              note: confResult.note
+            });
+          }
+        } catch (confErr) {
+          errorLog("[whatsapp/bot] implicit_capture: createConfirmation falló", {
+            leadId: lead.id,
+            error: confErr instanceof Error ? confErr.message : String(confErr)
+          });
+        }
+      }
+      // f) Send event QR pass email (best-effort).
+      if (qr) {
+        try {
+          const event = icEventSlug
+            ? await loadActiveEventContext(icEventSlug).catch(() => null)
+            : await loadActiveEventContext().catch(() => null);
+          const qrImageUrl = `${appBaseUrl()}/api/event-qr/${qr.token}.png`;
+          const gateUrl =
+            event?.format && event.format !== "in_person"
+              ? `${appBaseUrl()}/api/event-gate/${encodeURIComponent(qr.token)}/click`
+              : undefined;
+          const result = await sendEventQrPassEmail(
+            {
+              attendeeName: capturedName,
+              attendeeEmail: capturedEmail,
+              eventTitle: event?.title ?? icEventTitle ?? "el evento",
+              eventStartsAt: event?.startsAt
+                ? event.startsAt.toISOString()
+                : new Date().toISOString(),
+              eventLocation: event?.location ?? null,
+              qrImageUrl,
+              checkInUrl: icQrUrl ?? qr.url,
+              format: event?.format ?? "in_person",
+              gateUrl,
+              streamingAccessNote: event?.streamingAccessNote ?? undefined
+            },
+            {
+              eventId: event?.id ?? null,
+              eventQrTokenId: null
+            }
+          );
+          if (!result.ok) {
+            errorLog("[whatsapp/bot] implicit_capture: sendEventQrPassEmail failed", {
+              leadId: lead.id,
+              error: result.error
+            });
+          }
+        } catch (sendErr) {
+          errorLog("[whatsapp/bot] implicit_capture: sendEventQrPassEmail threw", {
+            leadId: lead.id,
+            error: sendErr instanceof Error ? sendErr.message : String(sendErr)
+          });
+        }
+      }
+      debugLog("[whatsapp/bot] implicit_capture: side-effects completados", {
+        leadId: lead.id,
+        hasQr: Boolean(qr)
+      });
+    } catch (icErr) {
+      errorLog("[whatsapp/bot] implicit_capture: side-effects threw", {
+        leadId: lead.id,
+        error: icErr instanceof Error ? icErr.message : String(icErr)
+      });
+    }
   }
 
   // 7. Persistir outbound.

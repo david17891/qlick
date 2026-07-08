@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-07 13:25 — Hotfix v0.9.2 (pendiente commit): cablear `mustEscalateToHuman` en el bot flow (opción B del plan de handoff). Cuando un lead escribe sobre reembolso/queja/soporte técnico/descuento no autorizado/datos personales, el bot persiste en `handoff_requests` + manda respuesta segura al lead. Suite verde: **569/569 tests** (8 nuevos en `whatsapp-bot.test.mjs`) + type-check/lint OK.
+> **Última actualización:** 2026-07-07 22:00 — **Bot WhatsApp: captura desordenada + info oficial del evento 11 jul**. Sesión urgente pre-evento (4 días). Tres problemas cerrados en una sesión: (a) datos faltantes en DB (precio/constancia/link Zoom) → UPDATE `events.description` del evento `marketing-ia-para-emprendedores` (short_code AA4E, id `eeb2070e-...`) con bloque "Precios y logística (información oficial)"; (b) lead manda nombre+email juntos → handler `provide_name` extrae email embebido via `extractEmailFromText`, devuelve plan con `metadata.implicit_capture`, processInboundMessage ejecuta side-effects de provide_email (update lead, generateQrToken, createConfirmation, sendEventQrPassEmail) en un solo turno; (c) loop "Si" durante captura → override `interactive_event_inscribir` chequea `awaitingField` activo y re-clasifica con `detectIntent` si hay campo pendiente. Tambien: `pendingAwaitingField` propaga el awaiting_field del último outbound al handler `question` para que el bot NO pierda el flow cuando el lead hace pregunta intermedia. +6 reglas anti-alucinación ("no afirmar lugar apartado sin email") en `event_rules` del evento. Suite: **606/606 tests** (+23 nuevos en `whatsapp-bot-capture-disorderly.test.mjs`) + type-check/lint/build OK. Detalle completo en `data/PROJECT-LOG.md` entrada 2026-07-07 ~21:35. Pendiente: pegar `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` en `.env.local` y Vercel (Fase 1 Pagos, snapshot previo).
 
 ---
 
@@ -61,13 +61,56 @@ git revert ec9eb55 --no-edit
 ### Métricas del release v0.9.0
 
 - **Tests unitarios / integración:** **545/545 verde** (sin regresión vs v0.8.0)
-- **Audit E2E (script `scratch/qlick-crm-ai-audit.mjs`):** **18/18 aserciones OK** contra DB real (escenarios I1-I4)
+- **Audit E2A (script `scratch/qlick-crm-ai-audit.mjs`):** **18/18 aserciones OK** contra DB real (escenarios I1-I4)
 - **`npm run type-check`:** ✓ 0 errores
 - **`npm run lint`:** ✓ 0 warnings/errors
 - **`npm run build`:** ✓ Compila 55+ rutas (Static + Dynamic)
 - **Bot engine (`src/lib/whatsapp/bot-engine.ts`):** ✅ **Funcionalmente íntegro** — modificado 341 líneas desde v1.1-crm1-stable (6 commits), pero todos los cambios son feature/fix del propio bot (escalado humano en categorías duras, fallback honesto sin eventos publicados, copy check-in presencial, gate virtual SÍ/VOY, mensajes condicionales por formato). NO hay intrusión de CRM/campaign. Suite verde 569/569.
 - **Cobertura de compliance (LGPD/LFPDPPP):** ✅ soft delete + audit logs + consent filter
 - **Cobertura de UX:** ✅ conversaciones reales + métricas inteligentes + agente IA dinámico
+
+---
+
+## 🆕 Fase 1 — Pagos Stripe (integración lista, pendiente deploy)
+
+**Branch:** `feat/pagos-stripe-fase-1` (a crear; no commiteado aún al cierre de esta sesión).
+**Handoff planeado:** `docs/HANDOFF_v1.0_STRIPE.md` (post-deploy).
+
+### Schema
+
+| Migration | Cambio | Estado en Supabase |
+|---|---|---|
+| `20260707100000_event_access.sql` | Tabla `event_access` (espejo de `course_access` para eventos) con RLS `event_access_owner_select` + `event_access_admin_all` (patrón inline `(auth.jwt()->>'app_role') in ('admin','instructor')`). | ✅ Aplicada |
+| `20260707110000_payments_course_id_nullable.sql` | `payments.course_id` → NULL (pagos de eventos/masterclass quedan vinculados vía `event_access.payment_id`). | ✅ Aplicada |
+
+> El archivo `20260707100000_event_access.sql` en repo fue sincronizado con el patrón real del repo (corregido de un `public.is_admin()` que no existe a inline `(auth.jwt() ->> 'app_role')` + `coalesce(..., false)` + `to authenticated`).
+
+### Código nuevo
+
+| Archivo | Propósito |
+|---|---|
+| `src/app/api/payments/create-checkout/route.ts` | Endpoint POST server-side que resuelve el curso por slug, valida auth + `checkCourseAccess`, llama `getPaymentProvider().createCheckout(productRef)`, devuelve `{ flow, redirectUrl, paymentId, ... }`. Idempotente: 409 con `alreadyPaid: true` si ya pagó. |
+| `src/app/pagar/[courseSlug]/CheckoutButton.tsx` | Client component que reemplaza al SimulatorForm cuando `NEXT_PUBLIC_PAYMENT_PROVIDER !== 'mock'`. Selector card/oxxo/spei + botón "Pagar ahora" que postea a create-checkout y redirige a Stripe Checkout hosted. |
+| `src/app/pagar/[courseSlug]/exito/page.tsx` | Server component que lee `?session_id=XXX`, llama `provider.getStatus()`, verifica `checkCourseAccess` (webhook pudo ya haber corrido), muestra feedback aprobado/pendiente/rechazado según estado. |
+
+### Código modificado
+
+| Archivo | Cambio |
+|---|---|
+| `src/app/pagar/[courseSlug]/page.tsx` | Branching según `NEXT_PUBLIC_PAYMENT_PROVIDER`: `mock` → SimulatorForm (dev-only), `stripe`/otros → CheckoutButton. Banner de "Pago cancelado" si `?cancelled=1`. **Sigue sin llamar a `checkCourseAccess()` en render** (workaround heredado de 2026-06-26 que evita el render vacío en browser). |
+| `src/app/api/webhooks/stripe/route.ts` | Removidos 3 `@ts-ignore` obsoletos sobre `payments.course_id` (el typegen local ya dice nullable desde migración previa). Quedan solo los `@ts-ignore` de `event_access` (la tabla no está en el typegen aún). |
+
+### Tests nuevos
+
+- `tests/payments-registry.test.mjs` (+14 tests, **583/583 verde**): cubre `getActivePaymentProviderName`, `getPaymentProvider`, `listPaymentProviders`, `applyCoupon` (5 escenarios de cupones), y `mockProvider.createCheckout` con `card`/`oxxo`/free.
+
+### Lo que falta para deploy
+
+1. **Pegar `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET`** en `.env.local` (David) y Vercel env vars (production).
+2. **Setear `NEXT_PUBLIC_PAYMENT_PROVIDER=stripe`** en Vercel (preview + production) para activar el flujo real. Mantener `mock` en dev local.
+3. **Registrar webhook endpoint** en Stripe Dashboard: `https://qlick.digital/api/webhooks/stripe` con eventos `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `charge.refunded`.
+4. **E2E con test cards** (4242 4242 4242 4242, 4000 0000 0000 9995, 0341) contra un evento publicado → verificar que `course_access` (cursos) o `event_access` (eventos) se crea vía webhook.
+5. **Actualizar docs/STATUS.md y CHANGELOG.md** post-deploy con tag `v1.0-stripe-real`.
 
 ---
 
