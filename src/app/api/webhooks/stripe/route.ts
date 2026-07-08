@@ -94,7 +94,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(rawBody, signature, secret);
+    // Tolerance = 300s (default de Stripe SDK). Previene replay attacks con
+    // webhooks viejos firmados pero fuera de la ventana. Si querés más
+    // estricto, bajalo a 60-120s.
+    event = stripe.webhooks.constructEvent(rawBody, signature, secret, 300);
   } catch (err) {
     return NextResponse.json(
       {
@@ -232,19 +235,28 @@ async function resolveOrCreateUserId(
   if (!sessionEmail) return null;
 
   // 1. Buscar user existente por email.
+  //    SECURITY: usamos perPage: 1000 para cubrir volumen actual. Si
+  //    llegamos a >1000 usuarios, este listado va a fallar y crearemos
+  //    duplicados. Solución definitiva: crear una SQL function `lookup_user_id_by_email`
+  //    que consulte auth.users directamente. TODO cuando crucemos 500 users.
   try {
     const { data: listData } = await supabase.auth.admin.listUsers({
       page: 1,
-      perPage: 500,
+      perPage: 1000,
     });
     const existing = listData?.users?.find(
       (u) => u.email?.toLowerCase() === sessionEmail.toLowerCase()
     );
     if (existing) return existing.id;
-  } catch {
+  } catch (err) {
     // Si falla el lookup, seguimos a crear (puede que la cuenta exista
     // pero falle el list por permisos o tamaño). createUser error lo
     // manejamos abajo.
+    // eslint-disable-next-line no-console
+    console.warn("[stripe-webhook] listUsers falló (continuamos con createUser)", {
+      email: sessionEmail,
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 
   // 2. Crear user nuevo con email confirmado (guest puede recibir magic
@@ -261,7 +273,7 @@ async function resolveOrCreateUserId(
     try {
       const { data: listData } = await supabase.auth.admin.listUsers({
         page: 1,
-        perPage: 500,
+        perPage: 1000,
       });
       const existing = listData?.users?.find(
         (u) => u.email?.toLowerCase() === sessionEmail.toLowerCase()

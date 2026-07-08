@@ -22,7 +22,12 @@ export async function markRecentPurchase(
 ): Promise<{ ok: boolean; error?: string }> {
   try {
     const trimmed = email.trim().toLowerCase();
-    if (!trimmed) return { ok: false, error: "empty email" };
+    // Validación mínima para evitar que cualquier string sea cookie
+    // (protección contra garbage data y contra XSS reflected via this
+    // action).
+    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      return { ok: false, error: "email inválido" };
+    }
     cookies().set("qlick_recent_purchase", trimmed, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -45,13 +50,28 @@ export async function resendGuestAccessLink(sessionId: string): Promise<{
   error?: string;
 }> {
   try {
-    const provider = getPaymentProvider();
-    const result = await provider.getStatus(sessionId);
-    const email = result.customerEmail;
-    if (!email) {
-      return { ok: false, error: "No pudimos recuperar el email del pago." };
+    let email: string | null | undefined;
+
+    // Caso A: sessionId real (cs_test_...) → consultamos Stripe.
+    // Caso B: sessionId = "auto" (desde /pagar después de comprar, no
+    //   tenemos el session_id a mano) → usamos la cookie seteada por
+    //   MarkRecentPurchase.
+    if (sessionId && sessionId !== "auto") {
+      const provider = getPaymentProvider();
+      const result = await provider.getStatus(sessionId);
+      email = result.customerEmail;
+    } else {
+      email = cookies().get("qlick_recent_purchase")?.value;
     }
-    // Seteamos cookie para que /pagar/[slug] lo detecte después.
+
+    if (!email) {
+      return {
+        ok: false,
+        error:
+          "No pudimos recuperar el email del pago. Si compraste hace más de 7 días, la cookie expiró — contactános.",
+      };
+    }
+    // Seteamos/refreshamos cookie para que /pagar/[slug] lo detecte después.
     await markRecentPurchase(email);
     // Mandamos magic link vía Supabase.
     const supabase = await createSupabaseServerClient();
