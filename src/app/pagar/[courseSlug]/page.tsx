@@ -81,15 +81,13 @@ export default async function PayPage({
     redirect(`/inscripcion/${courseSlug}`);
   }
 
-  // Auth: requiere sesión de estudiante.
-  // WORKAROUND (2026-06-26): Por la misma razón que en /cursos/[slug], NO
-  // llamamos a `checkCourseAccess()` acá (hace que la página renderice
-  // vacía en el browser). La verificación de "ya pagó" la hace el
-  // simulador del lado del cliente.
+  // Auth: OPCIONAL — guest checkout es el flujo principal desde 2026-07-08.
+  // Cualquiera puede ver la página y pagar. Si hay sesión, igual la usamos
+  // para evitar pagar dos veces (idempotencia). Si no hay sesión, el
+  // webhook crea la cuenta con el email de Stripe al confirmarse el pago.
+  // NOTA: NO llamamos a checkCourseAccess() acá (la verificación la hace
+  // el cliente después del pago vía /exito).
   const session = await getCurrentStudent();
-  if (!session) {
-    redirect(`/login?next=${encodeURIComponent(`/pagar/${courseSlug}`)}`);
-  }
 
   return (
     <>

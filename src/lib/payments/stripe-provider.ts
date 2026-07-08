@@ -126,9 +126,11 @@ export const stripeProvider: PaymentProvider = {
     const stripe = getStripeClient();
 
     const productRef = input.productRef;
+    // Metadata: serializamos lo que tenemos. Si userId es null (guest checkout)
+    // lo guardamos como string vacío — el webhook resuelve el user via email.
     const metadata: Record<string, string> = {
       product_ref: serializeProductRef(productRef),
-      user_id: input.userId,
+      user_id: input.userId ?? "",
       user_email: input.userEmail,
       kind: productRef.kind,
     };
@@ -179,7 +181,9 @@ export const stripeProvider: PaymentProvider = {
         // locale español MX para el checkout hosted.
         locale: "es",
         // Si Qlick tiene email del user, prellenar checkout (menos fricción).
-        customer_email: input.userEmail,
+        // En guest checkout, input.userEmail es vacío → omitimos el campo y
+        // Stripe recolecta el email en el Checkout hosted.
+        ...(input.userEmail ? { customer_email: input.userEmail } : {}),
         // billing_address_collection por defecto en MX para Conekta/SPEI;
         // útil para CFDI futuro. Stripe lo recomienda para LATAM.
         // Para Fase 1 lo dejamos en 'auto' (Stripe decide).
@@ -264,6 +268,10 @@ export const stripeProvider: PaymentProvider = {
         paymentId: session.id,
         externalReference: session.id,
         status,
+        customerEmail:
+          (session.customer_email as string | null) ??
+          (session.customer_details?.email as string | null) ??
+          null,
         raw: {
           session_status: session.status,
           payment_intent_status: piStatus ?? null,

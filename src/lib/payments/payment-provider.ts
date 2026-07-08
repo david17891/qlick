@@ -58,8 +58,21 @@ export type ProductRef =
 export interface CreateCheckoutInput {
   /** Lo que se compra (polimórfico). OBLIGATORIO en providers nuevos. */
   productRef: ProductRef;
-  /** Identidad del comprador. */
-  userId: string;
+  /**
+   * Identidad del comprador.
+   * - Si hay sesión: el userId del estudiante logueado (se guarda en
+   *   metadata del Checkout Session para que el webhook pueda resolverlo
+   *   sin lookup por email).
+   * - Si NO hay sesión (guest checkout desde 2026-07-08): null. El webhook
+   *   resuelve el usuario desde `session.customer_email` (crea cuenta si
+   *   no existe).
+   */
+  userId: string | null;
+  /**
+   * Email del comprador (opcional, puede venir del session de Supabase
+   * o lo recolecta Stripe Checkout). Se usa como `customer_email` para
+   * prellenar checkout y como hint en el webhook.
+   */
   userEmail: string;
   /** Método preferido (afecta payment_method_types en providers redirect). */
   method: PaymentMethod;
@@ -108,6 +121,12 @@ export interface PaymentQueryResult {
   paymentId: string;
   externalReference: string;
   status: PaymentStatus;
+  /**
+   * Email del customer (cuando está disponible, ej. Stripe Checkout).
+   * Usado por /pagar/[slug]/exito para el botón "Reenviar link de acceso"
+   * del flujo guest. Opcional porque mock/legacy providers no lo exponen.
+   */
+  customerEmail?: string | null;
   raw?: unknown;
 }
 
