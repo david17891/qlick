@@ -94,6 +94,18 @@ export function mapLeadRowToLead(row: LeadRow): Lead {
     surveyOfferSentAt:
       (row as unknown as { survey_offer_sent_at?: string | null })
         .survey_offer_sent_at ?? undefined,
+    // FIX 2026-07-08: pause bot per-lead. El bot-engine chequea este
+    // flag en processInboundMessage y NO responde si está activo.
+    // Cast a `never` hasta regenerar el typegen post-migration
+    // (`supabase gen types`).
+    botPaused:
+      (row as unknown as { bot_paused?: boolean }).bot_paused === true,
+    botPausedAt:
+      (row as unknown as { bot_paused_at?: string | null })
+        .bot_paused_at ?? null,
+    botPausedByEmail:
+      (row as unknown as { bot_paused_by_email?: string | null })
+        .bot_paused_by_email ?? null,
     // `message` no se expone en el tipo Lead (privacidad); queda en la DB.
     createdAt: row.created_at,
     updatedAt: row.updated_at,
