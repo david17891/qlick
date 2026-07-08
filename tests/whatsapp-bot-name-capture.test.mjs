@@ -31,7 +31,8 @@ import assert from "node:assert/strict";
 // Imports del código fuente (vía type-stripping de Node).
 import {
   PLACEHOLDER_NAMES,
-  cleanFirstName
+  cleanFirstName,
+  matchInscriptionIntent
 } from "../src/lib/whatsapp/bot-engine.ts";
 
 /* ─────────────────────────────────────────────────────────────
@@ -48,6 +49,18 @@ test("PLACEHOLDER_NAMES contiene 'por confirmar' (admin pre-fill)", () => {
 
 test("PLACEHOLDER_NAMES contiene 'test' (placeholders de pruebas)", () => {
   assert.ok(PLACEHOLDER_NAMES.has("test"));
+});
+
+// FIX 2026-07-08 (audit David, sesion madrugada): cuando Meta NO
+// provee el profile.name, el bot creaba el lead con name="WhatsApp
+// Lead" y el saludo decia «¡Hola WhatsApp!». Verificamos que
+// ambas variantes (con y sin espacio) caen al filtro.
+test("PLACEHOLDER_NAMES contiene 'whatsapp' (FIX 2026-07-08)", () => {
+  assert.ok(PLACEHOLDER_NAMES.has("whatsapp"));
+});
+
+test("PLACEHOLDER_NAMES contiene 'whatsapp lead' (FIX 2026-07-08)", () => {
+  assert.ok(PLACEHOLDER_NAMES.has("whatsapp lead"));
 });
 
 test("PLACEHOLDER_NAMES NO contiene nombres reales comunes", () => {
@@ -176,4 +189,154 @@ test("cleanFirstName es determinista (mismo input → mismo output)", () => {
   const result3 = cleanFirstName(input);
   assert.equal(result1, result2);
   assert.equal(result2, result3);
+});
+
+/* ─────────────────────────────────────────────────────────────
+ * 7. FIX 2026-07-08: cleanFirstName filtra "WhatsApp Lead"
+ *    que se usaba como placeholder cuando Meta no provee
+ *    profile_name. Sin este fix el bot decia «¡Hola WhatsApp!».
+ * ───────────────────────────────────────────────────────────── */
+
+test("cleanFirstName devuelve '' para 'WhatsApp Lead' (FIX 2026-07-08)", () => {
+  assert.equal(cleanFirstName("WhatsApp Lead"), "");
+});
+
+test("cleanFirstName devuelve '' para 'whatsapp lead' lowercase", () => {
+  assert.equal(cleanFirstName("whatsapp lead"), "");
+});
+
+test("cleanFirstName devuelve '' para 'WHATSAPP' (uppercase)", () => {
+  assert.equal(cleanFirstName("WHATSAPP"), "");
+});
+
+test("cleanFirstName devuelve '' para 'WhatsApp' (capitalizado)", () => {
+  assert.equal(cleanFirstName("WhatsApp"), "");
+});
+
+test("cleanFirstName devuelve '' para '  WhatsApp Lead  ' (con padding)", () => {
+  assert.equal(cleanFirstName("  WhatsApp Lead  "), "");
+});
+
+/* ─────────────────────────────────────────────────────────────
+ * 8. FIX 2026-07-08: matchInscriptionIntent — pure helper que
+ *    detecta intención de inscripción en el body del lead.
+ *    Se usa para interceptar en el `case "question"` cuando el
+ *    lead no tiene nombre válido y dice algo de inscripción
+ *    (caso Yesenia: el LLM saltaba la captura de nombre).
+ * ───────────────────────────────────────────────────────────── */
+
+// Rama 1: affirmative corto aislado.
+test("matchInscriptionIntent('Si') → true (r1 affirmative aislado)", () => {
+  assert.equal(matchInscriptionIntent("Si"), true);
+});
+
+test("matchInscriptionIntent('ok') → true (r1 affirmative aislado)", () => {
+  assert.equal(matchInscriptionIntent("ok"), true);
+});
+
+test("matchInscriptionIntent('dale') → true (r1)", () => {
+  assert.equal(matchInscriptionIntent("dale"), true);
+});
+
+test("matchInscriptionIntent('va') → true (r1)", () => {
+  assert.equal(matchInscriptionIntent("va"), true);
+});
+
+test("matchInscriptionIntent('claro') → true (r1)", () => {
+  assert.equal(matchInscriptionIntent("claro"), true);
+});
+
+test("matchInscriptionIntent('Buen día') → true (r1)", () => {
+  assert.equal(matchInscriptionIntent("Buen día"), true);
+});
+
+test("matchInscriptionIntent('Buenas tardes') → true (r1)", () => {
+  assert.equal(matchInscriptionIntent("Buenas tardes"), true);
+});
+
+// Rama 2: affirmative + verbo de inscripción.
+test("matchInscriptionIntent('Si quiero inscribirme') → true (r2)", () => {
+  assert.equal(matchInscriptionIntent("Si quiero inscribirme"), true);
+});
+
+test("matchInscriptionIntent('Si, quiero inscribirme') → true (r2)", () => {
+  assert.equal(matchInscriptionIntent("Si, quiero inscribirme"), true);
+});
+
+test("matchInscriptionIntent('Ok, dame mi lugar') → true (r2)", () => {
+  // "dame mi lugar" = "apartar mi lugar" implícito. Matchea r2
+  // (afirmativo + verbo) o r3 (frase "apartar mi lugar" via mi lugar).
+  assert.equal(matchInscriptionIntent("Ok, dame mi lugar"), true);
+});
+
+// Rama 3: frase directa de inscripción.
+test("matchInscriptionIntent('quiero inscribirme') → true (r3)", () => {
+  assert.equal(matchInscriptionIntent("quiero inscribirme"), true);
+});
+
+test("matchInscriptionIntent('me interesa el evento') → true (r3)", () => {
+  assert.equal(matchInscriptionIntent("me interesa el evento"), true);
+});
+
+test("matchInscriptionIntent('me interesa el curso') → true (r3)", () => {
+  assert.equal(matchInscriptionIntent("me interesa el curso"), true);
+});
+
+test("matchInscriptionIntent('inscribirme al evento') → true (r3)", () => {
+  assert.equal(matchInscriptionIntent("inscribirme al evento"), true);
+});
+
+test("matchInscriptionIntent('apartar mi lugar') → true (r3)", () => {
+  assert.equal(matchInscriptionIntent("apartar mi lugar"), true);
+});
+
+test("matchInscriptionIntent('reservar mi lugar') → true (r3)", () => {
+  assert.equal(matchInscriptionIntent("reservar mi lugar"), true);
+});
+
+// Casos negativos (NO debe interceptar — son preguntas libres u opt-out).
+test("matchInscriptionIntent('¿Qué incluye?') → false (pregunta libre)", () => {
+  assert.equal(matchInscriptionIntent("¿Qué incluye?"), false);
+});
+
+test("matchInscriptionIntent('cuanto cuesta?') → false (pregunta libre)", () => {
+  assert.equal(matchInscriptionIntent("cuanto cuesta?"), false);
+});
+
+test("matchInscriptionIntent('donde es?') → false (pregunta libre)", () => {
+  assert.equal(matchInscriptionIntent("donde es?"), false);
+});
+
+test("matchInscriptionIntent('no me interesa') → false (opt-out / desinteres)", () => {
+  assert.equal(matchInscriptionIntent("no me interesa"), false);
+});
+
+test("matchInscriptionIntent('no quiero') → false (opt-out)", () => {
+  assert.equal(matchInscriptionIntent("no quiero"), false);
+});
+
+test("matchInscriptionIntent('hola, ¿que eventos tienen?') → false (pregunta con saludo)", () => {
+  assert.equal(matchInscriptionIntent("hola, ¿que eventos tienen?"), false);
+});
+
+test("matchInscriptionIntent('Yesenia López Nemecio') → false (es un nombre, no intención)", () => {
+  // matchInscriptionIntent NO debe matchear nombres, solo intención.
+  assert.equal(matchInscriptionIntent("Yesenia López Nemecio"), false);
+});
+
+// Edge cases.
+test("matchInscriptionIntent('') → false (body vacío)", () => {
+  assert.equal(matchInscriptionIntent(""), false);
+});
+
+test("matchInscriptionIntent('   ') → false (whitespace)", () => {
+  assert.equal(matchInscriptionIntent("   "), false);
+});
+
+test("matchInscriptionIntent(null) → false (input null)", () => {
+  assert.equal(matchInscriptionIntent(null), false);
+});
+
+test("matchInscriptionIntent(undefined) → false (input undefined)", () => {
+  assert.equal(matchInscriptionIntent(undefined), false);
 });

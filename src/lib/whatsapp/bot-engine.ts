@@ -298,7 +298,18 @@ export const PLACEHOLDER_NAMES = new Set([
   "confirmar",
   "test",
   "test number",
-  "(empty)"
+  "(empty)",
+  // FIX 2026-07-08 (audit David, sesion madrugada): cuando Meta NO
+  // provee el `profile.name` del contacto (caso comun para leads
+  // nuevos), `createLeadFromWhatsApp` cae al fallback `safeName =
+  // "WhatsApp Lead"`. `cleanFirstName` desglosa `lead.name.split("
+  // ")[0]` para construir el saludo; sin estas entradas, el bot
+  // decia «¡Hola WhatsApp!», «¡Excelente WhatsApp!» y «Listo
+  // WhatsApp, te registramos...» a leads que solo querian
+  // inscribirse. Anadido en lowercase porque `cleanFirstName`
+  // normaliza el input a lowercase antes del lookup (linea 361).
+  "whatsapp",
+  "whatsapp lead"
 ]);
 
 /**
@@ -361,6 +372,57 @@ export function cleanFirstName(rawName: string | null | undefined): string {
   const name = (rawName ?? "").toLowerCase().trim();
   if (PLACEHOLDER_NAMES.has(name)) return "";
   return rawName?.trim() ?? "";
+}
+
+/**
+ * FIX 2026-07-08 (sesion David, "bot salta captura de nombre"):
+ * detecta si el body del lead expresa intención de inscripción al
+ * evento. Se usa en el `case "question"` para interceptar ANTES de
+ * invocar al LLM cuando el lead no tiene nombre válido (placeholder)
+ * y dice algo que claramente quiere inscribirse.
+ *
+ * El LLM no respetaba la captura de nombre cuando el body era algo
+ * como "Bue. Día quiero regístrate" — respondía "ok, te registro,
+ * dame tu email" directo, saltándose el flow secuencial.
+ *
+ * 3 ramas (cualquiera matchea → true):
+ *   1. Affirmativo corto aislado ("si", "ok", "dale", "va", "claro",
+ *      "buen dia", "buenas tardes/noches" solos).
+ *   2. Affirmativo + verbo en el mismo mensaje ("si, quiero
+ *      inscribirme", "ok dame lugar").
+ *   3. Frase directa de inscripción sin affirm previo ("quiero
+ *      inscribirme", "me interesa el evento", "apartar mi lugar",
+ *      "inscribirme al evento", etc.).
+ *
+ * NO matchea preguntas libres ("que incluye?", "cuanto cuesta?",
+ * "donde es?") — esas SÍ deben ir al LLM.
+ *
+ * Pure function: exportada para tests unitarios.
+ */
+export function matchInscriptionIntent(body: string): boolean {
+  if (!body) return false;
+  const trimmed = body.trim();
+  if (!trimmed) return false;
+  const INSCRIPTION_INTENT_RE = new RegExp(
+    [
+      // Rama 1: affirmative aislado (case-insensitive)
+      "^(?:s[ií]|ok(?:ay)?|dale|va|claro|buen[oa]?\\s+d[ií]a(?:s)?|buenas\\s+(?:tardes|noches))[\\s,!.]*$",
+      // Rama 2: affirmative + verbo (en cualquier orden, mismo msg)
+      "(?:s[ií]|ok(?:ay)?|dale|va|claro)[,;\\s].*\\b(?:quiero|inscribirme|inscribime|registrarme|registrame|reg[ií]strate|me\\s+interesa|apartar|reservar|dame)\\b",
+      // Rama 3: frase directa de inscripcion.
+      // Acepta infinitivo E imperativo (con errata) del usuario: "quiero
+      // registrarme" / "quiero registrate" / "registrarme" / "registrame" /
+      // "inscribirme" / "inscribime" (típico en chat de México). El bot
+      // NO se ofende con errata — matchea intent.
+      "\\b(?:quiero\\s+(?:inscribirme|inscribime|registrarme|registrame|reg[ií]strate|apartar|reservar|el\\s+lugar|mi\\s+lugar)|" +
+        "me\\s+interesa\\s+(?:inscribirme|el\\s+evento|el\\s+curso|apartar|reservar)|" +
+        "inscribirme?\\s+(?:al?\\s*)?(?:evento|curso|taller)?|" +
+        "reg(?:i[sz]?t(?:r|rr)?ar?|istrar)me?\\s+(?:al?\\s*)?(?:evento|curso|taller)?|" +
+        "(?:apartar|reservar|dame)\\s+(?:mi\\s+)?lugar)\\b"
+    ].join("|"),
+    "i"
+  );
+  return INSCRIPTION_INTENT_RE.test(trimmed);
 }
 
 /**
@@ -3243,6 +3305,64 @@ case "interactive_event_inscribir": {
       // al LLM. Asi el LLM no genera "Excelente Por!" o "Hola Por!".
       // Ver constante de módulo PLACEHOLDER_NAMES.
       const cleanLeadName = cleanFirstName(lead.name);
+      // FIX 2026-07-08 (sesion David, "bot salta captura de nombre"):
+      // si el lead NO tiene nombre válido (placeholder) Y el body matchea
+      // intención de inscripción, NO dejamos que el LLM responda
+      // libremente. El LLM estaba rompiendo el flow secuencial
+      // nombre → email: cuando el lead decia "Bue. Día quiero regístrate",
+      // el LLM contestaba "Claro, te registro, dame tu email"
+      // directamente, saltándose la captura de nombre por completo.
+      // Después el bot quedaba en un loop re-pidiendo nombre hasta que
+      // el FALLBACK heurístico (línea 3983) matcheaba.
+      //
+      // Reglas del intercept:
+      //   - cleanLeadName === "" (placeholder, no se puede saludar por nombre)
+      //   - body matchea intención de inscripción (afirmativo, "quiero",
+      //     "inscribirme", "registrarme", "me interesa", "apartar",
+      //     "reservar" — variantes del español de México)
+      //   - NO disparar si el body es una pregunta libre sobre el
+      //     evento ("¿qué incluye?", "¿cuánto cuesta?") — esas van al LLM.
+      //
+      // Salida: plan idéntico al de `interactive_event_inscribir`
+      // (líneas 1982-1994): setea `awaiting_field="name"` en metadata
+      // para que el próximo turno del lead entre como `provide_name`.
+      if (cleanLeadName === "" && body) {
+        const trimmedBody = body.trim();
+        if (matchInscriptionIntent(trimmedBody)) {
+          // Si hay evento real, lo usamos. Si no, caemos al copy honesto
+          // "no_events" (mismo patrón que interactive_event_inscribir).
+          const evtForNamePrompt =
+            eventRaw && eventRaw.source === "db" ? eventRaw : null;
+          const evtFallback = getActiveEvent();
+          const evtName = evtForNamePrompt?.title ?? evtFallback.name;
+          const evtDate = evtForNamePrompt?.humanStartsAt ?? evtFallback.date;
+          if (
+            !evtForNamePrompt &&
+            (!evtFallback || evtFallback.source === "no_events")
+          ) {
+            const noEvents = noEventsText();
+            return {
+              kind: "text",
+              body: noEvents,
+              send: () =>
+                provider.send({ to: phoneNormalized, body: noEvents })
+            };
+          }
+          // cleanLeadName es "" por construcción → saludo genérico.
+          const bodyText =
+            `¡Hola! Para inscribirte a "${evtName}" el ${evtDate}, ` +
+            `primero dime tu nombre completo. Después te pido tu email.`;
+          return {
+            kind: "text",
+            body: bodyText,
+            // FIX 2026-07-02 (Commit A): metadata para que el próximo
+            // turno entre como provide_name (state machine secuencial).
+            metadata: { awaiting_field: "name" },
+            send: () =>
+              provider.send({ to: phoneNormalized, body: bodyText })
+          };
+        }
+      }
       // FIX 2026-07-04 (auditoria nocturna): rate limit per phone para
       // proteger saldo DeepSeek. Default 5 calls / 60s / phone. Sin este
       // guard un spammer (o un lead testeando el bot agresivamente)
