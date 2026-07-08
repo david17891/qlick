@@ -3004,3 +3004,51 @@ ul, .next/, .vercel/ — todos gitignored (no entran al repo).
 - **Pendiente:** resolver el email de Gabriela (Brevo local vacía). Opciones: (a) David pega `BREVO_API_KEY` en `.env.local` y yo regenero el email con el script nuevo; (b) creo endpoint admin `/api/admin/resend-event-email` para futuros re-envíos sin necesidad de script local. Default: dejar para que ella reciba el recordatorio de 24h antes que sale por el cron de reminders.
 
 - **Trigger:** David pidió "poder confirmar manuales, poder agregarlos" durante la revisión del fix de captura desordenada del evento 11 jul.
+
+---
+
+## 2026-07-08 ~01:38 — Sprint Certificados Concept C (PDF nativo idempotente)
+
+- **Pregunta:** Cómo emitimos certificados de asistencia reales para los attendees (PDF nativo, no placeholder HTML), con QR que lleve a `/filosofia` (NO `/verify/{folio}`), persistencia idempotente y UI brand-cumple con el Concept C del agente de diseño.
+- **Decisión:** Cableado final del flujo de emisión completo en 4 commits sobre `feat/certificados-concept-c`:
+  1. `aca349e` — `feat(filosofia): landing del QR del certificado concept-c` (ruta destino del QR)
+  2. `98124ff` — `chore(deps): agregar @react-pdf/renderer para emisión de certificados PDF`
+  3. `da06af2` — `feat(certificates): Sprint Concept C — template PDF + emisión idempotente` (template + tabla `event_certificates` + RPC `issue_event_certificate()` + 3 assets PNG/SVG en `public/certificates/`)
+  4. `9787a2f` — `feat(api): endpoint /events/[id]/certificate emite PDF nativo (Concept C)` + script E2E `test-cert-issue.mjs`
+
+  Cambios técnicos clave:
+  - Endpoint `GET /api/events/[id]/certificate/[attendeeId]` ahora devuelve `application/pdf` generado con `@react-pdf/renderer` (antes devolvía HTML imprimible placeholder — FIX 2026-07-06).
+  - Idempotencia: tabla `event_certificates` con `folio UNIQUE` (regex `^QLK-\d{4}-\d{5}$` enforced en CHECK constraint) + `UNIQUE (event_id, attendee_id)`. Re-pedir el cert del mismo attendee devuelve el mismo folio.
+  - Emisión race-safe: RPC `issue_event_certificate()` en PL/pgSQL con EXCEPTION handler — si dos requests compiten por el mismo attendee, una INSERTa y la otra hace SELECT del ganador.
+  - QR codifica `${BASE_URL}/filosofia` (decisión David: cert branded, NO verificable por folio). URL NO estampada como texto en el cert — solo el QR visual.
+  - Template reproduce `docs/qlick-cert-system/03-concept-c-dynamic-authority.html`: panel diagonal morado (38% ancho) + brand block + course info + hero nombre + signature+QR.
+  - Validaciones equivalentes al placeholder (delegate a `issueCertificate`): attendee pertenece al evento + check-in hecho + nombre real (regex de placeholder).
+
+- **Razón:** David pidió "termina de cablear con cuidado de no romper nada, objetivo: generar certificados para asistentes, debe quedar cableado final. Para pruebas podemos usar registrados". El placeholder HTML era temporal y el sprint era la Fase 2 de la decisión original ("Concept C con QR a /filosofia porque es frase de marca, no verificación").
+
+- **Impacto:**
+  - Para el admin: botón "Certificado" en `/admin/eventos/[id]` ya sirve un PDF nativo A4 landscape con el Concept C. Idempotente — el mismo attendee da el mismo folio siempre. Mismas validaciones que antes (check-in + nombre real).
+  - Para el asistente: el cert escaneable lleva a `/filosofia` (frase fundacional de marca) en vez de a una URL de verificación. Decisión consciente: es un artefacto de marca, no un documento legal.
+  - Para el sistema: 2 migrations nuevas + nueva dep `@react-pdf/renderer` (production, no dev). 606/606 tests existentes siguen pasando. `npm run build` pasa (55 rutas, `/filosofia` static, endpoint cert como dynamic).
+
+- **Archivos tocados (11 nuevos + 1 modificado):**
+  - Nuevos: `src/lib/certificates/{types,folio,asset-loader,qr-helper,render-certificate,issue-certificate}.{ts,tsx}`
+  - Modificado: `src/app/api/events/[id]/certificate/[attendeeId]/route.ts` (HTML placeholder → PDF nativo, 339 → ~120 líneas)
+  - Assets (copias): `public/certificates/{paul-signature.png, qlick-q-icon.png, qlick-wordmark-compact.svg}`
+  - Migrations: `supabase/migrations/20260708010000_event_certificates.sql` (tabla + RLS admin-only + folio regex enforced), `supabase/migrations/20260708020000_event_certificates_rpc.sql` (RPC race-safe)
+  - E2E: `scripts/test-cert-issue.mjs` (HTTP smoke con cookie admin)
+
+- **No tocados:** `docs/qlick-cert-system/*` (HTMLs Concept A/B/C y assets son del agente de diseño). `src/types/index.ts` (Certificate type legacy es de cursos, no eventos). Endpoint logic y validaciones se preservaron 1:1 con el placeholder.
+
+- **Validación:**
+  - type-check ✓ (0 errores). Lint ✓ (eslint-disable-next-line en `<Image>` porque `@react-pdf/renderer` no soporta `alt` en su `ImageProps`).
+  - 606/606 tests existentes pasan (no se tocó ningún test).
+  - `next build` ✓ — `/filosofia` se prerenderiza static (2.91 kB), `/api/events/[id]/certificate/[attendeeId]` queda dynamic (force-dynamic).
+
+- **Pendiente para mergear a `main` (acciones David):**
+  1. Aplicar las 2 migrations en Supabase vía SQL Editor (orden: tabla primero, RPC segundo).
+  2. Regenerar `src/types/supabase.ts` con `supabase gen types typescript` y remover los `as any` en `issue-certificate.ts` (la RPC + tabla nuevas son casts `as any` solo porque el typegen todavía no las conoce).
+  3. Validar end-to-end con `node scripts/test-cert-issue.mjs` (requiere `ADMIN_COOKIE` + `EVENT_ID` + `ATTENDEE_ID` + dev server corriendo + migrations aplicadas).
+  4. Decidir si se hace emisión automática post-check-in (hook en `CheckInTab.tsx`) o se deja como acción manual del admin. Default: manual, para evitar emisiones accidentales.
+
+- **Trigger:** David dijo "estabamos haciendo esto Concept C... vamos a retomar, terminas de cablear, con cuidado de no romper nada, el objetivo es poder generar los certificados para los asistentes, solo para pruebas podemos usar registrados para generar y revisar, pero debe quedar cableado final para asistentes".
