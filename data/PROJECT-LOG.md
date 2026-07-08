@@ -2974,3 +2974,33 @@ ul, .next/, .vercel/ — todos gitignored (no entran al repo).
 - **Trigger:** David pidió resolver las dudas básicas del evento del 11 jul a 4 días de la fecha.
 
 - **Pendiente post-evento 11 jul:** refactor para extraer la lógica duplicada del side-effect chain de provide_email (update email + QR + confirmation + email) en una helper `executeEmailRegistration` llamada desde ambos paths (case provide_email + bloque implicit_capture). Hoy son ~80 líneas duplicadas con comentario "REFACTOR: extract to helper".
+
+## 2026-07-07 ~22:00 · Registro manual de Gabriela Terán + fix hora landing publica
+
+- **Pregunta:** David (sesión 2026-07-07 ~21:50) atendió manualmente a una persona por WhatsApp directo (no vía bot) que dio los datos: **Gabriela Terán — terangabriela467@gmail.com**. Pidió registrarla al evento y tener capacidad futura de agregar confirmados manuales. Adicionalmente David cambió la hora del evento del 11 jul a las 11 AM pero la landing publica `https://qlick-three.vercel.app/eventos/marketing-ia-para-emprendedores` seguía mostrando hora incorrecta (dependiente del timezone del navegador del visitante, no del server).
+
+- **Decisión (3 frentes)**:
+  - **A. Nuevo script `scripts/_register-attendee-manual.mjs`** (CLI): acepta `--event <slug|shortCode>`, `--name`, `--email`, `--phone` (opcional), `--dry-run`, `--no-email`. Pipeline: resolve evento → upsert lead (consent=true, source='manual') → create/find confirmation → create QR token → sendEventQrPassEmail (best-effort si Brevo configurada). Idempotente en cada paso. Sentinel para attendees sin teléfono: `+1manual<email_hash>` (columna `attendee_phone_normalized` es NOT NULL). Fallback de `NEXT_PUBLIC_APP_URL` al dominio canónico `https://www.qlick.digital` cuando la var no está seteada en el script.
+  - **B. Fix bug hora en `src/app/eventos/[slug]/EventView.tsx:formatEventDate`**: agregué `timeZone: EVENT_TIMEZONE` (America/Phoenix) a `toLocaleString` y sufijo "(hora Pacífico)" al final. ANTES: el código usaba la zona horaria del navegador del visitante (un lead en CDMX veía otra hora). AHORA: TODOS los visitantes ven la hora real del evento (11:00 hora Pacífico para el evento del 11 jul), igual que admin y emails.
+  - **C. Ejecución real:** Gabriela Terán fue registrada en DB via el script nuevo. Lead `cf300cc0-fb81-41d8-9e99-cefd271e1c84` + confirmation `57584fc3-48a9-43ea-8ad4-3e8ce331264d` + QR token `fVKaEdx3QcFC2HPzon0de12APTwmf4qy` con URL `https://www.qlick.digital/check-in/fVKaEdx3QcFC2HPzon0de12APTwmf4qy`. Email NO se envió en este run (Brevo API key ausente en session local; está encriptada en Vercel runtime). Verificación de Vercel via `vercel env ls`: `BREVO_API_KEY` SÍ está configurada en Preview + Production (Brevo, Resend migration previa).
+
+- **Razón:** David explícitamente pidió (a) registrar a Gabriela ya, (b) tener capacidad futura de agregar confirmados manuales sin bot, (c) arreglar el bug de la hora.
+
+- **Impacto:**
+  - Gabriela queda registrada como confirmada del evento AA4E con QR token; el admin panel /admin/eventos/[id] la muestra en el tab Confirmados.
+  - David puede correr el script en cualquier momento para futuros confirmados manuales.
+  - Landing pública ahora muestra 11:00 hora Pacífico sin importar desde dónde se abra (móvil, desktop, zona horaria visitante).
+  - Email de Gabriela queda como gap operacional (gap menor: Brevo funciona en Vercel runtime, la próxima vez que alguien se inscriba por el bot le llega el email normal).
+
+- **Archivos tocados:**
+  - `scripts/_register-attendee-manual.mjs` (nuevo, ~330 líneas).
+  - `src/app/eventos/[slug]/EventView.tsx` (modificado: agregar `timeZone: EVENT_TIMEZONE` + import de `@/lib/datetime`).
+  - **No tocados:** `event_qr_tokens` schema (la columna `lead_id` que el bot-engine usa como fallback NO existe — bug latente del bot-engine.ts:973; el script lo replica correctamente usando solo `attendee_phone_normalized`).
+
+- **Validación:** type-check ✓ (0 errores), lint ✓, 606/606 tests ✓ (no toqué tests), build OK.
+
+- **Commits:** `3bd532e` en main, pusheado a `origin/main` por la sesión Mavis con credenciales api-box + GH_TOKEN. Auto-deploy Vercel disparado.
+
+- **Pendiente:** resolver el email de Gabriela (Brevo local vacía). Opciones: (a) David pega `BREVO_API_KEY` en `.env.local` y yo regenero el email con el script nuevo; (b) creo endpoint admin `/api/admin/resend-event-email` para futuros re-envíos sin necesidad de script local. Default: dejar para que ella reciba el recordatorio de 24h antes que sale por el cron de reminders.
+
+- **Trigger:** David pidió "poder confirmar manuales, poder agregarlos" durante la revisión del fix de captura desordenada del evento 11 jul.
