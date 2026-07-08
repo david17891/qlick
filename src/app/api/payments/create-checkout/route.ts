@@ -147,12 +147,12 @@ export async function POST(req: NextRequest) {
       userId: session.userId,
       userEmail: session.email ?? "",
       method,
-      // success/cancel URLs: el provider (Stripe) las resuelve por defecto si
-      // no las pasamos. Las calculamos acá por si algún provider las necesita
-      // explícitas (Mercado Pago, etc.).
-      successUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/pagar/${productRef.slug}/exito?session_id={CHECKOUT_SESSION_ID}`,
-      cancelUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/pagar/${productRef.slug}?cancelled=1`,
-      pendingUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/pagar/${productRef.slug}/exito?status=pending`,
+      // success/cancel URLs: URLs relativas — Stripe Checkout las acepta y
+      // resuelve contra el origen del request, así funcionan igual en local,
+      // preview y producción sin depender de NEXT_PUBLIC_APP_URL.
+      successUrl: `/pagar/${productRef.slug}/exito?session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl: `/pagar/${productRef.slug}?cancelled=1`,
+      pendingUrl: `/pagar/${productRef.slug}/exito?status=pending`,
     });
 
     return NextResponse.json({
