@@ -124,6 +124,7 @@ import {
 } from "../crm/lead-scoring";
 import { findLatestAttendedEventForPhone } from "../events/attendees-server";
 import { markSurveyOfferSent } from "../crm/leads-server";
+import { isInDevBypass } from "../dev/bypass-list";
 
 /* ------------------------------------------------------------------ */
 /*  Tipos                                                              */
@@ -4399,7 +4400,23 @@ export async function processInboundMessage(
         phoneNormalized,
         targetSlug
       );
-      if (existing) {
+      // FIX 2026-07-07 (sesión David, "yo necesito poder repetir el flujo"):
+      // si el contacto está en DEV_BYPASS_PHONES / DEV_BYPASS_EMAILS,
+      // saltamos el bloque "ya estás registrado" y dejamos que el flow
+      // continúe como si fuera la primera vez (genera QR + email nuevos).
+      // Log auditable para que David vea en logs cuántas veces se aplicó.
+      const devBypassApplied = existing
+        ? isInDevBypass({ phone: phoneNormalized, email: lead.email })
+        : false;
+      if (devBypassApplied) {
+        debugLog("[whatsapp/bot] dev_bypass_applied: skipping already_registered", {
+          leadId: lead.id,
+          eventSlug: targetSlug,
+          phone: phoneNormalized,
+          email: lead.email ?? null,
+        });
+      }
+      if (existing && !devBypassApplied) {
         // Ya está registrado. Cargamos info del evento para el mensaje.
         const evt = await loadActiveEventContext(targetSlug).catch(() => null);
         const evtName = evt?.title ?? targetSlug;

@@ -15,6 +15,7 @@
  */
 
 import { useState, useEffect } from "react";
+import { ResendQrPassButton } from "./ResendQrPassButton";
 
 interface TokenInfo {
   token: string;
@@ -155,6 +156,15 @@ export function StaffQrTokenList({ eventId, appBaseUrl }: Props) {
                   >
                     {copied === `t-${t.token}` ? "¡Copiado!" : "Solo token"}
                   </button>
+                  {/* FIX 2026-07-07: botón de reenvío de email para que David
+                      pueda re-mandar el QR pass con la plantilla oficial
+                      (sender noreply@qlick.digital + branding completo). */}
+                  <ResendQrPassButton
+                    eventId={eventId}
+                    attendeeEmail={t.attendeeEmail}
+                    attendeePhone={t.attendeePhone}
+                    attendeeName={t.attendeeName}
+                  />
                 </div>
               </li>
             );
