@@ -32,6 +32,7 @@ import {
 } from "@/components/ui";
 import type { Event } from "@/types/events";
 import { submitEventRegistration } from "./actions";
+import { EVENT_TIMEZONE } from "@/lib/datetime";
 
 type Status = "idle" | "success" | "already-registered" | "error";
 
@@ -47,10 +48,17 @@ const CONSENT_TEXT =
 const CONSENT_TAIL = "conforme al Aviso de Privacidad.";
 
 function formatEventDate(iso: string): string {
+  // FIX 2026-07-07 (sesion David "hora mal en landing publica"):
+  // `toLocaleString` SIN timeZone usa la zona del navegador del visitante
+  // (no del server). Resultado: si un lead abre el link desde CDMX, ve la
+  // hora en zona de CDMX, NO la hora real del evento (que es Pacífico).
+  // Forzamos timeZone fijo en America/Phoenix para que TODOS los
+  // visitantes vean la hora real del evento, igual que en admin y emails.
   return new Date(iso).toLocaleString("es-MX", {
     dateStyle: "full",
     timeStyle: "short",
-  });
+    timeZone: EVENT_TIMEZONE,
+  }) + " (hora Pacífico)";
 }
 
 export function EventView({ event, pastEvent }: Props) {
