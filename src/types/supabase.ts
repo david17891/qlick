@@ -1650,6 +1650,7 @@ export type Database = {
           priority: number
         }[]
       }
+      get_user_id_by_email: { Args: { p_email: string }; Returns: string }
       issue_event_certificate: {
         Args: {
           p_admin_user_id?: string

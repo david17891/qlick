@@ -4,19 +4,18 @@
  * Flujo:
  * 1. Llega con `/pagar/[slug]`.
  * 2. Si el curso es free → redirect a `/inscripcion/[slug]` (no necesita pago).
- * 3. Si NO hay sesión → redirect a `/login?next=/pagar/[slug]`.
- * 4. Si ya tiene course_access activo → redirect a `/dashboard?already_paid=1`.
- * 5. Si todo OK → renderiza preview del curso + componente de checkout:
- *      - `NEXT_PUBLIC_PAYMENT_PROVIDER === "mock"` (default dev) →
- *        SimulatorForm con 3 botones (éxito/fallo/pendiente) que llama a
- *        `/api/dev/simulate-webhook`.
- *      - cualquier otro valor (stripe, mercadopago, conekta) → CheckoutButton
- *        que dispara `/api/payments/create-checkout` y redirige al provider.
+ * 3. Sesión OPCIONAL (guest checkout desde 2026-07-08). Cualquiera puede
+ *    ver y pagar. Si hay sesión, se evita pagar dos veces (idempotencia).
+ * 4. Si ya tiene course_access activo (sesión o cookie guest):
+ *    - access activo → "Ya tenés este curso" + CTA dashboard.
+ *    - access pendiente + payment reciente → "Procesando tu pago" + CTA refrescar.
+ * 5. Si todo OK → renderiza preview del curso + SimulatorForm (mock) o
+ *    CheckoutButton (Stripe/MercadoPago/Conekta) según NEXT_PUBLIC_PAYMENT_PROVIDER.
  *
- * Server Component. La decisión de provider corre 100% en server. Tanto
- * SimulatorForm como CheckoutButton son Client Components.
+ * Server Component. La lógica de decisión corre 100% en server.
  */
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { Navbar, Footer } from "@/components/layout";
@@ -24,6 +23,7 @@ import { Container, Card, Button, Badge } from "@/components/ui";
 import { getCurrentStudent } from "@/lib/auth/session";
 import { getCourseBySlug } from "@/lib/lms/courses-server";
 import { checkCourseAccess } from "@/lib/lms/entitlements";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { SimulatorForm } from "./SimulatorForm";
 import { CheckoutButton } from "./CheckoutButton";
 
@@ -81,14 +81,124 @@ export default async function PayPage({
     redirect(`/inscripcion/${courseSlug}`);
   }
 
-  // Auth: requiere sesión de estudiante.
-  // WORKAROUND (2026-06-26): Por la misma razón que en /cursos/[slug], NO
-  // llamamos a `checkCourseAccess()` acá (hace que la página renderice
-  // vacía en el browser). La verificación de "ya pagó" la hace el
-  // simulador del lado del cliente.
+  // Auth: OPCIONAL — guest checkout es el flujo principal desde 2026-07-08.
+  // Cualquiera puede ver la página y pagar. Si hay sesión, igual la usamos
+  // para evitar pagar dos veces (idempotencia). Si no hay sesión, el
+  // webhook crea la cuenta con el email de Stripe al confirmarse el pago.
+  //
+  // Detección de "ya compraste": si hay sesión o si hay cookie
+  // qlick_recent_purchase (de un pago guest reciente), consultamos
+  // course_access y mostramos UI distinto en vez del botón "Pagar ahora".
   const session = await getCurrentStudent();
-  if (!session) {
-    redirect(`/login?next=${encodeURIComponent(`/pagar/${courseSlug}`)}`);
+
+  let alreadyPurchased = false;
+  let purchaseEmail: string | null = null;
+  let processingPayment = false;
+  if (session) {
+    const access = await checkCourseAccess(session.userId, course.id);
+    alreadyPurchased = access.hasAccess;
+  } else {
+    const recentEmail = cookies().get("qlick_recent_purchase")?.value;
+    if (recentEmail) {
+      try {
+        const admin = createSupabaseAdminClient();
+        const { data: userId } = await admin.rpc("get_user_id_by_email", {
+          p_email: recentEmail,
+        });
+        if (userId && typeof userId === "string") {
+          const access = await checkCourseAccess(userId, course.id);
+          alreadyPurchased = access.hasAccess;
+          if (alreadyPurchased) {
+            purchaseEmail = recentEmail;
+          } else {
+            // Race condition: cookie seteada pero webhook aún no creó
+            // course_access. Chequeamos payments recientes (última 1h).
+            const oneHourAgo = new Date(
+              Date.now() - 60 * 60 * 1000
+            ).toISOString();
+            const recentPay = await admin
+              .from("payments")
+              .select("id, status, created_at")
+              .eq("user_id", userId)
+              .eq("course_id", course.id)
+              .gte("created_at", oneHourAgo)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (recentPay?.data) {
+              processingPayment = true;
+              purchaseEmail = recentEmail;
+            }
+          }
+        }
+      } catch {
+        // Si falla el lookup, seguimos con el flujo normal de compra.
+      }
+    }
+  }
+
+  if (alreadyPurchased || processingPayment) {
+    const badgeTone: "success" | "warning" = alreadyPurchased
+      ? "success"
+      : "warning";
+    const badgeText = alreadyPurchased
+      ? "Ya tenés este curso"
+      : "Procesando tu pago";
+    const headerText = alreadyPurchased
+      ? session
+        ? "Tu pago fue confirmado. El curso ya está disponible en tu dashboard."
+        : `Tu pago fue confirmado${purchaseEmail ? ` para ${purchaseEmail}` : ""}. Te enviamos un link de acceso al email. Si no te llegó, podés reenviarlo desde el botón de abajo.`
+      : `Recibimos tu pago${purchaseEmail ? ` de ${purchaseEmail}` : ""}. El webhook de Stripe está terminando de procesarlo — en unos segundos deberías ver el curso en tu dashboard. Si después de 1 minuto no aparece, contactános.`;
+    return (
+      <>
+        <Navbar />
+        <section className="bg-brand-50/40 min-h-[calc(100vh-4rem)]">
+          <Container className="py-14">
+            <div className="max-w-2xl mx-auto">
+              <Card className="p-8">
+                <div className="mb-5">
+                  <Badge tone={badgeTone}>{badgeText}</Badge>
+                </div>
+                <h1 className="text-3xl font-bold text-ink leading-tight">
+                  {course.title}
+                </h1>
+                {course.subtitle && (
+                  <p className="text-lg text-ink-soft mt-2">{course.subtitle}</p>
+                )}
+                <p className="text-ink-muted mt-6">{headerText}</p>
+                <div className="mt-8 flex flex-col sm:flex-row gap-3">
+                  <Button href="/dashboard" className="flex-1 text-center">
+                    Ir al dashboard
+                  </Button>
+                  {alreadyPurchased && purchaseEmail && !session && (
+                    <Button
+                      href={`/pagar/${courseSlug}/exito?session_id=auto&resend=1`}
+                      variant="ghost"
+                      className="flex-1 text-center"
+                    >
+                      Reenviar link de acceso
+                    </Button>
+                  )}
+                  {processingPayment && (
+                    <Button
+                      href={`/pagar/${courseSlug}`}
+                      variant="ghost"
+                      className="flex-1 text-center"
+                    >
+                      Refrescar
+                    </Button>
+                  )}
+                  <Button href="/cursos" variant="ghost" className="flex-1 text-center">
+                    Ver más cursos
+                  </Button>
+                </div>
+              </Card>
+            </div>
+          </Container>
+        </section>
+        <Footer />
+      </>
+    );
   }
 
   return (

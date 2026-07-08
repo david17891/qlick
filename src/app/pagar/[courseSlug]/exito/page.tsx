@@ -32,6 +32,8 @@ import { getCourseBySlug } from "@/lib/lms/courses-server";
 import { checkCourseAccess } from "@/lib/lms/entitlements";
 import { getPaymentProvider } from "@/lib/payments";
 import type { PaymentStatus } from "@/types";
+import { resendGuestAccessLink } from "./actions";
+import { MarkRecentPurchase } from "./MarkRecentPurchase";
 
 export async function generateMetadata({
   params,
@@ -47,19 +49,17 @@ export async function generateMetadata({
 
 interface ExitoPageProps {
   params: { courseSlug: string };
-  searchParams: { session_id?: string; status?: string };
+  searchParams: { session_id?: string; status?: string; resend?: string };
 }
 
 export default async function ExitoPage({ params, searchParams }: ExitoPageProps) {
   const { courseSlug } = params;
   const sessionId = typeof searchParams.session_id === "string" ? searchParams.session_id : null;
   const pendingFlag = searchParams.status === "pending";
+  const resendFlag = searchParams.resend === "1";
 
-  // 1. Auth.
+  // 1. Auth: sesión OPCIONAL (guest checkout desde 2026-07-08).
   const session = await getCurrentStudent();
-  if (!session) {
-    redirect(`/login?next=${encodeURIComponent(`/pagar/${courseSlug}/exito`)}`);
-  }
 
   // 2. Resolver el curso.
   const course = await getCourseBySlug(courseSlug);
@@ -67,17 +67,29 @@ export default async function ExitoPage({ params, searchParams }: ExitoPageProps
     redirect("/dashboard");
   }
 
+  // 3. Si el guest pidió reenviar el link de acceso (click en CTA),
+  //    lo mandamos. Esta acción está rate-limited (3/h IP+email).
+  let resendResult: {
+    ok: boolean;
+    email?: string;
+    error?: string;
+    retryAfterSec?: number;
+  } | null = null;
+  if (resendFlag && !session && sessionId) {
+    resendResult = await resendGuestAccessLink(sessionId);
+  }
+
   // 3. Consultar estado del pago en el provider (best-effort).
   //    Si no hay session_id, mostramos mensaje neutro.
   let paymentStatus: PaymentStatus | "unknown" = "unknown";
+  let customerEmail: string | null = null;
   if (sessionId) {
     try {
       const provider = getPaymentProvider();
       const result = await provider.getStatus(sessionId);
       paymentStatus = result.status;
+      customerEmail = result.customerEmail ?? null;
     } catch (err) {
-      // Si falla la consulta, seguimos con status "unknown" — el webhook
-      // eventualmente procesará y grantAccess correrá.
       // eslint-disable-next-line no-console
       console.warn("[exito] getStatus falló (continuamos)", {
         sessionId,
@@ -86,13 +98,12 @@ export default async function ExitoPage({ params, searchParams }: ExitoPageProps
     }
   }
 
-  // 4. Verificar si el access ya está activo (webhook pudo haber corrido
-  //    antes que el usuario llegara acá).
-  const access = await checkCourseAccess(session.userId, course.id);
-  const accessActive = access.hasAccess;
+  // 4. Verificar si el access ya está activo (solo si hay sesión).
+  const accessActive = session
+    ? (await checkCourseAccess(session.userId, course.id)).hasAccess
+    : false;
 
   // 5. Render según estado.
-  // Stripe redirige con ?status=pending para OXXO/SPEI no pagado aún.
   const isPending = pendingFlag || paymentStatus === "pending";
 
   let title: string;
@@ -101,7 +112,7 @@ export default async function ExitoPage({ params, searchParams }: ExitoPageProps
   let ctaHref: string;
   let tone: "success" | "warning" = "success";
 
-  if (accessActive) {
+  if (session && accessActive) {
     title = "¡Listo! Ya tenés acceso";
     body = `Tu pago fue confirmado. ${course.title} ya está disponible en tu dashboard.`;
     ctaLabel = "Ir al dashboard";
@@ -110,10 +121,12 @@ export default async function ExitoPage({ params, searchParams }: ExitoPageProps
     title = "Pago pendiente de confirmación";
     body =
       "Si pagaste con OXXO o SPEI, el voucher / transferencia está siendo procesado. " +
-      "Te avisaremos por email cuando se confirme. También podés chequear tu dashboard " +
-      "más tarde.";
-    ctaLabel = "Ir al dashboard";
-    ctaHref = "/dashboard";
+      "Te avisaremos por email cuando se confirme. " +
+      (session
+        ? "También podés chequear tu dashboard más tarde."
+        : "Te enviamos un link al email que usaste en el checkout para que entres cuando esté confirmado.");
+    ctaLabel = session ? "Ir al dashboard" : "Reenviar link de acceso";
+    ctaHref = session ? "/dashboard" : `/pagar/${courseSlug}/exito?session_id=${sessionId}&resend=1`;
     tone = "warning";
   } else if (paymentStatus === "rejected" || paymentStatus === "expired") {
     title = "El pago no se completó";
@@ -123,8 +136,18 @@ export default async function ExitoPage({ params, searchParams }: ExitoPageProps
     ctaLabel = "Volver a intentar";
     ctaHref = `/pagar/${courseSlug}`;
     tone = "warning";
+  } else if (!session) {
+    // Guest sin sesión: compra confirmada pero aún no logueado.
+    title = "Recibimos tu pago";
+    body =
+      customerEmail
+        ? `Estamos procesando tu pago. En unos segundos deberías recibir un email en ${customerEmail} con un link para acceder al curso. Si después de 1 minuto no aparece, contactános.`
+        : "Estamos procesando tu pago. En unos segundos deberías recibir un email con un link para acceder al curso. Si después de 1 minuto no aparece, contactános.";
+    ctaLabel = "Reenviar link de acceso";
+    ctaHref = `/pagar/${courseSlug}/exito?session_id=${sessionId}&resend=1`;
+    tone = "warning";
   } else {
-    // status desconocido o sin session_id — el webhook puede estar en camino.
+    // Sesión pero access todavía no activo — webhook en camino.
     title = "Recibimos tu pago";
     body =
       "Estamos procesando tu pago. En unos segundos deberías ver el curso en tu " +
@@ -165,7 +188,37 @@ export default async function ExitoPage({ params, searchParams }: ExitoPageProps
                   Ver más cursos
                 </Button>
               </div>
+
+              {resendResult && (
+                <div
+                  className={`mt-4 rounded-lg border p-3 text-sm ${
+                    resendResult.ok
+                      ? "border-emerald-300 bg-emerald-50 text-emerald-900"
+                      : "border-red-300 bg-red-50 text-red-900"
+                  }`}
+                >
+                  {resendResult.ok ? (
+                    <>
+                      ✅ Te re-enviamos el link de acceso a{" "}
+                      <strong>{resendResult.email}</strong>. Revisá tu inbox
+                      (y la carpeta de spam, por las dudas).
+                    </>
+                  ) : (
+                    <>
+                      ❌ {resendResult.error}
+                    </>
+                  )}
+                </div>
+              )}
             </Card>
+
+            {/* Cookie marker: en cuanto carga /exito, dejamos una cookie
+                httpOnly con el email del comprador (7 días) para que
+                /pagar/[slug] lo reconozca como "ya compró este curso" en
+                visitas futuras sin requerir loguearse. */}
+            {customerEmail && !session && (
+              <MarkRecentPurchase email={customerEmail} />
+            )}
           </div>
         </Container>
       </section>

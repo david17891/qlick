@@ -70,14 +70,8 @@ function isValidMethod(m: unknown): m is PaymentMethod {
 }
 
 export async function POST(req: NextRequest) {
-  // 1. Auth: requiere sesión de estudiante.
+  // 1. Auth: sesión OPCIONAL (guest checkout desde 2026-07-08).
   const session = await getCurrentStudent();
-  if (!session) {
-    return NextResponse.json(
-      { ok: false, error: "Necesitás iniciar sesión para iniciar un pago." },
-      { status: 401 },
-    );
-  }
 
   // 2. Parse body.
   let body: CreateCheckoutBody;
@@ -117,17 +111,21 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Idempotencia: si ya tiene access activo, no dejamos pagar dos veces.
-  const access = await checkCourseAccess(session.userId, course.id);
-  if (access.hasAccess) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "Ya tenés acceso a este curso.",
-        alreadyPaid: true,
-      },
-      { status: 409 },
-    );
+  // Idempotencia: si ya tiene access activo y hay sesión, no dejamos pagar
+  // dos veces. Sin sesión (guest) no podemos chequear, así que dejamos que
+  // el webhook detecte duplicados via metadata.user_id cuando se resuelva.
+  if (session) {
+    const access = await checkCourseAccess(session.userId, course.id);
+    if (access.hasAccess) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Ya tenés acceso a este curso.",
+          alreadyPaid: true,
+        },
+        { status: 409 },
+      );
+    }
   }
 
   const productRef: ProductRef = {
@@ -138,15 +136,23 @@ export async function POST(req: NextRequest) {
     priceMXN: course.priceMXN ?? 0,
   };
 
-  // 4. Crear el checkout en el provider activo.
-  const provider = getPaymentProvider();
-
-  // success/cancel URLs: armamos URLs absolutas usando el origin del request
-  // actual. Funciona en local (localhost:3000), preview (hash.vercel.app) y
-  // prod (qlick.digital) sin depender de NEXT_PUBLIC_APP_URL (que no está
-  // seteado en Preview). Stripe API rechaza URLs relativas con "Not a valid
-  // URL", por eso armamos el absoluto acá.
+  // 4. BECAS / CUPÓN 100%: si course.priceMXN === 0, NO creamos sesión de
+  //    Stripe (Stripe rechaza amount=0 con 400 Invalid amount). Otorgamos
+  //    acceso directamente: insertamos payment con provider='scholarship_free'
+  //    y hacemos grantAccess. Devolvemos flow='inline' con redirectUrl al
+  //    /exito para que el cliente redirija ahí.
   const requestOrigin = new URL(req.url).origin;
+  if ((course.priceMXN ?? 0) === 0) {
+    return await grantScholarshipInline({
+      productRef,
+      userId: session?.userId ?? null,
+      userEmail: session?.email ?? "",
+      successUrl: `${requestOrigin}/pagar/${productRef.slug}/exito?session_id=scholarship`,
+    });
+  }
+
+  // 5. Crear el checkout en el provider activo (pago normal > $0).
+  const provider = getPaymentProvider();
   const successUrl = `${requestOrigin}/pagar/${productRef.slug}/exito?session_id={CHECKOUT_SESSION_ID}`;
   const cancelUrl = `${requestOrigin}/pagar/${productRef.slug}?cancelled=1`;
   const pendingUrl = `${requestOrigin}/pagar/${productRef.slug}/exito?status=pending`;
@@ -154,8 +160,8 @@ export async function POST(req: NextRequest) {
   try {
     const result = await provider.createCheckout({
       productRef,
-      userId: session.userId,
-      userEmail: session.email ?? "",
+      userId: session?.userId as any,
+      userEmail: session?.email ?? "",
       method,
       successUrl,
       cancelUrl,
@@ -192,6 +198,129 @@ export async function POST(req: NextRequest) {
         provider: provider.name,
       },
       { status: 500 },
+    );
+  }
+}
+
+/**
+ * Beca 100% / cupón total: otorga acceso sin pasar por Stripe. Usado
+ * cuando course.priceMXN === 0 (o cuando un cupón futuro lleve a $0).
+ *
+ * - Resuelve/crea user (mismo patrón que webhook: RPC + createUser).
+ * - Inserta payment con provider='scholarship_free' (auditable en DB).
+ * - Grant course_access directo.
+ * - Devuelve flow='inline' con redirectUrl para que el cliente redirija
+ *   a /exito sin error 400 de Stripe.
+ */
+async function grantScholarshipInline(params: {
+  productRef: ProductRef;
+  userId: string | null;
+  userEmail: string;
+  successUrl: string;
+}): Promise<NextResponse> {
+  try {
+    const { createSupabaseAdminClient } = await import("@/lib/supabase/admin");
+    const supabase = createSupabaseAdminClient();
+    let userId = params.userId;
+    if (!userId && params.userEmail) {
+      const { data: existingId } = await supabase.rpc("get_user_id_by_email", {
+        p_email: params.userEmail,
+      });
+      if (existingId && typeof existingId === "string") {
+        userId = existingId;
+      } else {
+        const { data: created } = await supabase.auth.admin.createUser({
+          email: params.userEmail,
+          email_confirm: true,
+        });
+        userId = created?.user?.id ?? null;
+      }
+    }
+    if (!userId) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Beca sin email de usuario: no podemos crear la cuenta. Contactános.",
+        },
+        { status: 400 }
+      );
+    }
+    const { checkCourseAccess, grantAccess } = await import(
+      "@/lib/lms/entitlements"
+    );
+    const access = await checkCourseAccess(userId, params.productRef.id);
+    if (access.hasAccess) {
+      return NextResponse.json({
+        ok: true,
+        provider: "scholarship_free",
+        flow: "inline",
+        redirectUrl: `${params.successUrl}&already=1`,
+        status: "approved",
+        finalAmountMXN: 0,
+        discountMXN: 0,
+        method: "card",
+        alreadyPaid: true,
+      });
+    }
+    const paymentIdemKey = `scholarship:${userId}:${params.productRef.id}:${Date.now()}`;
+    const { data: payment, error: payErr } = await supabase
+      .from("payments")
+      .insert({
+        user_id: userId,
+        course_id:
+          params.productRef.kind === "course" ? params.productRef.id : null,
+        provider: "scholarship_free",
+        external_reference: `scholarship_${userId}_${params.productRef.id}`,
+        amount_mxn: 0,
+        discount_mxn: 0,
+        currency: "MXN",
+        status: "approved" as any,
+        method: "card",
+        idempotency_key: paymentIdemKey,
+      } as any)
+      .select("id")
+      .single();
+    if (payErr || !payment) {
+      if (payErr?.code !== "23505") {
+        throw new Error(
+          `Error insertando payment scholarship: ${payErr?.message}`
+        );
+      }
+    }
+    const reason = `scholarship_free_${new Date().toISOString().slice(0, 16)}`;
+    await grantAccess({
+      userId,
+      courseId: params.productRef.id,
+      source: "scholarship_free" as any,
+      paymentId: payment?.id ?? null,
+      grantedReason: reason,
+    });
+    return NextResponse.json({
+      ok: true,
+      provider: "scholarship_free",
+      flow: "inline",
+      redirectUrl: `${params.successUrl}&payment_id=${payment?.id ?? "unknown"}`,
+      status: "approved",
+      finalAmountMXN: 0,
+      discountMXN: 0,
+      method: "card",
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[create-checkout] scholarship error", {
+      slug: params.productRef.slug,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          err instanceof Error
+            ? err.message
+            : "Error otorgando beca. Contactános.",
+      },
+      { status: 500 }
     );
   }
 }

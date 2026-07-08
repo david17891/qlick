@@ -108,6 +108,12 @@ export interface PaymentQueryResult {
   paymentId: string;
   externalReference: string;
   status: PaymentStatus;
+  /**
+   * Email del customer (cuando está disponible, ej. Stripe Checkout).
+   * Usado por /pagar/[slug]/exito para el botón "Reenviar link de acceso"
+   * del flujo guest. Opcional porque mock/legacy providers no lo exponen.
+   */
+  customerEmail?: string | null;
   raw?: unknown;
 }
 

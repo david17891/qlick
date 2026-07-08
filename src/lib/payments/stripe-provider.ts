@@ -264,6 +264,10 @@ export const stripeProvider: PaymentProvider = {
         paymentId: session.id,
         externalReference: session.id,
         status,
+        customerEmail:
+          (session.customer_email as string | null) ??
+          (session.customer_details?.email as string | null) ??
+          null,
         raw: {
           session_status: session.status,
           payment_intent_status: piStatus ?? null,
