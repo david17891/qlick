@@ -20,6 +20,7 @@ import { getAttendeesByEventId, getConfirmationsByEventId } from "@/lib/events";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { CheckInTabClient } from "./CheckInTabClient";
+import { IssueCertButton } from "./IssueCertButton";
 import { StaffLinksPanel } from "./StaffLinksPanel";
 import { StaffQrTokenList } from "./StaffQrTokenList";
 import { listStaffLinksAction } from "../_staff-link-actions";
@@ -123,6 +124,36 @@ export async function CheckInTab({ eventId, eventTitle, eventSlug, eventStartsAt
     isPlaceholderName(a.name),
   );
   const hasNameWarning = attendeesWithoutRealName.length > 0;
+
+  // Sprint Concept C (2026-07-08): folio por attendee para saber a quién
+  // ya se le emitió cert. Si no tiene folio, mostramos "Emitir cert" como
+  // form action que llama issueCertificateAction.
+  const folioByAttendee = new Map<string, string>();
+  if (checkedInAttendees.length > 0 && checkSupabaseConfig().configured) {
+    const sb = createSupabaseAdminClient();
+    const { data: certs } = await (sb as unknown as {
+      from: (t: string) => {
+        select: (cols: string) => {
+          in: (col: string, vals: string[]) => {
+            eq: (col: string, val: string) => Promise<{
+              data: Array<{ folio: string; attendee_id: string }> | null;
+              error: unknown;
+            }>;
+          };
+        };
+      };
+    })
+      .from("event_certificates")
+      .select("folio, attendee_id")
+      .in(
+        "attendee_id",
+        checkedInAttendees.map((a) => a.id),
+      )
+      .eq("event_id", eventId);
+    for (const c of (certs ?? []) as Array<{ folio: string; attendee_id: string }>) {
+      folioByAttendee.set(c.attendee_id, c.folio);
+    }
+  }
 
   return (
     <Card className="overflow-hidden mb-6">
@@ -256,16 +287,32 @@ export async function CheckInTab({ eventId, eventTitle, eventSlug, eventStartsAt
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge tone="success">✓ Check-in</Badge>
-                    {nameIsOk && (
-                      <a
-                        href={`/api/events/${eventId}/certificate/${a.id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-semibold bg-brand-500 text-white hover:bg-brand-600 transition"
-                      >
-                        📜 Certificado
-                      </a>
-                    )}
+                    {nameIsOk && (() => {
+                      const folio = folioByAttendee.get(a.id);
+                      if (folio) {
+                        // Ya emitido: link directo a /cert/[folio].
+                        return (
+                          <a
+                            href={`/cert/${encodeURIComponent(folio)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-semibold bg-brand-500 text-white hover:bg-brand-600 transition"
+                            title={`Folio ${folio}`}
+                          >
+                            📜 Certificado
+                          </a>
+                        );
+                      }
+                      // No emitido: Client Component que llama a la server
+                      // action y muestra el folio generado al instante.
+                      return (
+                        <IssueCertButton
+                          attendeeId={a.id}
+                          eventId={eventId}
+                          attendeeName={a.name ?? "este asistente"}
+                        />
+                      );
+                    })()}
                   </div>
                 </li>
               );

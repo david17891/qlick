@@ -578,3 +578,171 @@ export async function deleteConfirmationAction(
   }
   return { ok: result.ok, note: result.note };
 }
+
+// ─────────────────────────────────────────────────────────────
+// Certificados (Sprint Concept C 2026-07-08, Nivel 1: emision manual
+// desde el panel admin). El admin hace click en "Emitir cert" al lado
+// de cada asistente con check-in, y esta action crea la fila en
+// `event_certificates` con folio auto-generado + metadata snapshot.
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Emite un certificado de asistencia para un attendee.
+ *
+ * Sprint Concept C — Nivel 1.
+ *
+ * Validaciones:
+ *   - Admin autenticado.
+ *   - Attendee existe, pertenece al evento, tiene check-in, tiene nombre
+ *     real (no placeholder).
+ *   - No hay ya un cert emitido para este attendee (idempotencia: si ya
+ *     existe, devuelve ok:true con `alreadyIssued: true` para que el
+ *     admin pueda reusar el folio).
+ *
+ * Metadata snapshot guardado en `event_certificates.metadata`:
+ *   - attendeeName, eventTitle, eventLocation, instructorName,
+ *     instructorTitle, reason.
+ *
+ * FormData: attendeeId, eventId.
+ *
+ * Devuelve FormState extendido con `folio?: string` (para que la UI
+ * pueda confirmar y refrescar la lista).
+ */
+export async function issueCertificateAction(
+  _prev: FormState | null,
+  formData: FormData,
+): Promise<FormState & { folio?: string; alreadyIssued?: boolean }> {
+  const admin = await requireAdmin();
+  if (!admin) {
+    return { ok: false, note: "No autorizado." };
+  }
+  const attendeeId = formData.get("attendeeId");
+  const eventId = formData.get("eventId");
+  if (typeof attendeeId !== "string" || !attendeeId) {
+    return { ok: false, note: "Falta attendeeId." };
+  }
+  if (typeof eventId !== "string" || !eventId) {
+    return { ok: false, note: "Falta eventId." };
+  }
+
+  const { createSupabaseAdminClient } = await import("@/lib/supabase/admin");
+  const { generateFolio } = await import("@/lib/certificates/folio");
+  const supabase = createSupabaseAdminClient();
+
+  // 1. Cargar attendee (con check-in y nombre real).
+  const { data: att, error: attErr } = await supabase
+    .from("event_attendees")
+    .select("id, event_id, name, email, checked_in_at")
+    .eq("id", attendeeId)
+    .maybeSingle();
+  if (attErr) {
+    return { ok: false, note: `No se pudo cargar attendee (${attErr.code ?? "?"}).` };
+  }
+  if (!att) {
+    return { ok: false, note: "Attendee no existe." };
+  }
+  if (att.event_id !== eventId) {
+    return { ok: false, note: "Attendee no pertenece a este evento." };
+  }
+  if (!att.checked_in_at) {
+    return { ok: false, note: "El attendee aun no hizo check-in." };
+  }
+  if (!att.name || att.name.trim().length < 2) {
+    return { ok: false, note: "Attendee sin nombre real; no se puede emitir cert." };
+  }
+
+  // 2. Verificar si ya hay cert emitido (idempotencia).
+  const { data: existing } = await (supabase as unknown as {
+    from: (t: string) => {
+      select: (cols: string) => {
+        eq: (col: string, val: string) => {
+          eq: (col: string, val: string) => {
+            maybeSingle: () => Promise<{ data: { folio: string } | null; error: unknown }>;
+          };
+        };
+      };
+    };
+  })
+    .from("event_certificates")
+    .select("folio")
+    .eq("attendee_id", attendeeId)
+    .eq("event_id", eventId)
+    .maybeSingle();
+  if (existing) {
+    revalidatePath(`/admin/eventos/${eventId}`);
+    return {
+      ok: true,
+      note: `Cert ya emitido (folio ${existing.folio}).`,
+      folio: existing.folio,
+      alreadyIssued: true,
+    };
+  }
+
+  // 3. Cargar evento para metadata snapshot.
+  const { data: ev } = await supabase
+    .from("events")
+    .select("title, location")
+    .eq("id", eventId)
+    .maybeSingle();
+  const eventTitle = (ev as { title: string } | null)?.title ?? "Evento";
+  const eventLocation =
+    (ev as { location: string | null } | null)?.location ?? "Por confirmar";
+
+  // 4. Generar folio unico (hasta 5 intentos si colisiona con UNIQUE).
+  let folio = "";
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    folio = generateFolio();
+    const { error: insertErr } = await (supabase as unknown as {
+      from: (t: string) => {
+        insert: (row: Record<string, unknown>) => {
+          select: (cols: string) => {
+            maybeSingle: () => Promise<{ data: unknown; error: unknown }>;
+          };
+        };
+      };
+    })
+      .from("event_certificates")
+      .insert({
+        folio,
+        event_id: eventId,
+        attendee_id: attendeeId,
+        template_variant: "concept-c",
+        issued_at: new Date().toISOString(),
+        metadata: {
+          attendeeName: att.name,
+          eventTitle,
+          eventLocation,
+          instructorName: "Paul Velasquez",
+          instructorTitle: "CEO & Fundador · Imparte este programa",
+          reason:
+            "por haber completado satisfactoriamente el programa de marketing digital e inteligencia artificial, demostrando dominio de estrategias, herramientas y metodologias de alto impacto.",
+        },
+      })
+      .select("folio")
+      .maybeSingle();
+    if (!insertErr) break;
+    lastErr = insertErr;
+  }
+
+  if (!folio || lastErr) {
+    return { ok: false, note: "No se pudo generar folio unico." };
+  }
+
+  // 5. Audit log.
+  await logAdminAction({
+    actor_email: admin.email ?? "system@qlick",
+    action: "issue_certificate",
+    entity_type: "event_attendee",
+    entity_id: attendeeId,
+    metadata: { eventId, folio },
+  });
+
+  revalidatePath(`/admin/eventos/${eventId}`);
+  return {
+    ok: true,
+    note: `Cert emitido: folio ${folio}.`,
+    folio,
+    alreadyIssued: false,
+  };
+}
