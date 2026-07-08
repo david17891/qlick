@@ -1,0 +1,452 @@
+/**
+ * CSS del Concept C (Dynamic Authority) — página imprimible del cert.
+ *
+ * Fuente de verdad: docs/qlick-cert-system/03-concept-c-dynamic-authority.html
+ *
+ * REGLA — fidelidad 1:1 (memory 2026-07-08): cualquier valor/token/selector
+ * declarado acá DEBE coincidir con el HTML aprobado. Cambios solo permitidos
+ * en:
+ *   - @page { size: A4 landscape; margin: 0 } (imprimir sin escalado raro).
+ *   - @media print (ocultar .stage wrappers / sombras / no-print).
+ *   - .cert-actions (UI admin) con .no-print.
+ *
+ * Sprint Cert 2026-07-08.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600&family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --purple-500: #A855F7;
+  --purple-600: #9333EA;
+  --purple-700: #7E22CE;
+  --purple-800: #6B21A8;
+  --purple-900: #3B0764;
+  --purple-950: #1E0540;
+  --spark: #FBBF24;
+  --spark-500: #F59E0B;
+  --ink: #0F172A;
+  --slate-700: #334155;
+  --slate-500: #64748B;
+  --ivory: #FAFAF7;
+  --cream: #F5F2EA;
+}
+
+@page {
+  size: A4 landscape;
+  margin: 0;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  background: #1A1024;
+  color: #fff;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 32px;
+}
+
+.cert {
+  width: 1123px;
+  height: 794px;
+  position: relative;
+  overflow: hidden;
+  background: var(--ivory);
+  box-shadow: 0 60px 120px -40px rgba(168, 85, 247, 0.6),
+              0 30px 60px -20px rgba(0, 0, 0, 0.7);
+}/* LEFT DIAGONAL PANEL with chevrons */
+.left-panel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 38%;
+  background: linear-gradient(180deg, var(--purple-700) 0%, var(--purple-900) 100%);
+  clip-path: polygon(0 0, 100% 0, 78% 100%, 0 100%);
+}
+.left-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(135deg, rgba(168, 85, 247, 0.4) 0%, transparent 40%),
+    radial-gradient(circle at 20% 80%, rgba(251, 191, 36, 0.15), transparent 50%);
+}
+
+.chevrons {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.18;
+  pointer-events: none;
+}
+.chevrons svg { width: 100%; height: 100%; }
+
+.vertical-text {
+  position: absolute;
+  top: 62%;
+  left: 30px;
+  transform: translateY(-50%) rotate(-90deg);
+  transform-origin: left center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 5px;
+  color: rgba(255, 255, 255, 0.5);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.brand-block {
+  position: absolute;
+  top: 60px;
+  left: 64px;
+  right: 30%;
+  color: #fff;
+}
+.brand-block .q-icon {
+  width: 84px;height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 18px;
+}
+.brand-block .q-icon img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.35));
+}
+.brand-block .wordmark {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 800;
+  font-size: 36px;
+  letter-spacing: -1px;
+  color: #fff;
+  line-height: 1;
+}
+.brand-block .tag {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: rgba(255, 255, 255, 0.7);
+  text-transform: uppercase;
+  margin-top: 6px;
+}
+
+.course-info {
+  position: absolute;
+  bottom: 48px;
+  left: 64px;
+  /* El panel diagonal termina en ~78% del ancho. Para que el texto del
+     curso respete ese límite y no se salga, fijamos max-width y dejamos
+     que el .title haga wrap en 2-3 líneas si el nombre es largo. */
+  right: 28%;
+  max-width: 360px;
+  color: #fff;
+}
+.course-info .label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 3px;
+  color: var(--spark);
+  text-transform: uppercase;
+}
+.course-info .title {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 700;
+  /* clamp(min, preferred, max) — escala responsivo entre 16px y 22px. */
+  font-size: clamp(16px, 2.4vw, 22px);
+  color: #fff;
+  margin-top: 6px;
+  letter-spacing: -0.3px;
+  line-height: 1.15;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+.course-info .meta {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  margin-top: 6px;
+  letter-spacing: 0.3px;
+}
+
+/* RIGHT CONTENT */
+.right {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 62%;
+  padding: 64px 56px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.eyebrow-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.eyebrow-row .label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 4px;
+  color: var(--purple-700);
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.eyebrow-row .folio {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--slate-500);
+  letter-spacing: 2px;
+  text-align: right;
+}
+.eyebrow-row .folio .num {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  margin-top: 2px;
+  letter-spacing: 1px;
+}
+
+.hero { position: relative; margin-top: 30px; }
+.hero .small {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--slate-500);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.hero .presented-to {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 14px;
+  color: var(--slate-700);
+  margin-top: 16px;
+  font-style: italic;
+}
+.hero .name {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 900;
+  font-size: 78px;
+  line-height: 0.95;
+  letter-spacing: -3px;
+  color: var(--ink);
+  margin-top: 14px;
+}
+.hero .name .word { display: block; }
+.hero .name .accent {
+  background: linear-gradient(135deg, var(--purple-700) 0%, var(--purple-500) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.hero .deco-line {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 18px;
+}
+.hero .deco-line::before,
+.hero .deco-line::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--purple-700), transparent);
+}
+.hero .deco-line::after {
+  background: linear-gradient(-90deg, var(--purple-700), transparent);
+}
+.hero .deco-line svg {
+  width: 18px;
+  height: 18px;
+  color: var(--spark-500);
+}
+.hero .reason {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  color: var(--slate-700);
+  margin-top: 18px;
+  max-width: 520px;
+}/* Bottom signature + QR */
+.bottom {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 40px;
+  align-items: end;
+}
+
+.sig-block .signature {
+  height: 90px;
+  display: flex;
+  align-items: flex-end;
+}
+.sig-block .signature img {
+  height: 84px;
+  width: auto;
+  display: block;
+  margin-left: -14px;
+}
+.sig-block .name {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--ink);
+  margin-top: 6px;
+  letter-spacing: 0.3px;
+}
+.sig-block .role {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  color: var(--slate-500);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.verify-block {
+  background: #fff;
+  border: 1px solid var(--slate-300);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+}
+.verify-block .qr {
+  width: 64px;
+  height: 64px;
+  border-radius: 6px;
+  background: #fff;
+  padding: 4px;
+  border: 0.5px solid var(--slate-300);
+}
+.verify-block .qr img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.verify-block .text {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  color: var(--slate-500);
+  letter-spacing: 0.5px;
+}
+.verify-block .text .label {
+  color: var(--purple-700);
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  font-size: 9px;
+}
+.verify-block .text .url {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--ink);
+  font-size: 11px;
+  margin-top: 2px;
+  word-break: break-all;
+}
+.verify-block .text .date {
+  font-size: 9px;
+  margin-top: 4px;
+  color: var(--slate-500);
+}
+
+.sparkle { position: absolute; pointer-events: none; }
+.sparkle.s1 { top: 30px; right: 200px; opacity: 0.7; }
+.sparkle.s2 { top: 170px; right: 30px; opacity: 0.4; }
+
+/* ========== UI admin (no-print) ========== */
+
+.cert-page {
+  background: #1A1024;
+  min-height: 100vh;
+}
+
+.cert-actions {
+  max-width: 1123px;
+  margin: 16px auto;
+  padding: 14px 18px;
+  background: #1a1024;
+  border-radius: 10px;
+  font-family: system-ui, sans-serif;
+  color: #f5f2ea;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.cert-actions-back {
+  color: #fbbf24;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 600;
+}
+.cert-actions-back:hover { text-decoration: underline; }
+.cert-actions-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 8px 0 6px;
+  color: #fff;
+}
+.cert-actions-title code {
+  font-family: 'JetBrains Mono', monospace;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.08);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 14px;
+}
+.cert-actions-hint {
+  font-size: 14px;
+  color: #c4b5fd;
+  line-height: 1.5;
+}
+.cert-actions-hint kbd {
+  font-family: 'JetBrains Mono', monospace;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 12px;
+}
+.cert-actions-hint strong { color: #fbbf24; }
+
+/* Errores (en pantalla) */
+.cert-auth-error {
+  max-width: 480px;
+  margin: 80px auto;
+  padding: 32px;
+  background: #1a1024;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: #f5f2ea;
+  font-family: system-ui, sans-serif;
+}
+.cert-auth-error h1 { color: #fbbf24; margin-bottom: 12px; font-size: 22px; }
+.cert-auth-error p { margin-bottom: 8px; font-size: 15px; }
+.cert-auth-error a { color: #fbbf24; text-decoration: underline; }
+
+/* ========== PRINT (Ctrl+P → PDF) ========== */
+
+@media print {
+  html, body { background: #ffffff !important; }
+  .cert-page { background: #ffffff !important; }
+  .no-print { display: none !important; }
+  .stage { padding: 0; min-height: auto; }
+  .cert {
+    margin: 0;
+    box-shadow: none;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
