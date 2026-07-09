@@ -17,7 +17,35 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { mapLeadRowToLead, type LeadRow } from "./leads-mapper";
 import { logAdminAction } from "./audit-server";
+import { normalizePhone } from "./phone-utils";
+import { extractEmailFromText } from "../whatsapp/email-extract";
 import type { Lead, LeadStatus } from "@/types";
+
+/**
+ * FIX 2026-07-08 (sesión David "registrados sin nombre/correo/teléfono"):
+ * Campos que el admin puede editar manualmente desde el drawer del CRM.
+ *
+ * Aplica solo a campos del propio `Lead`. El status sigue yendo por
+ * `updateLeadStatus` (mantiene optimistic lock y audit con from/to reales).
+ *
+ * Reglas:
+ *   - name:    1–100 chars después de trim. No se permite dejar vacío
+ *              (rompería saludos `Hola ${name}` del bot).
+ *   - email:   formato RFC-lite (`/[^\s@]+@[^\s@]+\.[^\s@]+/`).
+ *              Se extrae con `extractEmailFromText` antes de validar
+ *              (caso real: "su email es david@x.com" → extrae david@x.com).
+ *   - phone:   normalizado a E.164 vía `normalizePhone`. Si llega vacío,
+ *              se limpia (null). Si llega con formato inválido, error.
+ *
+ * El payload es `Partial<>`: el caller puede pasar 1, 2 o los 3 campos.
+ * Solo se persisten los que cambian (diff contra DB antes del UPDATE) para
+ * que el audit log solo registre lo realmente modificado.
+ */
+export interface LeadFieldUpdate {
+  name?: string;
+  email?: string;
+  phone?: string;
+}
 
 /** Resultado de una operación admin sobre un lead. */
 export interface AdminLeadOpResult {
@@ -134,6 +162,224 @@ export async function updateLeadStatus(
     entity_type: "lead",
     entity_id: leadId,
     metadata: { from: prevStatus, to: status },
+  });
+
+  return { ok: true, lead };
+}
+
+/**
+ * FIX 2026-07-08 (sesión David "registrados sin nombre/correo/teléfono"):
+ * Actualiza campos editables del lead (name/email/phone) desde el panel admin.
+ *
+ * Diferencias con `updateLeadStatus`:
+ *   - NO usa optimistic lock (no hay race con el bot en estos campos:
+ *     el bot solo escribe `name` en `provide_name` y `email` en `provide_email`,
+ *     y el admin puede sobrescribirlo sin conflicto porque la fuente de verdad
+ *     es el admin en este caso).
+ *   - Solo aplica los campos que cambiaron (diff contra fila actual) para
+ *     que el audit log registre solo lo realmente modificado.
+ *   - Valida formato: email RFC-lite, phone E.164, name 1–100 chars.
+ *
+ * Casos cubiertos (todos los datos reales del screenshot de David 2026-07-08):
+ *   1. `36249ecd` Yesy087 (tiene email real pero name="WhatsApp Lead" placeholder).
+ *      → admin edita name a "Yesy" → DB y audit reflejan el cambio.
+ *   2. `646bc08f` UK placeholder (name + email + phone placeholder).
+ *      → admin edita los 3 → audit registra cada campo con from/to.
+ *   3. `wa.xxx@placeholder.local` → admin edita email → el real contact queda
+ *      en `leads.email` y el QR/email flow ya no rebota por email fake.
+ *
+ * @param leadId     UUID del lead.
+ * @param fields     Patch parcial con los campos a actualizar.
+ * @param actorEmail Email del admin (para audit log).
+ * @param deps       (opcional) Inyección de dependencias para tests.
+ *                  Si no se pasa, usa el cliente admin real.
+ */
+export async function updateLeadFields(
+  leadId: string,
+  fields: LeadFieldUpdate,
+  actorEmail: string,
+  deps?: {
+    supabase?: Awaited<ReturnType<typeof createSupabaseAdminClient>> | null;
+    isConfigured?: boolean;
+  },
+): Promise<AdminLeadOpResult> {
+  const isConfigured = deps?.isConfigured ?? checkSupabaseConfig().configured;
+  if (!isConfigured) {
+    return { ok: false, note: "Supabase no configurado." };
+  }
+  if (!leadId || !actorEmail) {
+    return { ok: false, note: "Faltan datos (leadId/actor)." };
+  }
+  if (!fields || Object.keys(fields).length === 0) {
+    return { ok: false, note: "Patch vacío." };
+  }
+
+  // Validaciones por campo. Cada rama devuelve error actionable (no silencioso).
+  const cleaned: { name?: string; email?: string; phone?: string | null } = {};
+
+  if (fields.name !== undefined) {
+    const name = fields.name.trim();
+    if (name.length === 0) {
+      return { ok: false, note: "El nombre no puede estar vacío." };
+    }
+    if (name.length > 100) {
+      return { ok: false, note: "El nombre no puede superar 100 caracteres." };
+    }
+    cleaned.name = name;
+  }
+
+  if (fields.email !== undefined) {
+    const email = fields.email.trim();
+    if (email.length === 0) {
+      // Email vacío → limpiamos el campo (el admin puede querer borrar el placeholder).
+      cleaned.email = "";
+    } else {
+      // Extraemos email embebido por si el admin pegó contexto extra
+      // (mismo helper que usa el bot — consistencia).
+      const extracted = extractEmailFromText(email) ?? email;
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(extracted)) {
+        return { ok: false, note: "Email con formato inválido." };
+      }
+      cleaned.email = extracted.toLowerCase();
+    }
+  }
+
+  if (fields.phone !== undefined) {
+    const phoneRaw = fields.phone.trim();
+    if (phoneRaw.length === 0) {
+      // Phone vacío → guardamos string vacío. El bot-engine prefiere
+      // que `leads.phone` no sea null cuando existe (queries por phone).
+      // Pero el admin explícitamente pidió limpiar → lo respetamos.
+      cleaned.phone = "";
+    } else {
+      if (normalizePhone(phoneRaw) === null) {
+        return { ok: false, note: "Teléfono inválido (debe tener código de país, ej. +52...)." };
+      }
+      // Guardamos el formato original (con espacios/guiones) para que el
+      // admin vea lo que tipeó. `phone_normalized` se calcula abajo.
+      cleaned.phone = phoneRaw;
+    }
+  }
+
+  const supabase = deps?.supabase ?? createSupabaseAdminClient();
+
+  // 1. SELECT previo: necesitamos los valores actuales para el diff del audit
+  //    log ("from: 'WhatsApp Lead' → to: 'Yesy'"). Sin esto, el audit pierde
+  //    el "antes" y queda solo con el "después" — inútil para auditoría real.
+  const { data: prevRow, error: prevErr } = await supabase
+    .from("leads")
+    .select("id, name, email, phone")
+    .eq("id", leadId)
+    .maybeSingle();
+
+  if (prevErr || !prevRow) {
+    // eslint-disable-next-line no-console
+    console.error("[leads-admin] updateLeadFields: no se pudo leer lead previo", {
+      code: prevErr?.code,
+      leadId,
+    });
+    return {
+      ok: false,
+      note: prevErr
+        ? "No se pudo leer el lead antes de actualizar."
+        : "El lead no existe.",
+    };
+  }
+
+  // 2. Diff: solo mandamos al UPDATE los campos que efectivamente cambian.
+  //    Si el admin manda name="Yesy" pero la DB ya tiene "Yesy", lo skipeamos.
+  //    Beneficio: audit log limpio (solo lo realmente modificado), UPDATE
+  //    idempotente, no triggerea updated_at innecesariamente.
+  const payload: Record<string, string | null> = {};
+  const before: Record<string, unknown> = {};
+  const after: Record<string, unknown> = {};
+
+  if (cleaned.name !== undefined && cleaned.name !== prevRow.name) {
+    payload.name = cleaned.name;
+    before.name = prevRow.name;
+    after.name = cleaned.name;
+  }
+  if (cleaned.email !== undefined && cleaned.email !== prevRow.email) {
+    // El schema de `leads.email` es NOT NULL; usamos "" para "limpiar" en vez de null.
+    payload.email = cleaned.email;
+    before.email = prevRow.email;
+    after.email = cleaned.email;
+  }
+  if (cleaned.phone !== undefined) {
+    // Para phone, normalizamos para comparar (admin puede tipear "+52 686..."
+    // vs la DB con "+52686..."). Si difieren en formato pero matchean
+    // normalizados, no actualizamos el campo pero sí actualizamos
+    // `phone_normalized` por si quedó stale.
+    const prevNorm = normalizePhone(prevRow.phone);
+    const nextNorm = normalizePhone(cleaned.phone);
+    if (prevNorm !== nextNorm || prevRow.phone !== cleaned.phone) {
+      payload.phone = cleaned.phone === "" ? "" : cleaned.phone;
+      if (nextNorm) payload.phone_normalized = nextNorm;
+      before.phone = prevRow.phone;
+      after.phone = cleaned.phone === "" ? "" : cleaned.phone;
+    }
+  }
+
+  // Trackear qué keys mandó el admin ORIGINALMENTE (no los derivados como
+  // phone_normalized) para que el audit `metadata.fields_changed` refleje
+  // solo lo que el admin cambió explícitamente.
+  const inputKeys: string[] = [];
+  if (cleaned.name !== undefined && "name" in payload) inputKeys.push("name");
+  if (cleaned.email !== undefined && "email" in payload) inputKeys.push("email");
+  if (cleaned.phone !== undefined && "phone" in payload) inputKeys.push("phone");
+
+  // Si no hay diff real (todo igual), respondemos OK con el lead sin cambios.
+  // No error: el admin hizo click pero los datos ya estaban bien.
+  if (Object.keys(payload).length === 0) {
+    const { data: sameRow } = await supabase
+      .from("leads")
+      .select("*")
+      .eq("id", leadId)
+      .maybeSingle();
+    return {
+      ok: true,
+      lead: sameRow ? mapLeadRowToLead(sameRow as LeadRow) : undefined,
+      note: "Sin cambios (los datos ya estaban así).",
+    };
+  }
+
+  // 3. UPDATE atómico (sin optimistic lock — ver doc arriba).
+  const { data, error } = await supabase
+    .from("leads")
+    // Cast a `never` porque Supabase infiere `UpdateInput<>` que no acepta
+    // string index. Mismo patrón que el resto del archivo.
+    .update(payload as never)
+    .eq("id", leadId)
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    // eslint-disable-next-line no-console
+    console.error("[leads-admin] updateLeadFields falló", {
+      code: error.code,
+      leadId,
+    });
+    return { ok: false, note: "No se pudo actualizar el lead." };
+  }
+  if (!data) {
+    return { ok: false, note: "El lead desapareció entre el SELECT y el UPDATE." };
+  }
+
+  const lead = mapLeadRowToLead(data as LeadRow);
+
+  // 4. Audit log con before/after (diff view). Una sola entry por PATCH,
+  //    contiene todos los campos cambiados en el JSONB. Más fácil de
+  //    agrupar/buscar que N entries por campo.
+  await logAdminAction({
+    actor_email: actorEmail,
+    action: "lead_field_edit",
+    entity_type: "lead",
+    entity_id: leadId,
+    before,
+    after,
+    metadata: {
+      fields_changed: inputKeys,
+    },
   });
 
   return { ok: true, lead };

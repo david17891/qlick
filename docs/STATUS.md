@@ -8,7 +8,30 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-08 16:55 — **Bot WhatsApp: hotfix #2 mergeado a main (register sin nombre + verbos coloquiales)**. Sesión urgente. David reportó que cuando el lead decía "Quiero registrarme" / "Registrame" / "Me apunto" sin haber dado nombre, el bot mostraba un LIST de eventos (los leads no tocan los botones → loop). Fix: (1) `case "register"` ahora intercepta si `cleanLeadName===""` y body matchea `matchInscriptionIntent` → dispara el mismo plan que `interactive_event_inscribir` (pedir nombre + `awaiting_field="name"`). (2) `matchInscriptionIntent` extendida con rama 4 para verbos sueltos coloquiales del chat de México ("Registrame", "Inscribime", "Anotame", "Apuntame", "Me apunto"). Tests: +8 unitarios en `whatsapp-bot-name-capture.test.mjs`, +5 simulaciones en `whatsapp-bot-conversation-sim.test.mjs` (caso Yesenia completo: 4 turnos vs 7 antes). Validación: 681/681 tests verde · type-check ✓ · lint ✓ · build ✓. Commits: `75dee4b` (rama `fix/whatsapp-bot-register-intercept-2026-07-08`) → merge a main `ce22647`. Trabajo coordinado con el agente paralelo en `feat/certificados-concept-c` via git worktree (no se pisaron). Auto-deploy Vercel disparado.
+> **Última actualización:** 2026-07-08 20:50 — **Feature: admin edit lead fields (name/email/phone) + bot order-independent name+email capture**. Sesión David pidió: (a) editar los 4 leads "WhatsApp Lead" legacy desde el drawer del CRM (placeholders del bug del bot, ej. `36249ecd` Yesy087, `646bc08f` UK, `a5360d1c`, `fe8ff672`), (b) hacer el bot más inteligente con orden-independiente de nombre+email. Implementado:
+>
+> **Feature 1 — Admin edit lead fields (commit `997378f`):**
+> - `updateLeadFields()` server-side con validación (email RFC-lite, phone E.164, name 1-100), diff contra fila actual (solo persiste lo que cambió), audit log JSONB con before/after snapshots (action=`lead_field_edit`).
+> - `PATCH /api/admin/leads/[id]` extendido: acepta status Y/O name/email/phone en cualquier combinación.
+> - `patchLeadFields()` en ops-client.ts.
+> - `LeadDetailDrawer`: toggle view/edit inline en "Datos de contacto". Form con 3 inputs + Save/Cancel + optimistic update + rollback. Badge amber "placeholder" en valores heredados del bug (WhatsApp Lead, wa.xxx@placeholder.local) para que David los identifique de un vistazo.
+> - +15 tests unitarios en `tests/leads-admin-edit-fields.test.mjs`.
+>
+> **Feature 2 — Bot order-independent name+email (commit `dfb2f8b`):**
+> - Helper exportado `extractNameAndEmailTogether()`: detecta "nombre + email juntos" en cualquier orden, con/sin coma, múltiples emails (toma primero, limpia resto del nombre).
+> - Override en `processInboundMessage` catchall: si matchea, fuerza intent=`provide_name` antes que `detectIntent` (que mandaría a welcome/question). El handler `provide_name` ya tenía implicit email capture (FIX 2026-07-07), así que ahora ejecuta update email + generateQrToken + sendEventQrPassEmail + createConfirmation en el mismo turno.
+> - Casos cubiertos: "Sitlalic Guzmán ramos sitlalic.guzman@uabc.edu.mx" (3 palabras + email) → ambos en 1 turno. "david@x.com David Esparza" (email antes) → ambos en 1 turno. "David david@x.com" (1 palabra) → null (necesita apellido, manejado por otro path).
+> - +17 tests en `tests/whatsapp-bot-order-independent.test.mjs`.
+> - `--experimental-test-module-mocks` agregado a `npm test` (Node 22) para que tests puedan mockear módulos ES.
+>
+> **Rama:** `fix/leads-admin-edit-fields-2026-07-08` (en worktree `C:\Users\User\Documents\Click-fix-leads-edit`). Pendiente: merge a `main` + push → auto-deploy Vercel.
+>
+> **Validación:** type-check ✓ · lint ✓ · 713/713 tests verde (681 anteriores + 15 leads-edit + 17 bot-order) · build ✓ (55+ rutas SSG/SSR).
+>
+> **Próximos pasos (necesitan decisión de David):**
+> 1. Merge `fix/leads-admin-edit-fields-2026-07-08` → `main` (push pendiente, espero luz verde).
+> 2. Una vez en producción, David puede editar manualmente los 4 leads legacy desde el drawer.
+> 3. Verificar que el bot ahora capture correctamente mensajes del estilo "nombre + email juntos" (tour E2E cuando David lo pida).
 
 ---
 
