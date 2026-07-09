@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-07 22:15 — **Bot WhatsApp: captura desordenada + info oficial del evento 11 jul + registro manual de Gabriela Terán + fix hora landing publica**. Sesión urgente pre-evento (4 días). Cerrado: (a) datos faltantes en DB → UPDATE events.description del evento marketing-ia-para-emprendedores (short_code AA4E) con bloque oficial; (b) handler provide_name extrae email embebido via extractEmailFromText y ejecuta side-effects de provide_email en un solo turno; (c) loop Si bloqueado durante captura (override chequea awaitingField); (d) pendingAwaitingField mantiene awaiting_field en pregunta intermedia; (e) +6 reglas anti-alucinación en event_rules. Nuevo script CLI scripts/_register-attendee-manual.mjs para registrar confirmados manuales (probado con Gabriela Terán → terangabriela467@gmail.com: lead cf300cc0... + confirmation 57584fc3... + QR fVKaEdx3QcFC2HPzon0de12APTwmf4qy). Fix bug hora landing publica: formatEventDate en EventView.tsx ahora usa timeZone: EVENT_TIMEZONE (America/Phoenix) + sufijo (hora Pacífico) para que todos los visitantes vean 11:00 hora Pacífico del evento. 2 commits pusheados (0f8fd37, 3bd532e) por la sesión Mavis con api-box. Auto-deploy Vercel disparado. Detalle completo en data/PROJECT-LOG.md entradas 2026-07-07 ~21:35 y ~22:00. Pendiente: re-enviar email a Gabriela (Brevo API key ausente en session local; presente en Vercel runtime) + pegar STRIPE_SECRET_KEY + STRIPE_WEBHOOK_SECRET en .env.local y Vercel (Fase 1 Pagos, snapshot previo).
+> **Última actualización:** 2026-07-08 17:30 — **Sprint Certificados Concept C cerrado (v0.9.1)**. Rama `feat/certificados-concept-c` con 6 commits (`8454577` → `511d15c`) mergeada conceptual al trunk de feat/. Cert HTML imprimible 1:1 con design aprobado en `docs/qlick-cert-system/03-concept-c-dynamic-authority.html`, ruta `/cert/[folio]` con auth admin, server action `issueCertificateAction` con idempotencia por (event_id, attendee_id), botón "✨ Emitir cert" en admin check-in tab, botón "🖨️ Imprimir" con `document.fonts.ready` para evitar layout shift al imprimir. Fix crítico: `@page { size: 297mm 210mm; margin: 0 }` (NO keyword `A4 landscape` — Chrome ambigüa el keyword con drivers Letter y produce margen blanco vertical). Validado en prod con attendee `dddddddd-dddd-dddd-dddd-dddddddddddd` y folio `QLK-2026-68558`. Handoff: `docs/HANDOFF_v0.9.1_CERT_CONCEPT_C.md`. Pendiente: cleanup DB de dev artifacts + decisión Paso 2 (script bulk + envío por correo) — David y Mavis lo planean aparte.
 
 ---
 
@@ -303,7 +303,8 @@ Detalle completo en `CHANGELOG.md`.
 
 ## 📚 Docs de referencia
 
-- `docs/HANDOFF_v0.9.0_CRM_INTELIGENTE.md` — **handoff completo de este release** ← leer primero
+- `docs/HANDOFF_v0.9.1_CERT_CONCEPT_C.md` — **handoff del sprint Certificados Concept C (rama `feat/certificados-concept-c`, deploy prod OK)** ← nuevo
+- `docs/HANDOFF_v0.9.0_CRM_INTELIGENTE.md` — handoff del release CRM Inteligente v2.0
 - `docs/HANDOFF_v0.8.0_FUNCIONAL.md` — handoff previo (wizard WhatsApp + Español MX)
 - `docs/HANDOFF_v0.7.1_FASE_7A_REMINDERS.md` — recordatorios evento
 - `docs/ROADMAP.md` — fases, decisiones, prioridades (Fase 4 detallada)
