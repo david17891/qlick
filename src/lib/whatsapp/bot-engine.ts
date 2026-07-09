@@ -531,6 +531,64 @@ export function isValidHumanName(text: string | null | undefined): boolean {
 }
 
 /**
+ * FIX 2026-07-08 (sesión David "captura orden-independiente"): detecta si
+ * el body del lead contiene TANTO un nombre humano válido COMO un email
+ * embebido, en cualquier orden, en una sola línea o en múltiples.
+ *
+ * Caso típico real (conversaciones Yesy, Sitlalic, David Esparza):
+ *   - "David david@x.com"
+ *   - "Sitlalic Guzman ramos sitlalic.guzman@uabc.edu.mx"
+ *   - "david@x.com David Esparza"
+ *
+ * Devuelve `{ name, email }` si matchea. `null` si no.
+ *
+ * Diferencia con `extractEmailFromText` (en email-extract.ts): ese solo
+ * extrae email. Esta además valida que el resto sea nombre válido
+ * (`isValidHumanName`) para no aceptar texto random que solo contiene
+ * un email pegado.
+ *
+ * Server-only (helper de lógica, no se importa en Client Components).
+ */
+export function extractNameAndEmailTogether(
+  text: string | null | undefined,
+): { name: string; email: string } | null {
+  if (!text) return null;
+  const body = text.trim();
+  if (!body) return null;
+
+  // FIX 2026-07-08: extraemos el PRIMER email (consistente con el resto del
+  // bot — ver extractEmailFromText doc: "se queda con la primera mención").
+  // Para name, en cambio, removemos TODOS los emails del body para que un
+  // texto como "David Esparza david@x.com extra@x.com" no contamine el
+  // nombre con el segundo email.
+  const email = extractEmailFromText(body);
+  if (!email) return null;
+
+  // Quitar TODOS los emails del body (no solo el primero) y limpiar
+  // puntuación/comas. Usamos el mismo regex que extractEmailFromText para
+  // consistencia, con flag global.
+  const ALL_EMAILS_RE = /[^\s@]+@[^\s@]+\.[^\s@.,;:]+/g;
+  const withoutAnyEmail = body
+    .replace(ALL_EMAILS_RE, "")
+    .replace(/[,;]+\s*/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // Sin nombre después de quitar emails NO es caso "name + email together"
+  // (sería solo email, manejado por provide_email).
+  if (withoutAnyEmail.length < 2) return null;
+
+  // El resto debe ser un nombre válido. Si no, no es caso nuestro
+  // (ej. "dale david@x.com" — "dale" es filler, no nombre).
+  if (!isValidHumanName(withoutAnyEmail)) return null;
+
+  return {
+    name: withoutAnyEmail,
+    email: email.toLowerCase().trim(),
+  };
+}
+
+/**
  * FIX 2026-07-04 (feat/funnel-survey-scoring): anti-spam del survey offer.
  * Devuelve true si debemos ofrecer la encuesta al lead. Reglas:
  *   - Sin offer previo → ofrecer.
@@ -4076,6 +4134,37 @@ export async function processInboundMessage(
     // lead va a re-arrancar el wizard desde Q1.
     const isRestartCommand = /^(reiniciar|reset|empezar|empezar de nuevo|comenzar de nuevo|start over|restart)$/i
       .test(body.trim());
+
+    // FIX 2026-07-08 (sesión David "captura orden-independiente"): si el
+    // body del lead contiene TANTO un nombre válido COMO un email embebido
+    // (en cualquier orden), forzamos `provide_name` ANTES de cualquier otro
+    // override. El handler `provide_name` ya tiene implicit email capture
+    // (línea 3065-3084) que ejecuta los side-effects de provide_email
+    // (update email, generateQrToken, sendEventQrPassEmail,
+    // createConfirmation) sin pedir el email en un turno separado.
+    //
+    // Sin este check, "David david@x.com" como primer mensaje caía a
+    // `welcome` (vía detectIntent) y la captura no se hacía. Con este
+    // check, va directo a `provide_name` → captura ambos en 1 turno.
+    //
+    // Casos cubiertos (todos reales de conversaciones 2026-07-08):
+    //   - "David david@x.com" → name=David, email=david@x.com
+    //   - "Sitlalic Guzman ramos sitlalic.guzman@uabc.edu.mx" → name=Sitlalic Guzman ramos, email=sitlalic.guzman@uabc.edu.mx
+    //   - "david@x.com David Esparza" → name=David Esparza, email=david@x.com
+    //
+    // NOTA: NO usamos `else` para no romper el flujo. Si nameEmailTogether
+    // matchea pero el flow está esperando otra cosa (ej. wizardStep),
+    // dejamos que el flow normal lo maneje. Lo importante es que en el
+    // catchall final (donde detectIntent metería "welcome"/"question"),
+    // este flag tiene prioridad.
+    const nameEmailTogether = extractNameAndEmailTogether(body);
+    if (nameEmailTogether) {
+      debugLog("[whatsapp/bot] order-independent capture: name+email together", {
+        leadId: lead.id,
+        detectedName: nameEmailTogether.name,
+        detectedEmail: nameEmailTogether.email,
+      });
+    }
     if (isRestartCommand && wizardStep !== null && supabase && lastOutbound?.id) {
       try {
         const { error: restartErr } = await supabase
@@ -4281,7 +4370,20 @@ export async function processInboundMessage(
         intent = detectIntent(body, isFirstMessage);
       }
     } else {
-      intent = detectIntent(body, isFirstMessage);
+      // FIX 2026-07-08 (sesión David "captura orden-independiente"): si el
+      // body del lead contiene TANTO un nombre válido COMO un email
+      // embebido (en cualquier orden), forzamos `provide_name` en vez de
+      // llamar `detectIntent` (que mandaría a "welcome" o "question" y
+      // perderíamos la captura).
+      //
+      // El handler `provide_name` ya tiene implicit email capture que
+      // ejecuta los side-effects de provide_email sin pedir el email en un
+      // turno separado (ver líneas 3065-3084).
+      if (nameEmailTogether) {
+        intent = "provide_name";
+      } else {
+        intent = detectIntent(body, isFirstMessage);
+      }
     }
   }
 
