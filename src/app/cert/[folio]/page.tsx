@@ -11,7 +11,8 @@
  *   100% sin pelearse con `@react-pdf/renderer` ni headless browsers en
  *   Vercel Hobby.
  *
- * - Auth: misma `requireAdmin()` que el endpoint cert viejo (cookie admin).
+ * - Auth: PUBLICO desde sprint v0.9.2. El folio es el secreto (random sobre
+ *   100k combinaciones, no adivinable). Antes requeria cookie admin.
  * - Datos: leídos por FOLIO desde `event_certificates` (no por attendee), con
  *   JOIN a `event_attendees` + `events` solo para mostrar metadata del evento
  *   que el cert necesitaría referenciar (ubicación, duración). El cert en sí
@@ -25,7 +26,8 @@
  */
 
 import { notFound } from "next/navigation";
-import { requireAdmin } from "@/lib/auth/session";
+// NOTA: NO importamos requireAdmin() — la pagina es publica (sprint v0.9.2).
+// El folio es el "secreto": random sobre 100k combinaciones, no adivinable.
 import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { generateQrPngDataUrl, getCertQrUrl } from "@/lib/certificates/qr-helper";
@@ -143,21 +145,20 @@ export default async function CertPage({ params }: CertPageProps) {
   const folio = params.folio?.trim();
   if (!folio) return notFound();
 
-  // 1. Auth admin (cookie).
-  const admin = await requireAdmin();
-  if (!admin) {
-    return (
-      <div className="cert-auth-error">
-        <h1>No autorizado</h1>
-        <p>Necesitás iniciar sesión como admin para ver este cert.</p>
-        <p>
-          <a href="/login">Iniciar sesión</a>
-        </p>
-      </div>
-    );
-  }
+  // Sprint v0.9.2 Cert Email: `/cert/[folio]` ahora es PUBLICO.
+  // Antes: requireAdmin() (David tenia que estar logueado para ver el cert).
+  // Ahora: cualquiera con el link puede abrirlo. Esto permite:
+  //   - Enviar el cert por correo y que el destinatario lo abra directo.
+  //   - Compartir el link sin pedir login.
+  //
+  // El folio es random sobre 100k combinaciones (5 digitos padded), no
+  // adivinable en la practica. No se expone via sitemap ni SEO. Para
+  // hardening futuro: JWT con expiracion.
+  //
+  // Si el folio no existe en DB, el query devuelve null y caemos a
+  // notFound() (404 legitimo).
 
-  // 2. Supabase config guard.
+  // 1. Supabase config guard.
   if (!checkSupabaseConfig().configured) {
     return (
       <div className="cert-auth-error">

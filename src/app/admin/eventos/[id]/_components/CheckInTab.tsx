@@ -21,6 +21,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { CheckInTabClient } from "./CheckInTabClient";
 import { IssueCertButton } from "./IssueCertButton";
+import { CertificateBatchPanel } from "./CertificateBatchPanel";
 import { StaffLinksPanel } from "./StaffLinksPanel";
 import { StaffQrTokenList } from "./StaffQrTokenList";
 import { listStaffLinksAction } from "../_staff-link-actions";
@@ -318,6 +319,17 @@ export async function CheckInTab({ eventId, eventTitle, eventSlug, eventStartsAt
               );
             })}
           </ul>
+        </div>
+      )}
+
+      {/* Sprint v0.9.2 Cert Email: panel batch "Mandar certs a todos".
+          Solo aparece si hay al menos 1 attendee con check-in. */}
+      {checkedInAttendees.length > 0 && (
+        <div className="p-5 border-t border-brand-50">
+          <h3 className="text-xs font-bold uppercase text-brand-600 mb-3">
+            📧 Envio masivo de constancias
+          </h3>
+          <CertificateBatchPanel eventId={eventId} eventTitle={eventTitle} />
         </div>
       )}
 

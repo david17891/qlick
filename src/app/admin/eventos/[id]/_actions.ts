@@ -746,3 +746,305 @@ export async function issueCertificateAction(
     alreadyIssued: false,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Sprint v0.9.2 Cert Email — batch "Mandar certs a todos"
+// ---------------------------------------------------------------------------
+
+/**
+ * Tipos auxiliares para el batch de certs.
+ */
+export interface BatchCertificateRow {
+  attendeeId: string;
+  attendeeName: string;
+  attendeeEmail: string | null;
+  attendeePhone: string | null;
+  folio: string | null;
+  certStatus: "already_issued" | "needs_issue" | "skipped_no_name";
+}
+
+export interface BatchCertificatePreview {
+  totalCheckedIn: number;
+  toEmail: BatchCertificateRow[];
+  toWhatsApp: BatchCertificateRow[];
+  skipped: BatchCertificateRow[];
+  emailSubjectTemplate: string;
+}
+
+/**
+ * Preview del batch: lista de attendees que se procesarian en un envio
+ * batch, agrupados por canal (email / WhatsApp / skipped).
+ *
+ * Sprint v0.9.2 Cert Email (2026-07-08): permite a David revisar antes
+ * de confirmar el envio real.
+ *
+ * - `toEmail`: attendees con email → emiten cert (si falta) + mandan email.
+ * - `toWhatsApp`: attendees sin email pero con telefono → David usa el
+ *   fallback `wa.me` para mandar manualmente por web.whatsapp.com.
+ * - `skipped`: attendees sin nombre real (placeholder) o sin contacto
+ *   → no se procesan en este batch.
+ */
+export async function getCertificateBatchPreviewAction(
+  eventId: string,
+): Promise<{ ok: true; preview: BatchCertificatePreview } | { ok: false; note: string }> {
+  const admin = await requireAdmin();
+  if (!admin) return { ok: false, note: "No autorizado." };
+
+  const { createSupabaseAdminClient } = await import("@/lib/supabase/admin");
+  const supabase = createSupabaseAdminClient();
+
+  // 1. Attendees con check-in (mismo filtro que CheckInTab.tsx).
+  const { data: attendees, error: attErr } = await supabase
+    .from("event_attendees")
+    .select("id, name, email, phone_normalized, checked_in_at")
+    .eq("event_id", eventId)
+    .not("checked_in_at", "is", null);
+  if (attErr) {
+    return { ok: false, note: `No se pudieron cargar attendees (${attErr.code ?? "?"}).` };
+  }
+
+  // 2. Event title para preview del subject.
+  const { data: event } = await supabase
+    .from("events")
+    .select("title")
+    .eq("id", eventId)
+    .maybeSingle();
+  const eventTitle = event?.title ?? "el evento";
+
+  // 3. Folios existentes para este evento (mapa attendee_id → folio).
+  const { data: certs } = await supabase
+    .from("event_certificates")
+    .select("folio, attendee_id")
+    .eq("event_id", eventId);
+  const folioByAttendee = new Map<string, string>();
+  for (const c of (certs ?? []) as Array<{ folio: string; attendee_id: string }>) {
+    folioByAttendee.set(c.attendee_id, c.folio);
+  }
+
+  // 4. Clasificar attendees (mismo PLACEHOLDER_NAMES que CheckInTab).
+  const PLACEHOLDER_NAMES = new Set([
+    "asistente", "por confirmar", "confirmar", "pendiente", "test",
+    "n/a", "na", "anonimo", "anonymous", "sin nombre",
+  ]);
+  const isPlaceholder = (n: string | null | undefined): boolean => {
+    if (!n) return true;
+    const trimmed = n.trim();
+    if (trimmed.length < 2) return true;
+    return PLACEHOLDER_NAMES.has(trimmed.toLowerCase());
+  };
+
+  const toEmail: BatchCertificateRow[] = [];
+  const toWhatsApp: BatchCertificateRow[] = [];
+  const skipped: BatchCertificateRow[] = [];
+
+  for (const a of (attendees ?? []) as Array<{
+    id: string; name: string | null; email: string | null;
+    phone_normalized: string | null;
+  }>) {
+    const folio = folioByAttendee.get(a.id) ?? null;
+    if (isPlaceholder(a.name)) {
+      skipped.push({
+        attendeeId: a.id,
+        attendeeName: a.name ?? "(sin nombre)",
+        attendeeEmail: a.email ?? null,
+        attendeePhone: a.phone_normalized ?? null,
+        folio,
+        certStatus: "skipped_no_name",
+      });
+      continue;
+    }
+    const row: BatchCertificateRow = {
+      attendeeId: a.id,
+      attendeeName: a.name!,
+      attendeeEmail: a.email ?? null,
+      attendeePhone: a.phone_normalized ?? null,
+      folio,
+      certStatus: folio ? "already_issued" : "needs_issue",
+    };
+    if (a.email) toEmail.push(row);
+    else toWhatsApp.push(row);
+  }
+
+  return {
+    ok: true,
+    preview: {
+      totalCheckedIn: (attendees ?? []).length,
+      toEmail,
+      toWhatsApp,
+      skipped,
+      emailSubjectTemplate: `¡Felicidades! Tu constancia de "${eventTitle}"`,
+    },
+  };
+}
+
+export interface BatchCertificateSendResult {
+  ok: boolean;
+  note: string;
+  issuedCount: number;
+  emailedCount: number;
+  whatsappFallbackCount: number;
+  errorCount: number;
+  errors: Array<{ attendeeId: string; attendeeName: string; error: string }>;
+}
+
+/**
+ * Envia certs en batch a todos los attendees con check-in del evento.
+ *
+ * Sprint v0.9.2 Cert Email (2026-07-08):
+ *  1. Itera attendees con check-in.
+ *  2. Por cada uno:
+ *     - Emite cert (idempotente via RPC) si no tiene folio.
+ *     - Si tiene email → sendEventCertificateEmail().
+ *     - Si no tiene email pero tiene telefono → lo deja para fallback WA.
+ *     - Si no tiene ni nombre real → skip.
+ *  3. Devuelve resumen para que la UI muestre resultado inline.
+ *
+ * Best-effort por attendee: si uno falla, sigue con los demas. Los
+ * errores se acumulan en `result.errors` para mostrar a David.
+ */
+export async function sendBatchCertificatesAction(
+  eventId: string,
+): Promise<BatchCertificateSendResult> {
+  const admin = await requireAdmin();
+  if (!admin) {
+    return {
+      ok: false,
+      note: "No autorizado.",
+      issuedCount: 0,
+      emailedCount: 0,
+      whatsappFallbackCount: 0,
+      errorCount: 0,
+      errors: [],
+    };
+  }
+
+  const { createSupabaseAdminClient } = await import("@/lib/supabase/admin");
+  const { appBaseUrl } = await import("@/lib/utils");
+  const { generateFolio } = await import("@/lib/certificates/folio");
+  const { sendEventCertificateEmail } = await import("@/lib/email/event-certificate");
+  const supabase = createSupabaseAdminClient();
+
+  // 1. Evento.
+  const { data: event } = await supabase
+    .from("events")
+    .select("title, starts_at")
+    .eq("id", eventId)
+    .maybeSingle();
+  if (!event) {
+    return {
+      ok: false, note: "Evento no encontrado.",
+      issuedCount: 0, emailedCount: 0, whatsappFallbackCount: 0, errorCount: 0, errors: [],
+    };
+  }
+
+  // 2. Preview (reusamos la logica de clasificacion).
+  const previewResult = await getCertificateBatchPreviewAction(eventId);
+  if (!previewResult.ok) {
+    return {
+      ok: false, note: previewResult.note,
+      issuedCount: 0, emailedCount: 0, whatsappFallbackCount: 0, errorCount: 0, errors: [],
+    };
+  }
+  const preview = previewResult.preview;
+  const errors: BatchCertificateSendResult["errors"] = [];
+  let issuedCount = 0;
+  let emailedCount = 0;
+  const whatsappFallbackCount = preview.toWhatsApp.length;
+
+  // 3. Para cada attendee con email: emitir (si falta) + mandar.
+  for (const row of preview.toEmail) {
+    try {
+      let folio = row.folio;
+      let certId: string | null = null;
+
+      if (!folio) {
+        // Emitir cert via RPC.
+        const candidate = generateFolio();
+        const { data: rpcData, error: rpcErr } = await supabase.rpc(
+          "issue_event_certificate",
+          {
+            p_event_id: eventId,
+            p_attendee_id: row.attendeeId,
+            p_folio: candidate,
+            p_template_variant: "concept-c",
+            p_metadata: {},
+            // p_admin_user_id omitido: AdminSession no expone `id` (solo
+            // email). La RPC acepta NULL por default — no bloquea el flujo.
+          },
+        );
+        if (rpcErr) throw new Error(`RPC fallo: ${rpcErr.message}`);
+        const rpcRow = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+        folio = (rpcRow as { folio: string } | null)?.folio ?? candidate;
+        // La RPC NO devuelve el id (returns table no incluye la PK). Hacemos
+        // un SELECT adicional para obtenerlo y poderlo loggear en event_email_log.
+        const { data: idRow } = await supabase
+          .from("event_certificates")
+          .select("id")
+          .eq("folio", folio)
+          .maybeSingle();
+        certId = (idRow as { id: string } | null)?.id ?? null;
+        issuedCount++;
+      } else {
+        // Cert ya emitido. Obtenemos el ID para el log.
+        const { data: existingCert } = await supabase
+          .from("event_certificates")
+          .select("id")
+          .eq("folio", folio)
+          .maybeSingle();
+        certId = (existingCert as { id: string } | null)?.id ?? null;
+      }
+
+      // Mandar email.
+      const certUrl = `${appBaseUrl()}/cert/${folio}`;
+      const sendResult = await sendEventCertificateEmail(
+        {
+          attendeeName: row.attendeeName,
+          attendeeEmail: row.attendeeEmail!,
+          eventTitle: event.title,
+          eventStartsAt: event.starts_at,
+          folio,
+          certUrl,
+        },
+        {
+          eventId,
+          eventCertificateId: certId,
+          folio,
+        },
+      );
+      if (sendResult.ok) {
+        emailedCount++;
+      } else {
+        errors.push({
+          attendeeId: row.attendeeId,
+          attendeeName: row.attendeeName,
+          error: `Email fallo: ${sendResult.error ?? "?"}`,
+        });
+      }
+    } catch (err) {
+      errors.push({
+        attendeeId: row.attendeeId,
+        attendeeName: row.attendeeName,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  revalidatePath(`/admin/eventos/${eventId}`);
+
+  const errorCount = errors.length;
+  return {
+    ok: errorCount === 0,
+    note:
+      errorCount === 0
+        ? `Listo. ${emailedCount} email${emailedCount === 1 ? "" : "s"} enviado${emailedCount === 1 ? "" : "s"}` +
+          `, ${issuedCount} cert${issuedCount === 1 ? "" : "s"} emitido${issuedCount === 1 ? "" : "s"}` +
+          `, ${whatsappFallbackCount} para fallback WhatsApp.`
+        : `Enviado con ${errorCount} error${errorCount === 1 ? "" : "es"}. ` +
+          `${emailedCount} OK, ${whatsappFallbackCount} fallback WhatsApp, ${issuedCount} certs emitidos.`,
+    issuedCount,
+    emailedCount,
+    whatsappFallbackCount,
+    errorCount,
+    errors,
+  };
+}

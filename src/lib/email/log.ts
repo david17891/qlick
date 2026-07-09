@@ -23,13 +23,23 @@
 import { createSupabaseAdminClient } from "../supabase/admin";
 import { checkSupabaseConfig } from "../supabase/health";
 
-export type EventEmailType = "qr_pass" | "reminder_24h" | "reminder_2h";
+export type EventEmailType =
+  | "qr_pass"
+  | "reminder_24h"
+  | "reminder_2h"
+  | "certificate";
 
 export interface LogEventEmailInput {
   emailType: EventEmailType;
   eventId: string | null;
   /** ID del token QR asociado (si aplica). Nullable: el QR pass puede no tener token. */
   eventQrTokenId?: string | null;
+  /**
+   * ID del certificado asociado. Solo poblado cuando `emailType === 'certificate'`
+   * (sprint v0.9.2 Cert Email). Permite reenviar el email de un cert especifico
+   * o auditar quien recibio que folio. Nullable para los otros tipos.
+   */
+  eventCertificateId?: string | null;
   recipient: string;
   attendeeName?: string | null;
   subject: string;
@@ -54,6 +64,7 @@ export async function logEventEmail(input: LogEventEmailInput): Promise<void> {
       email_type: input.emailType,
       event_id: input.eventId,
       event_qr_token_id: input.eventQrTokenId ?? null,
+      event_certificate_id: input.eventCertificateId ?? null,
       recipient: input.recipient,
       attendee_name: input.attendeeName ?? null,
       subject: input.subject,
