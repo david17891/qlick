@@ -145,9 +145,18 @@ export function renderEventQrPassEmail(
   // por seguridad (no inline data URLs que algunos clientes no renderizan).
   // FIX 2026-07-02: ahora se sirve desde /api/qr/[token].png en vez de
   // un data URL inline.
-  const qrSrc = input.qrImageUrl.startsWith("http")
+  // FIX 2026-07-08 (audit XSS): escapamos el URL antes de inyectarlo en
+  // `src="${qrSrc}"` aunque hoy viene 100% interno (bot-engine.ts construye
+  // la URL con un token DB y un appBaseUrl fijo). Defensa en profundidad:
+  // si alguien cambia el upstream para leer de DB sin sanitizar, el
+  // template sigue siendo seguro. La validación de `startsWith("http")`
+  // + concatenación con `qlick.digital` se aplica ANTES del escape
+  // (queremos el URL semántico para el atributo src, no la versión
+  // escapada que rompería los `:` y `/`).
+  const qrSrcRaw = input.qrImageUrl.startsWith("http")
     ? input.qrImageUrl
     : `https://qlick.digital${input.qrImageUrl}`;
+  const qrSrc = esc(qrSrcRaw);
 
   // Subject: copy genérico, sin PII (anti-spam). El subject también se
   // inyecta en <title>...</title> del HTML, así que lo escapamos para
