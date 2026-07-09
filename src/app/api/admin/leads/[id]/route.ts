@@ -1,13 +1,24 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requireAdmin } from "@/lib/auth/session";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
-import { updateLeadStatus, archiveLead } from "@/lib/crm/leads-admin-server";
+import {
+  updateLeadStatus,
+  archiveLead,
+  updateLeadFields,
+  type LeadFieldUpdate,
+} from "@/lib/crm/leads-admin-server";
 
 /**
  * Operaciones admin sobre un lead concreto.
  *
- * PATCH /api/admin/leads/[id] { status: LeadStatus }
- *   -> cambia el status del lead (audit log + interacción del sistema).
+ * PATCH /api/admin/leads/[id] { status?: LeadStatus, name?, email?, phone? }
+ *   -> cambia el status y/o edita campos editables (name/email/phone).
+ *      El body puede traer CUALQUIER combinación. La rama status va por
+ *      `updateLeadStatus` (optimistic lock + audit con from/to reales);
+ *      los otros campos van por `updateLeadFields` (diff + audit con
+ *      before/after snapshots). Si el body trae ambos, se aplican ambos
+ *      en orden: primero status (que es la fuente de verdad del bot),
+ *      después campos (que son cosmética del admin).
  *
  * DELETE /api/admin/leads/[id]
  *   -> archiva el lead (soft delete). NO soporta `?mode=hard` por
@@ -40,7 +51,7 @@ export async function PATCH(
     );
   }
 
-  let body: { status?: unknown };
+  let body: { status?: unknown; name?: unknown; email?: unknown; phone?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -50,16 +61,66 @@ export async function PATCH(
     );
   }
 
-  const status = typeof body.status === "string" ? body.status : "";
-  const result = await updateLeadStatus(params.id, status, admin.email);
+  // 1. Status (si viene). Va primero porque es la "fuente de verdad" del bot.
+  if (typeof body.status === "string" && body.status.length > 0) {
+    const result = await updateLeadStatus(params.id, body.status, admin.email);
+    if (!result.ok) {
+      return NextResponse.json(
+        { ok: false, error: result.note ?? "No se pudo actualizar el status." },
+        { status: 400 },
+      );
+    }
+  }
 
-  if (!result.ok) {
+  // 2. Campos editables (si viene alguno). Después del status para que el
+  //    lead devuelto al final tenga tanto status como name/email/phone
+  //    frescos.
+  const fieldPatch: LeadFieldUpdate = {};
+  if (typeof body.name === "string") fieldPatch.name = body.name;
+  if (typeof body.email === "string") fieldPatch.email = body.email;
+  if (typeof body.phone === "string") fieldPatch.phone = body.phone;
+
+  if (Object.keys(fieldPatch).length > 0) {
+    const result = await updateLeadFields(params.id, fieldPatch, admin.email);
+    if (!result.ok) {
+      return NextResponse.json(
+        { ok: false, error: result.note ?? "No se pudieron actualizar los campos." },
+        { status: 400 },
+      );
+    }
+    return NextResponse.json({ ok: true, lead: result.lead });
+  }
+
+  // 3. Si solo vino status, ya respondimos arriba. Si vino vacío, error.
+  if (typeof body.status !== "string") {
     return NextResponse.json(
-      { ok: false, error: result.note ?? "No se pudo actualizar." },
+      {
+        ok: false,
+        error:
+          "Body vacío. Mandá al menos `status`, `name`, `email` o `phone`.",
+      },
       { status: 400 },
     );
   }
-  return NextResponse.json({ ok: true, lead: result.lead });
+
+  // Status-only path: re-leer para devolver el row con updated_at fresco.
+  // updateLeadStatus ya devuelve el lead actualizado, pero como abajo
+  // tenemos un solo return, lo recuperamos acá.
+  const { createSupabaseAdminClient } = await import("@/lib/supabase/admin");
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("leads")
+    .select("*")
+    .eq("id", params.id)
+    .maybeSingle();
+  if (error || !data) {
+    return NextResponse.json(
+      { ok: false, error: "Status actualizado pero no se pudo releer." },
+      { status: 500 },
+    );
+  }
+  const { mapLeadRowToLead } = await import("@/lib/crm/leads-mapper");
+  return NextResponse.json({ ok: true, lead: mapLeadRowToLead(data) });
 }
 
 /**

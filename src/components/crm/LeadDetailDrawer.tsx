@@ -23,6 +23,7 @@ import { getAISuggestionsForLead, getAgentReplyTemplate } from "@/lib/crm/agent-
 import { getWhatsAppConfigStatus } from "@/lib/contact/whatsapp";
 import {
   patchLeadStatus,
+  patchLeadFields,
   archiveLeadClient,
   fetchLeadNotes,
   createLeadNote,
@@ -109,6 +110,29 @@ export function LeadDetailDrawer({
   }>({ summary: "", channel: "whatsapp", direction: "outbound" });
   const [interactionState, setInteractionState] = useState<OpStatus>("idle");
   const [interactionMsg, setInteractionMsg] = useState<string | null>(null);
+
+  /**
+   * FIX 2026-07-08 (sesión David "registrados sin nombre/correo/teléfono"):
+   * Toggle de edición inline para los campos editables del lead
+   * (name/email/phone). Modos:
+   *   - `view`: muestra los datos como Info (default, sin form).
+   *   - `edit`: muestra form con inputs editables + Save/Cancel.
+   *
+   * `editingFields` snapshot del state al abrir el form para detectar diff
+   * y deshabilitar Save cuando no hay cambios.
+   *
+   * Optimistic update: si el server responde OK, `currentLead` ya tiene
+   * los valores nuevos (seteamos abajo del response). Si falla, rollback
+   * al snapshot original.
+   */
+  const [editFieldsMode, setEditFieldsMode] = useState<"view" | "edit">("view");
+  const [editingFields, setEditingFields] = useState<{
+    name: string;
+    email: string;
+    phone: string;
+  }>({ name: "", email: "", phone: "" });
+  const [editFieldsState, setEditFieldsState] = useState<OpStatus>("idle");
+  const [editFieldsMsg, setEditFieldsMsg] = useState<string | null>(null);
 
   // --- Datos reales (solo se cargan en modo real) ---
   const [realNotes, setRealNotes] = useState<NoteView[] | null>(null);
@@ -507,6 +531,132 @@ export function LeadDetailDrawer({
     }
   }
 
+  /**
+   * FIX 2026-07-08: abre el form de edición de campos. Snapshot del state
+   * actual del lead para que Cancel pueda restaurar y para detectar diff.
+   */
+  function handleEditFieldsOpen() {
+    if (!realMode) return; // Solo en modo real (en demo no hay endpoint)
+    setEditingFields({
+      name: currentLead.name,
+      email: currentLead.email,
+      phone: currentLead.phone ?? "",
+    });
+    setEditFieldsMsg(null);
+    setEditFieldsState("idle");
+    setEditFieldsMode("edit");
+  }
+
+  function handleEditFieldsCancel() {
+    setEditFieldsMode("view");
+    setEditFieldsMsg(null);
+    setEditFieldsState("idle");
+  }
+
+  /**
+   * FIX 2026-07-08: persiste los cambios del form.
+   * - Envía solo los campos que cambiaron (diff contra snapshot).
+   * - Optimistic: actualiza `currentLead` al instante con los nuevos valores.
+   * - Rollback si el server rechaza.
+   * - Cierra el form en éxito.
+   */
+  async function handleSaveFields(e: React.FormEvent) {
+    e.preventDefault();
+    if (editFieldsState === "loading") return;
+    const name = editingFields.name.trim();
+    if (name.length === 0) {
+      setEditFieldsState("error");
+      setEditFieldsMsg("El nombre no puede estar vacío.");
+      return;
+    }
+    if (name.length > 100) {
+      setEditFieldsState("error");
+      setEditFieldsMsg("El nombre no puede superar 100 caracteres.");
+      return;
+    }
+    // Email opcional pero si viene, formato válido
+    const emailTrim = editingFields.email.trim();
+    if (emailTrim && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) {
+      setEditFieldsState("error");
+      setEditFieldsMsg("Email con formato inválido.");
+      return;
+    }
+    // Phone opcional pero si viene, formato E.164 (código de país + número)
+    const phoneTrim = editingFields.phone.trim();
+    if (phoneTrim && !/^\+\d{7,15}$/.test(phoneTrim.replace(/[\s\-()]/g, ""))) {
+      setEditFieldsState("error");
+      setEditFieldsMsg("Teléfono debe incluir código de país (ej. +52 686...).");
+      return;
+    }
+    // Diff contra state actual: solo mandamos lo que cambió.
+    const patch: { name?: string; email?: string; phone?: string } = {};
+    if (name !== currentLead.name) patch.name = name;
+    const nextEmail = emailTrim; // empty string = limpiar
+    if (nextEmail !== (currentLead.email ?? "")) patch.email = nextEmail;
+    const nextPhone = phoneTrim; // empty string = limpiar
+    if (nextPhone !== (currentLead.phone ?? "")) patch.phone = nextPhone;
+    if (Object.keys(patch).length === 0) {
+      setEditFieldsState("success");
+      setEditFieldsMsg("Sin cambios.");
+      setTimeout(() => {
+        setEditFieldsMode("view");
+        setEditFieldsState("idle");
+        setEditFieldsMsg(null);
+      }, 1200);
+      return;
+    }
+
+    // Snapshot para rollback.
+    const snapshot = {
+      name: currentLead.name,
+      email: currentLead.email,
+      phone: currentLead.phone,
+    };
+    // Optimistic: aplica ya al UI mientras el server confirma.
+    // Lead.email es `string` (no `null`) según src/types/crm.ts; usamos
+    // string vacío para "limpiar". Lead.phone es `string | undefined`.
+    setCurrentLead((c) => ({
+      ...c,
+      name: patch.name ?? c.name,
+      email:
+        patch.email !== undefined
+          ? patch.email
+          : c.email,
+      phone:
+        patch.phone !== undefined
+          ? patch.phone === ""
+            ? undefined
+            : patch.phone
+          : c.phone,
+    }));
+    setEditFieldsState("loading");
+    setEditFieldsMsg(null);
+    try {
+      const updated = await patchLeadFields(currentLead.id, patch);
+      setCurrentLead(updated);
+      onLeadChanged?.(updated);
+      setEditFieldsState("success");
+      setEditFieldsMsg("Datos actualizados.");
+      setTimeout(() => {
+        setEditFieldsMode("view");
+        setEditFieldsState("idle");
+        setEditFieldsMsg(null);
+      }, 1500);
+    } catch (err) {
+      // Rollback al snapshot.
+      setCurrentLead((c) => ({
+        ...c,
+        name: snapshot.name,
+        email: snapshot.email,
+        phone: snapshot.phone,
+      }));
+      setEditFieldsState("error");
+      setEditFieldsMsg(
+        err instanceof Error ? err.message : "No se pudieron guardar los cambios.",
+      );
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       {/* Overlay */}
@@ -653,28 +803,175 @@ export function LeadDetailDrawer({
         </div>
 
         <div className="p-6 space-y-6">
-          {/* Datos */}
-          <section className="grid sm:grid-cols-2 gap-3 text-sm">
-            <Info label="Email" value={currentLead.email} />
-            <Info label="Teléfono" value={currentLead.phone ?? "—"} />
-            <Info label="Fuente" value={leadSourceLabel[currentLead.source]} />
-            <Info label="Intención" value={leadIntentLabel[currentLead.intent]} />
-            <Info
-              label="Responsable"
-              value={owner ? `${owner.name}` : "Sin asignar"}
-            />
-            <Info
-              label="Próximo seguimiento"
-              value={currentLead.nextFollowUpAt ? formatDate(currentLead.nextFollowUpAt) : "—"}
-            />
-            {currentLead.estimatedValueMXN !== undefined && currentLead.estimatedValueMXN > 0 && (
-              <Info label="Valor estimado" value={formatMXN(currentLead.estimatedValueMXN)} />
-            )}
-            <Info
-              label="Consentimiento"
-              value={currentLead.consentToContact ? "Sí" : "No"}
-            />
-          </section>
+          {/* Datos — FIX 2026-07-08: toggle view/edit para campos editables
+              (name, email, phone). En modo edit: form con inputs + Save/Cancel.
+              En modo view: layout en grilla como antes + botón "Editar". */}
+          {editFieldsMode === "view" ? (
+            <section>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-xs font-bold uppercase text-brand-600">
+                  Datos de contacto
+                </h3>
+                {realMode && (
+                  <button
+                    type="button"
+                    onClick={handleEditFieldsOpen}
+                    className="text-xs font-semibold text-brand-600 hover:text-brand-700 hover:underline inline-flex items-center gap-1"
+                    aria-label="Editar nombre, email y teléfono"
+                  >
+                    ✏️ Editar
+                  </button>
+                )}
+              </div>
+              <div className="grid sm:grid-cols-2 gap-3 text-sm">
+                {/* FIX 2026-07-08: resaltar visualmente cuando name/email son
+                    placeholders legacy ("WhatsApp Lead", "wa.xxx@placeholder.local").
+                    El admin ve de un vistazo qué leads quedaron con data incompleta
+                    del bot viejo. */}
+                <Info
+                  label="Nombre"
+                  value={currentLead.name}
+                  isPlaceholder={
+                    currentLead.name === "WhatsApp Lead" ||
+                    currentLead.name.toLowerCase() === "asistente" ||
+                    /^\s*$/.test(currentLead.name)
+                  }
+                />
+                <Info
+                  label="Email"
+                  value={currentLead.email ?? "—"}
+                  isPlaceholder={
+                    !!currentLead.email?.startsWith("wa.") &&
+                    currentLead.email.endsWith("@placeholder.local")
+                  }
+                />
+                <Info label="Teléfono" value={currentLead.phone ?? "—"} />
+                <Info label="Fuente" value={leadSourceLabel[currentLead.source]} />
+                <Info label="Intención" value={leadIntentLabel[currentLead.intent]} />
+                <Info
+                  label="Responsable"
+                  value={owner ? `${owner.name}` : "Sin asignar"}
+                />
+                <Info
+                  label="Próximo seguimiento"
+                  value={currentLead.nextFollowUpAt ? formatDate(currentLead.nextFollowUpAt) : "—"}
+                />
+                {currentLead.estimatedValueMXN !== undefined && currentLead.estimatedValueMXN > 0 && (
+                  <Info label="Valor estimado" value={formatMXN(currentLead.estimatedValueMXN)} />
+                )}
+                <Info
+                  label="Consentimiento"
+                  value={currentLead.consentToContact ? "Sí" : "No"}
+                />
+              </div>
+            </section>
+          ) : (
+            // Modo edit: form inline con los 3 campos editables.
+            <section className="border border-brand-200 rounded-xl p-4 bg-brand-50/30">
+              <h3 className="text-xs font-bold uppercase text-brand-600 mb-3">
+                Editar datos de contacto
+              </h3>
+              <form onSubmit={handleSaveFields} noValidate className="space-y-3">
+                <Field
+                  label="Nombre"
+                  error={
+                    editFieldsState === "error" && editFieldsMsg?.toLowerCase().includes("nombre")
+                      ? editFieldsMsg
+                      : null
+                  }
+                  required
+                >
+                  <Input
+                    value={editingFields.name}
+                    onChange={(e) => {
+                      setEditingFields((f) => ({ ...f, name: e.target.value }));
+                      if (editFieldsState === "error") {
+                        setEditFieldsState("idle");
+                        setEditFieldsMsg(null);
+                      }
+                    }}
+                    placeholder="Nombre y apellido"
+                    className="w-full"
+                    disabled={editFieldsState === "loading"}
+                    autoFocus
+                  />
+                </Field>
+                <Field
+                  label="Email"
+                  error={
+                    editFieldsState === "error" && editFieldsMsg?.toLowerCase().includes("email")
+                      ? editFieldsMsg
+                      : null
+                  }
+                >
+                  <Input
+                    type="email"
+                    value={editingFields.email}
+                    onChange={(e) => {
+                      setEditingFields((f) => ({ ...f, email: e.target.value }));
+                      if (editFieldsState === "error") {
+                        setEditFieldsState("idle");
+                        setEditFieldsMsg(null);
+                      }
+                    }}
+                    placeholder="email@ejemplo.com"
+                    className="w-full"
+                    disabled={editFieldsState === "loading"}
+                  />
+                </Field>
+                <Field
+                  label="Teléfono"
+                  error={
+                    editFieldsState === "error" && editFieldsMsg?.toLowerCase().includes("teléfono")
+                      ? editFieldsMsg
+                      : null
+                  }
+                >
+                  <Input
+                    type="tel"
+                    value={editingFields.phone}
+                    onChange={(e) => {
+                      setEditingFields((f) => ({ ...f, phone: e.target.value }));
+                      if (editFieldsState === "error") {
+                        setEditFieldsState("idle");
+                        setEditFieldsMsg(null);
+                      }
+                    }}
+                    placeholder="+52 686 123 4567"
+                    className="w-full"
+                    disabled={editFieldsState === "loading"}
+                  />
+                </Field>
+                {editFieldsMsg &&
+                  editFieldsState !== "error" &&
+                  !editFieldsMsg.toLowerCase().includes("nombre") &&
+                  !editFieldsMsg.toLowerCase().includes("email") &&
+                  !editFieldsMsg.toLowerCase().includes("teléfono") && (
+                    <p className="text-xs text-emerald-700 bg-emerald-50 rounded-lg p-2">
+                      {editFieldsMsg}
+                    </p>
+                  )}
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={editFieldsState === "loading"}
+                  >
+                    {editFieldsState === "loading" ? "Guardando…" : "Guardar"}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleEditFieldsCancel}
+                    disabled={editFieldsState === "loading"}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </form>
+            </section>
+          )}
 
           {currentLead.summary && (
             <p className="text-sm text-ink-soft bg-brand-50/50 rounded-xl p-3">
@@ -1315,11 +1612,34 @@ export function LeadDetailDrawer({
 
 /* ----------------------- Helpers de presentación ----------------------- */
 
-function Info({ label, value }: { label: string; value: string }) {
+/**
+ * FIX 2026-07-08: helper `Info` extendido con `isPlaceholder`. Cuando es
+ * true, el value se renderiza con tinte amber y badge "(placeholder)" para
+ * que el admin identifique data legacy incompleta de un vistazo.
+ */
+function Info({
+  label,
+  value,
+  isPlaceholder = false,
+}: {
+  label: string;
+  value: string;
+  isPlaceholder?: boolean;
+}) {
   return (
     <div>
       <p className="text-xs font-semibold uppercase text-ink-muted">{label}</p>
-      <p className="text-ink">{value}</p>
+      <p className={"flex items-center gap-1.5 " + (isPlaceholder ? "text-amber-700" : "text-ink")}>
+        <span>{value}</span>
+        {isPlaceholder && (
+          <span
+            className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-200"
+            title="Dato placeholder heredado de bugs del bot. Editá para corregir."
+          >
+            placeholder
+          </span>
+        )}
+      </p>
     </div>
   );
 }

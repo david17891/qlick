@@ -69,6 +69,35 @@ export async function patchLeadStatus(
 }
 
 /**
+ * PATCH /api/admin/leads/[id] → edita campos (name/email/phone) del lead.
+ *
+ * FIX 2026-07-08 (sesión David "registrados sin nombre/correo/teléfono"):
+ * el drawer del CRM ahora permite editar los campos editables del lead
+ * sin pasar por el form de creación. Útil para corregir placeholders
+ * legacy ("WhatsApp Lead") o completar emails faltantes.
+ *
+ * El server valida formato (email RFC-lite, phone E.164, name 1–100).
+ * Si la validación falla, `parseEnvelope` lanza con el mensaje del server
+ * (ej. "Email con formato inválido.").
+ *
+ * El body es `Partial<>`: pasá solo los campos que querés cambiar.
+ * El server hace diff contra DB y solo persiste los que efectivamente
+ * cambian (audit log limpio).
+ */
+export async function patchLeadFields(
+  leadId: string,
+  fields: { name?: string; email?: string; phone?: string },
+): Promise<Lead> {
+  const res = await fetch(`/api/admin/leads/${leadId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(fields),
+  });
+  const data = await parseEnvelope<{ ok: true; lead: Lead }>(res);
+  return data.lead;
+}
+
+/**
  * DELETE /api/admin/leads/[id] → archiva el lead (soft delete).
  *
  * NO soporta `?mode=hard` por compliance LGPD/LFPDPPP (ver peer review R1).
