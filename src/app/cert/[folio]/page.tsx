@@ -31,6 +31,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { generateQrPngDataUrl, getCertQrUrl } from "@/lib/certificates/qr-helper";
 import { loadAssetAsDataUrl } from "@/lib/certificates/asset-loader";
 import { formatDateLong } from "@/lib/certificates/format-helpers";
+import { PrintCertButton } from "./_components/PrintCertButton";
 import "./cert.css";
 
 interface CertPageProps {
@@ -281,6 +282,7 @@ export default async function CertPage({ params }: CertPageProps) {
           Para guardar como PDF: <kbd>Ctrl</kbd>+<kbd>P</kbd> → "Guardar como PDF".
           En la ventana emergente elegí <strong>Tamaño: Horizontal A4</strong> y desmarcá <strong>Encabezados y pies de página</strong>.
         </p>
+        <PrintCertButton />
       </header>
 
       <div className="stage">
