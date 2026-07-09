@@ -1932,3 +1932,51 @@ ext.config.mjs o src/lib/env.ts.
 - **No inventar comportamiento de servicios.** Yo dije que "Supabase detecta tokens pegados en chat y los rota" - David me corrigio: no hay evidencia de eso, la unica razon valida para no pegar tokens por chat es seguridad (no queres que queden en logs de Mavis), no un comportamiento del servicio. **Regla:** si no verifique, no afirmo.
 - **SQL Editor del dashboard > pelearse con credenciales drift** para migraciones aditivas. 30 seg vs 30 min. Reservar `supabase db push` / `exec-sql.mjs` para cuando las credenciales esten sanas.
 
+---
+
+## AI Ads Hub — pendientes pre-Fase 1 (bloqueados por evento del 10-jul)
+
+**Severidad:** ⚪ **Bloqueado** esperando (a) cierre del evento en vivo del 10-jul, (b) decisiones de David sobre IA provider / frecuencia cron / branch target, (c) System User Token de Paul.
+
+**Plan completo:** `docs/AI_ADS_HUB_PLAN.md` (rama `docs/fase-A-ads-hub-plan`, sin pushear).
+
+### Decisiones de David pendientes (recomendaciones en §5 del plan)
+
+| # | Decisión | Default recomendado | Costo de cambiar |
+|---|---|---|---|
+| **D-1** | IA provider para `ai-ads-auditor.ts` | DeepSeek Flash default + Anthropic Sonnet 4.6 fallback (cuando zod falla 2× seguidas) | Claude-first = ~30× más caro por llamada, baja riesgo de falsos negativos |
+| **D-2** | Frecuencia del cron `meta-sync` | Diario 06:00 CDMX (justo post-corte nocturno Meta) | Sub-diario requiere migrar a Supabase `pg_cron` (Hobby 1/día techo) |
+| **D-3** | Branch target cuando arranque Fase 1 | `feat/fase-N-ai-ads-hub` con merges chicos a main | Rama aislada hasta tener todo verde = rollback caro si hay que mergear tarde |
+
+### Dependencias externas (no técnicas)
+
+- **Paul** debe generar System User Token Meta con scope único `ads_read` (guía de 3 min en §6 del plan). Variable resultado: `META_ACCESS_TOKEN` + `META_AD_ACCOUNT_ID`. Canal seguro (1Password o llamada) — NUNCA WhatsApp/email plano. Trigger: cuando David avise que está listo post-evento.
+- **David** debe setear las env vars en Vercel + `.env.local` una vez recibido el token. Cron NO se activa hasta que estén pobladas (la app sigue en modo demo).
+
+### Auditorías pre-Fase 2 (no bloqueantes para Fase 1)
+
+- **A-1** Verificar que `/contacto`, `/eventos/[slug]/registro`, `/masterclass/[slug]` propagan UTMs al backend (`utm_source`, `utm_campaign`, `utm_content`, `utm_term`). Si no propagan → agregar en handler de formulario público, **sin tocar `bot-engine.ts`**.
+- **A-2** Verificar que `masterclass_registrations` (que ya tiene `utm_*`) los pasa correctamente al crear lead. Si hay gap → ajustar join en `getCampaignAttribution`.
+
+### Tests críticos pendientes (al cierre de cada fase)
+
+- **T-1** (Fase 2) Test E2E del payload IA: confirmar que el esquema zod rechaza cualquier string que parezca email/teléfono. Si pasa, garantía anti-PII.
+- **T-2** (Fase 3) Test Playwright de las 5 rutas críticas del Hub (`/admin/eventos/[id]?tab=ads_hub` con insights, tabla con badges, exportador).
+- **T-3** (Fase 4) Test del MCP server con mock de Supabase: cada tool responde con schema correcto, errores claros en inputs inválidos.
+
+### Riesgos abiertos
+
+- **R-1** Si Meta banea la cuenta de Paul → degradar a modo demo con banner amarillo en UI. Plan documentado en `marketing-api.ts` ya soporta demo sin env vars.
+- **R-2** Si el cron corre en Vercel Hobby > 1/día → rechazado en silencio (verificado). Si en futuro queremos 6h, migración a `pg_cron`.
+- **R-3** Si `meta_ai_insights` cache 6h no es suficiente (ej: evento crítico en vivo) → endpoint admin para invalidar cache manualmente.
+
+### Trigger de arranque de Fase 1
+
+Cuando se cumplan **las 3 condiciones**:
+
+1. Evento del 10-jul cerrado sin incidentes críticos.
+2. David contesta las 3 decisiones (D-1, D-2, D-3) o dice "procede con defaults".
+3. Paul confirma que System User Token está listo (o autoriza modo demo para Fase 1 sin token real).
+
+→ `git checkout -b feat/fase-1-ai-ads-hub` desde main actualizado → aplicar 2 migrations → `snapshot-service.ts` + `/api/cron/meta-sync` + `tests/meta-sync.test.mjs`.
+

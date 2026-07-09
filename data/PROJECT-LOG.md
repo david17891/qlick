@@ -3018,3 +3018,24 @@ Type: deploy-relevant
 - **Validacion:** type-check OK, lint OK, 618/618 tests OK (606 + 12 nuevos en tests/payments-fase2-hardening.test.mjs), build OK.
 - **Pendiente go-live:** David testea 4 vectores E2E en incognito, luego flip a sk_live_* via checklist en docs/PAYMENTS_AUDIT_2026-07-08.md seccion FASE 2.
 - **Trigger:** SRE marco los 4 como MUST-FIX en auditoria del 2026-07-08 04:00. Bloqueante para sk_live_*.
+
+### 2026-07-09 10:06 MST — docs(plan): AI Ads Hub — blueprint 5 fases documentado pre-evento
+
+- **Pregunta:** Plan maestro de AI Ads Hub (cruce Meta Ads + CRM + LLM) — cómo sobrevivir la sesión si Mavis se rompe y arrancar Fase 1 el 11-jul sin pérdida de contexto?
+- **Decisión:** Persistir blueprint completo en `docs/AI_ADS_HUB_PLAN.md` (rama `docs/fase-A-ads-hub-plan`, sin tocar main, sin pushear).
+- **Razón:** Sesión Mavis `mvs_56c0dd2dfeaa42f695393b08bb781ebd` se rompió durante el diseño del plan; el plan existía solo en el transcript (modo /GOAL). Riesgo de perder el diseño completo (5 fases, DDL, system prompt, MCP schema, riesgos, guía para Paul). Documentar en disco = supervivencia cross-sesión.
+- **Impacto:**
+  - Plan completo en disco: 8 secciones (diagnóstico verificado, blueprint arquitectónico, 5 fases con archivos/DDL/tests, riesgos, decisiones pendientes, guía para Paul, changelog).
+  - Rama `docs/fase-A-ads-hub-plan` creada desde `main` limpio — no toca main ni `feat/*` activa. Stash previo (`stripe-fase2-audit-2026-07-08-preserved-before-ads-hub`) preserva cambios sin commitear de la sesión previa de Stripe.
+  - `data/PROJECT-LOG.md` con esta entrada. `docs/OPEN_ITEMS.md` con pendientes del Ads Hub (commit en el mismo).
+- **Archivos tocados:**
+  - `docs/AI_ADS_HUB_PLAN.md` (nuevo, ~430 líneas, 5 fases).
+  - `data/PROJECT-LOG.md` (esta entrada).
+  - `docs/OPEN_ITEMS.md` (sección Ads Hub).
+- **NO tocado:** código de producto. Cero cambios a `src/`, `supabase/migrations/`, `vercel.json`. Plan queda en rama aislada hasta 11-jul.
+- **Pendiente (decisiones de David antes de Fase 1):**
+  1. IA provider: DeepSeek Flash default + Anthropic Sonnet 4.6 fallback (recomendado).
+  2. Frecuencia cron: diario 06:00 CDMX (Hobby 1/día techo).
+  3. Branch target: `feat/fase-N-ai-ads-hub` con merges chicos (recomendado).
+  4. Paul: System User Token Meta con scope `ads_read` puro (guía de 3 min en §6 del plan).
+- **Trigger:** David pidió "para que lo revises y documentes por si acaso" — preservar el diseño del Ads Hub que existía solo en transcript de sesión rota.
