@@ -18,6 +18,7 @@ import {
   type EventQrPassInput,
 } from "./templates/event-qr-pass";
 import { logEventEmail, type LogEventEmailInput } from "./log";
+import { infoLog } from "../log";
 
 export type { EventQrPassInput };
 
@@ -55,8 +56,9 @@ export async function sendEventQrPassEmail(
     subject,
     html,
   });
-  // eslint-disable-next-line no-console
-  console.log(
+  // FIX 2026-07-08 (audit): usar infoLog en vez de console.log directo.
+  // Mismo rationale que en event-reminder.ts.
+  infoLog(
     `[email/event-qr-pass] ${result.ok ? "ok" : "failed"} mode=${result.mode} to=${input.attendeeEmail} event="${input.eventTitle}"`,
     result.error ? { error: result.error } : {},
   );

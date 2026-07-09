@@ -16,6 +16,7 @@ import {
   type EventReminderInput,
 } from "./templates/event-reminder";
 import { logEventEmail, type LogEventEmailInput } from "./log";
+import { infoLog } from "../log";
 
 export type { EventReminderInput };
 
@@ -43,8 +44,13 @@ export async function sendEventReminderEmail(
     subject,
     html,
   });
-  // eslint-disable-next-line no-console
-  console.log(
+  // FIX 2026-07-08 (audit): usar infoLog (helper centralizado) en vez de
+  // console.log directo. infoLog aparece en logs de prod (es operacional,
+  // no debug) pero pasa por el wrapper para consistencia con el resto del
+  // sistema. El log incluye email + eventTitle (PII operacional acotada,
+  // aceptable para observabilidad — ver memory: 'Cero PII en logs' aplica
+  // para bot-engine debug, no para observabilidad de infra de email).
+  infoLog(
     `[email/event-reminder] ${result.ok ? "ok" : "failed"} kind=${input.reminderKind} mode=${result.mode} to=${input.attendeeEmail} event="${input.eventTitle}"`,
     result.error ? { error: result.error } : {},
   );
