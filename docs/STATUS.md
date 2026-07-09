@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-08 17:30 — **Sprint Certificados Concept C cerrado (v0.9.1)**. Rama `feat/certificados-concept-c` con 6 commits (`8454577` → `511d15c`) mergeada conceptual al trunk de feat/. Cert HTML imprimible 1:1 con design aprobado en `docs/qlick-cert-system/03-concept-c-dynamic-authority.html`, ruta `/cert/[folio]` con auth admin, server action `issueCertificateAction` con idempotencia por (event_id, attendee_id), botón "✨ Emitir cert" en admin check-in tab, botón "🖨️ Imprimir" con `document.fonts.ready` para evitar layout shift al imprimir. Fix crítico: `@page { size: 297mm 210mm; margin: 0 }` (NO keyword `A4 landscape` — Chrome ambigüa el keyword con drivers Letter y produce margen blanco vertical). Validado en prod con attendee `dddddddd-dddd-dddd-dddd-dddddddddddd` y folio `QLK-2026-68558`. Handoff: `docs/HANDOFF_v0.9.1_CERT_CONCEPT_C.md`. Pendiente: cleanup DB de dev artifacts + decisión Paso 2 (script bulk + envío por correo) — David y Mavis lo planean aparte.
+> **Última actualización:** 2026-07-08 18:15 — **Sprint Cert Email (v0.9.2) CERRADO + E2E validado**. Rama `feat/certificados-concept-c` con 7 commits (8454577 → f3e4447). `/cert/[folio]` pasa a público (sin auth admin), panel admin `CertificateBatchPanel` con preview → confirmación → envío batch, email transaccional con Brevo (`noreply@qlick.digital`) con mensaje de felicitación + link al cert, fallback WhatsApp con deep link `wa.me/[phone]?text=...` pre-armado (NO bot — abre web.whatsapp.com en browser de David). Migration `20260708170000_event_email_log_certificate_type.sql` extiende CHECK constraint con 'certificate' + FK a event_certificates. **E2E punta a punta validado:** Supabase loggea fila `email_type='certificate'` con `ok=true`, Brevo recibe transactional email con subject correcto, timestamps coherentes (1s diferencia). Handoff: `docs/HANDOFF_v0.9.2_CERT_EMAIL.md`. Pendiente: pilotaje real con attendees del evento 11/jul + cleanup DB (DDDDDDD attendee + QLK-2026-68558) + decisión post-evento sobre cron automático (fase 3).
 
 ---
 
@@ -303,7 +303,8 @@ Detalle completo en `CHANGELOG.md`.
 
 ## 📚 Docs de referencia
 
-- `docs/HANDOFF_v0.9.1_CERT_CONCEPT_C.md` — **handoff del sprint Certificados Concept C (rama `feat/certificados-concept-c`, deploy prod OK)** ← nuevo
+- `docs/HANDOFF_v0.9.2_CERT_EMAIL.md` — **handoff del sprint Cert Email (envío batch + email Brevo + WhatsApp fallback)** ← nuevo, E2E validado
+- `docs/HANDOFF_v0.9.1_CERT_CONCEPT_C.md` — handoff del sprint Certificados Concept C (cert HTML imprimible)
 - `docs/HANDOFF_v0.9.0_CRM_INTELIGENTE.md` — handoff del release CRM Inteligente v2.0
 - `docs/HANDOFF_v0.8.0_FUNCIONAL.md` — handoff previo (wizard WhatsApp + Español MX)
 - `docs/HANDOFF_v0.7.1_FASE_7A_REMINDERS.md` — recordatorios evento

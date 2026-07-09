@@ -1,12 +1,29 @@
 # Qlick LMS — Roadmap
 
 > Fuente de verdad del plan del LMS. Cualquier desvío se conversa y se actualiza acá.
-> Última revisión: 2026-07-08 17:30 — **Sprint Certificados Concept C (v0.9.1)** cerrado en `feat/certificados-concept-c`. **v0.9.0 (CRM Inteligente v2.0)** sigue siendo el release de `main`. Fase 4 (Calendario + Tareas + Notificaciones) sigue planificada.
+> Última revisión: 2026-07-08 18:15 — **Sprint Cert Email (v0.9.2)** cerrado en `feat/certificados-concept-c`. E2E validado Supabase + Brevo. Pendiente: pilotaje con attendees reales en evento del 11/jul.
 
 ---
 
 ## Estado actual
 
+- [x] **v0.9.2 — Sprint Cert Email (envío batch de constancias)** — sprint cerrado el 2026-07-08 en rama `feat/certificados-concept-c` (deploy prod OK en `www.qlick.digital`, E2E validado)
+  - Handoff completo: `docs/HANDOFF_v0.9.2_CERT_EMAIL.md` ← **leer primero**
+  - Status vivo: `docs/STATUS.md` (snapshot del 2026-07-08 18:15)
+  - Commit: `f3e4447` (sprint completo, 9 archivos)
+  - **Qué incluye:**
+    - **`/cert/[folio]` pasa a público** (antes requería cookie admin). El folio es el secreto: random sobre 100k combinaciones, no adivinable. Hardening futuro: JWT con expiración.
+    - **Panel admin `CertificateBatchPanel`** con UX de 2 pasos: preview (cargado por `getCertificateBatchPreviewAction`) + confirmación (`sendBatchCertificatesAction`). Muestra desglose por canal (email / WhatsApp fallback / skipped).
+    - **Email transaccional con Brevo** (`noreply@qlick.digital`). Template con saludo personalizado, datos del evento, folio en mono, CTA grande "Ver mi constancia", instrucciones Ctrl+P.
+    - **Fallback WhatsApp**: link `wa.me/[phone]?text=...` pre-armado con mensaje + link al cert. Abre `web.whatsapp.com` en browser de David (NO bot).
+    - **Idempotencia**: RPC `issue_event_certificate` ya es idempotente. El email puede re-enviarse si David corre el batch 2 veces.
+    - **Migration**: extiende `event_email_log` con `email_type='certificate'` (CHECK constraint) + `event_certificate_id` (FK nullable) + índice.
+    - **12 tests nuevos** para el template (incluido XSS en `<title>` descubierto durante desarrollo, ya arreglado).
+  - **Validado E2E** (David + Mavis, 2026-07-08 18:10):
+    - Supabase: 1 fila `event_email_log` con `email_type='certificate'`, `ok=true`, `event_certificate_id` poblado.
+    - Brevo: 1 transactional email con subject correcto, recipient OK, timestamp coherente (diferencia 1s vs Supabase log).
+  - **Lección XSS**: subject del correo se inyectaba sin escapar en `<title>` y `<meta>` — fix aplicado, tests blindan el comportamiento. Regla universal: escapar TODA interpolación en HTML, testear TODOS los campos dinámicos.
+  - **Pendiente:** pilotaje real con attendees del evento 11/jul (no hubo asistentes para esta prueba). Cleanup DB de dev artifacts (DDDDDDD/QLK-2026-68558).
 - [x] **v0.9.1 — Sprint Certificados Concept C** — sprint cerrado el 2026-07-08 en rama `feat/certificados-concept-c` (aún NO mergeada a `main`; deploy prod OK en `www.qlick.digital`)
   - Handoff completo: `docs/HANDOFF_v0.9.1_CERT_CONCEPT_C.md` ← **leer primero**
   - Status vivo: `docs/STATUS.md` (snapshot del 2026-07-08)
