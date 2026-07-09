@@ -39,6 +39,7 @@ import { DeleteSurveyButton } from "./_components/DeleteSurveyButton";
 import { SendSurveyOffersButton } from "@/components/events/SendSurveyOffersButton";
 import { AddConfirmationButton } from "./_components/AddConfirmationButton";
 import { ResendQrPassButton } from "./_components/ResendQrPassButton";
+import { EditConfirmationButton } from "./_components/EditConfirmationButton";
 import { formatSurveyResponses } from "@/lib/events/survey-display";
 import { SurveyEditor } from "@/components/events/SurveyEditor";
 import { getDefaultSurveyConfig } from "@/lib/events/survey-config-validator";
@@ -754,6 +755,17 @@ export default async function AdminEventoDetailPage({
                         </td>
                         <td className="px-5 py-3 text-right">
                           <div className="inline-flex items-center gap-2 justify-end">
+                            {/* FIX 2026-07-08 (sesión David "registrados sin
+                                nombre/correo/teléfono"): botón Editar por
+                                cada fila. Modal inline con form
+                                name/email/phone. Reusa el mismo server
+                                action `editConfirmationAction` que valida
+                                formato y re-mapea el QR token si cambia
+                                email/phone. */}
+                            <EditConfirmationButton
+                              confirmation={c}
+                              eventId={event.id}
+                            />
                             {/* FIX 2026-07-07: botón de reenvío de email
                                 (sender noreply@qlick.digital + plantilla
                                 oficial) por cada confirmado. */}

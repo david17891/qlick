@@ -19,7 +19,9 @@ import {
 } from "./event-mapper";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { normalizePhone } from "../crm/phone-utils.ts";
+import { normalizePhone } from "../crm/phone-utils";
+import { extractEmailFromText } from "../whatsapp/email-extract";
+import { logAdminAction } from "../crm/audit-server";
 
 function isRealMode(): boolean {
   if (typeof window !== "undefined") return false;
@@ -352,4 +354,285 @@ export async function deleteConfirmation(
     note: `Confirmación eliminada. ${deletedQrTokens} QR token(s) asociado(s) borrado(s).`,
     deletedQrTokens,
   };
+}
+
+/**
+ * FIX 2026-07-08 (sesión David "registrados sin nombre/correo/teléfono"):
+ * Actualiza campos editables (name/email/phone) de una confirmación de
+ * evento. Server-only.
+ *
+ * Caso de uso: leads legacy registrados con placeholders del bot
+ * (ej. "WhatsApp Lead", `wa.xxx@placeholder.local`) necesitan poder
+ * corregirse desde la vista `/admin/eventos/[id]?tab=confirmations`,
+ * que es donde David verifica la campaña del evento en vivo.
+ *
+ * Diferencias con `updateLeadFields` (crm/leads-admin-server.ts):
+ *   - NO toca `leads` — solo `event_confirmations`. Esta función edita
+ *     el confirmado del evento, no el lead global del CRM.
+ *   - Para mantener coherencia con `event_qr_tokens` y el flujo de
+ *     envío de email del QR pass: si cambia el email/phone, también
+ *     actualizamos el QR token asociado (idempotente — reusa si hay
+ *     vigente, regenera si no).
+ *
+ * Validaciones (mismas que updateLeadFields, para consistencia):
+ *   - name: 1-100 chars (no vacío, no más de 100).
+ *   - email: formato RFC-lite (`/^[^\s@]+@[^\s@]+\.[^\s@]+$/`),
+ *     extracción de embebidos vía `extractEmailFromText`.
+ *   - phone: normalizado a E.164 vía `normalizePhone`. Si llega vacío,
+ *     limpiamos el campo. Si llega con formato inválido, error.
+ *
+ * Optimistic lock: NO (no hay race con el bot aquí — el bot solo
+ * escribe en `event_confirmations` cuando llega un nuevo inbound, y
+ * eso es para un confirmationId distinto).
+ *
+ * Auditoría: action='event_confirmation_edit' con before/after JSONB.
+ *
+ * @param confirmationId UUID de la confirmation.
+ * @param fields         Patch parcial con los campos a actualizar.
+ * @param actorEmail     Email del admin (para audit log).
+ * @param deps           (opcional) Inyección de dependencias para tests.
+ */
+export interface ConfirmationFieldUpdate {
+  name?: string;
+  email?: string;
+  phone?: string;
+}
+
+export interface UpdateConfirmationFieldsResult {
+  ok: boolean;
+  confirmation?: EventConfirmation;
+  note?: string;
+}
+
+export async function updateConfirmationFields(
+  confirmationId: string,
+  fields: ConfirmationFieldUpdate,
+  actorEmail: string,
+  deps?: {
+    supabase?: Awaited<ReturnType<typeof createSupabaseAdminClient>> | null;
+    isConfigured?: boolean;
+  },
+): Promise<UpdateConfirmationFieldsResult> {
+  const isConfigured = deps?.isConfigured ?? checkSupabaseConfig().configured;
+  if (!isConfigured) {
+    return { ok: false, note: "Supabase no configurado." };
+  }
+  if (!confirmationId || !actorEmail) {
+    return { ok: false, note: "Faltan datos (confirmationId/actor)." };
+  }
+  if (!fields || Object.keys(fields).length === 0) {
+    return { ok: false, note: "Patch vacío." };
+  }
+
+  // Validaciones por campo. Devolvemos error actionable (no silencioso).
+  const cleaned: { name?: string; email?: string; phoneRaw?: string } = {};
+
+  if (fields.name !== undefined) {
+    const name = fields.name.trim();
+    if (name.length === 0) {
+      return { ok: false, note: "El nombre no puede estar vacío." };
+    }
+    if (name.length > 100) {
+      return { ok: false, note: "El nombre no puede superar 100 caracteres." };
+    }
+    cleaned.name = name;
+  }
+
+  if (fields.email !== undefined) {
+    const emailRaw = fields.email.trim();
+    if (emailRaw.length === 0) {
+      cleaned.email = ""; // admin puede limpiar el campo
+    } else {
+      const extracted = extractEmailFromText(emailRaw) ?? emailRaw;
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(extracted)) {
+        return { ok: false, note: "Email con formato inválido." };
+      }
+      cleaned.email = extracted.toLowerCase();
+    }
+  }
+
+  if (fields.phone !== undefined) {
+    const phoneRaw = fields.phone.trim();
+    if (phoneRaw.length === 0) {
+      cleaned.phoneRaw = "";
+    } else {
+      if (normalizePhone(phoneRaw) === null) {
+        return {
+          ok: false,
+          note: "Teléfono inválido (debe tener código de país, ej. +52...).",
+        };
+      }
+      cleaned.phoneRaw = phoneRaw;
+    }
+  }
+
+  const supabase = deps?.supabase ?? createSupabaseAdminClient();
+
+  // 1. SELECT previo: necesitamos valores actuales para el diff del audit
+  //    log ("from: 'WhatsApp Lead' → to: 'Yesy'"). Sin esto, el audit pierde
+  //    el "antes" y queda solo con el "después" — inútil para auditoría real.
+  const { data: prevRow, error: prevErr } = await supabase
+    .from("event_confirmations")
+    .select("id, event_id, name, email, phone_raw, phone_normalized")
+    .eq("id", confirmationId)
+    .maybeSingle();
+
+  if (prevErr || !prevRow) {
+    return {
+      ok: false,
+      note: prevErr
+        ? "No se pudo leer la confirmación antes de actualizar."
+        : "La confirmación no existe.",
+    };
+  }
+
+  // 2. Diff: solo mandamos al UPDATE los campos que efectivamente cambian.
+  //    Si el admin manda name="Yesy" pero la DB ya tiene "Yesy", lo skipeamos.
+  //    Beneficio: audit log limpio, UPDATE idempotente.
+  const payload: Record<string, string | null> = {};
+  const before: Record<string, unknown> = {};
+  const after: Record<string, unknown> = {};
+  let nextPhoneNormalized: string | null = null;
+
+  if (cleaned.name !== undefined && cleaned.name !== prevRow.name) {
+    payload.name = cleaned.name;
+    before.name = prevRow.name;
+    after.name = cleaned.name;
+  }
+
+  if (cleaned.email !== undefined && cleaned.email !== (prevRow.email ?? "")) {
+    // email es string no-null en DB (puede ser "" para "limpio"). Usamos
+    // "" explícito en vez de null.
+    payload.email = cleaned.email === "" ? "" : cleaned.email;
+    before.email = prevRow.email;
+    after.email = cleaned.email === "" ? "" : cleaned.email;
+  }
+
+  if (cleaned.phoneRaw !== undefined) {
+    const prevNorm = normalizePhone(prevRow.phone_raw);
+    const nextNorm = normalizePhone(cleaned.phoneRaw);
+    if (prevNorm !== nextNorm || prevRow.phone_raw !== cleaned.phoneRaw) {
+      payload.phone_raw = cleaned.phoneRaw === "" ? "" : cleaned.phoneRaw;
+      if (nextNorm) {
+        payload.phone_normalized = nextNorm;
+        nextPhoneNormalized = nextNorm;
+      }
+      before.phone_raw = prevRow.phone_raw;
+      before.phone_normalized = prevRow.phone_normalized;
+      after.phone_raw = cleaned.phoneRaw === "" ? "" : cleaned.phoneRaw;
+      after.phone_normalized = nextNorm ?? null;
+    }
+  }
+
+  // Trackear qué keys mandó el admin ORIGINALMENTE (no los derivados como
+  // phone_normalized) para que el audit `metadata.fields_changed` refleje
+  // solo lo que el admin cambió explícitamente.
+  const inputKeys: string[] = [];
+  if (cleaned.name !== undefined && "name" in payload) inputKeys.push("name");
+  if (cleaned.email !== undefined && "email" in payload) inputKeys.push("email");
+  if (cleaned.phoneRaw !== undefined && "phone_raw" in payload) inputKeys.push("phone");
+
+  if (Object.keys(payload).length === 0) {
+    // Sin cambios reales: devolvemos OK con la confirmation actual.
+    const { data: sameRow } = await supabase
+      .from("event_confirmations")
+      .select("*")
+      .eq("id", confirmationId)
+      .maybeSingle();
+    return {
+      ok: true,
+      confirmation: sameRow
+        ? mapEventConfirmationRowToEventConfirmation(sameRow as EventConfirmationRow)
+        : undefined,
+      note: "Sin cambios (los datos ya estaban así).",
+    };
+  }
+
+  // 3. UPDATE atómico.
+  const { data, error } = await supabase
+    .from("event_confirmations")
+    .update(payload as never)
+    .eq("id", confirmationId)
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    return { ok: false, note: `No se pudo actualizar (${error.code ?? "?"}).` };
+  }
+  if (!data) {
+    return {
+      ok: false,
+      note: "La confirmación desapareció entre el SELECT y el UPDATE.",
+    };
+  }
+
+  const confirmation = mapEventConfirmationRowToEventConfirmation(
+    data as EventConfirmationRow,
+  );
+
+  // 4. Si cambió el email o el phone_normalized: actualizar el QR token
+  //    asociado para que el envío del QR pass use los datos nuevos.
+  //
+  //    `event_qr_tokens` se linkea al confirmation vía (event_id,
+  //    attendee_email) o (event_id, attendee_phone_normalized). Si cambia
+  //    alguno de los dos, necesitamos re-mapear o invalidar el token viejo.
+  //
+  //    Estrategia conservadora (best-effort, no rompe la operación principal):
+  //    si encontramos un QR token con el email/phone viejo, lo actualizamos
+  //    in-place al nuevo. Si no hay, no creamos uno nuevo aquí (eso lo hace
+  //    `generateEventQrTokens` cuando el admin hace click en "Reenviar email").
+  if (
+    (before.email !== undefined || before.phone_normalized !== undefined) &&
+    confirmation
+  ) {
+    try {
+      const oldEmail = (before.email as string | null) ?? null;
+      const newEmail = confirmation.email ?? null;
+      const oldPhoneNorm = (before.phone_normalized as string | null) ?? null;
+      const newPhoneNorm = confirmation.phoneNormalized ?? null;
+
+      // Solo re-mapear si AMBOS (viejo y nuevo) están presentes (no
+      // borramos tokens por accidente cuando el admin limpia un campo).
+      if (oldEmail && newEmail && oldEmail !== newEmail) {
+        await supabase
+          .from("event_qr_tokens" as never)
+          .update({ attendee_email: newEmail } as never)
+          .eq("event_id" as never, prevRow.event_id)
+          .eq("attendee_email" as never, oldEmail);
+      }
+      if (oldPhoneNorm && newPhoneNorm && oldPhoneNorm !== newPhoneNorm) {
+        await supabase
+          .from("event_qr_tokens" as never)
+          .update({ attendee_phone_normalized: newPhoneNorm } as never)
+          .eq("event_id" as never, prevRow.event_id)
+          .eq("attendee_phone_normalized" as never, oldPhoneNorm);
+      }
+    } catch (qrErr) {
+      // Best-effort: el cambio en confirmation YA se persistió. Si el QR
+      // token no se re-mapeó, el admin puede re-generarlo con "Reenviar
+      // email" (que ahora usará los datos nuevos). Loggeamos pero no
+      // rompemos.
+      // eslint-disable-next-line no-console
+      console.error("[confirmations-server] updateConfirmationFields: re-map QR token falló (best-effort)", {
+        code: (qrErr as { code?: string }).code,
+        confirmationId,
+      });
+    }
+  }
+
+  // 5. Audit log con before/after.
+  await logAdminAction({
+    actor_email: actorEmail,
+    action: "event_confirmation_edit",
+    entity_type: "event_confirmation",
+    entity_id: confirmationId,
+    before,
+    after,
+    metadata: {
+      eventId: prevRow.event_id,
+      fields_changed: inputKeys,
+    },
+  });
+
+  return { ok: true, confirmation };
 }
