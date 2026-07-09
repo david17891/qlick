@@ -20,7 +20,11 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth/session";
 import { markSurveyReviewed, deleteEventSurvey } from "@/lib/events/surveys-server";
 import { linkAttendeeToConfirmation, deleteAttendee } from "@/lib/events/attendees-server";
-import { deleteConfirmation } from "@/lib/events/confirmations-server";
+import {
+  deleteConfirmation,
+  updateConfirmationFields,
+  type ConfirmationFieldUpdate,
+} from "@/lib/events/confirmations-server";
 import { markWhatsAppStatus, isValidWhatsAppStatus, type WhatsAppStatus } from "@/lib/leads/whatsapp-status";
 import { generateEventQrTokens, getEventQrTokens } from "@/lib/qr/event-tokens";
 import { logAdminAction } from "@/lib/crm/audit-server";
@@ -577,4 +581,65 @@ export async function deleteConfirmationAction(
     revalidatePath(`/admin/eventos/${eventId}`);
   }
   return { ok: result.ok, note: result.note };
+}
+
+/**
+ * FIX 2026-07-08 (sesión David "registrados sin nombre/correo/teléfono"):
+ * Edita campos de un confirmado (name/email/phone) desde la vista
+ * `/admin/eventos/[id]?tab=confirmations`.
+ *
+ * Mismas reglas de validación que `updateLeadFields` del CRM global
+ * (consistencia entre los dos puntos de entrada):
+ *   - name: 1-100 chars.
+ *   - email: formato RFC-lite, lowercase, embebido se extrae.
+ *   - phone: normalizado a E.164 via `normalizePhone`.
+ *
+ * Side-effects automáticos (best-effort):
+ *   - Si cambió email/phone, re-mapea el QR token asociado
+ *     (event_qr_tokens) para que "Reenviar email" use los datos nuevos.
+ *   - Audit log con before/after JSONB (action='event_confirmation_edit').
+ *
+ * FormData: confirmationId, eventId, name?, email?, phone?.
+ * `revalidatePath` se llama SOLO si la operación tuvo éxito (no
+ * re-fetcheamos la página si falló).
+ */
+export async function editConfirmationAction(
+  _prev: FormState | null,
+  formData: FormData,
+): Promise<FormState> {
+  const admin = await requireAdmin();
+  if (!admin) {
+    return { ok: false, note: "No autenticado como admin." };
+  }
+  const confirmationId = formData.get("confirmationId");
+  const eventId = formData.get("eventId");
+  if (typeof confirmationId !== "string" || !confirmationId) {
+    return { ok: false, note: "Falta confirmationId." };
+  }
+  if (typeof eventId !== "string" || !eventId) {
+    return { ok: false, note: "Falta eventId." };
+  }
+
+  // Build patch solo con los campos que llegaron en el form.
+  const fields: ConfirmationFieldUpdate = {};
+  const nameRaw = formData.get("name");
+  if (typeof nameRaw === "string" && nameRaw.length > 0) fields.name = nameRaw;
+  const emailRaw = formData.get("email");
+  if (typeof emailRaw === "string") fields.email = emailRaw;
+  const phoneRaw = formData.get("phone");
+  if (typeof phoneRaw === "string") fields.phone = phoneRaw;
+
+  if (Object.keys(fields).length === 0) {
+    return { ok: false, note: "Patch vacío." };
+  }
+
+  const result = await updateConfirmationFields(
+    confirmationId,
+    fields,
+    admin.email ?? "admin@qlick",
+  );
+  if (result.ok) {
+    revalidatePath(`/admin/eventos/${eventId}`);
+  }
+  return { ok: result.ok, note: result.note ?? "Sin nota del servidor." };
 }
