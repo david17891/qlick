@@ -186,7 +186,11 @@ html, body {
   bottom: 0;
   right: 0;
   width: 62%;
-  padding: 64px 56px;
+  /* FIX 2026-07-08 (print): reduje padding de 64/56 a 56/48 para que
+     el contenido del .right quepa exacto en 794px. Con 64/56 + las
+     fuentes del Concept C, el contenido se salia 5-10px y el
+     .cert { overflow: hidden } recortaba el signature. */
+  padding: 56px 48px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -429,9 +433,10 @@ html, body {
 /* ========== PRINT (Ctrl+P → PDF) ========== */
 
 @media print {
-  /* @page: tamano A4 landscape explicito, sin margenes del browser.
-     Esto le dice a Chrome "la pagina imprimible es exactamente A4". */
-  @page { size: A4 landscape; margin: 0; }
+  /* @page ya esta declarado arriba (linea 34) — no se puede redeclarar
+     dentro de @media print. Si Chrome ve el @page anidado, lo ignora
+     silenciosamente. Por eso el margen blanco: el @page top-level SÍ
+     se aplicaba, pero el cert-page heredaba padding del stage. */
 
   html, body {
     background: #ffffff !important;
@@ -443,6 +448,9 @@ html, body {
     margin: 0 !important;
     padding: 0 !important;
     min-height: auto !important;
+    width: 297mm !important;
+    height: 210mm !important;
+    overflow: hidden !important;
   }
   .no-print { display: none !important; }
 
@@ -451,6 +459,8 @@ html, body {
     margin: 0 !important;
     min-height: auto !important;
     display: block !important;
+    width: 297mm !important;
+    height: 210mm !important;
   }
 
   .cert {
@@ -468,6 +478,8 @@ html, body {
     box-shadow: none !important;
     page-break-after: avoid;
     page-break-inside: avoid;
+    break-after: avoid-page;
+    break-inside: avoid-page;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
