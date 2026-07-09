@@ -47,6 +47,101 @@
 
 **Resumen:** 12 gaps cerrados (G-1, G-2, G-3, G-4, G-6, G-7, G-8, G-9, G-10, G-11, G-13, G-14, G-15). 4 pendientes (2 críticos: ninguno; 2 altos: G-5, G-12; 2 medios/bajos: G-16, G-17). Sesión 2026-07-04 ~16:30.
 
+### 0.5. Auditoría 2026-07-08 (pasada de revisión + reparación)
+
+**Sesión:** 2026-07-08 22:30. **Método:** lectura directa de código + grep por patrones peligrosos + `npm audit` + RLS coverage + git state. **Output:** `docs/AUDIT_REPORT_2026-07-08.md` con 6 secciones y todos los detalles. **Score:** 0 críticos, 1 HIGH no aplicado, 5 MEDIUM, 6 LOW.
+
+**Fixes ya aplicados** (mergeados a main en `58d7f28`):
+
+| Fix | Commit | Descripción |
+|---|---|---|
+| `81e6b95` | `fix(security)` | XSS defense-in-depth: `esc(qrSrc)` antes de inyectar en `src="${qrSrc}"` (template `event-qr-pass.ts`) |
+| `46ff8ef` | `chore(email)` | console.log → `infoLog()` en `event-reminder.ts` y `event-qr-pass.ts` (wrapper centralizado para futura sampling/redaction) |
+
+Ambos pasaron: type-check ✓ · lint ✓ · 726/726 tests verde · build ✓.
+
+#### 🟠 A-1 · Upgrade Next.js 14.2.35 → 15/16 (CVEs HIGH)
+
+- **Síntoma:** `npm audit` reporta 12+ advisories de severidad HIGH contra Next 14.2.35 (DoS via RSC, XSS via CSP nonces / scripts `beforeInteractive`, cache poisoning, request smuggling, SSRF via WebSocket).
+- **Estado:** **No aplicado** — fix requiere upgrade breaking (Next 15/16) con re-validación de las 55+ rutas y todos los tests.
+- **Por qué podemos vivir sin esto (al menos 6-12 meses más):**
+  1. Vercel Hobby tiene rate limiting a nivel infra que mitiga DoS.
+  2. Los XSS son vectores muy específicos (CSP nonces, scripts beforeInteractive con input no sanitizado). Qlick no usa ninguno → **no expuesto**.
+  3. RSC cache poisoning y request smuggling afectan apps con rewrites/redirects complejos. Qlick tiene middleware simple.
+  4. **El código de Qlick ya escapa HTML** en todos los templates de email (el fix `81e6b95` refuerza esto). Vector real de XSS cerrado a nivel aplicación.
+  5. 0 evidencia de ataque en producción.
+- **Cuándo NO podemos seguir viviendo sin upgrade:**
+  1. Tráfico a escala masiva (más allá de Vercel Hobby limits).
+  2. Payloads malformados recurrentes en logs del bot.
+  3. Mercado regulado que exija CVE-free (PCI-DSS, SOC2).
+  4. Si se agregan CSP nonces o scripts `beforeInteractive` con user input → **subir de inmediato**.
+- **Decisión de David 2026-07-08:** "podemos vivir sin eso" → documentar acá, revisar en Q4 2026 o antes si aparece incidente.
+- **Archivo:** `package.json:30` (`"next": "14.2.35"`).
+- **Severidad:** 🟠 Alta, pero **no bloqueante para operativa actual**.
+
+#### 🟡 A-2 · Regenerar typegen de Supabase (quitar 12+ casts `as never`)
+
+- **Síntoma:** `src/types/supabase.ts` desincronizado. Tablas `lead_whatsapp_conversations`, `lead_consent_log`, `event_qr_tokens`, `event_survey_tokens`, `event_email_log`, etc. NO están en el typegen → código usa `as never` repetido veces.
+- **Fix:**
+  1. `npx supabase login`
+  2. `npx supabase gen types typescript --project-id ugpejblymtbwtsoiykyj > src/types/supabase.ts`
+  3. Reemplazar `as never` con tipos correctos
+  4. Re-correr `npm run type-check` (debería pasar sin `as never` en código de producto)
+- **Severidad:** 🟡 Media — oculta bugs latentes (si una columna cambia tipo, typegen actualizado lo detectaría antes de runtime).
+- **Severidad legacy:** ya estaba en G-M1 (auditoría 2026-07-02) pero se documentó como "pendiente" sin sprint asignado. Se retoma acá.
+
+#### 🟡 A-3 · Endpoint `/api/dev/simulate-webhook` sin protección
+
+- **Síntoma:** endpoint bajo `/api/dev/` que simula webhooks de WhatsApp para testing E2E. NO requiere `DEV_ADMIN_SECRET` (otros endpoints `/api/dev/*` sí lo requieren). En producción cualquier persona con la URL puede inyectar webhooks fake → consume tokens DeepSeek ($$$), crea leads basura, dispara el bot.
+- **Fix:** agregar `DEV_ADMIN_SECRET` check al inicio del route handler (mismo patrón que `/api/dev/login`). O mover a flag de env `ENABLE_DEV_ENDPOINTS=true` y validar que esté activo.
+- **Archivo:** `src/app/api/dev/simulate-webhook/route.ts:248` (TODO del propio código).
+- **Severidad:** 🟡 Media — superficie de ataque abierta en producción, pero requiere conocer la URL.
+
+#### 🟢 A-4 · 10 stale remote branches sin local
+
+- **Síntoma:** branches en `origin` sin branch local, sin uso aparente:
+  - `origin/feat/admin-confirmations-resend`
+  - `origin/feat/admin-eventos`
+  - `origin/feat/event-delete`
+  - `origin/feat/cierre-eventos-virtuales`
+  - `origin/feature/masterclass-funnel-foundation`
+  - `origin/feature/privacy-and-production-deploy`
+  - `origin/feature/qlick-crm-whatsapp-agent`
+  - `origin/feature/supabase-leads-foundation`
+  - `origin/feature/supabase-connection-bootstrap`
+  - `origin/feat/pagos-stripe-real`
+- **Decisión:** **No las borré** porque no sé si otros agentes las están usando. **Pendiente:** David revisa con stakeholders y limpia las muertas (`git push origin :<branch>`).
+- **Severidad:** 🟢 Baja — superficie de confusión nomás, no afecta código.
+
+#### 🟢 A-5 · Drift de versión en `package.json`
+
+- **Síntoma:** `package.json` dice `"version": "0.8.0"` pero el último tag Git es `v1.1-crm1-stable`. Changelog real:
+  ```
+  v0.2.0 → v0.9.0 (fases 1-3)
+  v1.0-bot-stable → v1.1-crm1-stable (estabilizaciones)
+  ```
+- **Fix:** bumpear a `"version": "1.1.0"` + entrada en `CHANGELOG.md`.
+- **Severidad:** 🟢 Baja — desconfianza cosmética en el versionado (no afecta runtime).
+
+#### 🟢 A-6 · 6 TODOs "futura fase" dispersos en código
+
+- **Síntoma:** features NO implementadas (decisión de scope previa) marcadas con `// TODO(futura fase):`:
+  - `src/lib/whatsapp/providers/bsp-provider.ts:52` — llamada real a API del BSP elegido
+  - `src/lib/payments/mercadopago-provider.ts:42` — crear Preference con SDK
+  - `src/lib/payments/conekta-provider.ts:43` — crear Order con Conekta
+  - `src/lib/contact/resend-contact-provider.ts:33` — enviar email real
+  - `src/lib/contact/crm-contact-provider.ts:34` — crear contacto + deal en CRM
+  - `src/lib/ai/openrouter-provider.ts:52` — setup completo OpenRouter
+- **Recomendación:** mover a `docs/OPEN_ITEMS.md` con owner + fecha objetivo cuando David los priorice.
+- **Severidad:** 🟢 Baja — están documentados en el código, no son bugs.
+
+#### 🟢 A-7 · Dev login bypass sin auditoría de uso
+
+- **Síntoma:** `/api/dev/login` (creado en sesión 2026-06-28) sigue activo en producción con `DEV_ADMIN_SECRET` como única barrera. Si el secret se filtra (commit en repo accidental, leak en logs, screenshot público), cualquier actor con la URL puede impersonar a David.
+- **Mitigación actual:** el secret está en `HKCU\Environment\DEV_ADMIN_SECRET` (no commiteado). Regla memoria: "Secret keys, service-role tokens y `DEV_ADMIN_SECRET` **nunca** van a `NEXT_PUBLIC_*`" y "Tratar como secreto: si se filtra, rotar en `.env.local` + Vercel."
+- **Pendiente:** considerar rate-limit en el endpoint + log de accesos exitoso (audit log entry) para detectar anomalías.
+- **Severidad:** 🟢 Baja — secreto fuera del repo, funciona como single barrier. Mejora opcional.
+
 ### 🔴 P0 — Bloquean producción o tienen riesgo legal/seguridad
 
 #### G-1 · `human-handoff.ts:74` chequea `RESEND_API_KEY` (ya no existe)
