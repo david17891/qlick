@@ -138,7 +138,6 @@ export type BotIntent =
   | "opt_out"
   | "provide_email"
   | "provide_name"
-  | "provide_name_late"
   | "interactive_event_yes"
   | "interactive_event_inscribir"
   | "interactive_show_events"
@@ -502,8 +501,6 @@ export function isQuestionOrIntent(text: string | null | undefined): boolean {
  */
 const CONVERSATIONAL_FILLER_WORDS = new Set([
   "ah", "ok", "okay", "si", "sí", "no", "ya", "vale", "bueno",
-  "buenos", "buena", "buenas", "días", "dia", "tardes", "tarde",
-  "noches", "noche", "mañana", "hoy", "ayer",
   "claro", "pues", "hey", "hola", "gracias", "thanks", "ola",
   "oe", "ea", "mm", "hmm", "ups", "ahh", "sii", "nop", "nope",
   "yep", "yup", "mmm", "ajá", "aja", "dale", "va", "listo",
@@ -531,172 +528,6 @@ export function isValidHumanName(text: string | null | undefined): boolean {
   );
   if (hasOnlyFiller) return false;
   return true;
-}
-
-/**
- * FIX 2026-07-09 (sesión David "captura nombre universal"): set de
- * palabras que pertenecen al dominio de Qlick (marketing, eventos, etc.)
- * y que NO deberían capturarse como nombres humanos. Sin este filtro,
- * "Qlik Marketing" o "Marketing Digital" pasarían `isValidHumanName`
- * (2+ palabras con letras, no son filler) y se guardarían como nombre
- * del lead, contaminando el certificado.
- *
- * Regla: si TODAS las palabras del body matchean este set (o son
- * filler/placeholder), NO es un nombre humano.
- */
-const QLICK_DOMAIN_WORDS = new Set([
-  // Marca y producto
-  "qlick",
-  "qlik", // typo común (sin la c)
-  // Categorías de la academia
-  "marketing", "digital", "emprendedores", "emprendedor",
-  "ventas", "funnel", "ads", "branding", "contenido",
-  "estrategia", "negocio", "negocios",
-  // Tipo de evento
-  "evento", "eventos", "masterclass", "curso", "cursos",
-  "taller", "talleres", "webinar", "sesion", "sesiones",
-  "clase", "clases", "conferencia",
-  // Modalidad
-  "online", "presencial", "virtual", "hibrido",
-  // Tecnología
-  "ia", "inteligencia", "artificial", "meta", "facebook",
-  "instagram", "google", "tiktok", "youtube", "linkedin",
-  "whatsapp", "zoom",
-  // Logística
-  "qr", "pase", "registro", "inscripcion", "inscribirme",
-  "hora", "horas", "hrs", "min", "minutos",
-  // Meses
-  "enero", "febrero", "marzo", "abril", "mayo", "junio",
-  "julio", "agosto", "septiembre", "setiembre", "octubre",
-  "noviembre", "diciembre",
-  // Días
-  "lunes", "martes", "miercoles", "miércoles", "jueves",
-  "viernes", "sabado", "sábado", "domingo",
-  // Geografía
-  "mexico", "méxico", "mx",
-  // Palabras comunes en mensajes del dominio
-  "gratis", "gratuito", "gratuita", "nuevo", "nueva",
-  "proximo", "próximo", "proximos", "próximos", "proxima", "próxima",
-  "proximas", "próximas",
-  "info", "informacion", "información",
-  "tema", "temas", "horario",
-  // Stopwords y partículas del español que NO son nombres humanos.
-  // Sin estas, "Marketing para Emprendedores" pasaría el filtro
-  // porque "para" no estaba en el set y todo lo demás es domain.
-  //FIX 2026-07-09 (sesión David): agregamos preposiciones, artículos,
-  //pronombres y conjunciones para que "Marketing IA para Emprendedores"
-  // se filtre correctamente (todas sus palabras son domain o stopword).
-  "a", "al", "algo", "ante", "antes", "con", "contra", "cual", "cuál",
-  "cuáles", "cuando", "cuándo", "cuanto", "cuánto", "cuántos", "como",
-  "cómo", "de", "del", "desde", "donde", "dónde", "e", "el", "él",
-  "ella", "ellas", "ellos", "en", "entre", "es", "esa", "ese", "eso",
-  "esta", "está", "están", "este", "esto", "estos", "estas", "etc",
-  "ha", "han", "has", "hasta", "hay", "haber", "la", "las", "le",
-  "les", "lo", "los", "más", "me", "mi", "mis", "mucho", "muchas",
-  "muchos", "muy", "nada", "ni", "no", "nos", "nuestra", "nuestras",
-  "nuestro", "nuestros", "o", "os", "otra", "otras", "otro", "otros",
-  "para", "pero", "poco", "por", "porque", "que", "qué", "quien",
-  "quién", "se", "sea", "sean", "según", "ser", "si", "sido", "siempre",
-  "siendo", "sin", "sobre", "sois", "somos", "son", "soy", "su", "sus",
-  "también", "tan", "tanto", "te", "tener", "tengo", "ti", "tiene",
-  "tienen", "todo", "todos", "tras", "tu", "tus", "tuya", "tuyo",
-  "un", "una", "unas", "uno", "unos", "usted", "va", "vamos", "van",
-  "veces", "ver", "vi", "vio", "voy", "y", "ya", "yo",
-]);
-
-/**
- * FIX 2026-07-09 (sesión David "captura nombre universal"): detecta si
- * el body del lead es un nombre humano válido que vale la pena capturar
- * universalmente (en cualquier momento del flow, no solo cuando
- * `awaiting_field === "name"`).
- *
- * Caso de uso real (screenshot 2026-07-09): Mari ya estaba registrada
- * con nombre "Mari" (1 palabra, capturada por FALLBACK heurístico que
- * no validaba wordCount). Después mandó "Mari triana baeza hernandez"
- * y el bot la mandó al LLM, que respondió con copy genérico. El nombre
- * completo real nunca se guardó.
- *
- * Safeguards duros:
- *   - El body pasa `isValidHumanName` (2+ palabras con letras, no
- *     filler, no placeholder UI).
- *   - NO si TODAS las palabras son del dominio Qlick (filtra "Qlik
- *     Marketing", "Marketing Digital", etc.).
- *   - NO si el body matchea `isQuestionOrIntent` (es pregunta o
- *     intención, no nombre).
- *   - NO si el body contiene un email embebido (eso lo maneja
- *     `extractNameAndEmailTogether` con captura completa).
- *   - El nuevo nombre debe tener MÁS palabras que el actual O el
- *     actual debe ser placeholder/vacío (no sobreescribimos un nombre
- *     completo válido con algo del mismo tamaño).
- *
- * Devuelve el nombre normalizado (trim) si aplica, `null` si no.
- *
- * Server-only (helper de lógica).
- */
-export function detectUniversalNameCapture(
-  body: string | null | undefined,
-  options: {
-    currentLeadName?: string | null | undefined;
-  }
-): string | null {
-  if (!body) return null;
-  const trimmed = body.trim();
-  if (!trimmed) return null;
-  // 1. Validación base.
-  if (!isValidHumanName(trimmed)) return null;
-  // 2. NO capturar si el body matchea una pregunta o intención
-  // (ej. "Cómo me inscribo", "Cuál es el horario"). El visitor no
-  // está dando su nombre, está preguntando algo.
-  if (isQuestionOrIntent(trimmed)) return null;
-  // 3. NO capturar si contiene un email embebido — eso lo maneja el
-  // path de "captura orden-independiente" que ya existe.
-  if (extractEmailFromText(trimmed)) return null;
-  // 4. Filtro de palabras del dominio Qlick: si TODAS las palabras
-  // CON LETRAS del body están en el set (o son filler/placeholder),
-  // NO es nombre humano. Filtramos palabras sin letras ("+", "?",
-  // números solos) para que no rompan el filtro — no aportan info
-  // sobre si el body es nombre o dominio.
-  const words = trimmed.split(/\s+/).filter(Boolean);
-  const wordsWithLetters = words.filter((w) => /[\p{L}]/u.test(w));
-  // Defense-in-depth: si CUALQUIER palabra es placeholder UI
-  // (ej. "Asistente" en "Asistente López"), NO capturar. Los
-  // placeholders son texto del sistema que se coló en el lead.name
-  // legacy — no son parte de un nombre humano real.
-  const hasPlaceholderWord = wordsWithLetters.some((w) =>
-    PLACEHOLDER_NAMES_UI.has(w.toLowerCase().replace(/[.!?]+$/, ""))
-  );
-  if (hasPlaceholderWord) return null;
-  const allDomainOrFiller = wordsWithLetters.every((w) => {
-    const norm = w.toLowerCase().replace(/[.!?]+$/, "");
-    return (
-      QLICK_DOMAIN_WORDS.has(norm) ||
-      CONVERSATIONAL_FILLER_WORDS.has(norm) ||
-      PLACEHOLDER_NAMES_UI.has(norm)
-    );
-  });
-  if (allDomainOrFiller) return null;
-  // 5. Safeguard de upgrade: el nuevo nombre debe tener >= palabras
-  // que el actual, o el actual debe ser placeholder/vacío.
-  const currentTrim = options.currentLeadName?.trim() ?? "";
-  const currentIsPlaceholder =
-    !currentTrim || isPlaceholderNameUI(currentTrim);
-  const currentWordCount = currentTrim
-    ? currentTrim.split(/\s+/).filter(Boolean).length
-    : 0;
-  const newWordCount = words.length;
-  if (!currentIsPlaceholder && newWordCount < currentWordCount) {
-    // El actual tiene más palabras que el nuevo — no es un upgrade.
-    return null;
-  }
-  if (
-    !currentIsPlaceholder &&
-    newWordCount === currentWordCount
-  ) {
-    // Mismo tamaño — no es un upgrade. Probablemente el visitor está
-    // repitiendo algo o el actual ya es completo.
-    return null;
-  }
-  return trimmed;
 }
 
 /**
@@ -2079,23 +1910,6 @@ async function buildResponsePlan(args: {
    * provide_name / provide_email.
    */
   pendingAwaitingField?: string | null;
-  /**
-   * FIX 2026-07-09 (sesión David "captura nombre universal"): cuando
-   * el override universal detecta que el body es un nombre humano
-   * válido (más completo que el actual) Y NO estamos en wizard/survey,
-   * processInboundMessage hace el side-effect (UPDATE leads + audit)
-   * ANTES de invocar buildResponsePlan. Para evitar doble persistencia
-   * y para que el handler sepa qué plan construir, le pasamos:
-   *   - `lateNameCaptured`: el nombre detectado (ya guardado en DB).
-   *   - `previousLeadName`: el nombre que tenía el lead antes (puede
-   *     ser null, placeholder o 1 palabra). Lo usamos para decidir
-   *     si confirmar amable (ya tenía algo) o pedir email (estaba vacío).
-   *
-   * Si ambos son null/undefined, el handler `provide_name_late` no
-   * aplica (este path solo se activa cuando el override detectó algo).
-   */
-  lateNameCaptured?: string | null;
-  previousLeadName?: string | null;
 }): Promise<OutboundPlan> {
   const { intent, lead, body, phoneNormalized, buttonId } = args;
   const provider = getActiveWhatsAppProvider();
@@ -3528,73 +3342,6 @@ case "interactive_event_inscribir": {
           provider.send({ to: phoneNormalized, body: bodyText })
       };
     }
-    case "provide_name_late": {
-      // FIX 2026-07-09 (sesión David "captura nombre universal"): el
-      // override en processInboundMessage detectó que el body es un
-      // nombre humano válido y más completo que el actual. El
-      // side-effect (UPDATE leads + audit log) YA se hizo antes de
-      // invocar buildResponsePlan. Acá solo construimos el plan de
-      // respuesta amable:
-      //
-      //   - Si el lead NO tenía nombre válido (placeholder o vacío):
-      //     pedir el email para completar el registro. Mantenemos el
-      //     flow de captura intacto (awaiting_field="email").
-      //   - Si el lead YA tenía nombre (incluso 1 palabra, ej. "Mari"):
-      //     confirmar la actualización del nombre y NO pedir más datos.
-      //     El visitor ya completó el flow de inscripción; volver a
-      //     pedir email sería regresivo.
-      const captured = (args.lateNameCaptured ?? "").trim();
-      if (!captured) {
-        // Safeguard: si llegamos acá sin nombre, algo está mal en el
-        // override. Caemos al copy genérico sin side-effect extra.
-        const fallbackBody =
-          "Recibí tu mensaje. ¿Me confirmas tu nombre completo para " +
-          "el certificado?";
-        return {
-          kind: "text",
-          body: fallbackBody,
-          metadata: { awaiting_field: "name" },
-          send: () =>
-            provider.send({ to: phoneNormalized, body: fallbackBody })
-        };
-      }
-      const clean = cleanFirstName(captured);
-      const previous = args.previousLeadName ?? null;
-      const previousIsPlaceholder =
-        !previous || isPlaceholderNameUI(previous);
-      const leadAlreadyHasEmail = Boolean(lead.email?.trim());
-      if (previousIsPlaceholder && !leadAlreadyHasEmail) {
-        // No tenía nombre y no tiene email → completar captura.
-        const bodyText =
-          `¡Excelente${clean ? " " + clean : ""}! Ya tengo tu nombre. ` +
-          `Ahora mándame tu correo electrónico y te paso tu QR de entrada.`;
-        return {
-          kind: "text",
-          body: bodyText,
-          metadata: {
-            awaiting_field: "email",
-            name_late_capture: { from: previous, to: captured }
-          },
-          send: () =>
-            provider.send({ to: phoneNormalized, body: bodyText })
-        };
-      }
-      // Lead ya tenía email o ya tenía nombre (incluso 1 palabra).
-      // Confirmar amable sin pedir más datos.
-      const bodyText =
-        `¡Gracias${clean ? " " + clean : ""}! Actualizo tu nombre para ` +
-        `el certificado. ¿Algo más en lo que te pueda ayudar?`;
-      return {
-        kind: "text",
-        body: bodyText,
-        metadata: {
-          awaiting_field: null,
-          name_late_capture: { from: previous, to: captured }
-        },
-        send: () =>
-          provider.send({ to: phoneNormalized, body: bodyText })
-      };
-    }
     case "provide_email": {
       // FIX 2026-07-06 (sesion David, "no me sirve la opcion de no
       // requerir nombres"): si el lead no tiene nombre valido todavia
@@ -4747,113 +4494,6 @@ export async function processInboundMessage(
     }
   }
 
-  // FIX 2026-07-09 (sesión David "captura nombre universal"): si el
-  // body del lead es un nombre humano válido Y más completo que el
-  // actual Y NO estamos en wizard/survey activos, lo capturamos
-  // universalmente con un side-effect dedicado (UPDATE leads + audit
-  // log). El handler `provide_name_late` se encarga de responder
-  // amablemente sin pedir email si el lead ya completó el registro.
-  //
-  // Caso real (screenshot 2026-07-09): Mari dio "Mari triana baeza
-  // hernandez" después de cerrar el flow de captura. Sin este override,
-  // caía a "question" → LLM → copy genérico que no actualizaba nada.
-  //
-  // Safeguards:
-  //   - Solo aplica si NO hay wizardStep activo (wizard en curso).
-  //   - Solo aplica si NO hay survey_q_consent_continue activo.
-  //   - Solo aplica si el body matchea `detectUniversalNameCapture`
-  //     (todos los filtros: isValidHumanName, NO domain-only, NO
-  //     pregunta, NO email embebido, upgrade de palabras).
-  //   - Solo aplica si supabase+lead.id disponibles (para el UPDATE).
-  //
-  // El override va ANTES del bloque 3.0 (wizard nativo) y ANTES de
-  // cualquier otro override de flujo (event_attended, survey_offer)
-  // porque captura nombre humano es más prioritario que esos flows.
-  let lateNameCaptured: string | null = null;
-  let previousLeadName: string | null = null;
-  // FIX 2026-07-09 (sesión David "captura nombre universal"): calculamos
-  // wizardStep localmente desde wizardStateGlobal (hoisted arriba) para
-  // el override de captura de nombre. NO capturar si hay wizard activo.
-  const wizardStepForNameCapture =
-    typeof wizardStateGlobal?.awaiting_survey_step === "number"
-      ? wizardStateGlobal.awaiting_survey_step
-      : null;
-  if (
-    body &&
-    wizardStepForNameCapture === null &&
-    supabase &&
-    lead.id
-  ) {
-    const candidate = detectUniversalNameCapture(body, {
-      currentLeadName: lead.name,
-    });
-    if (candidate) {
-      previousLeadName = lead.name ?? null;
-      // Side-effect: UPDATE leads SET name + audit log.
-      const { error: nameUpdateErr } = await supabase
-        .from("leads")
-        .update({ name: candidate })
-        .eq("id", lead.id);
-      if (nameUpdateErr) {
-        // Política del proyecto: cero PII en logs (solo flags/IDs).
-        errorLog(
-          "[whatsapp/bot] universal name capture: update lead.name falló",
-          {
-            leadId: lead.id,
-            code: (nameUpdateErr as { code?: string }).code,
-          }
-        );
-        // Si falla el UPDATE, no forzamos el intent — dejamos que el
-        // flujo normal (LLM o lo que detectIntent haya decidido)
-        // responda. No queremos mentirle al lead diciendo que
-        // actualizamos si no lo hicimos.
-      } else {
-        // Actualizamos `lead` en memoria para que el resto del flow
-        // (buildResponsePlan, summary, etc.) vea el cambio.
-        lead.name = candidate;
-        lateNameCaptured = candidate;
-        debugLog("[whatsapp/bot] universal name capture: nombre persistido", {
-          leadId: lead.id,
-          detectedName: candidate,
-          previousWordCount:
-            previousLeadName?.split(/\s+/).filter(Boolean).length ?? 0,
-          newWordCount: candidate.split(/\s+/).filter(Boolean).length,
-        });
-        // Audit log: misma fuente que el bloque de provide_name
-        // existente (actor_email="system@qlick", action="lead_name_update")
-        // para mantener trazabilidad consistente.
-        try {
-          const { logAdminAction } = await import("@/lib/crm/audit-server");
-          await logAdminAction({
-            actor_email: "system@qlick",
-            action: "lead_name_update",
-            entity_type: "lead",
-            entity_id: lead.id,
-            metadata: {
-              source: "whatsapp_bot",
-              intent: "provide_name_late",
-              previous_name: previousLeadName,
-              new_name: candidate,
-            },
-          });
-        } catch (auditErr) {
-          // Best-effort: si falla el audit, no rompemos el flow.
-          errorLog(
-            "[whatsapp/bot] universal name capture: audit log falló",
-            {
-              leadId: lead.id,
-              error: (auditErr as Error).message,
-            }
-          );
-        }
-        // Forzamos el intent al handler dedicado. Esto pisa lo que
-        // detectIntent haya decidido (típicamente "question") y evita
-        // que el LLM responda con copy genérico.
-        intent = "provide_name_late";
-      }
-    }
-  }
-
   // 3.0 wizard nativo (Fase 7d): si el último outbound del bot está
   // esperando una pregunta de texto libre del wizard, cualquier reply
   // de texto del lead es esa respuesta. FIX 2026-07-06 (audit G-15 r3):
@@ -5839,14 +5479,6 @@ export async function processInboundMessage(
               .slice(-1)[0]?.metadata as { awaiting_field?: string | null } | null
           )?.awaiting_field ?? null
         : null),
-    // FIX 2026-07-09 (sesión David "captura nombre universal"): cuando
-    // el override detecta que el body es un nombre humano válido y
-    // más completo que el actual, ya hicimos el UPDATE + audit log
-    // (más arriba) y seteamos intent="provide_name_late". Le pasamos
-    // al handler el nombre detectado y el nombre previo para que
-    // construya el plan amable (confirmar o pedir email).
-    lateNameCaptured,
-    previousLeadName,
     supabase
   });
 
