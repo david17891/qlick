@@ -3018,3 +3018,36 @@ Type: deploy-relevant
 - **Validacion:** type-check OK, lint OK, 618/618 tests OK (606 + 12 nuevos en tests/payments-fase2-hardening.test.mjs), build OK.
 - **Pendiente go-live:** David testea 4 vectores E2E en incognito, luego flip a sk_live_* via checklist en docs/PAYMENTS_AUDIT_2026-07-08.md seccion FASE 2.
 - **Trigger:** SRE marco los 4 como MUST-FIX en auditoria del 2026-07-08 04:00. Bloqueante para sk_live_*.
+
+### 2026-07-10 ~05:17 - fix(reminders) SQL || docs(sprint3) backlog + cross-review aprobado
+Type: deploy-relevant
+
+- **Commits en feat/event-reminders-v2 (HEAD ea0bd0b):**
+  - `b9c4fa1` fix(reminders): corregir concatenacion con || en COMMENT ON.
+    David reporto ERROR 42601 al correr la migracion 20260710040000 en su
+    SQL Editor: PostgreSQL rechaza `'a' || 'b'` dentro de
+    `comment on ... is ...` (no soporta concatenacion, solo string literal).
+    Reemplazamos con strings literales planos. El SQL ya se ejecuto OK
+    con la version corregida (David lo arreglo en el editor manualmente);
+    este fix es para que el archivo en git refleje lo que se aplico a la
+    DB y no se vuelva a romper si alguien re-corre la migracion desde cero.
+  - `ea0bd0b` docs(sprint3): backlog con 4 notas del cross-review de a4db9a5.
+    (1) Drift de Vercel cron (perf/logging), (2) query global
+    `findEventsInWindows` (perf: agregar `AND starts_at > now()` y un indice
+    compuesto), (3) documentar edge case del UNIQUE COALESCE sentinel en la
+    migration, (4) tests OK tal cual. Tambien queda en el backlog el fix
+    de `provide_name` en bot-engine.ts (otro agent, sprint 3) y el indicador
+    visual de UI admin (Paso 2 del plan original de David, estimado 15 min).
+- **Push:** `origin/feat/event-reminders-v2` actualizado (`a4db9a5..ea0bd0b`).
+  Working tree local limpio de archivos mios.
+- **Cross-review de a4db9a5:** APROBADO por el agent paralelo
+  (`mvs_cf4604591a114b5381c11ca2f239160b`) con 4 notas menores. Ninguna
+  bloquea el merge. Todas reflejadas en `docs/SPRINT_3_BACKLOG.md`.
+- **Pendiente:** David mergea `feat/event-reminders-v2` a main (recomendacion:
+  mergea la RAMA completa con HEAD `ea0bd0b`, no el SHA literal `a4db9a5`,
+  para que incluya el fix de `||` y el backlog). Despues del merge, el
+  otro agent crea `feat/bot-name-capture-fix` encima de main limpio y
+  hace cross-review conmigo antes de su commit + push.
+- **Trigger:** coordinacion con agent paralelo (serializacion para evitar
+  conflictos en mismo working tree, post-mortem del incidente de la
+  madrugada donde se cruzaron working trees). David aprobo el plan ordenado.
