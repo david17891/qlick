@@ -2226,17 +2226,29 @@ case "interactive_event_inscribir": {
       // FIX 2026-07-02: filtrar firstName de placeholders.
       const clean = cleanFirstName(firstName);
       const saludo = clean ? `¡Excelente ${clean}!` : "¡Excelente!";
-      // FIX 2026-07-06: el bot SIEMPRE pide nombre antes del email.
+      // FIX 2026-07-09 noche (sesión David "fricción UX"): si el lead YA
+      // tiene nombre válido (no placeholder), saltamos directo a email.
+      // Antes siempre pedía nombre, generando fricción cuando el admin
+      // pre-cargaba el lead o el lead ya se había identificado en otro
+      // flujo. El state-machine secuencial sigue siendo nombre → email,
+      // solo que no repetimos el paso de nombre cuando ya tenemos uno.
+      const nextField = clean ? "email" : "name";
+      const nextPrompt = clean
+        ? "dime tu email y te mando tu pase."
+        : "primero dime tu nombre completo. Después te pido tu email.";
+      // FIX 2026-07-06: el bot pide nombre antes del email cuando aún
+      // no lo tiene (ver FIX 2026-07-09 arriba para el caso contrario).
       const bodyText =
-        `${saludo} Para inscribirte a "${evtName}" el ${evtDate}, ` +
-        `primero dime tu nombre completo. Después te pido tu email.`;
+        `${saludo} Para inscribirte a "${evtName}" el ${evtDate}, ${nextPrompt}`;
       return {
         kind: "text",
         body: bodyText,
         // FIX 2026-07-02 (Commit A): metadata para que processInboundMessage
         // persista el awaiting_field. El bot-engine consulta este flag en
-        // el siguiente turno para detectar el intent `provide_name`.
-        metadata: { awaiting_field: "name" },
+        // el siguiente turno para detectar el intent correspondiente
+        // (`provide_name` si awaiting_field="name", `provide_email` si
+        // awaiting_field="email").
+        metadata: { awaiting_field: nextField },
         send: () =>
           provider.send({
             to: phoneNormalized,
@@ -4359,7 +4371,24 @@ export async function processInboundMessage(
       body &&
       !looksLikeEmail &&
       /[\p{L}]{2,}/u.test(body.split(/\s+/)[0] ?? "") &&
-      body.split(/\s+/).filter((w) => /[\p{L}]/u.test(w)).length >= 2
+      body.split(/\s+/).filter((w) => /[\p{L}]/u.test(w)).length >= 2 &&
+      // FIX 2026-07-09 noche (sesión David "FALLBACK provide_name guarda
+      // respuestas de cortesía como nombre"): NO capturar como nombre si
+      // el body es principalmente filler conversacional (respuestas
+      // tipo "ok perfecto", "dale gracias", "va si", "claro que sí").
+      // Sin este guard, esas respuestas se guardaban como nombre del
+      // lead y contaminaban la DB (mismo patrón que el bug revertido en
+      // `detectUniversalNameCapture` el 2026-07-09 noche, en variante
+      // más sutil del FALLBACK). Misma lógica que `isValidHumanName`
+      // pero aplicada a este path específico.
+      !body
+        .split(/\s+/)
+        .filter((w) => /[\p{L}]/u.test(w))
+        .every((w) =>
+          CONVERSATIONAL_FILLER_WORDS.has(
+            w.toLowerCase().replace(/[.!?]+$/, "")
+          )
+        )
     ) {
       intent = "provide_name";
       debugLog(
@@ -5706,10 +5735,19 @@ export async function processInboundMessage(
     // Política del proyecto: cero PII en logs (solo flags/IDs/contadores).
     // No incluimos el phone aquí — el leadId es suficiente para correlacionar
     // con la fila en `leads` si se necesita.
+    // FIX 2026-07-09 noche (sesión David "outbound perdido"): agregar
+    // templateName + awaiting_field al log para que sea ACCIONABLE
+    // (David puede correlacionar el fallo con qué handler / paso del
+    // journey fue). Sin esto, el log solo tenía `note` genérico y era
+    // difícil diagnosticar fallos intermitentes de Meta/Brevo.
     errorLog("[whatsapp/bot] outbound NO persistido (send falló)", {
       intent,
       leadId: lead.id,
       demo: sendResult.demo ?? false,
+      templateName: plan.templateName ?? null,
+      awaitingField:
+        (plan.metadata as { awaiting_field?: string | null } | null)
+          ?.awaiting_field ?? null,
       note: sendResult.note
     });
   }
