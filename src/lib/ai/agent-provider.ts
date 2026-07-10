@@ -53,6 +53,21 @@ export interface AgentContext {
    * Calculado por `bot-engine` via `findOrCreateLead().created`.
    */
   isFirstMessage?: boolean;
+  /**
+   * FIX 2026-07-10 (Sprint 2 sub-sprint 2C): UUID del lead resuelto por
+   * el bot-engine. Necesario para que el tool loop pueda hacer
+   * `extract_and_save_contact_info` con leadId real. Opcional para tasks
+   * que NO usan tools (mock, suggest_reply sin tools, etc.). El caller
+   * (bot-engine) lo setea solo cuando el intent ya pasó por `findLead`.
+   */
+  leadId?: string;
+  /**
+   * FIX 2026-07-10 (Sprint 2 sub-sprint 2C): cliente Supabase admin
+   * pre-instanciado, pasado por el bot-engine para que el tool loop no
+   * tenga que crearlo (ahorra ~50ms). Opcional. Si ausente, el tool
+   * corre en modo demo.
+   */
+  supabase?: unknown;
 }
 
 export type AgentTask =
