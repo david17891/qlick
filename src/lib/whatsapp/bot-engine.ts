@@ -3618,6 +3618,19 @@ case "interactive_event_inscribir": {
         ? `${body}\n\n[Recordatorio interno: el bot está esperando que el lead entregue su ${pendingAwaitingField}. Después de responder la duda, cierra el mensaje pidiendo ese dato.]`
         : body;
       if (rateLimit.allowed) {
+        // FIX 2026-07-10 (Sprint 2 sub-sprint 2D): resolver el cliente
+        // Supabase admin localmente para pasárselo al tool loop. En la
+        // versión final del Sprint 2 (sub-sprint 2E si lo hubiera), esto
+        // se mueve al inicio del case "question" para evitar la doble
+        // carga; por ahora, como solución mínima intrusiva, lo
+        // resolvemos aquí con el mismo timeout defensivo de 5s que ya
+        // usa el resto del flow. Si Supabase está caído, `undefined`
+        // y la tool cae a modo demo (no persiste, igual que los
+        // templates deterministas).
+        const supabaseForTool = await Promise.race([
+          getSupabase(),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000))
+        ]);
         result = await agent.run("suggest_reply", {
           profile,
           leadName: cleanLeadName,
@@ -3634,7 +3647,18 @@ case "interactive_event_inscribir": {
           // Flag confiable: el lead ya existía cuando llegó este mensaje (= hay
           // historial de conversación). Más confiable que `conversationWindow`
           // porque el loader puede fallar silenciosamente.
-          isFirstMessage: args.isFirstMessage
+          isFirstMessage: args.isFirstMessage,
+          // FIX 2026-07-10 (Sprint 2 sub-sprint 2D): inyectar leadId y
+          // supabase para que el tool loop (sub-sprint 2C) pueda ejecutar
+          // `extract_and_save_contact_info` con `UPDATE` real a
+          // `public.leads`. Sin estos, la tool entra en modo demo y
+          // solo simula la persistencia.
+          //
+          // - `leadId`: requerido para el WHERE del UPDATE.
+          // - `supabase`: cliente admin pre-instanciado. Si el timeout de
+          //   5s ya disparó (Supabase caído), el ejecutor cae a modo demo.
+          leadId: lead.id,
+          supabase: supabaseForTool ?? undefined
         });
       } else {
         // Política del proyecto: cero PII en logs (solo flags/IDs/contadores).
