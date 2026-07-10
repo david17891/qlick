@@ -893,13 +893,29 @@ const GREETING_RE = /^(hola|hi|buenos|buenas|informaci[oó]n|info|menu|men[uú])
  *
  * Mantenemos `GREETING_RE` para usos donde solo queremos saludos
  * canónicos (ej. decisión de intent=greeting vs welcome según
- * primer-mensaje). `OPENER_RE` es estrictamente más amplio y se
- * usa SOLO como safety-net en `case "question"`.
+ * primer-mensaje). `OPENER_RE` se usa SOLO como safety-net en
+ * `case "question"`.
+ *
+ * REGRESIÓN 2026-07-09 (sesión David "otra vez con este tipo de
+ * comportamientos"): el regex anterior era demasiado permisivo y
+ * matcheaba prefijos, así que el botón "Info evento" (label que el
+ * propio bot envía, que WhatsApp entrega como texto plano cuando
+ * la sesión de 24h venció o el visitor lo escribió manual) caía
+ * al safety-net y disparaba el abridor en bucle. Ahora:
+ *
+ *   1. SOLO incluye saludos puros (no labels de botones ni
+ *      intenciones específicas como "info", "menu", "interesado",
+ *      "empezar", "inicio", "comenzar", "qué tienen", "qué
+ *      ofrecen"). Esos los maneja el LLM o `detectIntent`
+ *      (ver `BUTTON_LABEL_TO_INTENT`).
+ *   2. Acepta hasta 3 tokens extra después del opener para frases
+ *      naturales como "Hola buen día" o "Qué onda Qlick".
+ *   3. Anclas `^...$` con sufijo opcional de punct/emoji.
  *
  * Exportada para tests unitarios en tests/whatsapp-bot-opener.test.mjs.
  */
 export const OPENER_RE =
-  /^(?:hola|hi|hey|holi|hello|qu[ée]\s+tal|qu[ée]\s+onda|qu[ée]\s+hay|buen[oa]s?\s+d[íi]as?|buen[oa]s?\s+tardes|buen[oa]s?\s+noches|info(?:rmaci[óo]n|rmacion)?|men[úu]|interesad[oa]s?|empezar(?:mos)?|inicio|comenzar|c[óo]mo\s+(?:est[áa]s|andas)|qu[ée]\s+(?:tienen|ofrecen)|al[óo]|empezamos|buenas|buenos)(?:[.,!?\s]|$|[^\w])/i;
+  /^(?:hola|hi|hey|holi|hello|qu[ée]\s+tal|qu[ée]\s+onda|qu[ée]\s+hay|buen[oa]s?\s+d[íi]as?|buen[oa]s?\s+tardes|buen[oa]s?\s+noches|c[óo]mo\s+(?:est[áa]s|andas)|al[óo]|buenas|buenos)(?:\s+\S+){0,3}[.,!?\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]?$/iu;
 // FIX 2026-07-02 (sesion David): respuestas afirmativas CORTAS en medio de
 // una conversacion (despues de que el LLM hace una pregunta) NO deberian
 // disparar el template estatico de register. Van al LLM para que mantenga
@@ -998,6 +1014,37 @@ export function detectIntent(
 ): BotIntent {
   const text = body?.trim() ?? "";
   if (!text) return "question";
+  // REGRESIÓN 2026-07-09 (sesión David "otra vez con este tipo de
+  // comportamientos"): si el body matchea EXACTAMENTE el label de un
+  // botón que el propio bot envía (ej. "Info evento", "Próximos
+  // eventos", "Inscribirme"), redirigir al intent interactivo
+  // correspondiente.
+  //
+  // Caso de uso: WhatsApp entrega como texto plano el label del
+  // botón cuando la sesión de 24h venció (interactive reply ya no
+  // aplica) o cuando el visitor escribe el texto manual en vez de
+  // presionar el botón. Sin este mapeo, el body cae a `case
+  // "question"` y el LLM (o el safety-net de opener) maneja mal el
+  // label — termina re-disparando el abridor en lugar de procesar
+  // la selección del botón.
+  //
+  // Este mapeo va ANTES de REGISTER_RE / OPT_OUT_RE / etc. porque
+  // "Inscribirme" también matchea REGISTER_RE (palabra "inscribirme"
+  // está en el set) y "No, gracias" matchearía OPT_OUT_RE por la
+  // palabra "no". Queremos que el label exacto gane sobre las
+  // heurísticas genéricas.
+  //
+  // IMPORTANTE: el case interactivo correspondiente funciona OK con
+  // `buttonId === undefined` (carga el evento activo por defecto).
+  const lower = text.toLowerCase();
+  if (lower === "info evento") return "interactive_event_yes";
+  if (lower === "próximos eventos" || lower === "proximos eventos") {
+    return "interactive_show_events";
+  }
+  if (lower === "inscribirme" || lower === "sí, inscribirme" || lower === "si, inscribirme") {
+    return "interactive_event_inscribir";
+  }
+  if (lower === "no, gracias" || lower === "no gracias") return "opt_out";
   // Señales fuertes: siempre ganan, incluso en primer mensaje.
   if (OPT_OUT_RE.test(text)) return "opt_out";
   // FIX 2026-07-02: respuestas afirmativas cortas (Si, Ok, Dale, Va) en

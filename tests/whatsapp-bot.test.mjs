@@ -316,8 +316,13 @@ test("detectIntent: si quiero inscribirme (con palabras adicionales) → registe
   // register. AFFIRMATIVE_RE no matchea cuando hay mas palabras.
   assert.equal(detectIntent("Si, quiero inscribirme", false), "register");
   assert.equal(detectIntent("Si, quiero", false), "register");
-  assert.equal(detectIntent("inscribirme", false), "register");
   assert.equal(detectIntent("registrarme", false), "register");
+  // REGRESIÓN 2026-07-09: "inscribirme" SOLO (label exacto del botón
+  // que el bot envía) ya NO va a register — va a
+  // interactive_event_inscribir para que el flow procese la selección
+  // del botón correctamente. Ver tests/whatsapp-bot-opener.test.mjs
+  // para la cobertura del mapeo label→intent.
+  assert.equal(detectIntent("inscribirme al evento", false), "register");
 });
 
 test("detectIntent: no/cancelar/baja → opt_out", () => {
