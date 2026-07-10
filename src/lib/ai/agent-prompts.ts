@@ -288,6 +288,16 @@ export function buildTaskPrompt(
       // Si el lead ya dio nombre o email SOLO, captura el dato restante
       // cuando sea natural, sin exigir (ej. 'Perfecto. ¿Y tu correo?').
       "- Si el lead ya dio nombre o email SOLO (no ambos), captura el dato restante cuando sea natural, sin exigir.\n" +
+      // FIX 2026-07-10 (sesión David "FALLBACK captura 'Quiero'/'!hola!' como
+      // nombre"): regla explícita al LLM para NO capturar nombre cuando el
+      // body es ambiguo. Si el body es solo un verbo de intención (ej.
+      // "quiero", "deseo", "me interesa") o un placeholder obvio (ej.
+      // "!hola!", "test"), NO lo asumas como nombre. Pide nombre completo
+      // con un ejemplo ("Juan Pérez"). Esta regla es defensa en profundidad
+      // — el bot-engine ya filtra el FALLBACK heurístico, pero el LLM puede
+      // llamar a la tool extract_and_save_contact_info desde suggest_reply
+      // y debe respetar la misma lógica.
+      "- Si el body del lead es ambiguo (verbo de intención como 'quiero', 'deseo', 'me interesa' SOLO, o contiene símbolos como '!hola!', o es una frase de cortesía), NO lo asumas como nombre. Pide nombre completo con ejemplo claro: '¿Me das tu nombre completo (nombre y apellido) para el certificado? Por ejemplo: Juan Pérez.'.\n" +
       // FIX 2026-07-10 (Sprint 2 sub-sprint 2B, edge case opt-out):
       // Edge case crítico de la decisión arquitectónica. El bot NO
       // intenta convencer al lead desinteresado; respeta y se despide.

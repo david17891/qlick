@@ -117,6 +117,48 @@ const PLACEHOLDER_NAMES_BLOCKLIST: ReadonlySet<string> = new Set([
   "sin nombre"
 ]);
 
+/**
+ * FIX 2026-07-10 (sesión David "FALLBACK captura 'Quiero'/'!hola!' como
+ * nombre"): set de verbos/intenciones que la tool debe rechazar si
+ * llegan como "nombre". Coincide con `INTENT_VERBS` del bot-engine pero
+ * está LOCAL para no introducir dependencia. Si el bot-engine agrega un
+ * nuevo verbo en el futuro, hay que sincronizarlo acá.
+ *
+ * Cobertura: verbos específicos de inscripción, intención de obtener
+ * info y verbos de comunicación. NO incluye "Quiero" (genérico, es
+ * nombre válido) — el system prompt del LLM cubre esos casos.
+ */
+const INTENT_VERBS_BLOCKLIST: ReadonlySet<string> = new Set([
+  // Verbos específicos de inscripción
+  "registrarme", "registrame", "registráme",
+  "inscribirme", "inscribime", "inscribíme",
+  "apuntarme", "apuntame", "apuntáme",
+  "anotarme", "anotame", "anotáme",
+  "apartar", "reservar",
+  "asistir", "asisto",
+  "confirmo", "confirmar",
+  "anotar", "apartarme", "reservarme",
+  // Verbos de intención de obtener info
+  "interesa", "gustaria", "gustaría",
+  "dame", "necesito",
+  // Verbos de comunicación
+  "hablar", "comunicar", "comunicarme",
+  // Auxiliares comunes en frases de intención
+  "solicito", "solicitar", "pidiendo", "pedir",
+]);
+
+/**
+ * FIX 2026-07-10: detecta si alguna palabra del nombre extraído es un
+ * verbo de intención conocido. Cubre el caso donde el LLM extrae
+ * "Quiero Registrarme" o "Me Interesa" como nombre. Pure function.
+ */
+function hasIntentVerbLocal(text: string | null | undefined): boolean {
+  if (!text) return false;
+  const words = text.toLowerCase().split(/\s+/).filter(Boolean);
+  const cleanWords = words.map((w) => w.replace(/[.,!?;:]+$/, ""));
+  return cleanWords.some((w) => INTENT_VERBS_BLOCKLIST.has(w));
+}
+
 /* ------------------------------------------------------------------ */
 /* Helpers puros (testeables sin Supabase)                             */
 /* ------------------------------------------------------------------ */
@@ -206,7 +248,14 @@ export async function executeExtractAndSaveContact(
   let validatedName: string | null = null;
   let nameError: string | undefined;
   if (rawName) {
-    if (isValidHumanNameLocal(rawName)) {
+    // FIX 2026-07-10 (sesión David "FALLBACK captura 'Quiero'/'!hola!' como
+    // nombre"): rechazar también si el nombre extraído es un verbo de
+    // intención conocido (ej. "Quiero Registrarme", "Me Interesa"). El
+    // LLM puede alucinar y llamar a la tool con un nombre que NO es
+    // nombre. Esta es la red de seguridad.
+    if (hasIntentVerbLocal(rawName)) {
+      nameError = "Nombre inválido (contiene verbo de intención, no es nombre humano).";
+    } else if (isValidHumanNameLocal(rawName)) {
       validatedName = rawName;
     } else {
       nameError = "Nombre inválido (placeholder, demasiado corto o sin letras).";
