@@ -1932,3 +1932,51 @@ ext.config.mjs o src/lib/env.ts.
 - **No inventar comportamiento de servicios.** Yo dije que "Supabase detecta tokens pegados en chat y los rota" - David me corrigio: no hay evidencia de eso, la unica razon valida para no pegar tokens por chat es seguridad (no queres que queden en logs de Mavis), no un comportamiento del servicio. **Regla:** si no verifique, no afirmo.
 - **SQL Editor del dashboard > pelearse con credenciales drift** para migraciones aditivas. 30 seg vs 30 min. Reservar `supabase db push` / `exec-sql.mjs` para cuando las credenciales esten sanas.
 
+---
+
+## Sesión 2026-07-09 noche — Revert `fix/bot-universal-name-capture`
+
+### Bug crítico en producción
+
+El commit `9c606de` ("captura universal de nombre humano en cualquier turno", mergeado en `6f4c871` hoy 19:33 PHX) introdujo un helper `detectUniversalNameCapture` con 6 filtros anidados para capturar nombres. **Se ejecuta ANTES del LLM** y cierra el flujo con `intent = "provide_name_late"` cuando matchea.
+
+**Síntomas reportados por David (screenshot + verbal):**
+- "¡Hola! Quiero más información" → bot guardó el body COMPLETO como nombre.
+- "Quiero más información" suelto → bot guardó solo eso como nombre.
+- "Hola como estás" + segundo mensaje "quiero más información" → guardó "quiero más información" como nombre.
+- En todos los casos: bot cerró con "Gracias X. ¿Algo más?" sin pedir email, sin promover anuncio, sin registrar.
+
+**Causas raíz:**
+1. Heurística determinista captura frases de intención ("quiero más información", "me interesa el tema", "cómo funciona") porque pasan todos los filtros: 2+ palabras con letras, ninguna filler, ninguna placeholder, no empieza con `?`, no matchea `INTENT_PHRASES`.
+2. Override de `intent = "provide_name_late"` cierra el flujo y nunca llega al path de provide_email / register.
+3. Test `whatsapp-bot-universal-name.test.mjs` **nunca corrió** (importa `bot-engine.ts` con `@/lib/log` y node strip-types no resuelve path aliases). El commit message mintió con "Tests: 877/877 verde".
+
+### Acción tomada
+
+**Revert limpio** del merge commit `6f4c871`. Restore del comportamiento que funcionaba a las 6:30pm antes del fix.
+
+- Commit: `33555df` ("Revert 'Merge branch fix/bot-universal-name-capture-2026-07-09'").
+- Archivos: `src/lib/whatsapp/bot-engine.ts` (-368 líneas), `tests/whatsapp-bot-universal-name.test.mjs` (borrado).
+- Validación local: type-check limpio, lint sin warnings, **824/824 tests verde** (53 menos que con el fix roto — exactamente los tests del bug), build OK.
+
+### Filosofía arquitectónica para el bot (decisión David 2026-07-09 noche)
+
+> "Siento que estamos cortando demasiado al LLM y que con un buen contexto puede hacerse cargo mejor que nuestras reglas deterministas. Podemos hacer una combinación de reglas deterministas para que no alucine pero que pueda hacer todo."
+
+**Regla de diseño v2 (a aplicar en próximas features del bot):**
+- **LLM primero**, reglas deterministas solo cuando son necesarias para evitar alucinaciones (off-topic obvio, contenido peligroso, formatos rígidos).
+- **NO** reglas deterministas para captura semántica (nombre, intención, intención de compra, etc.) — el LLM con buen contexto puede hacerlo mejor.
+- Los fixes buenos del día (opener safety-net `84ec983`, label-button guard `61893d5`) **se quedan**: esos sí son válidos porque el LLM alucinaba respuestas vacías para openers cortos.
+
+### Pendiente para próxima fase
+
+- 🔴 **Búsqueda exhaustiva de over-parcheo** en `bot-engine.ts`. Hoy se rompió el flujo general por arreglar un caso (Mari mandó nombre completo en segundo turno). Necesitamos revisar las otras reglas deterministas que se interponen entre el usuario y el LLM. Probablemente hay más bugs latentes del mismo patrón.
+- 🟠 **Caso Mari (captura tardía de nombre)**: queda sin resolver. Diseño 2.0 con LLM en el loop, NO heurística. Mantener `isValidHumanName` y los sets (CONVERSATIONAL_FILLER_WORDS, QLICK_DOMAIN_WORDS, PLACEHOLDER_NAMES_UI) como contexto para el LLM, no como gates duros.
+- 🟡 **Test runner roto**: `whatsapp-bot-universal-name.test.mjs` no corría por path aliases. Cualquier test que importe `.ts` con `@/` aliases está en la misma situación. Investigar si los tests `.mjs` actuales cubren solo archivos `.mjs` planos o si hay tests que pretendían cubrir código `.ts` y nunca corrieron.
+- 🟢 **Limpieza de leads contaminados**: si hay leads en producción con nombre capturado por el fix roto (probablemente algunos entre 19:33 y 22:27 PHX del 2026-07-09), hay que identificarlos y limpiarlos. Query de diagnóstico: `SELECT id, name, phone FROM leads WHERE updated_at > '2026-07-09 19:33:00-07' AND name ~ '^[¡¿]|^[A-Z][a-z]+\s+más\s+información' AND length(name) > 25;`. Decidir con David si limpieza automática o manual.
+
+### Lecciones agent memory (a guardar)
+
+- **Tests "verdes" en commit message no son evidencia**: si un test importa código `.ts` con path aliases (`@/`), node strip-types no lo va a ejecutar aunque el commit message diga "Tests: NNN/NNN verde". Siempre correr `npm test` después de merge, no confiar en el reporte del committer.
+- **Filtros deterministas para captura semántica NO escalan**: si una frase como "quiero más información" pasa 6 filtros sin ser nombre, no es problema del filtro — es que el filtro está mal definido. Cualquier heurística que no cubra el espacio completo de "intención de usuario" va a fallar en algún caso. La salida es LLM, no más reglas.
+
