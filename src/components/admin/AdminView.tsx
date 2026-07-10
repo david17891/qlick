@@ -40,7 +40,26 @@ const statusLabel: Record<PaymentStatus, string> = {
   refunded: "Reembolsado"
 };
 
-export function AdminView({ adminEmail }: { adminEmail?: string } = {}) {
+export function AdminView(
+  {
+    adminEmail,
+    botV2Enabled
+  }: {
+    adminEmail?: string;
+    /**
+     * FIX 2026-07-10 (Sprint 2.1): estado del Motor IA Socrático v2
+     * (deepseek_tools_enabled). Inyectado por el server component padre
+     * (`/admin/page.tsx`) leyendo `system_settings`. Mostramos un
+     * mini-badge al lado del botón de navegación para que David
+     * tenga visible el estado del toggle desde el dashboard principal.
+     *
+     *   true  → 🟢 ACTIVO
+     *   false → OFF
+     *   null  → sin badge (DB no respondió o flag no seteado)
+     */
+    botV2Enabled?: boolean | null;
+  } = {}
+) {
   const router = useRouter();
   const searchParams = useSearchParams();
   // Permite deep-link a un tab específico vía ?tab=crm (usado por
@@ -208,6 +227,35 @@ export function AdminView({ adminEmail }: { adminEmail?: string } = {}) {
           className="ml-auto px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap text-ink-soft hover:bg-brand-50 border border-brand-200"
         >
           🎟️ Eventos →
+        </Link>
+        {/* FIX 2026-07-10 (Sprint 2.1): botón de acceso rápido al toggle del
+            Motor IA Socrático v2. Posicionado justo después de "Eventos" para
+            que David lo encuentre navegando desde el dashboard principal. */}
+        <Link
+          href="/admin/system/bot-v2"
+          className="px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap text-ink-soft hover:bg-brand-50 border border-brand-200 inline-flex items-center gap-2"
+          aria-label="Abrir toggle del Motor IA Socrático v2"
+        >
+          <span>🧠 Bot v2</span>
+          {botV2Enabled === true && (
+            <span
+              data-testid="bot-v2-state-badge"
+              className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700"
+              title="Motor IA Socrático v2 activo (tool-calling ON)"
+            >
+              ON
+            </span>
+          )}
+          {botV2Enabled === false && (
+            <span
+              data-testid="bot-v2-state-badge"
+              className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600"
+              title="Motor IA Socrático v2 apagado (tool-calling OFF)"
+            >
+              OFF
+            </span>
+          )}
+          <span aria-hidden="true">→</span>
         </Link>
       </div>
 
