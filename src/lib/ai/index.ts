@@ -43,6 +43,22 @@ export {
   SUMMARY_EVERY,
   type LeadProfile
 } from "./lead-profile";
+/* Agent Tools (Sprint 2 sub-sprint 2A, 2026-07-10). */
+export {
+  getAgentTools,
+  getAgentToolByName,
+  TOOL_EXTRACT_AND_SAVE_CONTACT_INFO,
+  type AgentToolDefinition,
+  type ToolParameterSchema
+} from "./agent-tools";
+export {
+  executeExtractAndSaveContact,
+  isValidHumanNameLocal,
+  validateAndNormalizeEmail,
+  type ExtractContactInput,
+  type ExtractContactContext,
+  type ExtractContactResult
+} from "./tool-executors/extract-contact";
 
 import type { AIAgentProvider, AIAgentProviderName } from "./agent-provider";
 import { mockAgentProvider } from "./mock-agent-provider";
