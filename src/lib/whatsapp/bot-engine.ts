@@ -506,6 +506,72 @@ const CONVERSATIONAL_FILLER_WORDS = new Set([
   "yep", "yup", "mmm", "ajá", "aja", "dale", "va", "listo",
   "perfecto", "excelente", "genial", "okas", "okis",
 ]);
+
+/**
+ * FIX 2026-07-10 (sesión David "FALLBACK captura 'Quiero'/'!hola!' como nombre"):
+ * Set de verbos/intenciones que NO son nombre humano. Usado SOLO por
+ * `hasIntentVerb` (gate de seguridad en el FALLBACK provide_name y en
+ * la tool `extract_and_save_contact_info`). NO se mete en `isValidHumanName`
+ * para no romper apellidos válidos como "Apunta", "Interesa" (raros
+ * pero posibles).
+ *
+ * Cobertura: verbos específicos de inscripción, intención de obtener
+ * info, y verbos de comunicación. NO incluye "Quiero" (genérico, es
+ * nombre válido) — el system prompt del LLM se encarga de esos casos.
+ *
+ * Comparación EXACTA (===), no substring — un nombre como "Anota" o
+ * "Aparta" NO se rompe.
+ */
+const INTENT_VERBS = new Set([
+  // Verbos específicos de inscripción
+  "registrarme", "registrame", "registráme",
+  "inscribirme", "inscribime", "inscribíme",
+  "apuntarme", "apuntame", "apuntáme",
+  "anotarme", "anotame", "anotáme",
+  "apartar", "reservar",
+  "asistir", "asisto",
+  "confirmo", "confirmar",
+  "anotar", "apartarme", "reservarme",
+  // Verbos de intención de obtener info
+  "interesa", "gustaria", "gustaría",
+  "dame", "necesito",
+  // Verbos de comunicación
+  "hablar", "comunicar", "comunicarme",
+  // Auxiliares comunes en frases de intención
+  "solicito", "solicitar", "pidiendo", "pedir",
+]);
+
+/**
+ * FIX 2026-07-10: detecta si alguna palabra del body es un verbo de
+ * intención conocido. Se usa en el FALLBACK provide_name y en la tool
+ * `extract_and_save_contact_info` para evitar capturar frases como
+ * "Quiero registrarme" o "Me interesa el evento" como si fueran nombres.
+ *
+ * Pure function, exportada para tests.
+ */
+export function hasIntentVerb(body: string | null | undefined): boolean {
+  if (!body) return false;
+  const words = body.toLowerCase().split(/\s+/).filter(Boolean);
+  const cleanWords = words.map((w) => w.replace(/[.,!?;:]+$/, ""));
+  return cleanWords.some((w) => INTENT_VERBS.has(w));
+}
+
+/**
+ * FIX 2026-07-10: detecta si alguna palabra del body empieza con un
+ * símbolo (no letra, no acento). "!hola!" empieza con "!" → rechazar.
+ * "Juan" empieza con "J" → OK. "1juan" empieza con "1" → rechazar.
+ *
+ * Cubre el caso del screenshot 2 de David: "!hola! david" se filtraba
+ * como nombre (firstName="!hola!" → saludo "¡Hola !hola!!").
+ *
+ * Pure function, exportada para tests.
+ */
+export function hasGarbledStart(body: string | null | undefined): boolean {
+  if (!body) return false;
+  const words = body.split(/\s+/).filter(Boolean);
+  return words.some((w) => /^[^a-záéíóúñüA-ZÁÉÍÓÚÑÜ]/.test(w));
+}
+
 export function isValidHumanName(text: string | null | undefined): boolean {
   if (!text) return false;
   const trimmed = text.trim();
@@ -523,10 +589,22 @@ export function isValidHumanName(text: string | null | undefined): boolean {
   // FIX 2026-07-06 (audit E7 stress testing ronda 2): ninguna palabra
   // puede ser una muletilla conversacional ("ah ok", "ya", "dale").
   // Si alguna lo es, el input NO es un nombre real.
-  const hasOnlyFiller = wordsWithLetters.every((w) =>
-    CONVERSATIONAL_FILLER_WORDS.has(w.toLowerCase().replace(/[.!?]+$/, ""))
+  // FIX 2026-07-10: limpieza ampliada [.,!?;:] (antes solo [.?]) para
+  // que "hola," y "hola;" se consideren filler correctamente.
+  const cleanedForCheck = wordsWithLetters.map((w) =>
+    w.toLowerCase().replace(/[.,!?;:]+$/, "")
+  );
+  const hasOnlyFiller = cleanedForCheck.every((w) =>
+    CONVERSATIONAL_FILLER_WORDS.has(w)
   );
   if (hasOnlyFiller) return false;
+  // FIX 2026-07-10: si CUALQUIER palabra es placeholder UI (no solo el
+  // nombre completo), rechazar. Antes "Asistente Lopez" pasaba como
+  // nombre válido y el saludo quedaba como "¡Hola Asistente!".
+  const hasPlaceholderWord = cleanedForCheck.some((w) =>
+    PLACEHOLDER_NAMES_UI.has(w)
+  );
+  if (hasPlaceholderWord) return false;
   return true;
 }
 
@@ -4476,6 +4554,18 @@ export async function processInboundMessage(
       !awaitingField &&
       body &&
       !looksLikeEmail &&
+      // FIX 2026-07-10 (sesión David "FALLBACK captura 'Quiero'/'!hola!' como
+      // nombre"): rechazar si el body es claramente un verbo/intención
+      // (ej. "Quiero registrarme", "me interesa el evento", "inscribirme").
+      // El set INTENT_VERBS incluye verbos específicos de inscripción,
+      // intención de info y comunicación. NO incluye "Quiero" (genérico,
+      // es nombre válido) — el system prompt del LLM cubre esos casos.
+      !hasIntentVerb(body) &&
+      // FIX 2026-07-10 (sesión David "FALLBACK captura '!hola!' como nombre"):
+      // rechazar si alguna palabra empieza con símbolo (no letra/acento).
+      // "!hola! david" → "!hola!" empieza con "!" → firstName="!hola!" →
+      // saludo "¡Hola !hola!!" (el bug screenshot 2).
+      !hasGarbledStart(body) &&
       /[\p{L}]{2,}/u.test(body.split(/\s+/)[0] ?? "") &&
       body.split(/\s+/).filter((w) => /[\p{L}]/u.test(w)).length >= 2 &&
       // FIX 2026-07-09 noche (sesión David "FALLBACK provide_name guarda
@@ -4487,12 +4577,14 @@ export async function processInboundMessage(
       // `detectUniversalNameCapture` el 2026-07-09 noche, en variante
       // más sutil del FALLBACK). Misma lógica que `isValidHumanName`
       // pero aplicada a este path específico.
+      // FIX 2026-07-10: limpieza ampliada [.,!?;:] (antes solo [.?]) para
+      // que "hola," y "hola;" se consideren filler correctamente.
       !body
         .split(/\s+/)
         .filter((w) => /[\p{L}]/u.test(w))
         .every((w) =>
           CONVERSATIONAL_FILLER_WORDS.has(
-            w.toLowerCase().replace(/[.!?]+$/, "")
+            w.toLowerCase().replace(/[.,!?;:]+$/, "")
           )
         )
     ) {
@@ -4780,7 +4872,19 @@ export async function processInboundMessage(
     const wordCount = name.split(/\s+/).filter(Boolean).length;
     // Solo persistir si pasó las validaciones del handler (no email,
     // 2+ palabras, <=100 chars). Si falló la validación, NO actualizamos.
-    if (!looksLikeEmail && wordCount >= 2 && name.length <= 100) {
+    // FIX 2026-07-10 (sesión David "FALLBACK captura 'Quiero'/'!hola!' como
+    // nombre"): agregar `isValidHumanName(name)` como gate de seguridad
+    // adicional. El FALLBACK de provide_name ya filtra verbos/intención y
+    // símbolos al inicio, pero si otro path setea `intent="provide_name"`
+    // en el futuro (race condition, nuevo FALLBACK, etc.), este check
+    // evita que un body no-nombre se persista en `leads.name`. Defensive
+    // in depth: si NO pasa `isValidHumanName`, NO guardar.
+    if (
+      !looksLikeEmail &&
+      wordCount >= 2 &&
+      name.length <= 100 &&
+      isValidHumanName(name)
+    ) {
       const previousName = lead.name ?? null;
       const { error: nameUpdateErr } = await supabase
         .from("leads")
