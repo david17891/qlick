@@ -101,11 +101,29 @@ export function mustEscalateToHuman(message: string): {
   return { escalate: false };
 }
 
-/** Frases prohibidas que NUNCA deben aparecer en una salida del agente. */
+/**
+ * Frases prohibidas que NUNCA deben aparecer en una salida del agente.
+ *
+ * FIX 2026-07-10 (Sprint 2 hotfix David 03:40 AM): eliminar `descuento`
+ * y `promocion` de la lista ciega. El system prompt (agent-prompts.ts
+ * l-77 + l-295) ya prohíbe al LLM "Confirmar pagos, accesos, descuentos
+ * o promociones no autorizadas" y "prometer descuentos no en EVENTO
+ * ACTIVO.detalles". Filtrar la palabra `descuento` o `promocion` en la
+ * salida cazaba falsos positivos como "no manejamos descuento de
+ * estudiantes" — respuesta honesta y correcta que NO debe bloquearse.
+ *
+ * Decisión de diseño (alineada con regla LLM-first del sprint 2 v2):
+ *   - El system prompt es la fuente de verdad para reglas de negocio
+ *     (descuentos, ofertas, pagos no autorizados).
+ *   - `validateAgentReply` solo bloquea errores FATALES de proceso
+ *     (confirmaciones de pago/aprobación de acceso, reembolso, gratis
+ *     sin contexto) que NO deberían salir al lead de ninguna forma.
+ *   - Si el LLM alucina "tienes un 20% de descuento" será bloqueado
+ *     por el system prompt + revisión humana del operario, NO por el
+ *     filtro ciego.
+ */
 const FORBIDDEN_PHRASES = [
-  "descuento",
   "gratis",
-  "promocion",
   "reembolso",
   "confirmo tu pago",
   "pago aprobado",
