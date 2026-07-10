@@ -23,6 +23,7 @@ import assert from "node:assert/strict";
 import {
   stripGreetingIfHasHistory,
   stripGreetingForTest,
+  isAckOnly,
 } from "../src/lib/whatsapp/safety-net.ts";
 
 /* ─────────────────────────────────────────────────────────────
@@ -222,4 +223,144 @@ test("stripGreetingForTest (sin hasHistory) siempre strippea — útil para debu
     stripGreetingForTest("Hola, ¿qué evento?"),
     "¿qué evento?"
   );
+});
+
+/* ─────────────────────────────────────────────────────────────
+ * FIX 2026-07-10 (Sprint 2 hotfix David 03:27 AM) — guardia extendida
+ * ─────────────────────────────────────────────────────────────
+ * Si después del strip queda un residuo con menos de 3 caracteres
+ * (ej. ".", "Va", "Sí", "Ok"), devolvemos el texto original con el
+ * saludo intacto en vez de enviar ese residuo al lead. Bug real: el
+ * LLM devolvía "Hola." solo y caía al safety net externo.
+ */
+
+test("hasHistory=true + residuo '.' (1 char) → devuelve original", () => {
+  // El LLM devolvió solo "Hola." → strippea "Hola," pero queda "."
+  // Con el fix, devolvemos "Hola." original (residuo muy corto).
+  assert.equal(stripGreetingIfHasHistory("Hola.", true), "Hola.");
+});
+
+test("hasHistory=true + residuo 'Va' (2 chars) → devuelve original", () => {
+  // Después de "Hola, Va" → strippea "Hola," → queda "Va". <3 chars
+  // → devolvemos original "Hola, Va" (mejor que enviar solo "Va").
+  assert.equal(stripGreetingIfHasHistory("Hola, Va", true), "Hola, Va");
+});
+
+test("hasHistory=true + residuo 'Sí' (2 chars) → devuelve original", () => {
+  assert.equal(stripGreetingIfHasHistory("Hola, Sí", true), "Hola, Sí");
+});
+
+test("hasHistory=true + residuo 'OK' (2 chars) → devuelve original", () => {
+  assert.equal(stripGreetingIfHasHistory("Hola, OK", true), "Hola, OK");
+});
+
+test("hasHistory=true + residuo 'Ok' (2 chars) → devuelve original", () => {
+  assert.equal(stripGreetingIfHasHistory("Hola. Ok", true), "Hola. Ok");
+});
+
+test("hasHistory=true + residuo 'Por' (3 chars exactos) → devuelve 'Por'", () => {
+  // 3 chars exactos pasa el filtro (no <3), devolvemos el residuo.
+  // Antes del fix: mismo comportamiento (3 chars no estaba en el filtro).
+  // Después del fix: comportamiento preservado.
+  assert.equal(stripGreetingIfHasHistory("Hola Por", true), "Por");
+});
+
+test("hasHistory=true + residuo 'San' (3 chars) → devuelve 'San'", () => {
+  // Variante para asegurar que el límite es ESTRICTAMENTE menor a 3.
+  assert.equal(stripGreetingIfHasHistory("Hola San", true), "San");
+});
+
+/* ─────────────────────────────────────────────────────────────
+ * isAckOnly — FIX 2026-07-10 hotfix
+ * ─────────────────────────────────────────────────────────────
+ * Detecta "gracias / ok / listo / perfecto / vale / entendido / va / sí"
+ * exactos (con tolerancia a whitespace y puntuación). Caso real: lead
+ * manda "Gracias" tras registro completado, bot respondía con safety net.
+ */
+
+test("isAckOnly: 'gracias' → true", () => {
+  assert.equal(isAckOnly("gracias"), true);
+});
+
+test("isAckOnly: 'GRACIAS' → true (case-insensitive)", () => {
+  assert.equal(isAckOnly("GRACIAS"), true);
+});
+
+test("isAckOnly: 'Gracias!' → true (con puntuación trailing)", () => {
+  assert.equal(isAckOnly("Gracias!"), true);
+});
+
+test("isAckOnly: '  Gracias.  ' → true (con whitespace)", () => {
+  assert.equal(isAckOnly("  Gracias.  "), true);
+});
+
+test("isAckOnly: 'muchas gracias' → true", () => {
+  assert.equal(isAckOnly("muchas gracias"), true);
+});
+
+test("isAckOnly: 'mil gracias' → true", () => {
+  assert.equal(isAckOnly("mil gracias"), true);
+});
+
+test("isAckOnly: 'ok' → true", () => {
+  assert.equal(isAckOnly("ok"), true);
+});
+
+test("isAckOnly: 'OK.' → true", () => {
+  assert.equal(isAckOnly("OK."), true);
+});
+
+test("isAckOnly: 'Listo' → true", () => {
+  assert.equal(isAckOnly("Listo"), true);
+});
+
+test("isAckOnly: 'listo,' → true (con coma)", () => {
+  assert.equal(isAckOnly("listo,"), true);
+});
+
+test("isAckOnly: 'Perfecto!' → true", () => {
+  assert.equal(isAckOnly("Perfecto!"), true);
+});
+
+test("isAckOnly: 'vale' → true", () => {
+  assert.equal(isAckOnly("vale"), true);
+});
+
+test("isAckOnly: 'Va.' → true", () => {
+  assert.equal(isAckOnly("Va."), true);
+});
+
+test("isAckOnly: 'entendido' → true", () => {
+  assert.equal(isAckOnly("entendido"), true);
+});
+
+test("isAckOnly: 'sí' / 'si' → true (con o sin tilde)", () => {
+  assert.equal(isAckOnly("sí"), true);
+  assert.equal(isAckOnly("si"), true);
+  assert.equal(isAckOnly("Sí."), true);
+});
+
+test("isAckOnly: 'Gracias por la info' → false (no es SOLO ack)", () => {
+  // Tiene palabras extra — el contexto lo necesita el LLM.
+  assert.equal(isAckOnly("Gracias por la info"), false);
+});
+
+test("isAckOnly: 'ok perfecto' → false (dos palabras)", () => {
+  assert.equal(isAckOnly("ok perfecto"), false);
+});
+
+test("isAckOnly: 'perfecto, qué costo tiene?' → false (pregunta)", () => {
+  assert.equal(isAckOnly("perfecto, qué costo tiene?"), false);
+});
+
+test("isAckOnly: '' → false (string vacío)", () => {
+  assert.equal(isAckOnly(""), false);
+});
+
+test("isAckOnly: null → false", () => {
+  assert.equal(isAckOnly(null), false);
+});
+
+test("isAckOnly: undefined → false", () => {
+  assert.equal(isAckOnly(undefined), false);
 });

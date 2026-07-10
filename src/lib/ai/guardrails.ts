@@ -83,10 +83,20 @@ export function mustEscalateToHuman(message: string): {
     return { escalate: true, reason: "Pagos: requiere validación humana" };
   if (/no me funciona|error|bug|no puedo|soporte/.test(t))
     return { escalate: true, reason: "Soporte técnico de plataforma" };
-  if (/descuento|promoci[oó]n|m[aá]s barato/.test(t))
-    return { escalate: true, reason: "Descuento no autorizado" };
   if (/datos personales|privacidad|baja|eliminar mis datos/.test(t))
     return { escalate: true, reason: "Datos personales / privacidad" };
+
+  // FIX 2026-07-10 (Sprint 2 hotfix David, sesion 03:27 AM): eliminar
+  // el trigger de descuento/promocion/mas barato del handler pre-LLM.
+  // Preguntar por descuentos o precio de estudiantes es una INTENCION DE
+  // COMPRA en el flujo de pre-venta, no un problema de soporte. El LLM
+  // Socratico v2 (agent-prompts.ts line 77 y 295) ya tiene prohibicion
+  // dura de "confirmar pagos, accesos, descuentos o promociones no
+  // autorizadas" + "prometer descuentos no en EVENTO ACTIVO.detalles".
+  // validateAgentReply (linea 95-104) tambien bloquea FORBIDDEN_PHRASES
+  // ('descuento', 'gratis', 'promocion', 'reembolso'...). Resultado:
+  // las preguntas legitimas de pre-venta llegan al LLM, que explica el
+  // valor oficial del taller con el Metodo Comercial, sin barreras.
 
   return { escalate: false };
 }

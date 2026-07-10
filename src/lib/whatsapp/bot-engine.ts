@@ -60,7 +60,7 @@ import {
 } from "../ai";
 import { sendHumanHandoff } from "./human-handoff";
 import { mustEscalateToHuman } from "../ai/guardrails";
-import { stripGreetingIfHasHistory } from "./safety-net";
+import { stripGreetingIfHasHistory, isAckOnly } from "./safety-net";
 import { extractEmailFromText } from "./email-extract";
 import { getAIAgentProfile } from "../crm/agent-utils";
 import {
@@ -4160,6 +4160,88 @@ export async function processInboundMessage(
     surveyEventId: wizardStateGlobal?.survey_event_id,
     hasSurveyQuestions: !!wizardStateGlobal?.survey_questions,
   });
+
+  // 2.7 Handler determinista para acuses de recibo cortos (FIX 2026-07-10
+  // Sprint 2 hotfix David 03:27 AM): si el mensaje del lead es SOLO un
+  // "gracias / ok / listo / perfecto / vale / entendido / va / sí" (sin
+  // palabras extra que requieran respuesta del LLM) Y no hay wizard de
+  // encuesta activo, respondemos deterministamente con un cierre cálido
+  // SIN gastar una llamada al LLM. Bug real observado: el "Gracias" del
+  // lead tras completar registro (3:17 AM) cayó al LLM que devolvió
+  // respuesta vacía / strippeada por el safety-net principal, terminando
+  // en "Disculpa, no entendí bien tu mensaje...". UX inaceptable.
+  //
+  // Por que ANTES del buttonId block: "gracias" como texto libre es más
+  // común que como botón (los botones de WhatsApp NO llevan texto del
+  // lead). Si el lead clickeó un botón, el handler no se dispara.
+  //
+  // Por que chequear awaiting_survey_step: si el wizard espera una
+  // respuesta específica (ej. "¿qué tan claro te quedó?" con options),
+  // un "ok" genérico NO avanza el wizard — mejor dejarlo pasar al
+  // fallback del wizard que inventar contexto.
+  if (
+    body &&
+    !wizardStateGlobal?.awaiting_survey_step &&
+    isAckOnly(body)
+  ) {
+    const ackBody =
+      "¡Con gusto! Aquí sigo pendiente por si te surge cualquier otra duda sobre el taller. " +
+      "Si en algún momento quieres inscribirte, dime el nombre y correo y te aparto tu lugar.";
+
+    const provider = getActiveWhatsAppProvider();
+    let ackSend: { ok: boolean; externalId?: string; demo?: boolean } = {
+      ok: false
+    };
+    try {
+      const r = await provider.send({ to: phoneNormalized, body: ackBody });
+      ackSend = { ok: r.ok, externalId: r.externalId, demo: r.demo };
+    } catch (err) {
+      errorLog("[whatsapp/bot] ack-handler send failed", {
+        leadId: lead.id,
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+
+    let ackConvId: string | null = null;
+    if (supabase && ackSend.ok) {
+      ackConvId = await persistConversation(supabase, {
+        lead_id: lead.id,
+        phone_normalized: phoneNormalized,
+        direction: "outbound",
+        message_type: "text",
+        body: ackBody,
+        whatsapp_message_id: ackSend.externalId ?? null,
+        metadata: {
+          trigger: "ack_only_handler",
+          source_input: body
+        }
+      }).catch((err) => {
+        errorLog("[whatsapp/bot] ack-handler persistConversation threw", {
+          leadId: lead.id,
+          error: err instanceof Error ? err.message : String(err)
+        });
+        return null;
+      });
+    }
+
+    debugLog("[whatsapp/bot] ack_only_handler fired", {
+      leadId: lead.id,
+      input: body,
+      responseSent: ackSend.ok
+    });
+
+    return {
+      ok: true,
+      intent: "question",
+      leadId: lead.id,
+      conversationId: ackConvId ?? inboundConvId ?? undefined,
+      outboundMessageId: ackSend.externalId,
+      responseKind: "text",
+      responsePreview: ackBody,
+      demo: ackSend.demo,
+      note: `Ack-only handler (input: "${body}"). Respuesta cálida determinista sin LLM.`
+    };
+  }
 
   if (message.buttonId) {
     if (message.buttonId === "evt_yes_next" || message.buttonId.startsWith("evt_yes_")) {

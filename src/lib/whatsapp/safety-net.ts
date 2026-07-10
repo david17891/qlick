@@ -101,10 +101,21 @@ export function stripGreetingIfHasHistory(
   }
   stripped = stripped.trim();
 
-  // Defensivo: si quedó vacío o solo whitespace, devolvemos el original.
-  // Razón: si el LLM solo generó "Hola" sin nada más, no queremos
-  // enviarle al lead un mensaje vacío.
-  if (!stripped) return content;
+  // Defensivo: si quedó vacío, solo whitespace, o un residuo muy corto
+  // (<3 chars utiles como "Va", "Sí", ".", "Ok"), devolvemos el original.
+  // Razón: si el LLM solo generó "Hola" sin nada más (o solo "Hola."),
+  // no queremos enviarle al lead un mensaje que no responde a su pregunta
+  // — preferimos devolver el texto original con el saludo incluido antes
+  // que un residuo inutil. El saludo duplicado es un mal menor que un
+  // mensaje sin contenido.
+  //
+  // FIX 2026-07-10 (Sprint 2 hotfix David, sesion 03:27 AM): extender la
+  // guarda de "vacio" a "<3 caracteres" para cubrir residuos como "Va",
+  // "Sí", "." que tampoco responden al lead. Antes del fix, un LLM que
+  // devolvía "Hola." se quedaba en "." y caia al safety net externo
+  // ("Disculpa, no entendí bien tu mensaje..."). El fallback message
+  // (profile.fallbackMessage) era el siguiente paso y empeoraba la UX.
+  if (!stripped || stripped.length < 3) return content;
 
   // Defensivo: si no cambió nada (ningún patrón matcheó), devolvemos el
   // original. Mantiene la referencia original (no stripping parcial).
@@ -119,4 +130,63 @@ export function stripGreetingIfHasHistory(
  */
 export function stripGreetingForTest(content: string): string {
   return stripGreetingIfHasHistory(content, true);
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * Ack-only detection — FIX 2026-07-10 (Sprint 2 hotfix David 03:27 AM)
+ * ─────────────────────────────────────────────────────────────
+ * Detecta si el mensaje del lead es SOLO un acuse de recibo (gracias,
+ * ok, listo, perfecto, vale, va, entendido, sí) o un cierre rápido.
+ *
+ * Caso de uso: handler determinista en `bot-engine.ts` que responde
+ * con un mensaje cálido pre-fabricado y evita la llamada al LLM
+ * (que devolvería algo vacío o sería strippeado por el safety net
+ * principal, cayendo al fallback "Disculpa, no entendí bien tu
+ * mensaje..."). Bug real observado 2026-07-10 03:17: "Gracias" del
+ * lead tras registro completó cayó al safety net.
+ *
+ * Reglas:
+ *   - Trim del body ANTES de matchear (whitespace al inicio/fin).
+ *   - Sin palabras EXTRA antes/después (anclas ^...$). Un "muchas
+ *     gracias por la info" NO matchea — tiene contexto útil para el
+ *     LLM, mejor dejarlo pasar.
+ *   - Tolerancia a puntuación trailing y emojis (.,!¡).
+ *   - Variantes con tilde o sin tilde aceptadas.
+ *   - Case-insensitive.
+ *   - "muchas gracias" y "mil gracias" contemplados.
+ *
+ * NO dispara:
+ *   - "ok perfecto"  → tiene dos palabras, NO es solo ack.
+ *   - "ok gracias"   → idem.
+ *   - "Gracias por todo" → "por todo" no matchea el sufijo opcional.
+ *   - "perfecto, qué costo tiene?" → tiene pregunta después.
+ *
+ * SÍ dispara:
+ *   - "gracias" / "GRACIAS" / "Gracias!" / "  Gracias.  "
+ *   - "muchas gracias" / "mil gracias"
+ *   - "ok" / "OK!" / "ok."
+ *   - "listo" / "Listo,"
+ *   - "perfecto" / "perfecto!"
+ *   - "vale" / "va" / "Va,"
+ *   - "entendido"
+ *   - "sí" / "si" / "Sí!"
+ */
+const ACK_KEYWORDS =
+  "(?:muchas\\s+|mil\\s+)?(?:gracias|ok|listo|perfecto|vale|entendido|va|s[íi])";
+const ACK_TRAILING = "(?:[!.,¡\\s]*|\\u{1F44D}|[\\u{1F600}-\\u{1F64F}])"; // puntuación, espacios, emoji 👍/smileys
+const ACK_ONLY_RE = new RegExp(
+  `^\\s*${ACK_KEYWORDS}${ACK_TRAILING}$`,
+  "iu"
+);
+
+/**
+ * Detecta si `body` es un acuse de recibo corto o cierre rápido.
+ * Pure function. NO instancia nada.
+ *
+ * @param body  mensaje crudo del lead (sin trim).
+ * @returns true si body es solo un ack corto, false en cualquier otro caso.
+ */
+export function isAckOnly(body: string | null | undefined): boolean {
+  if (!body) return false;
+  return ACK_ONLY_RE.test(body.trim());
 }
