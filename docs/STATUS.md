@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-08 21:00 — **Hotfix #3: edit confirmado en vista Confirmados**. David pidió poder editar los confirmados del evento directamente desde `/admin/eventos/[id]?tab=confirmations` (no solo desde el drawer del CRM global). El drawer del CRM (commit `997378f`) queda intacto — es para editar el lead global; este es para editar el confirmado del evento en su contexto. Son independientes por diseño (un lead puede tener múltiples confirmados en eventos distintos, con datos que divergen en el tiempo).
+> **Última actualización:** 2026-07-10 5:32 Phoenix — **Recordatorios de eventos: cron automático desactivado, botón manual en panel admin**. David decidió (sesión 2026-07-10 5:24 Phoenix) desactivar el cron automático de `event-reminders` porque Vercel Hobby rechaza schedules con más de 1 ejecución/día y `*/30 * * * *` lo bloqueaba en silencio. Ahora los recordatorios se disparan manual via el botón **"🔔 Disparar recordatorio 24h"** en `/admin/eventos/[id]?tab=confirmations` (toolbar del tab Confirmados, junto a AddConfirmationButton). Por ahora solo el botón del 24h; los otros kinds (8am, 10am, 2h, 1h) quedan pendientes para Sprint 3. Endpoint `POST /api/admin/events/[id]/trigger-reminder` acepta los 5 kinds — solo falta agregar el botón en UI para los que faltan. Migración SQL `20260710040000_event_reminder_log_v2` aplicada OK (David la corrió manual en SQL Editor, fix de `||` en `COMMENT ON` commiteado en `b9c4fa1`).
 
 ---
 

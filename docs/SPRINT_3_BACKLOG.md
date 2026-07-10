@@ -60,10 +60,11 @@ bloquea el merge. Todas son para Sprint 3.
 ## Pendiente operacional
 
 ### Para el evento del 11 julio 11:00 hrs Phoenix
-- Cron 24h se dispara hoy 11 AM Phoenix (automático).
-- Cron 8am y 10am se disparan mañana 8 AM y 10 AM Phoenix (automático).
-- Si Meta no aprueba templates 8am/10am a tiempo, fallback texto libre.
+- ~~Cron 24h se dispara hoy 11 AM Phoenix (automático).~~ **CANCELADO** (sesión 2026-07-10 5:24 Phoenix). David decidió desactivar el cron automático porque Vercel Hobby solo permite 1 cron/día. Los recordatorios se disparan MANUAL via botón en la UI admin.
+- Cron 8am y 10am: también manuales. Botón solo del 24h implementado en `feat/event-reminders-v2` (commit `f890c58`); los otros kinds (8am, 10am, 2h, 1h) quedan pendientes.
+- Si Meta no aprueba templates 8am/10am a tiempo, fallback texto libre (sigue válido).
 
 ### Para el sprint 2 v2 reminders en general
-- Merge `feat/event-reminders-v2` → `main` cuando David apruebe.
+- ~~Merge `feat/event-reminders-v2` → `main` cuando David apruebe.~~ **HECHO** (sesión 2026-07-10 5:31 Phoenix, merge commit `266c59d`, push a origin/main como `20ef007`, Vercel deploy `dpl_3BAynASesbqhE6axJP5U9rH46juN` Ready, aliases `qlick.digital` y `www.qlick.digital` reasignados).
 - Correr SQL migration (YA CORRIDO — "Success. No rows returned").
+- Fix de `||` en `COMMENT ON ... IS ...` aplicado en commit `b9c4fa1` (David lo arregló manual en SQL Editor; el fix es para git).
