@@ -4,6 +4,10 @@ import { AdminView } from "@/components/admin/AdminView";
 import { HotLeadsPanel } from "@/components/crm/HotLeadsPanel";
 import { ImmediateRedirect } from "@/components/auth/ImmediateRedirect";
 import { requireAdmin } from "@/lib/auth/session";
+import {
+  readSystemSetting,
+  KEY_DEEPSEEK_TOOLS_ENABLED
+} from "@/lib/admin/system-settings-server";
 
 export const metadata: Metadata = {
   title: "Panel administrativo",
@@ -38,6 +42,18 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
   // se carga server-side (no afecta al client bundle del AdminView).
   const showHotLeads = searchParams.tab === "crm";
 
+  // FIX 2026-07-10 (Sprint 2.1): leer el estado del Motor IA Socrático v2
+  // para mostrar el badge ON/OFF en el botón de navegación del dashboard.
+  // Si la DB no responde, devolvemos null y el dashboard muestra el botón
+  // sin badge (no rompe la UI).
+  let botV2Enabled: boolean | null = null;
+  try {
+    const v = await readSystemSetting(KEY_DEEPSEEK_TOOLS_ENABLED);
+    botV2Enabled = v === true ? true : v === false ? false : null;
+  } catch {
+    botV2Enabled = null;
+  }
+
   return (
     <>
       <Navbar />
@@ -46,7 +62,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
           <HotLeadsPanel />
         </div>
       )}
-      <AdminView adminEmail={admin.email ?? "admin"} />
+      <AdminView adminEmail={admin.email ?? "admin"} botV2Enabled={botV2Enabled} />
       <Footer />
     </>
   );
