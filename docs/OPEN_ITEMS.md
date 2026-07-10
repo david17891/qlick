@@ -142,6 +142,14 @@ Ambos pasaron: type-check ✓ · lint ✓ · 726/726 tests verde · build ✓.
 - **Pendiente:** considerar rate-limit en el endpoint + log de accesos exitoso (audit log entry) para detectar anomalías.
 - **Severidad:** 🟢 Baja — secreto fuera del repo, funciona como single barrier. Mejora opcional.
 
+#### 🟠 Vercel aliases no se reasignan automáticamente al push
+
+- **Síntoma:** `git push origin main` crea deploy nuevo como `production` en Vercel, pero los aliases canónicos (`qlick.digital`, `qlick-three.vercel.app`, `www.qlick.digital`) NO se mueven automáticamente. Siguen pegados al deployment viejo hasta reasignación manual.
+- **Impacto:** código nuevo deployado pero tráfico sigue yendo al viejo. Confuso porque dashboard muestra el deploy nuevo como Ready. Bug del código viejo persiste en producción aunque el fix esté pusheado.
+- **Incidente 2026-07-09 noche:** push a main creó `qlick-3fz0xeua1` Ready, pero aliases apuntaban a `qlick-h0x5m4is4` (viejo, 4h, con bug). Bug persistió en producción hasta que reasigné manualmente con `vercel alias set dpl_AQBuXapPQ9YQfw8suk5N6tWhwhWp qlick.digital` (y los demás).
+- **Fix preventivo:** configurar `productionAlias` en `vercel.json` o en project settings → Vercel reasigna aliases automáticamente con cada push a main. Investigación + config en sprint dedicado.
+- **Severidad:** 🟠 Alta — puede causar incidentes donde código nuevo está deployado pero no surte efecto en producción.
+
 ### 🔴 P0 — Bloquean producción o tienen riesgo legal/seguridad
 
 #### G-1 · `human-handoff.ts:74` chequea `RESEND_API_KEY` (ya no existe)
