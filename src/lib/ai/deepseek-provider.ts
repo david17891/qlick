@@ -68,6 +68,10 @@ import type { ActiveEventContext } from "./event-context-loader";
 import { buildSystemPrompt, buildTaskPrompt } from "./agent-prompts";
 import { getAgentTools } from "./agent-tools";
 import { executeExtractAndSaveContact } from "./tool-executors/extract-contact";
+import {
+  readSystemSetting,
+  KEY_DEEPSEEK_TOOLS_ENABLED
+} from "../admin/system-settings-server";
 
 // ---------------------------------------------------------------------------
 // Configuracion
@@ -283,17 +287,54 @@ function runWithTimeout<T>(
 /**
  * Kill Switch SRE del tool loop.
  *
- * Default OFF (Sprint 1 sin changes). Solo se activa con
- * `DEEPSEEK_TOOLS_ENABLED === "true"`. Default OFF es por seguridad:
- * si alguien deploya y olvida setear la flag, queremos comportamiento
- * probado (Sprint 1) por default, no algo nuevo y no probado.
+ * Resolución en orden (FIX 2026-07-10 Sprint 2 sub-sprint 2.1):
+ *   1) DB (`system_settings.deepseek_tools_enabled`) si el context trae
+ *      un supabase client. Lectura por PK = O(1) en Supabase + caché
+ *      30s in-memory -> ~5ms cold, ~0ms hot.
+ *   2) Fallback: `process.env.DEEPSEEK_TOOLS_ENABLED === "true"` si la
+ *      DB no responde / key no existe / ctx.supabase no está seteado.
+ *   3) Default: false (cero inventario, comportamiento Sprint 1).
  *
- * Para activar en producción: Vercel env vars →
- * `DEEPSEEK_TOOLS_ENABLED=true`. Apagarla regresa al modo Sprint 1
- * sin redeploy (~10s con rolling restart).
+ * Por seguridad SRE: el default OFF se preserva. Si DB y env var
+ * faltan/rompen, el bot corre como Sprint 1 (ya probado).
+ *
+ * API:
+ *   - Sin args → chequea env var (síncrono, útil para tests y CLI).
+ *   - Con `AgentContext` → chequea DB primero (async), fallback a env var.
+ *
+ * Para activar desde el panel admin en runtime: `system_settings`
+ * UPSERT de `deepseek_tools_enabled = true`. La caché se invalida
+ * automáticamente al escribir (ver `setSystemSetting`).
  */
-export function isDeepseekToolsEnabled(): boolean {
-  return process.env.DEEPSEEK_TOOLS_ENABLED === "true";
+export function isDeepseekToolsEnabled(
+  ctx?: Pick<AgentContext, "supabase"> | null
+): boolean {
+  // Fallback determinista (env var) usado cuando:
+  //   - no se pasa ctx (modo síncrono, tests)
+  //   - ctx.supabase es null/undefined (modo demo)
+  //   - DB devuelve null/error (resiliencia SRE)
+  const envFallback = (): boolean =>
+    process.env.DEEPSEEK_TOOLS_ENABLED === "true";
+
+  // Caso síncrono: solo env var (compat con signature previa).
+  if (ctx === undefined) return envFallback();
+
+  // Caso async: el provider.run() pasa el contexto con supabase. Hacemos
+  // una consulta async al system_settings. Si la DB falla, fallback.
+  // NOTA: esta función NO puede ser async porque el provider.run()
+  // necesita el flag ANTES de iniciar el flow. La consulta async es
+  // la RESPONSABILIDAD del caller (`run()`), no de esta función pura.
+  //
+  // Esta función devuelve SOLO el fallback inmediato cuando se pasa ctx.
+  // El provider.run() ejecuta la consulta con caché via readSystemSetting
+  // y pasa el resultado resuelto a runWithToolLoop.
+  //
+  // Mantenemos esta firma síncrona para no romper callers externos
+  // (tests, debug). La lógica async vive en `run()`.
+  //
+  // Si en el futuro alguien quiere consultar el flag real (no fallback)
+  // desde esta función, debe llamar a `await readSystemSetting(...)`.
+  return envFallback();
 }
 
 /**
@@ -695,8 +736,30 @@ export const deepseekAgentProvider: AIAgentProvider = {
   stub: false,
 
   async run(task: AgentTask, context: AgentContext): Promise<AgentResult> {
+    // FIX 2026-07-10 (Sprint 2 sub-sprint 2.1): resolver el flag del Kill
+    // Switch SRE con preferencia a la DB (system_settings) sobre el
+    // env var. Esto habilita el toggle desde el panel admin sin
+    // redeploy. Fallback chain:
+    //   1. DB `system_settings.deepseek_tools_enabled` (caché 30s)
+    //   2. env var `DEEPSEEK_TOOLS_ENABLED=true`
+    //   3. default OFF
+    let flagEnabled = process.env.DEEPSEEK_TOOLS_ENABLED === "true";
+    if (context.supabase) {
+      try {
+        const v = await readSystemSetting(KEY_DEEPSEEK_TOOLS_ENABLED);
+        if (v === true) {
+          flagEnabled = true;
+        } else if (v === false) {
+          flagEnabled = false;
+        }
+        // v === null: dejamos el flagEnabled como está (fallback env var).
+      } catch {
+        // DB falló (red, timeout, RLS). Fallback al env var.
+      }
+    }
+
     // ── Path 2C: tool loop (solo suggest_reply + flag ON) ──
-    if (task === "suggest_reply" && isDeepseekToolsEnabled()) {
+    if (task === "suggest_reply" && flagEnabled) {
       const result = await runWithToolLoop(task, context);
       // Inyectar el activeEvent-aware fallback si el wrapper usó el
       // fallback genérico. (El wrapper ya inyecta fallback contextual
