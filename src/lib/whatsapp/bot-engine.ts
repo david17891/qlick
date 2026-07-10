@@ -882,6 +882,24 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // primer match dentro del texto. Devuelve null si no hay match — el
 // caller decide que hacer (fallback al body completo o error).
 const GREETING_RE = /^(hola|hi|buenos|buenas|informaci[oó]n|info|menu|men[uú])/i;
+
+/**
+ * FIX 2026-07-09 (sesión David "abridor en lugar de disculpa"):
+ * Set más amplio de openers/hola/inicio. Si el body del lead matchea
+ * este regex Y tiene <=4 palabras, NO dejamos que el LLM responda
+ * (porque a veces devuelve "" y caíamos al fallback frío
+ * "Disculpa, no entendí"). En su lugar, disparamos el abridor
+ * (welcome + botones) que siempre da contexto y ofrece opciones.
+ *
+ * Mantenemos `GREETING_RE` para usos donde solo queremos saludos
+ * canónicos (ej. decisión de intent=greeting vs welcome según
+ * primer-mensaje). `OPENER_RE` es estrictamente más amplio y se
+ * usa SOLO como safety-net en `case "question"`.
+ *
+ * Exportada para tests unitarios en tests/whatsapp-bot-opener.test.mjs.
+ */
+export const OPENER_RE =
+  /^(?:hola|hi|hey|holi|hello|qu[ée]\s+tal|qu[ée]\s+onda|qu[ée]\s+hay|buen[oa]s?\s+d[íi]as?|buen[oa]s?\s+tardes|buen[oa]s?\s+noches|info(?:rmaci[óo]n|rmacion)?|men[úu]|interesad[oa]s?|empezar(?:mos)?|inicio|comenzar|c[óo]mo\s+(?:est[áa]s|andas)|qu[ée]\s+(?:tienen|ofrecen)|al[óo]|empezamos|buenas|buenos)(?:[.,!?\s]|$|[^\w])/i;
 // FIX 2026-07-02 (sesion David): respuestas afirmativas CORTAS en medio de
 // una conversacion (despues de que el LLM hace una pregunta) NO deberian
 // disparar el template estatico de register. Van al LLM para que mantenga
@@ -1713,6 +1731,66 @@ interface OutboundPlan {
 }
 
 /**
+ * FIX 2026-07-09 (sesión David "abridor en lugar de disculpa"):
+ * Construye el plan del abridor (saludo + interactive con botones).
+ * Mismo template que ya usaba `case "welcome" | "greeting"`,
+ * extraído a función pura para reusarlo desde el safety-net del
+ * `case "question"` (cuando el body matchea OPENER_RE).
+ */
+async function buildOpenerPlan(args: {
+  provider: Awaited<ReturnType<typeof getActiveWhatsAppProvider>>;
+  phoneNormalized: string;
+  firstName: string;
+}): Promise<OutboundPlan> {
+  const { provider, phoneNormalized, firstName } = args;
+  // FIX 2026-07-02 (sesion David): cargamos el activeEvent REAL de DB
+  // (no el placeholder de env vars que mostraba eventos que no
+  // existian). Si no hay evento en DB, mostramos solo el saludo
+  // + botones (sin la linea "Evento activo: ...").
+  const realActiveEvent = await loadActiveEventContext().catch(() => null);
+  // FIX 2026-07-02: filtrar placeholders obvios en firstName. Si el
+  // lead tiene name="Por" (data legacy del primer test) o vacio,
+  // no le llamamos por nombre. Ver constante de módulo PLACEHOLDER_NAMES.
+  const clean = cleanFirstName(firstName);
+  const saludo = clean ? `¡Hola ${clean}!` : "¡Hola!";
+  const eventLine =
+    realActiveEvent && realActiveEvent.source === "db"
+      ? `\n\nPróximo evento: ${realActiveEvent.title} (${realActiveEvent.humanStartsAt})`
+      : "";
+  const interactive = {
+    type: "button" as const,
+    body: {
+      text: `${saludo} Soy Qlick, asistente de Qlick Marketing Digital. ¿Qué te interesa?${eventLine}`,
+    },
+    action: {
+      buttons: [
+        {
+          type: "reply" as const,
+          reply: { id: "evt_yes_next", title: "Info evento" },
+        },
+        {
+          type: "reply" as const,
+          reply: { id: "show_events", title: "Próximos eventos" },
+        },
+      ],
+    },
+    footer: { text: "Respondé con un botón o escribí tu pregunta" },
+  };
+  const bodyText = interactive.body.text;
+  return {
+    kind: "interactive",
+    body: bodyText,
+    interactive,
+    send: () =>
+      provider.send({
+        to: phoneNormalized,
+        body: bodyText,
+        interactive,
+      }),
+  };
+}
+
+/**
  * Genera el plan de respuesta para el intent detectado.
  * SIEMPRE devuelve un plan: en el peor caso, una respuesta fallback.
  */
@@ -1801,61 +1879,9 @@ async function buildResponsePlan(args: {
     case "welcome":
     case "greeting": {
       // Fase 7a: Reply Buttons en welcome. Más conversión que texto abierto.
-      // Títulos de botones tienen límite de 20 chars en Meta — usar
-      // mensajes genéricos + poner el nombre del evento en el body.
-      //
-      // FIX 2026-07-02 (sesion David): cargamos el activeEvent REAL de DB
-      // (no el placeholder de env vars que mostraba eventos que no
-      // existian). Si no hay evento en DB, mostramos solo el saludo
-      // + botones (sin la linea "Evento activo: ...").
-      const realActiveEvent = await loadActiveEventContext().catch(() => null);
-      // FIX 2026-07-02: filtrar placeholders obvios en firstName. Si el
-      // lead tiene name="Por" (data legacy del primer test) o vacio,
-      // no le llamamos por nombre. Ver constante de módulo PLACEHOLDER_NAMES.
-      const clean = cleanFirstName(firstName);
-      const saludo = clean ? `¡Hola ${clean}!` : "¡Hola!";
-      const eventLine = realActiveEvent && realActiveEvent.source === "db"
-        ? `\n\nPróximo evento: ${realActiveEvent.title} (${realActiveEvent.humanStartsAt})`
-        : "";
-      const interactive = {
-        type: "button" as const,
-        body: {
-          text: `${saludo} Soy Qlick, asistente de Qlick Marketing Digital. ¿Qué te interesa?${eventLine}`
-        },
-        action: {
-          buttons: [
-            {
-              type: "reply" as const,
-              reply: {
-                id: "evt_yes_next",
-                title: "Info evento"
-              }
-            },
-            {
-              type: "reply" as const,
-              reply: {
-                id: "show_events",
-                title: "Próximos eventos"
-              }
-            }
-          ]
-        },
-        footer: {
-          text: "Respondé con un botón o escribí tu pregunta"
-        }
-      };
-      const bodyText = interactive.body.text;
-      return {
-        kind: "interactive",
-        body: bodyText,
-        interactive,
-        send: () =>
-          provider.send({
-            to: phoneNormalized,
-            body: bodyText,
-            interactive
-          })
-      };
+      // Cuerpo extraído a `buildOpenerPlan` para reuso desde el
+      // safety-net del `case "question"` (ver OPENER_RE).
+      return buildOpenerPlan({ provider, phoneNormalized, firstName });
     }
     case "register": {
       // FIX 2026-07-08 (sesion David, "Quiero registrarme" salta directo a pedir nombre):
@@ -3478,6 +3504,40 @@ case "interactive_event_inscribir": {
               provider.send({ to: phoneNormalized, body: bodyText })
           };
         }
+      }
+      // FIX 2026-07-09 (sesión David "abridor en lugar de disculpa"):
+      // Safety-net para mensajes cortos tipo "Hola" / "Hey" / "Buenas"
+      // / "Info" / "Qué tal" — si matchea OPENER_RE y tiene <=4
+      // palabras, NO dejamos que el LLM responda. Razón: el LLM a
+      // veces devuelve "" para mensajes cortos (rate-limit, mock
+      // provider, error de red) y caíamos al fallback frío
+      // "Disculpa, no entendí bien tu mensaje". El abridor (welcome
+      // template + botones Info evento / Próximos eventos) siempre da
+      // contexto y opciones, alineado con el flow existente de
+      // case "welcome" | case "greeting".
+      //
+      // Distinción con el bloque matchInscriptionIntent arriba:
+      // aquel pide nombre cuando el visitante muestra intención de
+      // inscribirse; este re-orienta al inicio del flujo cuando el
+      // visitante saluda / abre conversación con un opener genérico.
+      const openerTrimmed = body.trim();
+      const openerWordCount = openerTrimmed.split(/\s+/).filter(Boolean).length;
+      if (
+        openerTrimmed &&
+        openerWordCount > 0 &&
+        openerWordCount <= 4 &&
+        OPENER_RE.test(openerTrimmed)
+      ) {
+        debugLog("[whatsapp/bot] opener safety-net: abridor en lugar de LLM", {
+          leadId: lead.id,
+          bodyPreview: openerTrimmed.slice(0, 80),
+          wordCount: openerWordCount,
+        });
+        return await buildOpenerPlan({
+          provider,
+          phoneNormalized,
+          firstName,
+        });
       }
       // FIX 2026-07-04 (auditoria nocturna): rate limit per phone para
       // proteger saldo DeepSeek. Default 5 calls / 60s / phone. Sin este
