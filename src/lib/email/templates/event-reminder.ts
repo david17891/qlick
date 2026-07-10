@@ -19,8 +19,13 @@ export interface EventReminderInput {
   eventTitle: string;
   eventStartsAt: string; // ISO
   eventLocation: string | null;
-  /** "24h" o "2h" — define el copy. */
-  reminderKind: "24h" | "2h";
+  /**
+   * Ventana del recordatorio. FIX 2026-07-10 (Sprint 2 v2): soportamos
+   * las 5 ventanas (24h, 8am Phoenix, 10am Phoenix, 2h, 1h). El copy
+   * del email se adapta: 24h usa copy "mañana", 8am/10am/2h/1h usan
+   * copy urgente (HOY o en N horas).
+   */
+  reminderKind: "24h" | "8am" | "10am" | "2h" | "1h";
   /** URL del pase (`/check-in/[token]`). */
   checkInUrl: string;
 }
@@ -71,9 +76,10 @@ function formatEventTime(iso: string): string {
 }
 
 /**
- * Copy del recordatorio. Diferencia entre 24h y 2h:
+ * Copy del recordatorio. FIX 2026-07-10: 5 ventanas soportadas.
  *   - 24h: "te recordamos que mañana es..." + CTA "agregar a calendario"
- *   - 2h:  "te recordamos que en ~2 horas..." + CTA "abrir mi pase"
+ *   - 8am / 10am (Phoenix día del evento): "HOY es..." + CTA "abrir mi pase"
+ *   - 2h / 1h:  "te recordamos que en N horas..." + CTA "abrir mi pase"
  */
 function buildReminderCopy(input: EventReminderInput): {
   subject: string;
@@ -81,7 +87,6 @@ function buildReminderCopy(input: EventReminderInput): {
   body: string;
   ctaLabel: string;
 } {
-  const isShort = input.reminderKind === "2h";
   const eventDate = formatEventDate(input.eventStartsAt);
   const eventTime = formatEventTime(input.eventStartsAt);
   // El body se inyecta en HTML interpolado (`${body}`). Hay que escapar
@@ -90,15 +95,29 @@ function buildReminderCopy(input: EventReminderInput): {
   const titleSafe = esc(input.eventTitle);
   const locSafe = input.eventLocation ? esc(input.eventLocation) : null;
 
-  if (isShort) {
+  // 8am / 10am Phoenix: copy "HOY es el taller".
+  if (input.reminderKind === "8am" || input.reminderKind === "10am") {
+    const hoursLabel = input.reminderKind === "8am" ? "HOY" : "En 1 hora";
     return {
-      subject: `En 2 horas: ${input.eventTitle}`,
-      headline: `Nos vemos en ~2 horas`,
+      subject: `${hoursLabel}: ${input.eventTitle}`,
+      headline: `${hoursLabel} es el taller`,
+      body: `<strong>"${titleSafe}"</strong> ${input.reminderKind === "8am" ? "empieza HOY" : "empieza en 1 hora"} a las ${eventTime}.` +
+        (locSafe ? ` Lugar: ${locSafe}.` : ""),
+      ctaLabel: "Abrir mi pase",
+    };
+  }
+  // 1h / 2h: copy "en N horas".
+  if (input.reminderKind === "2h" || input.reminderKind === "1h") {
+    const hoursLabel = input.reminderKind === "2h" ? "En 2 horas" : "En 1 hora";
+    return {
+      subject: `${hoursLabel}: ${input.eventTitle}`,
+      headline: `Nos vemos en ~${input.reminderKind}`,
       body: `Te recordamos que <strong>"${titleSafe}"</strong> empieza a las ${eventTime}.` +
         (locSafe ? ` Lugar: ${locSafe}.` : ""),
       ctaLabel: "Abrir mi pase",
     };
   }
+  // 24h: copy "mañana".
   return {
     subject: `Mañana: ${input.eventTitle}`,
     headline: `Te esperamos mañana`,
