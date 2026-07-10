@@ -96,22 +96,21 @@ create trigger event_reminder_log_v2_updated_at
   for each row execute function public.set_updated_at_v2();
 
 -- 7. Comentarios.
+-- FIX 2026-07-10 (David reporto ERROR 42601 syntax error en ||):
+-- `comment on table/column ... is 'string'` NO soporta concatenacion con ||.
+-- Hay que escribir un solo string literal. Dividimos en lineas con concatenacion
+-- solo DENTRO del string con chr(10) o con varios statements, NO con ||.
 comment on table public.event_reminder_log_v2 is
-  'Tracking de recordatorios automáticos de eventos (Fase 7a v2). ' ||
-  'Soporta 3 ventanas (24h, 8am Phoenix, 10am Phoenix) y 2 canales (whatsapp, email). ' ||
-  'Idempotente vía UNIQUE constraint sobre (attendee, ventana, canal).';
+  'Tracking de recordatorios automaticos de eventos (Fase 7a v2). Soporta 3 ventanas (24h, 8am Phoenix, 10am Phoenix) y 2 canales (whatsapp, email). Idempotente via UNIQUE constraint sobre (attendee, ventana, canal).';
 
 comment on column public.event_reminder_log_v2.reminder_window is
-  'Ventana del recordatorio: 24h (24h antes), 8am (8 AM Phoenix del día), 10am (10 AM Phoenix del día), 2h, 1h.';
+  'Ventana del recordatorio: 24h (24h antes), 8am (8 AM Phoenix del dia), 10am (10 AM Phoenix del dia), 2h, 1h.';
 
 comment on column public.event_reminder_log_v2.channel is
   'Canal: whatsapp (Meta template o texto libre) o email (Brevo).';
 
 comment on column public.event_reminder_log_v2.scheduled_at_utc is
-  'Momento en UTC en que se debió enviar el recordatorio. ' ||
-  'Para 24h: starts_at - 24h. Para 8am Phoenix: 15:00 UTC del día del evento. ' ||
-  'Para 10am Phoenix: 17:00 UTC del día del evento.';
+  'Momento en UTC en que se debio enviar el recordatorio. Para 24h: starts_at - 24h. Para 8am Phoenix: 15:00 UTC del dia del evento. Para 10am Phoenix: 17:00 UTC del dia del evento.';
 
 comment on column public.event_reminder_log_v2.status is
-  'pending: aún no se envía. sent: enviado OK. failed: error al enviar (ver error). ' ||
-  'skipped: no se pudo enviar (sin teléfono/email, lead bloqueado, etc).';
+  'pending: aun no se envia. sent: enviado OK. failed: error al enviar (ver error). skipped: no se pudo enviar (sin telefono/email, lead bloqueado, etc).';
