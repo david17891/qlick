@@ -1,5 +1,5 @@
 # Smoke tests para PRs — Paquete 3 (cierre auditoría)
-# - tests: 480 unit tests con mocks (sin DB)
+# - tests: ~925 unit tests con mocks (sin DB)
 # - type-check: TypeScript strict
 # - lint: ESLint
 # - smoke:audit: simulador E2E contra DB real (requiere secrets)
@@ -16,11 +16,16 @@ jobs:
   static:
     name: Tests + Type-check + Lint
     runs-on: ubuntu-latest
+    # FIX 2026-07-10 (Sprint 2.1): subir Node 20 -> 22 porque el runner
+    # de GitHub Actions con Node 20 NO soporta `--experimental-strip-types`,
+    # que `npm test` necesita para que los test runners (.test.mjs)
+    # puedan importar archivos .ts (loader-register.mjs).
+    # Node 22.3+ soporta strip-types; 22 LTS incluye el flag estable.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
       - run: npm ci
       - run: npm test
@@ -37,7 +42,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
       - run: npm ci
       - name: Audit edge cases (3 pilares del funnel)

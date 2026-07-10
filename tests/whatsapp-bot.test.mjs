@@ -1156,7 +1156,16 @@ test("processInboundMessage: 'eliminar mis datos' → human_handoff (privacidad)
   }
 });
 
-test("processInboundMessage: 'tienen descuento?' → human_handoff (descuento no autorizado)", async () => {
+test("processInboundMessage: 'tienen descuento?' NO escala a human_handoff (FIX 2026-07-10) — va al LLM v2", async () => {
+  // FIX 2026-07-10 (Sprint 2 hotfix David 03:27 AM): eliminar
+  // "descuento|promoci[oó]n|m[aá]s barato" del handler pre-LLM.
+  // Preguntar por descuentos es intención de COMPRA en flujo de
+  // pre-venta, no problema de soporte. El LLM v2 (agent-prompts.ts
+  // línea 77) tiene prohibición dura de "Confirmar pagos, accesos,
+  // descuentos o promociones no autorizadas", y validateAgentReply
+  // bloquea la palabra "descuento" en la salida si el LLM intenta
+  // inventar. Por tanto: el mensaje llega al LLM, que maneja con el
+  // Método Comercial (valor oficial del taller, sin barreras).
   disableSupabase();
   const m = mockFetch();
   try {
@@ -1166,8 +1175,11 @@ test("processInboundMessage: 'tienen descuento?' → human_handoff (descuento no
       text: "me pueden dar descuento si me inscribo a los 4 cursos?",
       type: "text"
     });
-    assert.equal(result.intent, "human_handoff");
-    assert.match(result.note, /Descuento/i);
+    // Antes: assert.equal(result.intent, "human_handoff");
+    //        assert.match(result.note, /Descuento/i);
+    // Ahora: ni el intent es human_handoff, ni el note menciona "Descuento".
+    assert.notEqual(result.intent, "human_handoff");
+    assert.doesNotMatch(result.note ?? "", /Descuento/i);
   } finally {
     m.restore();
   }

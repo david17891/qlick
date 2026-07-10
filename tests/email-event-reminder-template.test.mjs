@@ -58,7 +58,9 @@ test("renderEventReminderEmail 24h: headline dice 'te esperamos mañana'", async
   assert.match(result.html, /Te esperamos mañana/);
 });
 
-test("renderEventReminderEmail 2h: headline dice 'nos vemos en ~2 horas'", async () => {
+test("renderEventReminderEmail 2h: headline dice 'nos vemos en ~2h'", async () => {
+  // FIX 2026-07-10: copy actualizado a formato corto (~2h, ~1h) en lugar
+  // de "~2 horas" para emails cortos. El subject y CTA sí mantienen "2 horas".
   const { renderEventReminderEmail } = await import(
     "../src/lib/email/templates/event-reminder.ts"
   );
@@ -66,7 +68,33 @@ test("renderEventReminderEmail 2h: headline dice 'nos vemos en ~2 horas'", async
     ...baseInput,
     reminderKind: "2h",
   });
-  assert.match(result.html, /Nos vemos en ~2 horas/);
+  assert.match(result.html, /Nos vemos en ~2h/);
+});
+
+test("renderEventReminderEmail 8am: subject dice 'HOY:'", async () => {
+  // FIX 2026-07-10: ventana 8am Phoenix (3h antes del evento).
+  const { renderEventReminderEmail } = await import(
+    "../src/lib/email/templates/event-reminder.ts"
+  );
+  const result = renderEventReminderEmail({
+    ...baseInput,
+    reminderKind: "8am",
+  });
+  assert.match(result.subject, /HOY:/);
+  assert.match(result.html, /HOY es el taller/);
+});
+
+test("renderEventReminderEmail 10am: subject dice 'En 1 hora:'", async () => {
+  // FIX 2026-07-10: ventana 10am Phoenix (1h antes del evento).
+  const { renderEventReminderEmail } = await import(
+    "../src/lib/email/templates/event-reminder.ts"
+  );
+  const result = renderEventReminderEmail({
+    ...baseInput,
+    reminderKind: "10am",
+  });
+  assert.match(result.subject, /En 1 hora:/);
+  assert.match(result.html, /En 1 hora/);
 });
 
 test("renderEventReminderEmail: HTML escapa inyección en eventTitle", async () => {

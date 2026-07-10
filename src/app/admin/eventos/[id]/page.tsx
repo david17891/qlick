@@ -40,6 +40,7 @@ import { SendSurveyOffersButton } from "@/components/events/SendSurveyOffersButt
 import { AddConfirmationButton } from "./_components/AddConfirmationButton";
 import { ResendQrPassButton } from "./_components/ResendQrPassButton";
 import { EditConfirmationButton } from "./_components/EditConfirmationButton";
+import { TriggerReminderButton } from "./_components/TriggerReminderButton";
 import { formatSurveyResponses } from "@/lib/events/survey-display";
 import { SurveyEditor } from "@/components/events/SurveyEditor";
 import { getDefaultSurveyConfig } from "@/lib/events/survey-config-validator";
@@ -523,6 +524,11 @@ export default async function AdminEventoDetailPage({
                     {/* FIX 2026-07-07: alta manual de confirmados desde el
                         panel admin (no solo via Excel/WhatsApp bot). */}
                     <AddConfirmationButton eventId={event.id} />
+                    {/* FIX 2026-07-10: botón para disparar manualmente el
+                        recordatorio 24h (cron automatico desactivado por
+                        limite de Vercel Hobby 1 cron/dia). Por ahora solo
+                        el 24h; 8am/10am/2h/1h quedan en Sprint 3. */}
+                    <TriggerReminderButton eventId={event.id} />
                     {showBroadcast ? (
                       <Link
                         href={`/admin/eventos/${params.id}?tab=confirmations${searchQuery ? `&q=${encodeURIComponent(searchQuery)}` : ""}${activeSource ? `&source=${activeSource}` : ""}`}

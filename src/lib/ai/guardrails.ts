@@ -83,19 +83,47 @@ export function mustEscalateToHuman(message: string): {
     return { escalate: true, reason: "Pagos: requiere validación humana" };
   if (/no me funciona|error|bug|no puedo|soporte/.test(t))
     return { escalate: true, reason: "Soporte técnico de plataforma" };
-  if (/descuento|promoci[oó]n|m[aá]s barato/.test(t))
-    return { escalate: true, reason: "Descuento no autorizado" };
   if (/datos personales|privacidad|baja|eliminar mis datos/.test(t))
     return { escalate: true, reason: "Datos personales / privacidad" };
+
+  // FIX 2026-07-10 (Sprint 2 hotfix David, sesion 03:27 AM): eliminar
+  // el trigger de descuento/promocion/mas barato del handler pre-LLM.
+  // Preguntar por descuentos o precio de estudiantes es una INTENCION DE
+  // COMPRA en el flujo de pre-venta, no un problema de soporte. El LLM
+  // Socratico v2 (agent-prompts.ts line 77 y 295) ya tiene prohibicion
+  // dura de "confirmar pagos, accesos, descuentos o promociones no
+  // autorizadas" + "prometer descuentos no en EVENTO ACTIVO.detalles".
+  // validateAgentReply (linea 95-104) tambien bloquea FORBIDDEN_PHRASES
+  // ('descuento', 'gratis', 'promocion', 'reembolso'...). Resultado:
+  // las preguntas legitimas de pre-venta llegan al LLM, que explica el
+  // valor oficial del taller con el Metodo Comercial, sin barreras.
 
   return { escalate: false };
 }
 
-/** Frases prohibidas que NUNCA deben aparecer en una salida del agente. */
+/**
+ * Frases prohibidas que NUNCA deben aparecer en una salida del agente.
+ *
+ * FIX 2026-07-10 (Sprint 2 hotfix David 03:40 AM): eliminar `descuento`
+ * y `promocion` de la lista ciega. El system prompt (agent-prompts.ts
+ * l-77 + l-295) ya prohíbe al LLM "Confirmar pagos, accesos, descuentos
+ * o promociones no autorizadas" y "prometer descuentos no en EVENTO
+ * ACTIVO.detalles". Filtrar la palabra `descuento` o `promocion` en la
+ * salida cazaba falsos positivos como "no manejamos descuento de
+ * estudiantes" — respuesta honesta y correcta que NO debe bloquearse.
+ *
+ * Decisión de diseño (alineada con regla LLM-first del sprint 2 v2):
+ *   - El system prompt es la fuente de verdad para reglas de negocio
+ *     (descuentos, ofertas, pagos no autorizados).
+ *   - `validateAgentReply` solo bloquea errores FATALES de proceso
+ *     (confirmaciones de pago/aprobación de acceso, reembolso, gratis
+ *     sin contexto) que NO deberían salir al lead de ninguna forma.
+ *   - Si el LLM alucina "tienes un 20% de descuento" será bloqueado
+ *     por el system prompt + revisión humana del operario, NO por el
+ *     filtro ciego.
+ */
 const FORBIDDEN_PHRASES = [
-  "descuento",
   "gratis",
-  "promocion",
   "reembolso",
   "confirmo tu pago",
   "pago aprobado",

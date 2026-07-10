@@ -12,14 +12,27 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-test("getActiveReminderWindows: devuelve 2 ventanas (24h y 2h)", async () => {
+test("getActiveReminderWindows: devuelve 3 ventanas relativas (24h, 2h, 1h)", async () => {
+  // FIX 2026-07-10 (Sprint 2 v2 David): agregamos 1h al getter.
+  // Las ventanas Phoenix (8am/10am) se computan en getPhoenixDayWindows.
   const { getActiveReminderWindows } = await import(
     "../src/lib/cron/event-reminders.ts"
   );
   const windows = getActiveReminderWindows(new Date("2026-07-05T00:00:00Z"));
+  assert.equal(windows.length, 3);
+  const kinds = windows.map((w) => w.kind).sort();
+  assert.deepEqual(kinds, ["1h", "24h", "2h"]);
+});
+
+test("getPhoenixDayWindows: devuelve 2 ventanas Phoenix (8am, 10am)", async () => {
+  // FIX 2026-07-10: las ventanas 8am/10am Phoenix se computan aparte.
+  const { getPhoenixDayWindows } = await import(
+    "../src/lib/cron/event-reminders.ts"
+  );
+  const windows = getPhoenixDayWindows(new Date("2026-07-11T18:00:00Z"));
   assert.equal(windows.length, 2);
   const kinds = windows.map((w) => w.kind).sort();
-  assert.deepEqual(kinds, ["24h", "2h"]);
+  assert.deepEqual(kinds, ["10am", "8am"]);
 });
 
 test("getActiveReminderWindows: ventana 24h está a 24h ± 30min de 'ahora'", async () => {
@@ -60,95 +73,73 @@ test("getActiveReminderWindows: ancho de ventana = 1h", async () => {
   }
 });
 
-test("eventsInWindow: filtra eventos cuyo startsAt está dentro de la ventana", async () => {
-  const { eventsInWindow, getActiveReminderWindows } = await import(
+test("eventMatchesWindow: ventana 24h — matchea starts_at dentro de la ventana, NO fuera", async () => {
+  // FIX 2026-07-10 (Sprint 2 v2 David): eventMatchesWindow es la nueva
+  // función de matching que también soporta ventanas Phoenix (8am/10am)
+  // por día UTC. Este test valida el comportamiento clásico de offset.
+  const { eventMatchesWindow, getActiveReminderWindows } = await import(
     "../src/lib/cron/event-reminders.ts"
   );
   const now = new Date("2026-07-05T00:00:00Z");
   const windows = getActiveReminderWindows(now);
   const win24h = windows.find((w) => w.kind === "24h");
   if (!win24h) throw new Error("test setup: no 24h window");
-
-  const target = win24h.windowStartMs + 10 * 60 * 1000; // 10 min dentro de la ventana
-  const outside = win24h.windowEndMs + 60 * 60 * 1000; // 1h después del fin
-
-  const events = [
-    {
-      eventId: "e1",
-      eventSlug: "s1",
-      eventTitle: "T1",
-      eventStartsAt: new Date(target).toISOString(),
-      eventLocation: null,
-      startsAtMs: target,
-    },
-    {
-      eventId: "e2",
-      eventSlug: "s2",
-      eventTitle: "T2",
-      eventStartsAt: new Date(outside).toISOString(),
-      eventLocation: null,
-      startsAtMs: outside,
-    },
-  ];
-  const filtered = eventsInWindow(events, win24h);
-  assert.equal(filtered.length, 1);
-  assert.equal(filtered[0].eventId, "e1");
+  const evtInside = {
+    eventId: "e1",
+    eventSlug: "s1",
+    eventTitle: "T1",
+    eventStartsAt: new Date(win24h.windowStartMs + 5 * 60 * 1000).toISOString(),
+    eventLocation: null,
+    startsAtMs: win24h.windowStartMs + 5 * 60 * 1000,
+  };
+  const evtOutside = {
+    eventId: "e2",
+    eventSlug: "s2",
+    eventTitle: "T2",
+    eventStartsAt: new Date(win24h.windowEndMs + 30 * 60 * 60 * 1000).toISOString(),
+    eventLocation: null,
+    startsAtMs: win24h.windowEndMs + 30 * 60 * 60 * 1000,
+  };
+  assert.equal(eventMatchesWindow(evtInside, win24h), true);
+  assert.equal(eventMatchesWindow(evtOutside, win24h), false);
 });
 
-test("eventsInWindow: evento justo en el borde inferior se incluye", async () => {
-  const { eventsInWindow, getActiveReminderWindows } = await import(
+test("eventMatchesWindow: ventana 8am Phoenix — matchea por DÍA UTC, no por offset", async () => {
+  // FIX 2026-07-10: ventanas 8am/10am Phoenix matchean por día UTC, NO por
+  // offset en ms. Evento a las 18:00 UTC del 11 julio matchea con ventana
+  // 8am Phoenix (15:00 UTC) del 11 julio. Evento del 12 julio NO matchea.
+  const { eventMatchesWindow } = await import(
     "../src/lib/cron/event-reminders.ts"
   );
-  const now = new Date("2026-07-05T00:00:00Z");
-  const windows = getActiveReminderWindows(now);
-  const win24h = windows.find((w) => w.kind === "24h");
-  if (!win24h) throw new Error("test setup: no 24h window");
-  const boundary = win24h.windowStartMs; // exacto en el inicio
-  const events = [
-    {
-      eventId: "e1",
-      eventSlug: "s1",
-      eventTitle: "T1",
-      eventStartsAt: new Date(boundary).toISOString(),
-      eventLocation: null,
-      startsAtMs: boundary,
-    },
-  ];
-  const filtered = eventsInWindow(events, win24h);
-  assert.equal(filtered.length, 1);
-});
-
-test("eventsInWindow: evento justo en el borde superior se incluye", async () => {
-  const { eventsInWindow, getActiveReminderWindows } = await import(
-    "../src/lib/cron/event-reminders.ts"
-  );
-  const now = new Date("2026-07-05T00:00:00Z");
-  const windows = getActiveReminderWindows(now);
-  const win24h = windows.find((w) => w.kind === "24h");
-  if (!win24h) throw new Error("test setup: no 24h window");
-  const boundary = win24h.windowEndMs;
-  const events = [
-    {
-      eventId: "e1",
-      eventSlug: "s1",
-      eventTitle: "T1",
-      eventStartsAt: new Date(boundary).toISOString(),
-      eventLocation: null,
-      startsAtMs: boundary,
-    },
-  ];
-  const filtered = eventsInWindow(events, win24h);
-  assert.equal(filtered.length, 1);
-});
-
-test("eventsInWindow: array vacío devuelve vacío", async () => {
-  const { eventsInWindow, getActiveReminderWindows } = await import(
-    "../src/lib/cron/event-reminders.ts"
-  );
-  const windows = getActiveReminderWindows(new Date());
-  const win = windows[0];
-  const filtered = eventsInWindow([], win);
-  assert.equal(filtered.length, 0);
+  const evtMismoDia = {
+    eventId: "e1",
+    eventSlug: "s1",
+    eventTitle: "T1",
+    eventStartsAt: "2026-07-11T18:00:00.000Z",
+    eventLocation: null,
+    startsAtMs: Date.parse("2026-07-11T18:00:00.000Z"),
+  };
+  const evtOtroDia = {
+    eventId: "e2",
+    eventSlug: "s2",
+    eventTitle: "T2",
+    eventStartsAt: "2026-07-12T18:00:00.000Z",
+    eventLocation: null,
+    startsAtMs: Date.parse("2026-07-12T18:00:00.000Z"),
+  };
+  const win8amDel11 = {
+    kind: "8am",
+    windowStartMs: Date.UTC(2026, 6, 11, 14, 30),
+    windowEndMs: Date.UTC(2026, 6, 11, 15, 30),
+  };
+  assert.equal(eventMatchesWindow(evtMismoDia, win8amDel11), true);
+  assert.equal(eventMatchesWindow(evtOtroDia, win8amDel11), false);
+  const win8amDel12 = {
+    kind: "8am",
+    windowStartMs: Date.UTC(2026, 6, 12, 14, 30),
+    windowEndMs: Date.UTC(2026, 6, 12, 15, 30),
+  };
+  assert.equal(eventMatchesWindow(evtOtroDia, win8amDel12), true);
 });
 
 test("runEventRemindersJob: modo demo cuando Supabase no está configurado", async () => {
