@@ -158,6 +158,7 @@ Ambos pasaron: type-check ✓ · lint ✓ · 726/726 tests verde · build ✓.
 - **Fix:** cambiar a `if (!process.env.BREVO_API_KEY) return false;` (1 línea).
 - **Archivo:** `src/lib/whatsapp/human-handoff.ts:74`.
 - **Severidad:** 🔴 Crítica — feature documentada como funcional pero silenciosamente rota.
+- **Estado al 2026-07-11 ~11:50 (re-verificado por Mavis):** ✅ **CERRADO**. `src/lib/whatsapp/human-handoff.ts:74` ya usa `if (!process.env.BREVO_API_KEY) return false;` (verificado con grep). El fix fue aplicado previamente (commit `7b0e271` migration Resend→Brevo lo arregló, pero OPEN_ITEMS no se actualizó). Confirmado en repo actual — el gap está cerrado en código.
 
 #### G-2 · `WHATSAPP_WEBHOOK_SECRET` removido de Vercel → webhook abierto a spoofing
 
@@ -1987,4 +1988,58 @@ El commit `9c606de` ("captura universal de nombre humano en cualquier turno", me
 
 - **Tests "verdes" en commit message no son evidencia**: si un test importa código `.ts` con path aliases (`@/`), node strip-types no lo va a ejecutar aunque el commit message diga "Tests: NNN/NNN verde". Siempre correr `npm test` después de merge, no confiar en el reporte del committer.
 - **Filtros deterministas para captura semántica NO escalan**: si una frase como "quiero más información" pasa 6 filtros sin ser nombre, no es problema del filtro — es que el filtro está mal definido. Cualquier heurística que no cubra el espacio completo de "intención de usuario" va a fallar en algún caso. La salida es LLM, no más reglas.
+
+---
+
+## ✅ Reauditoría + housekeeping — sesión 2026-07-11 ~11:50 Phoenix
+
+**Contexto:** David pidió reauditoría de TODO lo cerrado en el sprint de cierre-eventos-virtuales, antes de declarar nada cerrado. Mavis verificó cada item con el código real (no asumir de OPEN_ITEMS / STATUS / PROJECT-LOG).
+
+### Re-verificación de gaps reportados en OPEN_ITEMS (estado real vs declarado)
+
+| Gap | OPEN_ITEMS decía | Estado REAL verificado |
+|---|---|---|
+| **G-1** | "chequea RESEND_API_KEY, falta fix" | ✅ **YA CERRADO** — `src/lib/whatsapp/human-handoff.ts:74` ya usa `BREVO_API_KEY`. OPEN_ITEMS desactualizado. Marcado como cerrado en este pase. |
+| **G-2** | "webhook sin secret" | ✅ **YA CERRADO** — `src/app/api/whatsapp/webhook/route.ts:31-32` ya tiene `checkWebhookSignatureGate`. |
+| **G-3** | "bot repite saludo" | ✅ **YA CERRADO** — 3 capas de defensa (commit `7574d89`). |
+| **G-4** | "no existe /encuesta/[token]" | ✅ **YA CERRADO** — commit `21574c5` (2026-07-03). |
+| **G-5** | "3 plantillas Meta no creadas" | ⚠️ **SIGUE REAL** — código las referencia pero NO existen en Meta Business. |
+| **G-6** | "5 migrations Fase 7a no aplicadas" | ⚠️ **REAL, parcial** — archivos SÍ en `supabase/migrations/`, pero no puedo verificar DB de producción desde mi lado. Requiere acción de David en Supabase. |
+| **G-7** | "NEXT_PUBLIC_APP_URL apunta a qlick-three" | ⚠️ **REAL, parcial** — `.env.local` tiene `NEXT_PUBLIC_APP_URL=""` (vacío). El código tiene fallbacks hardcoded (`qlick.digital` / `qlick.mx`). En Vercel production podría estar apuntando al viejo — solo David puede verificarlo. |
+| **A-3** | "simulate-webhook sin DEV_ADMIN_SECRET" | ⚠️ **REAL, debatible** — endpoint SÍ tiene auth (`getCurrentStudent`), pero NO usa `DEV_ADMIN_SECRET` (convención de otros `/api/dev/*`). Depende de intención. |
+| **Vercel aliases** | "no se reasignan auto" | ⚠️ **REAL** — `vercel.json` NO tiene `productionAlias` definido. |
+
+### Gaps REALES restantes que tocan código (priorizados por esfuerzo/impacto)
+
+| # | Gap | Esfuerzo | Impacto |
+|---|---|---|---|
+| 1 | **Gap #3** modal detalle del envío del link de encuesta — el botón actual no muestra los `wa.me` pre-armados para confirmados con phone sin email | 2-3 h | David ve los waLinks pre-armados sin log debugging |
+| 2 | **Gap #4** rate-limit en el botón "📨 Enviar link de encuesta" | 30 min | Brevo budget se gasta de más |
+| 3 | **Gap #5** `getConfirmationsRespondedSurvey` no matchea tokens SIN `confirmation_id` (los del bot/cron) | 1 h | Métrica incompleta |
+| 4 | **A-3** simulate-webhook agregar `DEV_ADMIN_SECRET` (debatible) | 30 min | Convención de /api/dev/* |
+
+### Gaps REALES que requieren a David
+
+| # | Gap | Acción |
+|---|---|---|
+| 5 | **G-5** plantillas Meta creadas en Business Manager | 1 h + 24-48h Meta approval |
+| 6 | **G-6** 5 migrations aplicadas en Supabase | `npx supabase migration list` o SQL Editor |
+| 7 | **G-7** NEXT_PUBLIC_APP_URL en Vercel env vars | `vercel env ls production` + `vercel env add` con `https://www.qlick.digital` |
+| 8 | **Vercel aliases** agregar `productionAlias` | `vercel.json` + Vercel UI |
+
+### Documentación actualizada en este pase
+
+- `docs/STATUS.md`: snapshot vivo refrescado (2026-07-11 11:50), merge conflict marker suelto `>>>>>>> feat/certificados-concept-c` resuelto, sección nueva "Sprint cierre-eventos-virtuales" agregada con detalle de commits, fix, refactor, audit voseo, validación, estado del ciclo, deuda viva.
+- `docs/ROADMAP.md`: snapshot vivo refrescado, sprint v0.9.3 agregado al estado actual con detalle de commits + 5 commits del feature + 2 hotfixes.
+- `docs/OPEN_ITEMS.md`: G-1 marcado como cerrado con timestamp de re-verificación, sección "Reauditoría + housekeeping" agregada al final con tabla de gaps verificados.
+- `data/PROJECT-LOG.md`: ya tenía entrada del sprint `2026-07-11 ~10:40`, sin cambios en este pase.
+
+### Validación post-housekeeping
+
+- `npm run type-check` → ✓ 0 errores
+- `npm run lint` → ✓ 0 warnings, 0 errors
+- `npm test` → ✓ **1066/1066 pass**
+- `node scripts/_audit-voseo-templates.mjs` → ✓ 209/212 archivos limpios, 3 falsos positivos documentados
+- `node scripts/_preview-survey-invite-email.mjs` → ✓ genera preview HTML
+- `git log --oneline -8` muestra todos los commits del sprint mergeados a main + origin/main.
 

@@ -1,12 +1,31 @@
 # Qlick LMS — Roadmap
 
 > Fuente de verdad del plan del LMS. Cualquier desvío se conversa y se actualiza acá.
-> Última revisión: 2026-07-08 18:15 — **Sprint Cert Email (v0.9.2)** cerrado en `feat/certificados-concept-c`. E2E validado Supabase + Brevo. Pendiente: pilotaje con attendees reales en evento del 11/jul.
+> Última revisión: 2026-07-11 11:50 Phoenix — **Sprint cierre-eventos-virtuales + Audit voseo** cerrado en `main` (5 commits del feature + 2 hotfixes de copy). Validación 1066/1066 tests. Migración `20260711100000` aplicada en Supabase por David.
 
 ---
 
 ## Estado actual
 
+- [x] **v0.9.3 — Sprint Cierre-Eventos-Virtuales (link con encuesta + UPSERT attendee + promote lead + audit voseo)** — sprint cerrado el 2026-07-11 en `main` (5 commits del feature + 2 hotfixes de copy). Validado: type-check ✓ · lint ✓ · 1066/1066 tests ✓ · build ✓. Migration `20260711100000_event_attendee_source_survey_attended.sql` aplicada.
+  - Handoff: este sprint NO tiene handoff dedicado (sprint corto end-to-end); toda la info en `docs/STATUS.md` sección "Sprint cierre-eventos-virtuales (2026-07-11 10:30 — 11:50 Phoenix)" + `data/PROJECT-LOG.md` entrada `2026-07-11 ~10:40`.
+  - Status vivo: `docs/STATUS.md` (snapshot 2026-07-11 11:50).
+  - Commits clave en main:
+    - `bd5a27d` — `feat(eventos): agregar envio de link de encuesta post-evento y lookup de respuestas` (David)
+    - `1e97849` — `fix(eventos): upsert attendee + promote lead en Q0 attendance check` (Mavis)
+    - `827b32b` — `fix(email): voseo -> tutéo en template survey-invite` (Mavis)
+    - `d858f9c` — `fix(copy): voseo -> tutéo en todos los copy visibles al cliente (audit completo)` (Mavis)
+  - **Qué incluye:**
+    - **Botón "📨 Enviar link de encuesta"** en toolbar del tab Confirmados (`/admin/eventos/[id]?tab=confirmations`).
+    - **Orquestador `send-survey-link.ts`**: genera tokens idempotentes, manda email con Brevo a confirmados con email, devuelve links `wa.me` pre-armados para los que solo tienen teléfono.
+    - **Template email `survey-invite.ts`**: HTML inline con brand Qlick, escape XSS, CTA grande "📝 Responder encuesta (2 min)".
+    - **UPSERT attendee + promote lead en Q0** (`surveys-server.ts:295-494`): cierra 2 gaps críticos. Cuando el confirmado responde Q0=Yes:
+      1. UPSERT `event_attendees` con `source='survey_attended'` si no existe row, o UPDATE `checked_in_at` si existe.
+      2. UPDATE `leads` con `status='event_attended'`, `tags+=[event:{slug}:attended]`, `last_contacted_at=now()`. Respeta `lost`/`archived` (no resucita).
+    - **Helper puro `detectAttendanceCheck`** extraído + 10 tests unitarios (`tests/survey-attendance-check.test.mjs`).
+    - **Badge "✓ Link"** en la tabla de Confirmados para los respondedores.
+    - **Audit de voseo** completo: 17 voseos reales corregidos en 11 archivos (4 del email + 13 en otros). Nuevo script `scripts/_audit-voseo-templates.mjs` (212 archivos escaneados, 209 limpios).
+  - **Validado en producción** (pendiente E2E con attendee real en próximo evento Zoom, ~15-30 min de pilotaje).
 - [x] **v0.9.2 — Sprint Cert Email (envío batch de constancias)** — sprint cerrado el 2026-07-08 en rama `feat/certificados-concept-c` (deploy prod OK en `www.qlick.digital`, E2E validado)
   - Handoff completo: `docs/HANDOFF_v0.9.2_CERT_EMAIL.md` ← **leer primero**
   - Status vivo: `docs/STATUS.md` (snapshot del 2026-07-08 18:15)

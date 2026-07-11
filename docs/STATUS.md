@@ -8,10 +8,10 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-10 5:32 Phoenix — **Recordatorios manuales de eventos + Envío de certificados Concept C activos**.
-> David decidió desactivar el cron automático de `event-reminders` porque Vercel Hobby rechaza schedules con más de 1 ejecución/día y `*/30 * * * *` lo bloqueaba en silencio. Ahora los recordatorios se disparan manual via el botón **"🔔 Disparar recordatorio 24h"** en `/admin/eventos/[id]?tab=confirmations`.
+> **Última actualización:** 2026-07-11 11:50 Phoenix — **Cierre-eventos-virtuales: link con encuesta + UPSERT attendee + promote lead + audit voseo completo**.
+> Sprint implementado y verificado: feature de "enviar link de encuesta post-evento a confirmados" operativa (botón "📨 Enviar link de encuesta" en `/admin/eventos/[id]?tab=confirmations`). Cuando un confirmado responde la Q0 "¿Asististe?" con Sí, ahora se hace UPSERT del attendee con `source='survey_attended'` (nuevo valor del enum, migration `20260711100000` aplicada por David en Supabase) + se promueve el lead a `event_attended` con tag `event:{slug}:attended` en el CRM. Fix de 2 gaps críticos: (1) confirmados email-only no contaban como asistentes; (2) el CRM no reflejaba la asistencia real. Helper puro `detectAttendanceCheck` extraído para testear sin DB. **Audit de voseo** en todo el copy visible al cliente (5 templates de email + bot-engine + UI admin + 9 archivos más): 17 voseos reales corregidos (4 del email + 13 en otros archivos), validados con `scripts/_audit-voseo-templates.mjs` (212 archivos escaneados, 209 limpios, 3 falsos positivos documentados). Validación: 1066/1066 tests verde, lint verde, type-check verde, build OK.
 >
-> Adicionalmente, el flujo de certificados (Concept C) está activo: `/cert/[folio]` es público, el panel admin `CertificateBatchPanel` permite preview/confirmación/envío batch por correo (Brevo) con fallback manual a WhatsApp. La migración `20260708170000` está aplicada y validada.
+> Estado anterior (2026-07-10 5:32): recordatorios manuales de eventos + envío de certificados Concept C activos. Sigue vigente.
 
 ---
 
@@ -350,4 +350,83 @@ Detalle completo en `CHANGELOG.md`.
 - `docs/VERCEL_ENV_SETUP.md` — setup de env vars en Vercel
 - `docs/SUPABASE_CONNECTION_BOOTSTRAP.md` — setup inicial de Supabase
 - `docs/GITHUB_WORKFLOW.md` — convenciones de branch + commit + PR
->>>>>>> feat/certificados-concept-c
+
+---
+
+## Sprint cierre-eventos-virtuales (2026-07-11 10:30 — 11:50 Phoenix)
+
+**Motivación:** cerrar el ciclo "confirmado → asistencia real" en eventos Zoom/virtuales/hybrid. Antes del sprint, los confirmados que solo respondían la Q0 de la encuesta post-evento por email/WhatsApp (sin haber abierto el gate virtual ni escaneado el QR) NO quedaban como asistentes en el funnel. El CRM tampoco reflejaba la asistencia.
+
+### Commits mergeados a main (5 commits + 2 hotfixes)
+
+| SHA | Mensaje | Archivos |
+|---|---|---|
+| `bd5a27d` | `feat(eventos): agregar envio de link de encuesta post-evento y lookup de respuestas` | 5 nuevos (template email, orquestador, mensaje WhatsApp, botón, helper) |
+| `ba461ba` | `merge: feat/certificados-concept-c into feat/survey-link-confirmations` | merge de certs v0.9.2 |
+| `8d39437` | `test: add tests for send-survey-link-confirmations` | 1 test nuevo (194 líneas) |
+| `1e97849` | `fix(eventos): upsert attendee + promote lead en Q0 attendance check` | 6 archivos (1 migration + helper + types + server) |
+| `6f2a294` | `merge: cierre-eventos-virtuales UPSERT attendee + promote lead` | merge a main |
+| `089300f` | `docs(log): entrada sprint cierre-eventos-virtuales UPSERT + promote lead` | PROJECT-LOG |
+| `827b32b` | `fix(email): voseo -> tutéo en template survey-invite` | 1 archivo (5 strings) |
+| `d858f9c` | `fix(copy): voseo -> tutéo en todos los copy visibles al cliente (audit completo)` | 10 archivos + 2 scripts |
+
+### Fix aplicado: UPSERT attendee + promote lead (`surveys-server.ts:295-494`)
+
+**Gap #1 (CRÍTICO):** cuando el confirmado respondía Q0=Yes por email, el lead NO se promovía a `event_attended` en el CRM.
+
+**Gap #2 (CRÍTICO):** si el confirmado NUNCA había abierto el gate virtual NI escaneado el QR (camino email-only), el UPDATE sobre `event_attendees` no aplicaba → `checked_in_at` quedaba NULL → el funnel NO lo contaba.
+
+**Fix:** el bloque ahora hace UPSERT en lugar de UPDATE. Si no existe row con `(event_id, email)` o `(event_id, phone_normalized)`, crea uno al vuelo con `source='survey_attended'` (nuevo valor del enum, ver migration abajo) + `checked_in_at=now()`. Si el row ya existía (gate click o check-in previo), preserva el `source` original y solo actualiza `checked_in_at` (idempotente). Race condition con UNIQUE constraint manejada: si `23505` (unique violation) entre el lookup y el INSERT, re-lee el row ganador y hace UPDATE.
+
+Después del UPSERT, busca el lead por email o phone, y si existe + no está en `event_attended` ni cerrado (`lost`/`archived`), UPDATE leads SET `status='event_attended'`, `tags+=[event:{slug}:attended]`, `last_contacted_at=now()`. Mismo patrón que `api/check-in/route.ts:409-437`.
+
+### Refactor: helper puro `detectAttendanceCheck`
+
+La decisión booleana "el confirmado respondió Sí en la Q0" se extrajo de `surveys-server.ts:271-340` a un helper puro en `src/lib/events/survey-attendance-check.ts`. Razón: poder testearla sin mockear Supabase. 10 tests unitarios en `tests/survey-attendance-check.test.mjs` (sin Q0, con Q0, edge cases, score negativo).
+
+### Migration aplicada por David
+
+`supabase/migrations/20260711100000_event_attendee_source_survey_attended.sql` — `ALTER TYPE event_attendee_source ADD VALUE 'survey_attended'`. Aplicada en Supabase antes del merge.
+
+### Audit de voseo (completado en 2 commits)
+
+David detectó conjugaciones voseantes argentinas en el template `survey-invite.ts` (Tardás, decinos, copiá, pegá). El audit se extendió a TODO el copy visible al cliente (212 archivos: `src/lib/email/templates`, `src/lib/whatsapp`, `src/lib/contact`, `src/components`, `src/app`).
+
+**Resultado:** 17 voseos reales corregidos en 11 archivos (4 del email + 13 en otros). Falsos positivos documentados: regex detectors de input del usuario, "deja" tuteo sin tilde, "parámetros" sustantivo.
+
+**Nuevo script:** `scripts/_audit-voseo-templates.mjs` — escanea verbos voseantes (presente + imperativo), pronombres ("vos"), muletillas rioplatenses. Allowlist para falsos positivos conocidos. Exit 0 = cero voseo, exit 1 = lista de matches.
+
+### Validación (corro yo mismo, no me fío del reporte)
+
+| Check | Resultado |
+|---|---|
+| `npm run type-check` | ✓ 0 errores |
+| `npm run lint` | ✓ 0 warnings, 0 errors |
+| `npm test` | ✓ **1066/1066 pass** (de 1056 → +10 del nuevo helper; voseo no rompió tests) |
+| `npm run build` | ✓ compila, todas las rutas SSG/SSR |
+| `node scripts/_audit-voseo-templates.mjs` | ✓ 209/212 archivos limpios, 3 falsos positivos documentados |
+| `node scripts/_preview-survey-invite-email.mjs` | ✓ genera `scratch/email-survey-invite-preview.html` |
+
+### Estado del ciclo "confirmado → asistencia real"
+
+**Antes del sprint:**
+- Confirmado email-only → `checked_in_at` NULL, no contaba como asistente, lead no avanzaba en CRM.
+
+**Después del sprint:**
+- Confirmado email-only → `event_attendees` con `source='survey_attended'` + `checked_in_at=now()`, lead promovido a `event_attended` con tag.
+- Confirmado con gate click previo → solo `checked_in_at` (source preservado, idempotente).
+- Confirmado con check-in presencial previo → solo `checked_in_at` (source preservado, idempotente).
+- Si lead ya en `event_attended` o cerrado → no-op (idempotente + respeta manual).
+
+### Lo que NO está automatizado (deuda viva)
+
+1. **Cron de recordatorio automático a no-respondieron** (24/48h post-evento) — requiere Cloudflare Workers / Supabase pg_cron (Vercel Hobby limita a 1/día). Hoy el admin tiene que mandar manual via `SendSurveyLinkButton`.
+2. **Importador de Zoom Attendee Report** (CSV nativo) — el camino más "duro" para asistencia Zoom. Hoy depende del survey email.
+3. **Modal detalle del envío** (Gap #3) — el botón actual no muestra los `wa.me` pre-armados para confirmados con phone sin email. David los tiene que copiar del log o reconstruir.
+
+### Trazabilidad
+
+- `data/PROJECT-LOG.md` entrada `2026-07-11 ~10:40 — Sprint cierre-eventos-virtuales: UPSERT attendee + promote lead en Q0` + entrada implícita del audit voseo.
+- `docs/ROADMAP.md` actualizado con el sprint (verificar entrada en próxima pasada).
+- `docs/OPEN_ITEMS.md` gaps a cerrar (verificar).
+- `MEMORY.md` (Mavis global) sección "Voseo/vos en emails visibles al cliente final (HOT, 2026-07-11)" con la regla endurecida.
