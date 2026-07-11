@@ -18,6 +18,7 @@ Plataforma LMS de cursos de marketing de Qlick Marketing Digital — Next.js
 - Lint:                 `npm run lint`
 - Typecheck:            `npm run type-check`
 - Unit tests:           `npm test`                     # node --test, .mjs files in tests/
+- Audit voseo MX:       `npm run audit:voseo`          # detecta conjugaciones rioplatenses en templates/UI
 - Audit links:          `npm run audit:links`
 - Check Supabase env:   `npm run check:supabase`
 - Seed demo data:       `npm run seed:demo` (idempotent; `seed:demo:reset`, `seed:demo:cleanup`)
@@ -50,7 +51,8 @@ Setup primerizo + operativa paso a paso: `docs/HOW-TO-RUN.md`.
 ## Code style
 
 - TypeScript **strict** (`tsconfig.json` con `strict: true`); cero `any` nuevos en código de
-  producto. Tests E2E legacy en `.mjs` pueden relajar.
+  producto. Tests E2E legacy en `.mjs` pueden relajar. Si aparecen `as any`, es típicamente
+  typegen Supabase stale — regenerar con `npm run typegen` (ver sprint S1.3 del audit 2026-07-11).
 - ESLint config: `eslint-config-next` (reglas de Next.js + React hooks). `npm run lint` debe
   pasar antes de commit.
 - Prettier no está configurado explícitamente — seguir el estilo existente (single quotes,
@@ -74,8 +76,8 @@ Setup primerizo + operativa paso a paso: `docs/HOW-TO-RUN.md`.
 - Antes de push:
   1. `npm run type-check` pasa
   2. `npm run lint` pasa
-  3. `npm test` pasa (target actual: 110/110 ✅)
-  4. `npm run build` compila (valida SSG/SSR de las ~55 rutas)
+  3. `npm test` pasa (target actual: 1066/1066 ✅)
+  4. `npm run build` compila (valida SSG/SSR de las ~145 rutas)
 
 ---
 

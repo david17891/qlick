@@ -171,19 +171,7 @@ export default async function CertPage({ params }: CertPageProps) {
   const supabase = createSupabaseAdminClient();
 
   // 3. Cargar cert por folio.
-  // FIXME(types): `event_certificates` no está en el Database type de Supabase
-  // (regenerar con `npx supabase gen types typescript` cuando esté el service
-  // role key disponible). Por ahora casteamos `as any` solo en este query para
-  // destrabar Paso 1; el cast a EventCertRow de abajo mantiene el contrato.
-  const { data: certRaw, error: certErr } = await (supabase as unknown as {
-    from: (t: string) => {
-      select: (cols: string) => {
-        eq: (col: string, val: string) => {
-          maybeSingle: () => Promise<{ data: unknown; error: unknown }>;
-        };
-      };
-    };
-  })
+  const { data: certRaw, error: certErr } = await supabase
     .from("event_certificates")
     .select("folio, event_id, attendee_id, template_variant, issued_at, metadata")
     .eq("folio", folio)

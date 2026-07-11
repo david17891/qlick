@@ -104,8 +104,8 @@ export async function POST(req: NextRequest) {
 
   // Test lead_whatsapp_log: SELECT dummy
   const logTest = await supabase
-    .from("lead_whatsapp_log" as any)
-    .select("lead_id, new_status, prev_status, actor_email, metadata" as never)
+    .from("lead_whatsapp_log")
+    .select("lead_id, new_status, prev_status, actor_email, metadata")
     .limit(1);
   if (logTest.error) {
     const msg = logTest.error.message;

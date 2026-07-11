@@ -63,20 +63,19 @@ async function fetchLatestSurveyResponses(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
   leadId: string,
 ): Promise<Record<string, unknown>> {
-  const { data } = await (supabase.from("event_surveys") as any)
-    .select("responses, q_consent, q_business")
+  // `q_consent` y `q_business` viven dentro de `responses` (JSON), no como
+  // columnas top-level. La columna top-level equivalente es `consent_to_contact`
+  // (boolean) — ya viene agregada en el spread del caller.
+  const { data } = await supabase
+    .from("event_surveys")
+    .select("responses")
     .eq("promoted_to_lead_id", leadId)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
   if (!data) return {};
-  const resp = (data.responses as Record<string, unknown> | null) ?? {};
-  return {
-    ...resp,
-    q_consent: data.q_consent ?? null,
-    q_business: data.q_business ?? null,
-  };
+  return (data.responses as Record<string, unknown> | null) ?? {};
 }
 
 /**

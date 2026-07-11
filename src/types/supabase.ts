@@ -528,6 +528,7 @@ export type Database = {
           attendee_name: string | null
           email_type: string
           error: string | null
+          event_certificate_id: string | null
           event_id: string | null
           event_qr_token_id: string | null
           id: string
@@ -541,6 +542,7 @@ export type Database = {
           attendee_name?: string | null
           email_type: string
           error?: string | null
+          event_certificate_id?: string | null
           event_id?: string | null
           event_qr_token_id?: string | null
           id?: string
@@ -554,6 +556,7 @@ export type Database = {
           attendee_name?: string | null
           email_type?: string
           error?: string | null
+          event_certificate_id?: string | null
           event_id?: string | null
           event_qr_token_id?: string | null
           id?: string
@@ -564,6 +567,13 @@ export type Database = {
           subject?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "event_email_log_event_certificate_id_fkey"
+            columns: ["event_certificate_id"]
+            isOneToOne: false
+            referencedRelation: "event_certificates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "event_email_log_event_id_fkey"
             columns: ["event_id"]
@@ -655,6 +665,76 @@ export type Database = {
           sent_at?: string
         }
         Relationships: []
+      }
+      event_reminder_log_v2: {
+        Row: {
+          channel: string
+          created_at: string
+          error: string | null
+          event_id: string
+          event_qr_token_id: string | null
+          external_id: string | null
+          id: string
+          lead_id: string | null
+          reminder_window: string
+          scheduled_at_utc: string
+          sent_at_utc: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          channel: string
+          created_at?: string
+          error?: string | null
+          event_id: string
+          event_qr_token_id?: string | null
+          external_id?: string | null
+          id?: string
+          lead_id?: string | null
+          reminder_window: string
+          scheduled_at_utc: string
+          sent_at_utc?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          error?: string | null
+          event_id?: string
+          event_qr_token_id?: string | null
+          external_id?: string | null
+          id?: string
+          lead_id?: string | null
+          reminder_window?: string
+          scheduled_at_utc?: string
+          sent_at_utc?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_reminder_log_v2_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_reminder_log_v2_event_qr_token_id_fkey"
+            columns: ["event_qr_token_id"]
+            isOneToOne: false
+            referencedRelation: "event_qr_tokens"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_reminder_log_v2_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       event_staff_links: {
         Row: {
@@ -1117,6 +1197,33 @@ export type Database = {
           },
         ]
       }
+      lead_profile__bak_20260710: {
+        Row: {
+          created_at: string | null
+          last_summary_at: string | null
+          lead_id: string | null
+          messages_since_summary: number | null
+          summary: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          last_summary_at?: string | null
+          lead_id?: string | null
+          messages_since_summary?: number | null
+          summary?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          last_summary_at?: string | null
+          lead_id?: string | null
+          messages_since_summary?: number | null
+          summary?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       lead_whatsapp_conversations: {
         Row: {
           body: string | null
@@ -1179,6 +1286,54 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      lead_whatsapp_conversations__bak_20260710: {
+        Row: {
+          body: string | null
+          created_at: string | null
+          delete_reason: string | null
+          deleted_at: string | null
+          deleted_by_email: string | null
+          direction: string | null
+          id: string | null
+          lead_id: string | null
+          message_type: string | null
+          metadata: Json | null
+          phone_normalized: string | null
+          related_event_id: string | null
+          whatsapp_message_id: string | null
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string | null
+          delete_reason?: string | null
+          deleted_at?: string | null
+          deleted_by_email?: string | null
+          direction?: string | null
+          id?: string | null
+          lead_id?: string | null
+          message_type?: string | null
+          metadata?: Json | null
+          phone_normalized?: string | null
+          related_event_id?: string | null
+          whatsapp_message_id?: string | null
+        }
+        Update: {
+          body?: string | null
+          created_at?: string | null
+          delete_reason?: string | null
+          deleted_at?: string | null
+          deleted_by_email?: string | null
+          direction?: string | null
+          id?: string | null
+          lead_id?: string | null
+          message_type?: string | null
+          metadata?: Json | null
+          phone_normalized?: string | null
+          related_event_id?: string | null
+          whatsapp_message_id?: string | null
+        }
+        Relationships: []
       }
       lead_whatsapp_log: {
         Row: {
@@ -1636,13 +1791,36 @@ export type Database = {
           },
         ]
       }
+      system_settings: {
+        Row: {
+          description: string | null
+          key: string
+          updated_at: string
+          updated_by: string | null
+          value: Json
+        }
+        Insert: {
+          description?: string | null
+          key: string
+          updated_at?: string
+          updated_by?: string | null
+          value: Json
+        }
+        Update: {
+          description?: string | null
+          key?: string
+          updated_at?: string
+          updated_by?: string | null
+          value?: Json
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
       generate_event_short_code: { Args: never; Returns: string }
-      get_user_id_by_email: { Args: { p_email: string }; Returns: string }
       get_active_bot_overrides: {
         Args: { p_bot_name: string }
         Returns: {
@@ -1651,6 +1829,7 @@ export type Database = {
           priority: number
         }[]
       }
+      get_user_id_by_email: { Args: { p_email: string }; Returns: string }
       issue_event_certificate: {
         Args: {
           p_admin_user_id?: string

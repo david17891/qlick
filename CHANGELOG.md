@@ -8,6 +8,114 @@
 
 ---
 
+## [v0.9.3] — Sprint Cierre-Eventos-Virtuales (link con encuesta + UPSERT attendee + promote lead + audit voseo) — 2026-07-11
+
+**Branch:** `main` (HEAD actual)
+**Status vivo:** `docs/STATUS.md` (snapshot 2026-07-11 11:50)
+**Handoff:** no dedicado (sprint corto end-to-end); info completa en `STATUS.md` + `data/PROJECT-LOG.md` 2026-07-11 ~10:40.
+**Tests:** 1066/1066 verde · type-check ✓ · lint ✓ (0 warnings) · build ✓
+**Commits clave:** `bd5a27d` (David, feature), `1e97849` (Mavis, UPSERT+promote), `827b32b` (Mavis, voseo fix), `d858f9c` (Mavis, audit voseo completo), `73a0685` (Mavis, 5 gaps: rate-limit, modal detalle, attendee_id, dev-secret, vercel aliases), `0211c55` (Mavis, docs housekeeping).
+
+Este sprint cierra el ciclo **"confirmado → asistencia real"** en eventos Zoom/virtuales/hybrid. Antes de este sprint, los confirmados que solo respondían la Q0 de la encuesta post-evento por email/WhatsApp (sin haber abierto el gate virtual ni escaneado el QR) NO quedaban como asistentes en el funnel ni en el CRM. Después del sprint, caen automáticamente al funnel vía UPSERT del attendee + promote del lead.
+
+### Added
+
+- **Botón "📨 Enviar link de encuesta"** en toolbar del tab Confirmados (`/admin/eventos/[id]?tab=confirmations`).
+  - Genera (o reutiliza) un `event_survey_tokens` por cada confirmado con email.
+  - Manda email con Brevo (`renderSurveyInviteEmail`).
+  - Devuelve links `wa.me` pre-armados para confirmados con phone sin email.
+- **Orquestador `send-survey-link.ts`**: server-side, idempotente a nivel de token.
+- **Template email `survey-invite.ts`**: HTML inline con brand Qlick, escape XSS (`esc()`), CTA grande "📝 Responder encuesta (2 min)".
+- **Botón "Ver detalle (N)" post-envío + modal con tabla por confirmado** (Gap #3 cerrado): muestra canal (email/WhatsApp/sin canal), estado, y botón "💬 Mandar" que abre WhatsApp Web con el waLink pre-armado. Antes David tenía que reconstruir el mensaje a mano del audit log.
+- **Cooldown 30s post-envío** en el botón (Gap #4): con countdown visible, evita doble click accidental que gasta emails de Brevo.
+- **Checkbox "Solo preview (no enviar emails)"** que pasa `dryRun=true` al server action.
+- **Helper puro `detectAttendanceCheck`** (`src/lib/events/survey-attendance-check.ts`): decisión booleana "asistió" extraída de `surveys-server.ts` para testearla sin DB. 10 tests unitarios.
+- **Helper `getRespondedSurveySets`** (`src/lib/events/survey-tokens.ts`): devuelve 2 sets (`confirmationIds` + `attendeeIds`) para que la tab Confirmados matchee respondedores por confirmation_id Y la tab Asistentes pueda matchearlos por attendee_id (Gap #5).
+
+### Changed
+
+- **Attendance check del Q0** en `surveys-server.ts:295-494`: cambia de UPDATE a UPSERT. Si el confirmado NUNCA abrió el gate virtual NI escaneó el QR (camino email-only), crea `event_attendees` con `source='survey_attended'` + `checked_in_at=now()`. Si ya existía, solo setea `checked_in_at` (preserva `source` original). Race condition con UNIQUE constraint manejada (23505 → SELECT + UPDATE).
+- **Promoción del lead a `event_attended`** en el CRM tras Q0=Yes: SELECT lead por email o phone → UPDATE `status='event_attended'`, `tags+=[event:{slug}:attended]`, `last_contacted_at=now()`. Idempotente (no-op si ya está en `event_attended` o cerrado). Patrón idéntico a `api/check-in/route.ts:409-437`.
+- **Badge "✓ Link"** en la tabla de Confirmados para los respondedores (usa `respondedSets.confirmationIds`).
+- **Simulate-webhook** (`/api/dev/simulate-webhook`): ahora acepta 2 modos de auth — header `x-dev-admin-secret` (scripts admin) o sesión de estudiante (Client Component, sin cambio de comportamiento). Si `process.env.DEV_ADMIN_SECRET` está set + matchea, pasa sin auth de estudiante. Body debe incluir `userId` del target en modo admin.
+- **`vercel.json`**: agregado `"alias": ["qlick.digital", "www.qlick.digital"]`. Vercel reasigna estos aliases automáticamente cuando un deploy a `main` queda READY. Antes David tenía que reasignarlos manualmente con `vercel alias set` (lo vivió el 2026-07-09).
+
+### Added (migrations)
+
+- `supabase/migrations/20260711100000_event_attendee_source_survey_attended.sql`: `ALTER TYPE event_attendee_source ADD VALUE 'survey_attended'`. Aplicada en Supabase por David antes del merge.
+
+### Fixed (copy)
+
+- **17 voseos argentinos** corregidos en 11 archivos (memory rule "Español MEXICANO — regla absoluta"):
+  - `src/lib/email/templates/survey-invite.ts`: "Tardás" → "Tardas", "decinos" → "dinos", "copiá y pegá" → "copia y pega".
+  - `src/lib/whatsapp/bot-engine.ts` (6 strings): "podés ver" → "puedes ver", "pasás" → "pasas", "mandámelo" → "mándamelo" (x2), "volvés" → "vuelves", "sabés" → "sabes".
+  - `src/lib/whatsapp/survey-messages.ts`: "Podés volver" → "Puedes volver".
+  - `src/components/crm/CRMView.tsx`, `LeadDetailDrawer.tsx`, `events/EventDrawer.tsx` (múltiples): voseo → tuteo MX.
+  - `src/app/admin/eventos/[id]/_components/CertificateBatchPanel.tsx`, `StaffLinksPanel.tsx`: "vos les mandes" / "mandáselo" → tuteo.
+  - `src/app/api/payments/create-checkout/route.ts`: "Ya tenés acceso" → "Ya tienes acceso".
+  - `src/app/pagar/[courseSlug]/exito/page.tsx` (3 strings): voseo → tuteo.
+
+### Internal
+
+- Nuevo script `scripts/_audit-voseo-templates.mjs`: escanea 212 archivos de `src/lib/email/templates`, `src/lib/whatsapp`, `src/lib/contact`, `src/components`, `src/app` en busca de conjugaciones voseantes, pronombres ("vos"), y muletillas rioplatenses. Allowlist de falsos positivos conocidos (regex detectors, "deja" tuteo sin tilde, "parámetros" sustantivo). Exit 0 = cero voseo, exit 1 = lista de matches.
+- Nuevo script `scripts/_preview-survey-invite-email.mjs`: renderiza el template con datos sintéticos para preview local sin gastar emails de Brevo.
+- 10 nuevos tests en `tests/survey-attendance-check.test.mjs` (helper puro).
+
+### Deuda viva (post-sprint, Mavis NO puede tocar — requiere David)
+
+- **G-5**: 3 plantillas Meta NO creadas en Business Manager (`conf_bienvenida`, `conf_info_evento`, `conf_confirmacion_registro`). Acción de David en Meta UI + 24-48h approval.
+- **G-6**: 5 migrations Fase 7a no confirmadas aplicadas en Supabase. Acción: `npx supabase migration list` o SQL Editor.
+- **G-7**: `NEXT_PUBLIC_APP_URL` en Vercel env vars. Acción: `vercel env ls production` + `vercel env add` con `https://www.qlick.digital`.
+
+---
+
+## [v0.9.2] — Sprint Cert Email (envío batch de constancias) — 2026-07-08
+
+**Branch:** `feat/certificados-concept-c` mergeado a `main` (2026-07-11 vía `ba461ba`)
+**Handoff:** `docs/HANDOFF_v0.9.2_CERT_EMAIL.md`
+**Status vivo:** `docs/STATUS.md` (snapshot 2026-07-10 5:32)
+**Tests:** 1056/1056 verde · type-check ✓ · lint ✓ (0 warnings) · build ✓
+**Commits:** `aca349e`, `98124ff`, `da06af2`, `9787a2f` (concepto), `8454577` (pivote HTML imprimible), `338a4f6`, `6553e6d`, `b0ac503`, `e2418a9`, `511d15c`, `f3e4447` (sprint completo, 9 archivos).
+
+Este sprint entrega el flujo completo de **emisión de certificados de asistencia**: cert HTML imprimible 1:1 con el design Concept C aprobado, server action `issueCertificateAction` con auth admin + validaciones + idempotencia, panel admin `CertificateBatchPanel` con UX de 2 pasos (preview + confirmación), email transaccional con Brevo (sender `noreply@qlick.digital`), fallback manual a WhatsApp.
+
+### Added
+
+- **Cert HTML imprimible 1:1 con design Concept C** (`/cert/[folio]`). Página pública (folio es el secreto: random sobre 100k combinaciones, no adivinable). Hardening futuro: JWT con expiración.
+- **Server action `issueCertificateAction`** (`src/app/admin/eventos/[id]/_actions.ts`): auth admin (`requireAdmin()`), validaciones (attendee pertenece al evento + tiene check-in + tiene nombre real, regex de placeholder), idempotencia por `(event_id, attendee_id)`.
+- **Client Component `IssueCertButton`** en admin check-in tab ("Emitir cert") + `PrintCertButton` con `document.fonts.ready`.
+- **Migrations**:
+  - `20260708010000_event_certificates.sql`: tabla `event_certificates` con folio UNIQUE regex `^QLK-\d{4}-\d{5}$` enforced en CHECK constraint + UNIQUE `(event_id, attendee_id)`.
+  - `20260708020000_event_certificates_rpc.sql`: RPC race-safe `issue_event_certificate()`.
+  - `20260708170000_event_email_log_certificate_type.sql`: extiende `event_email_log` con `email_type='certificate'` (CHECK constraint) + `event_certificate_id` (FK nullable) + índice.
+- **Email transaccional con Brevo** (`noreply@qlick.digital`). Template con saludo personalizado, datos del evento, folio en mono, CTA grande "Ver mi constancia", instrucciones Ctrl+P.
+- **Fallback WhatsApp**: link `wa.me/[phone]?text=...` pre-armado con mensaje + link al cert. Abre `web.whatsapp.com` en browser de David.
+- **Panel admin `CertificateBatchPanel`** con UX de 2 pasos: preview (cargado por `getCertificateBatchPreviewAction`) + confirmación (`sendBatchCertificatesAction`). Muestra desglose por canal (email / WhatsApp fallback / skipped).
+- **12 TTF** de Plus Jakarta Sans / Inter / JetBrains Mono cargados en `public/certificates/fonts/`.
+- **3 assets** (signature PNG, isotipo PNG, wordmark SVG) en `public/certificates/`.
+- **12 tests** en `tests/email-event-certificate-template.test.mjs` (incluido XSS en `<title>` descubierto durante desarrollo, ya arreglado).
+
+### Fixed (print)
+
+- **Fix crítico de print**: `@page { size: 297mm 210mm; margin: 0 }` (NO keyword `A4 landscape` — Chrome ambigüa el keyword con drivers Letter y produce margen blanco vertical). Aplica a certs, recibos, constancias en cualquier proyecto.
+
+### Trade-offs aceptados
+
+- **HTML imprimible en lugar de PDF server-side** (Vercel Hobby no aguanta headless browsers; `@react-pdf/renderer` falla con binary deps en Windows). David imprime local con Ctrl+P o el botón "🖨️ Imprimir". Fidelity 100% porque es el mismo motor del browser rendereando el mismo HTML.
+
+### Validado en producción
+
+- Folio `QLK-2026-68558` para attendee `dddddddd-dddd-dddd-dddd-dddddddddddd`. Print preview en A4 horizontal sin margen blanco en márgenes "Predeterminado" ni "Ninguno".
+- 1 fila `event_email_log` con `email_type='certificate'`, `ok=true`, `event_certificate_id` poblado (E2E real con Brevo).
+
+### Pendiente (post-sprint)
+
+- Pilotaje con attendees reales en evento del 11/jul.
+- Cleanup DB de dev artifacts (`DDDDDDD`/`QLK-2026-68558`).
+- Decisión Paso 2: script bulk + envío por correo automatizado.
+
+---
+
 ## [v0.8.0] — Wizard WhatsApp funcional + Español MX — 2026-07-06
 
 **Tag:** `v0.8.0` (rollback target estable)

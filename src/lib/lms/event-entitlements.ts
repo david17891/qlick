@@ -141,9 +141,8 @@ export async function getEventAccess(
   if (!isRealMode()) return null;
 
   const supabase = createSupabaseAdminClient();
-  const { data, error } = await (supabase
-    // @ts-ignore — event_access no está en el typegen local aún; se regenera tras aplicar migration.
-    .from("event_access") as any)
+  const { data, error } = await supabase
+    .from("event_access")
     .select("*")
     .eq("user_id", userId)
     .eq("event_id", eventId)
@@ -277,9 +276,8 @@ export async function grantEventAccess(params: {
   const now = new Date().toISOString();
 
   // 1. Buscar si ya hay access active para (user, event).
-  const { data: existing } = await (supabase
-    // @ts-ignore — idem: typegen aún sin event_access.
-    .from("event_access") as any)
+  const { data: existing } = await supabase
+    .from("event_access")
     .select("id")
     .eq("user_id", params.userId)
     .eq("event_id", params.eventId)
@@ -288,9 +286,8 @@ export async function grantEventAccess(params: {
 
   if (existing) {
     // Idempotencia: refrescar reason.
-    const { data: refreshed, error: updError } = await (supabase
-      // @ts-ignore — idem: typegen aún sin event_access.
-      .from("event_access") as any)
+    const { data: refreshed, error: updError } = await supabase
+      .from("event_access")
       .update({
         granted_reason: params.grantedReason,
         // No tocamos starts_at ni expires_at: respetamos el original.
@@ -319,9 +316,8 @@ export async function grantEventAccess(params: {
     granted_reason: params.grantedReason,
   };
 
-  const { data: created, error: insError } = await (supabase
-    // @ts-ignore — typegen aún sin event_access.
-    .from("event_access") as any)
+  const { data: created, error: insError } = await supabase
+    .from("event_access")
     .insert(insertPayload)
     .select("*")
     .single();
@@ -355,9 +351,8 @@ export async function revokeEventAccess(params: {
 
   const supabase = createSupabaseAdminClient();
 
-  const { error } = await (supabase
-    // @ts-ignore — typegen aún sin event_access.
-    .from("event_access") as any)
+  const { error } = await supabase
+    .from("event_access")
     .update({
       access_status: "revoked",
       granted_reason: params.reason,

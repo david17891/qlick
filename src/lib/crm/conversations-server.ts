@@ -165,10 +165,8 @@ export async function listRealConversations(): Promise<Conversation[]> {
 
   // 1. Leads con teléfono (necesarios para construir el id estable y
   //    agrupar mensajes pre-lead por phone).
-  // Cast a `any` para esquivar el typegen estricto de Supabase (los
-  // nombres de columna son válidos runtime pero el typegen los marca
-  // como `never` hasta regenerar con `supabase gen types`).
-  const { data: leadsLite, error: leadsErr } = await (supabase.from("leads") as any)
+  const { data: leadsLite, error: leadsErr } = await supabase
+    .from("leads")
     .select("id, name, phone")
     .not("phone", "is", null);
 
@@ -189,21 +187,17 @@ export async function listRealConversations(): Promise<Conversation[]> {
 
   // 2. Mensajes WhatsApp — agrupar por lead_id (o por phone si lead_id
   //    es NULL, i.e. pre-lead).
-  // Cast a `never` porque el typegen de Supabase no incluye esta tabla
-  // (legacy: aplicada 2026-06-29 antes del typegen actual). El runtime
-  // funciona OK; el cast solo silencia al compilador.
   //
   // FIX 2026-07-06 (conversaciones v2): filtrar `deleted_at IS NULL`
   // para no mostrar mensajes soft-deleted en la UI. El row sigue
   // existiendo para audit, pero no aparece en este listado.
-  const { data: whatsappRows, error: waErr } = await (supabase.from(
-    "lead_whatsapp_conversations" as never,
-  ) as any)
+  const { data: whatsappRows, error: waErr } = await supabase
+    .from("lead_whatsapp_conversations")
     .select(
       "id, lead_id, phone_normalized, direction, message_type, body, metadata, created_at",
     )
     .is("deleted_at", null)
-    .is("metadata->>status" as never, null)
+    .is("metadata->>status", null)
     .order("created_at", { ascending: false });
 
   if (waErr) {
@@ -215,10 +209,8 @@ export async function listRealConversations(): Promise<Conversation[]> {
   }
 
   // 3. Interactions — agrupar por lead_id.
-  // Cast a `never` (misma razón que arriba — tabla no en typegen).
-  const { data: interactionRows, error: intErr } = await (supabase.from(
-    "lead_interactions" as never,
-  ) as any)
+  const { data: interactionRows, error: intErr } = await supabase
+    .from("lead_interactions")
     .select(
       "id, lead_id, channel, direction, summary, metadata, created_by_email, created_at",
     )
@@ -393,8 +385,8 @@ export async function appendConversationMessage(
   // 1. Resolver phone_normalized si no se pasó (la columna es NOT NULL).
   let phoneNormalized = input.phoneNormalized?.trim() ?? "";
   if (!phoneNormalized) {
-    const { data: leadRow, error: leadErr } = await (supabase
-      .from("leads") as any)
+    const { data: leadRow, error: leadErr } = await supabase
+      .from("leads")
       .select("phone, phone_normalized")
       .eq("id", input.leadId)
       .maybeSingle();
@@ -431,11 +423,8 @@ export async function appendConversationMessage(
   };
 
   // 3. INSERT.
-  // Cast a `never` por la misma razón que el query de lectura
-  // (tabla no incluida en typegen actual).
-  const { data: insertedRow, error: insErr } = await (supabase.from(
-    "lead_whatsapp_conversations" as never,
-  ) as any)
+  const { data: insertedRow, error: insErr } = await supabase
+    .from("lead_whatsapp_conversations")
     .insert({
       lead_id: input.leadId,
       phone_normalized: phoneNormalized,
@@ -517,10 +506,8 @@ export async function softDeleteConversation(
   const supabase = createSupabaseAdminClient();
   const now = new Date().toISOString();
 
-  // Cast a `never` por la razón ya explicada.
-  const { data: updatedRows, error: updErr } = await (supabase.from(
-    "lead_whatsapp_conversations" as never,
-  ) as any)
+  const { data: updatedRows, error: updErr } = await supabase
+    .from("lead_whatsapp_conversations")
     .update({
       deleted_at: now,
       deleted_by_email: actorEmail,

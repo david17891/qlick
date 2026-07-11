@@ -40,7 +40,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { debugLog, errorLog } from "../log";
 
 import type { Lead } from "@/types";
-import type { Database } from "@/types/supabase";
+import type { Database, Json } from "@/types/supabase";
 
 import { findLeadByPhone } from "../crm/leads-server";
 import { normalizePhone } from "../crm/phone-utils";
@@ -1165,9 +1165,6 @@ async function getSupabase(): Promise<SupabaseAdmin | null> {
 
 /**
  * Inserta una fila en `lead_whatsapp_conversations`. Devuelve el id o null.
- *
- * Esta tabla aún no está en el typegen de Supabase; usamos `as any` para
- * esquivar el chequeo de schema hasta que se regenere.
  */
 async function persistConversation(
   supabase: SupabaseAdmin,
@@ -1183,10 +1180,10 @@ async function persistConversation(
   }
 ): Promise<string | null> {
   const { data, error } = await supabase
-    .from("lead_whatsapp_conversations" as never)
+    .from("lead_whatsapp_conversations")
     .upsert(
-      row as never,
-      { onConflict: "whatsapp_message_id", ignoreDuplicates: true } as never
+      { ...row, metadata: (row.metadata ?? null) as unknown as Json },
+      { onConflict: "whatsapp_message_id", ignoreDuplicates: false },
     )
     .select("id")
     .maybeSingle();
@@ -1202,9 +1199,6 @@ async function persistConversation(
 
 /**
  * Inserta una fila en `lead_consent_log`. Devuelve ok.
- *
- * `lead_consent_log` no está aún en el typegen; cast a `never` para
- * esquivar el chequeo. Re-generar typegen al regenerar el schema.
  */
 async function persistConsent(
   supabase: SupabaseAdmin,
@@ -1218,8 +1212,8 @@ async function persistConsent(
   }
 ): Promise<boolean> {
   const { error } = await supabase
-    .from("lead_consent_log" as never)
-    .insert(row as never);
+    .from("lead_consent_log")
+    .insert({ ...row, metadata: (row.metadata ?? null) as unknown as Json });
   if (error) {
     errorLog("[whatsapp/bot] persistConsent falló", {
       code: (error as { code?: string }).code

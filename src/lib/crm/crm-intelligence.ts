@@ -86,11 +86,13 @@ export async function getCrmIntelligence(): Promise<IntelligenceOverview> {
   // Definimos "lead nuevo" como leads cuyo created_at cae en la ventana.
   // Filtrar status='new' es demasiado estricto (un lead puede pasar a
   // contacted rápido y aún así contar como recién llegado).
-  const { count: currentWeekCount } = await (supabase.from("leads") as any)
+  const { count: currentWeekCount } = await supabase
+    .from("leads")
     .select("id", { count: "exact", head: true })
     .gte("created_at", currentWeekStart.toISOString());
 
-  const { count: previousWeekCount } = await (supabase.from("leads") as any)
+  const { count: previousWeekCount } = await supabase
+    .from("leads")
     .select("id", { count: "exact", head: true })
     .gte("created_at", previousWeekStart.toISOString())
     .lt("created_at", currentWeekStart.toISOString());
@@ -105,7 +107,8 @@ export async function getCrmIntelligence(): Promise<IntelligenceOverview> {
       : ((lvrCurrentWeek - lvrPreviousWeek) / lvrPreviousWeek) * 100;
 
   // ─── Heat Distribution + lead set para SLA/Hot Desatendidos ───
-  const { data: leadsForHeat } = await (supabase.from("leads") as any)
+  const { data: leadsForHeat } = await supabase
+    .from("leads")
     .select("id, name, phone, status, score, qualification, updated_at")
     .not("status", "eq", "archived")
     .not("status", "eq", "lost");
@@ -151,7 +154,8 @@ export async function getCrmIntelligence(): Promise<IntelligenceOverview> {
   const openTasksByLeadId = new Map<string, number>();
 
   if (candidateIds.length > 0) {
-    const { data: interactions } = await (supabase.from("lead_interactions") as any)
+    const { data: interactions } = await supabase
+      .from("lead_interactions")
       .select("lead_id, created_at")
       .in("lead_id", candidateIds)
       .order("created_at", { ascending: false });
@@ -164,10 +168,11 @@ export async function getCrmIntelligence(): Promise<IntelligenceOverview> {
       }
     }
 
-    const { data: openTasks } = await (supabase.from("crm_tasks") as any)
+    const { data: openTasks } = await supabase
+      .from("crm_tasks")
       .select("lead_id")
       .in("lead_id", candidateIds)
-      .eq("done", false);
+      .in("status", ["pending"]);
     for (const t of (openTasks ?? []) as Array<{ lead_id: string }>) {
       openTasksByLeadId.set(
         t.lead_id,
