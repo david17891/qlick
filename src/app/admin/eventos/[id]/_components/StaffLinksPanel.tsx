@@ -189,7 +189,7 @@ export function StaffLinksPanel({
       {createdUrl && (
         <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3">
           <p className="text-xs font-bold text-emerald-800 mb-1">
-            ✓ Link creado. Copialo y mandáselo al staff:
+            ✓ Link creado. Copialo y mándaselo al staff:
           </p>
           <div className="flex items-center gap-2">
             <code className="flex-1 text-xs bg-white px-2 py-1 rounded border border-emerald-100 break-all">

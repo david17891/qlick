@@ -71,7 +71,7 @@ export function buildSurveyOfferMessage(args: {
       ]
     },
     footer: {
-      text: "Sin compromiso. Podés volver cuando quieras."
+      text: "Sin compromiso. Puedes volver cuando quieras."
     }
   };
 

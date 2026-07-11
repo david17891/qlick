@@ -1995,7 +1995,7 @@ function ConversationsView({
                   setComposeMsg(null);
                 }
               }}
-              placeholder={`Escribe el mensaje que querés enviar a ${lead.name}…`}
+              placeholder={`Escribe el mensaje que quieres enviar a ${lead.name}…`}
               rows={3}
               disabled={composeState === "sending"}
               className="w-full"

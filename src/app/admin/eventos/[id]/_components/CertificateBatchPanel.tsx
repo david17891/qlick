@@ -116,7 +116,7 @@ export function CertificateBatchPanel({ eventId, eventTitle }: Props) {
           <strong>Envio masivo de constancias:</strong> emite el cert (si falta) y
           manda el correo de felicitacion a todos los asistentes con check-in que
           tengan email. Los que no tengan email quedan abajo con un link directo a
-          WhatsApp para que vos les mandes manualmente.
+          WhatsApp para que les mandes manualmente.
         </p>
         <button
           type="button"
@@ -184,7 +184,7 @@ export function CertificateBatchPanel({ eventId, eventTitle }: Props) {
           </p>
           <p className="text-xs text-emerald-900/80 mb-3">
             Estos asistentes no tienen email. Click en cada link para abrir
-            WhatsApp Web con el mensaje pre-armado (vos lo mandas manualmente):
+            WhatsApp Web con el mensaje pre-armado (lo mandas manualmente):
           </p>
           <ul className="space-y-1">
             {preview.toWhatsApp.map((r) => (

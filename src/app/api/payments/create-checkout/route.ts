@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           ok: false,
-          error: "Ya tenés acceso a este curso.",
+          error: "Ya tienes acceso a este curso.",
           alreadyPaid: true,
         },
         { status: 409 }

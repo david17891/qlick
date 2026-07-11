@@ -1458,7 +1458,7 @@ export function LeadDetailDrawer({
                 <Textarea
                   value={newMessageBody}
                   onChange={(e) => setNewMessageBody(e.target.value)}
-                  placeholder="Pega aquí el mensaje que llegó por WhatsApp/email/voz o que vos enviaste…"
+                  placeholder="Pega aquí el mensaje que llegó por WhatsApp/email/voz o que enviaste…"
                   rows={3}
                   className="w-full"
                   disabled={conversationState === "loading" || deleteState === "loading"}

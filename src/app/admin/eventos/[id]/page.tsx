@@ -979,7 +979,7 @@ export default async function AdminEventoDetailPage({
               <EmptyState
                 icon="📭"
                 title="Aun no hay encuestas"
-                description="Cuando alguien complete la encuesta post-evento, va a aparecer aca. Las que tienen consent=true + vos las promueve, entran al CRM."
+                description="Cuando alguien complete la encuesta post-evento, va a aparecer aca. Las que tienen consent=true + tú las promotes, entran al CRM."
               />
             ) : (
               <Table

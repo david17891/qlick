@@ -111,7 +111,7 @@ export default async function ExitoPage({ params, searchParams }: ExitoPageProps
   let tone: "success" | "warning" = "success";
 
   if (session && accessActive) {
-    title = "¡Listo! Ya tenés acceso";
+    title = "¡Listo! Ya tienes acceso";
     body = `Tu pago fue confirmado. ${course.title} ya está disponible en tu dashboard.`;
     ctaLabel = "Ir al dashboard";
     ctaHref = "/dashboard?paid=ok";
@@ -121,7 +121,7 @@ export default async function ExitoPage({ params, searchParams }: ExitoPageProps
       "Si pagaste con OXXO o SPEI, el voucher / transferencia está siendo procesado. " +
       "Te avisaremos por email cuando se confirme. " +
       (session
-        ? "También podés chequear tu dashboard más tarde."
+        ? "También puedes chequear tu dashboard más tarde."
         : "Te enviamos un link al email que usaste en el checkout para que entres cuando esté confirmado.");
     ctaLabel = session ? "Ir al dashboard" : "Reenviar link de acceso";
     ctaHref = session ? "/dashboard" : `/pagar/${courseSlug}/exito?session_id=${sessionId}&resend=1`;
@@ -129,8 +129,8 @@ export default async function ExitoPage({ params, searchParams }: ExitoPageProps
   } else if (paymentStatus === "rejected" || paymentStatus === "expired") {
     title = "El pago no se completó";
     body =
-      "El proveedor rechazó o expiró tu intento de pago. Podés intentar de nuevo " +
-      "con otro método o contactarnos si necesitás ayuda.";
+      "El proveedor rechazó o expiró tu intento de pago. Puedes intentar de nuevo " +
+      "con otro método o contactarnos si necesitas ayuda.";
     ctaLabel = "Volver a intentar";
     ctaHref = `/pagar/${courseSlug}`;
     tone = "warning";

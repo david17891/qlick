@@ -636,14 +636,14 @@ export function EventDrawer({
 
             {/* Campos streaming: SOLO visibles si format != in_person.
                 Migration 20260707093000: streaming_url ahora es OPCIONAL.
-                Podés crearlo vacío y agregar el link el día del evento
+                Puedes crearlo vacío y agregar el link el día del evento
                 (caso real: YouTube Live se agenda 1-2 días antes). */}
             {form.format !== "in_person" && (
               <>
                 <Field
                   label="Link de streaming"
                   htmlFor="evt-streaming-url"
-                  hint="Opcional. Lo normal es definirlo días antes. Si aún no lo tienes, podés crear el evento vacío y agregar el link el día del evento desde esta misma pantalla."
+                  hint="Opcional. Lo normal es definirlo días antes. Si aún no lo tienes, puedes crear el evento vacío y agregar el link el día del evento desde esta misma pantalla."
                   error={fieldErrors.streamingUrl}
                 >
                   <Input

@@ -271,7 +271,7 @@ function noEventsText(): string {
     "Por el momento no tenemos eventos próximos publicados.",
     "",
     "Si te interesa enterarte cuando publiquemos uno, avísame por aquí",
-    "y te aviso. También podés ver la lista en:",
+    "y te aviso. También puedes ver la lista en:",
     "https://www.qlick.digital/eventos",
   ].join("\n");
 }
@@ -2536,7 +2536,7 @@ case "interactive_event_inscribir": {
         // Pedimos el slug manualmente para no romper el flow.
         const bodyText =
           `¡Gracias por querer dejar feedback! Para identificar el evento, ` +
-          `¿me pasás el título o el slug del evento? Ej: "pingüinos" o "vender-hielo-pinguino".`;
+          `¿me pasas el título o el slug del evento? Ej: "pingüinos" o "vender-hielo-pinguino".`;
         return {
           kind: "text",
           body: bodyText,
@@ -3316,7 +3316,7 @@ case "interactive_event_inscribir": {
           `Buena pregunta. Te la respondo cuando completemos tu ` +
           `registro (asi puedo darte una respuesta personalizada). ` +
           `Por ahora solo necesito tu nombre completo (nombre y ` +
-          `apellido) para el certificado. ¿Me lo pasás así: "Juan Pérez"?`;
+          `apellido) para el certificado. ¿Me lo pasas así: "Juan Pérez"?`;
         return {
           kind: "text",
           body: bodyText,
@@ -3369,7 +3369,7 @@ case "interactive_event_inscribir": {
         // Probablemente escribió solo "Juan" o "David". Pedimos apellido.
         const bodyText =
           `Necesito tu nombre completo (nombre y apellido) para el ` +
-          `certificado. Por favor mandámelo así: "Juan Pérez".`;
+          `certificado. Por favor mándamelo así: "Juan Pérez".`;
         return {
           kind: "text",
           body: bodyText,
@@ -3750,7 +3750,7 @@ case "interactive_event_inscribir": {
           task: "suggest_reply",
           provider: "mock",
           content:
-            "Perdón, tengo mucha demanda ahora mismo. ¿Me das un momento y me volvés a escribir?",
+            "Perdón, tengo mucha demanda ahora mismo. ¿Me das un momento y me vuelves a escribir?",
           confidence: 0,
           needsReview: false,
           demo: true,
@@ -5010,7 +5010,7 @@ export async function processInboundMessage(
         const cleanAmbig = cleanFirstName(lead.name);
         const saludoAmbig = cleanAmbig ? `¡Hola ${cleanAmbig}!` : "¡Hola!";
         const codeNote =
-          "Si sabés el código corto del evento (ej. 7A3X), mandámelo así.";
+          "Si sabes el código corto del evento (ej. 7A3X), mándamelo así.";
         const bodyTextAmbig =
           `${saludoAmbig} Tenemos varios eventos publicados y necesito saber a cuál te inscribís.\n\n` +
           `¿Me confirmás cuál? Respondé con el número [1]–[${
@@ -5445,7 +5445,7 @@ export async function processInboundMessage(
       // antes de avanzar al QR. NO generamos QR, NO enviamos email.
       const bodyText =
         `Antes del email necesito tu nombre completo (es para el ` +
-        `certificado). Por favor mandámelo así: "Juan Pérez". Después ` +
+        `certificado). Por favor mándamelo así: "Juan Pérez". Después ` +
         `te paso tu email para el QR.`;
       // FIX 2026-07-02 (Commit A): persistir el outbound con
       // metadata.awaiting_field='name' para que el próximo turno
