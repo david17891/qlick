@@ -1,0 +1,464 @@
+{
+  "total": 57,
+  "sent": 57,
+  "failed": 0,
+  "skipped": 0,
+  "details": [
+    {
+      "phone": "+526863176806",
+      "name": "Mireya",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MzE3NjgwNhUCABEYEjczNjg3NDMyRTMxQTJFOTBEMQA=",
+      "error": null
+    },
+    {
+      "phone": "+526861187731",
+      "name": "Paul",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MTE4NzczMRUCABEYEkZGQjNENjdDRjQwQTg0NkM5QwA=",
+      "error": null
+    },
+    {
+      "phone": "+526531073900",
+      "name": "Yolanda",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjUzMTA3MzkwMBUCABEYEjc3Mjc5RDRBMDA2OEUzMTZBMAA=",
+      "error": null
+    },
+    {
+      "phone": "+526863504208",
+      "name": "Daniel",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MzUwNDIwOBUCABEYEkZFQ0E4Qjg1RDhEMzQ0RkY5RgA=",
+      "error": null
+    },
+    {
+      "phone": "+526861096680",
+      "name": "Yesenia",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MTA5NjY4MBUCABEYEkEyMjY0Q0I2Qzk3RUJCOUUxMQA=",
+      "error": null
+    },
+    {
+      "phone": "+526863065382",
+      "name": "Alejandra",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MzA2NTM4MhUCABEYEjJEOEQyOTUwMTEwOTFENEE2RAA=",
+      "error": null
+    },
+    {
+      "phone": "+6861891146",
+      "name": "Sitlalic",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MTg5MTE0NhUCABEYEjlFRjgxNUJCRTlDMzUwOTJCNgA=",
+      "error": null
+    },
+    {
+      "phone": "+526531047962",
+      "name": "Gabriela",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjUzMTA0Nzk2MhUCABEYEjU1OEQxODJERTNDMTdDMzYwOAA=",
+      "error": null
+    },
+    {
+      "phone": "+526861101200",
+      "name": "Mari",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MTEwMTIwMBUCABEYEjQzNUREN0UwMkM1RDFERjk0MQA=",
+      "error": null
+    },
+    {
+      "phone": "+526676472114",
+      "name": "Jesús",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjY3NjQ3MjExNBUCABEYEjVFODFDMDJBODc3NEE5MjEyNwA=",
+      "error": null
+    },
+    {
+      "phone": "+526861063409",
+      "name": "Jocelyn",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MTA2MzQwORUCABEYEjhCQjY3REY0M0U5RDE1OTdDQwA=",
+      "error": null
+    },
+    {
+      "phone": "+526866025958",
+      "name": "Claudia",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2NjAyNTk1OBUCABEYEkZCRkI5REMxREYyRURDMEVBOAA=",
+      "error": null
+    },
+    {
+      "phone": "+526862473182",
+      "name": "Nancy",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MjQ3MzE4MhUCABEYEkU4N0YyNjBBRkE0MTg2QTM2RQA=",
+      "error": null
+    },
+    {
+      "phone": "+526863480874",
+      "name": "Flor",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MzQ4MDg3NBUCABEYEjg4MjVGNEIwQjc4RUQwNzQ1RQA=",
+      "error": null
+    },
+    {
+      "phone": "+526862475073",
+      "name": "Ramon",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MjQ3NTA3MxUCABEYEjJCMjMwMDhDQjQ5NUZEMkVERgA=",
+      "error": null
+    },
+    {
+      "phone": "+526863957155",
+      "name": "Guadalupe",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2Mzk1NzE1NRUCABEYEkE0MTk4NUM2RTA4QkU0OTBDRgA=",
+      "error": null
+    },
+    {
+      "phone": "+526862224908",
+      "name": "Emprendedor/a",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MjIyNDkwOBUCABEYEkE1NzRBN0M1NzYwMjFFRjk4QQA=",
+      "error": null
+    },
+    {
+      "phone": "+526865263384",
+      "name": "Alonso",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2NTI2MzM4NBUCABEYEjE5NTk0MUM4RkI1RjAyMTgxQQA=",
+      "error": null
+    },
+    {
+      "phone": "+526862428072",
+      "name": "María",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MjQyODA3MhUCABEYEjdBMzhDNzQyREEwMUFBMjgxMAA=",
+      "error": null
+    },
+    {
+      "phone": "+526862163644",
+      "name": "Emprendedor/a",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MjE2MzY0NBUCABEYEjgwMjdENjJCMEY0NTc0NDc1NwA=",
+      "error": null
+    },
+    {
+      "phone": "+526861900590",
+      "name": "Araceli",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MTkwMDU5MBUCABEYEjQ2NjYxNjA1QTY4MzUxN0RENgA=",
+      "error": null
+    },
+    {
+      "phone": "+526865709563",
+      "name": "Rene",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2NTcwOTU2MxUCABEYEjY4NDlBOUE4NDc3RDA2M0Q2OQA=",
+      "error": null
+    },
+    {
+      "phone": "+526531451181",
+      "name": "Manuel",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjUzMTQ1MTE4MRUCABEYEjBFMTBFRUI1Rjc4REY3OEIwOAA=",
+      "error": null
+    },
+    {
+      "phone": "+526862242476",
+      "name": "Mauricio",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MjI0MjQ3NhUCABEYEjJGRUE3RDI4NkY2QkNFNTczOQA=",
+      "error": null
+    },
+    {
+      "phone": "+526865423135",
+      "name": "José",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2NTQyMzEzNRUCABEYEkMxNDkyM0U3NUYyQzNFNUNBRAA=",
+      "error": null
+    },
+    {
+      "phone": "+526862152502",
+      "name": "Elisa",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MjE1MjUwMhUCABEYEjVCNjg3QzBFMEM4MkQ2NjQwMAA=",
+      "error": null
+    },
+    {
+      "phone": "+526862621047",
+      "name": "Carolina",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MjYyMTA0NxUCABEYEkQ5ODQ1NzdFQkIyNDU5NEJCQwA=",
+      "error": null
+    },
+    {
+      "phone": "+526862368349",
+      "name": "Laura",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MjM2ODM0ORUCABEYEjgwNTVCRTA3MDRERjRENUJDMgA=",
+      "error": null
+    },
+    {
+      "phone": "+526861101639",
+      "name": "Fernando",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MTEwMTYzORUCABEYEkZERDY5NDE0QjE3N0UwNTM0QgA=",
+      "error": null
+    },
+    {
+      "phone": "+526861078733",
+      "name": "Néstor",
+      "isConfirmed": true,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MTA3ODczMxUCABEYEjg2NDU1N0I5NTlCMzI3REJCNwA=",
+      "error": null
+    },
+    {
+      "phone": "+447710173736",
+      "name": "Emprendedor/a",
+      "isConfirmed": false,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgMNDQ3NzEwMTczNzM2FQIAERgSMENBMTFDNTlBNEE1QUU4MTI3AA==",
+      "error": null
+    },
+    {
+      "phone": "+525500000999",
+      "name": "Emprendedor/a",
+      "isConfirmed": false,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNTUwMDAwMDk5ORUCABEYEjlDQUU5REFGQkJFOTg3M0QyOAA=",
+      "error": null
+    },
+    {
+      "phone": "+525511100002",
+      "name": "Emprendedor/a",
+      "isConfirmed": false,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNTUxMTEwMDAwMhUCABEYEkQ5M0I1NzA4NzNBQjA5NjNDMQA=",
+      "error": null
+    },
+    {
+      "phone": "+525511133333",
+      "name": "Emprendedor/a",
+      "isConfirmed": false,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNTUxMTEzMzMzMxUCABEYEjY3M0ZBNkQ1QkUzNTlBRUI2NAA=",
+      "error": null
+    },
+    {
+      "phone": "+525557420242",
+      "name": "Emprendedor/a",
+      "isConfirmed": false,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNTU1NzQyMDI0MhUCABEYEkUzN0UyRUMwOUYyQ0E3QTRBNwA=",
+      "error": null
+    },
+    {
+      "phone": "+526531215755",
+      "name": "Emprendedor/a",
+      "isConfirmed": false,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjUzMTIxNTc1NRUCABEYEjZEMDRCMDlFMjFDMERCMEFDOAA=",
+      "error": null
+    },
+    {
+      "phone": "+526531742365",
+      "name": "Emprendedor/a",
+      "isConfirmed": false,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjUzMTc0MjM2NRUCABEYEjU3MzM4NDhGQjNFRjUzRjIxQwA=",
+      "error": null
+    },
+    {
+      "phone": "+526532935492",
+      "name": "Emprendedor/a",
+      "isConfirmed": false,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjUzMjkzNTQ5MhUCABEYEjg0NEMxMkIxRTg1MDcxRTcyQQA=",
+      "error": null
+    },
+    {
+      "phone": "+526535386543",
+      "name": "Emprendedor/a",
+      "isConfirmed": false,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjUzNTM4NjU0MxUCABEYEkQ2OUEwODVCQkZFNzQ0QzRFRgA=",
+      "error": null
+    },
+    {
+      "phone": "+526538494002",
+      "name": "Emprendedor/a",
+      "isConfirmed": false,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjUzODQ5NDAwMhUCABEYEjk3Njg2RUYyRUI0NDJDOERBRAA=",
+      "error": null
+    },
+    {
+      "phone": "+526538495389",
+      "name": "Emprendedor/a",
+      "isConfirmed": false,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjUzODQ5NTM4ORUCABEYEjcxRTcwMUYyQkZGODNFOTFBMwA=",
+      "error": null
+    },
+    {
+      "phone": "+526621909551",
+      "name": "Emprendedor/a",
+      "isConfirmed": false,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjYyMTkwOTU1MRUCABEYEjhBMzBDQkY2RTdCQkJBMjUwMgA=",
+      "error": null
+    },
+    {
+      "phone": "+526861000954",
+      "name": "Teresa",
+      "isConfirmed": false,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MTAwMDk1NBUCABEYEkI5OUFFQTUzQzI4N0UzREQ2MwA=",
+      "error": null
+    },
+    {
+      "phone": "+526861257793",
+      "name": "Emprendedor/a",
+      "isConfirmed": false,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MTI1Nzc5MxUCABEYEkNFREQ0M0YwRjg5MkNGMjAyRAA=",
+      "error": null
+    },
+    {
+      "phone": "+526861345891",
+      "name": "Emprendedor/a",
+      "isConfirmed": false,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MTM0NTg5MRUCABEYEkJBRTIxODNCMjgyODc4RDVDQgA=",
+      "error": null
+    },
+    {
+      "phone": "+526861491145",
+      "name": "Emprendedor/a",
+      "isConfirmed": false,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MTQ5MTE0NRUCABEYEjgxMjFGNUJFN0ZBMkNBNzU5OAA=",
+      "error": null
+    },
+    {
+      "phone": "+526861570402",
+      "name": "Emprendedor/a",
+      "isConfirmed": false,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MTU3MDQwMhUCABEYEjNCRDIyOTM3Rjk2QTlCOTIxNQA=",
+      "error": null
+    },
+    {
+      "phone": "+526861582205",
+      "name": "Emprendedor/a",
+      "isConfirmed": false,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MTU4MjIwNRUCABEYEkFFM0Y2OTc4OTY2QjM2NTc4MgA=",
+      "error": null
+    },
+    {
+      "phone": "+526861891146",
+      "name": "Entrega",
+      "isConfirmed": false,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MTg5MTE0NhUCABEYEjVGOUZCMTMxOTkxNUM3NzVDMgA=",
+      "error": null
+    },
+    {
+      "phone": "+526862238595",
+      "name": "Emprendedor/a",
+      "isConfirmed": false,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MjIzODU5NRUCABEYEjBFNDQ2RjY4RERGM0NCRkFERgA=",
+      "error": null
+    },
+    {
+      "phone": "+526862351222",
+      "name": "Emprendedor/a",
+      "isConfirmed": false,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MjM1MTIyMhUCABEYEjMwM0QwOTMyRjJFRUMxNjQzQQA=",
+      "error": null
+    },
+    {
+      "phone": "+526862370840",
+      "name": "Emprendedor/a",
+      "isConfirmed": false,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MjM3MDg0MBUCABEYEkQyRUYyNDc1OENCMzEzQjU0MAA=",
+      "error": null
+    },
+    {
+      "phone": "+526862430196",
+      "name": "Emprendedor/a",
+      "isConfirmed": false,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MjQzMDE5NhUCABEYEjY0ODY3N0RCMEMyMEEwNkExMQA=",
+      "error": null
+    },
+    {
+      "phone": "+526862641132",
+      "name": "Emprendedor/a",
+      "isConfirmed": false,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2MjY0MTEzMhUCABEYEkMxODg3NkZFMTFCNUJGNzQxNwA=",
+      "error": null
+    },
+    {
+      "phone": "+526864197951",
+      "name": "Emprendedor/a",
+      "isConfirmed": false,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2NDE5Nzk1MRUCABEYEkQ4OEQ0MUFBQkY3Qzk4QzBCQQA=",
+      "error": null
+    },
+    {
+      "phone": "+526865693501",
+      "name": "Emprendedor/a",
+      "isConfirmed": false,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2NTY5MzUwMRUCABEYEjEyMjFGMzM5NDA3NDgwQjlFQgA=",
+      "error": null
+    },
+    {
+      "phone": "+526867503420",
+      "name": "Emprendedor/a",
+      "isConfirmed": false,
+      "status": "SUCCESS",
+      "externalId": "wamid.HBgNNTIxNjg2NzUwMzQyMBUCABEYEjYwNDk4QkM2QjE5QTc5QkQ4OAA=",
+      "error": null
+    }
+  ]
+}

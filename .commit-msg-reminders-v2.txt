@@ -1,0 +1,62 @@
+feat(reminders): generalizar recordatorios a 3 ventanas (24h/8am/10am Phoenix) + 2 canales (whatsapp+email)
+
+Sistema de recordatorios de eventos v2 (Sprint 2 hotfix David, sesion 2026-07-10 04:00).
+
+ARCHIVOS CAMBIADOS:
+- src/lib/cron/event-reminders.ts: cron principal.
+  - getActiveReminderWindows ahora retorna 3 ventanas relativas (24h, 2h, 1h).
+  - NUEVO getPhoenixDayWindows retorna 2 ventanas Phoenix (8am = 15:00 UTC, 10am = 17:00 UTC).
+  - NUEVO eventMatchesWindow con doble logica:
+    * Ventanas relativas (24h/2h/1h): match por offset en ms.
+    * Ventanas Phoenix (8am/10am): match por DIA UTC.
+  - runEventRemindersJob: itera las 5 ventanas, manda email + WhatsApp
+    a cada confirmado que no lo haya recibido (idempotente via
+    event_reminder_log_v2 UNIQUE constraint). trackea status, sent_at,
+    external_id por (token, ventana, canal).
+- src/lib/whatsapp/event-reminder-send.ts: helper de WhatsApp.
+  - EventReminderKind ahora incluye '8am' y '10am'.
+  - Copy explicito para 8am: "HOY es el taller..." con checkInUrl.
+  - Copy explicito para 10am: "En 1 hora empieza el taller..." con checkInUrl.
+- src/lib/email/templates/event-reminder.ts: template email.
+  - reminderKind acepta 5 ventanas.
+  - Copy para 8am: subject "HOY: ...", headline "HOY es el taller".
+  - Copy para 10am: subject "En 1 hora: ...", headline "En 1 hora es el taller".
+  - Copy para 2h/1h: subject "En N horas: ...", headline "Nos vemos en ~Nh".
+- src/app/api/admin/events/[id]/trigger-reminder/route.ts: NUEVO endpoint.
+  - POST /api/admin/events/[id]/trigger-reminder?kind=24h|8am|10am|2h|1h
+  - Dispara recordatorios manualmente (uso: el cron no llego a tiempo).
+  - Auth: requireAdmin. Filtra por kind si se pasa.
+- vercel.json: cron event-reminders cambia de "0 8 * * *" a "*/30 * * * *"
+  (cada 30 min en vez de 1x/dia) para captar las 3 ventanas con margen.
+- supabase/migrations/20260710040000_event_reminder_log_v2.sql: NUEVA tabla
+  con tracking completo (event_id, attendee, channel, reminder_window,
+  scheduled_at_utc, sent_at_utc, status, error, external_id, UNIQUE constraint
+  para idempotencia). David corre este SQL en su SQL Editor.
+
+TESTS:
+- tests/whatsapp-event-reminder-send.test.mjs: 5 tests nuevos (8am, 10am, XSS, sin location).
+- tests/cron-event-reminders.test.mjs: tests actualizados al nuevo
+  getActiveReminderWindows (3 ventanas), test para getPhoenixDayWindows
+  (2 ventanas), 2 tests para eventMatchesWindow (24h + 8am Phoenix por
+  DIA UTC), test obsoleto eventsInWindow eliminado.
+- tests/email-event-reminder-template.test.mjs: 3 tests nuevos (2h
+  actualizado, 8am HOY, 10am En 1 hora).
+
+VALIDACION:
+- 982/982 tests verde (incluyendo 19 nuevos del sprint).
+- type-check OK.
+- lint OK.
+- DEPLOY: branch feat/event-reminders-v2 push. Para merge a main
+  requiere que David ejecute primero el SQL migration 20260710040000
+  en su Supabase SQL Editor (porque vercel env pull miente sensitive).
+
+CASO INMEDIATO (evento 11 julio 2026 11:00 hrs Phoenix):
+- 24h: cron del 10 julio 11:00 Phoenix ya paso. David dispara manual
+  via /api/admin/events/[id]/trigger-reminder?kind=24h.
+- 8am Phoenix: cron 11 julio 8 AM Phoenix = 15:00 UTC. Envia WhatsApp
+  (texto libre, template Meta 8am pendiente) + email (Brevo).
+- 10am Phoenix: cron 11 julio 10 AM Phoenix = 17:00 UTC. Igual.
+
+TEMPLATES META PENDIENTES:
+- recordatorio_evento_8am: David lo crea en Meta dashboard (24-48h approval).
+- recordatorio_evento_10am: idem. Mientras tanto el helper usa texto libre.

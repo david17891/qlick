@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Qlick Award · Sistema de Certificados · v2 · Real Assets</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --purple-500:#A855F7;
+    --purple-700:#7E22CE;
+    --purple-900:#3B0764;
+    --spark:#FBBF24;
+    --ink:#0F172A;
+    --slate-500:#64748B;
+    --ivory:#FAFAF7;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:#0A0B14;color:#fff;font-family:'Plus Jakarta Sans',sans-serif;-webkit-font-smoothing:antialiased}
+  body{padding:48px 32px 96px;background:
+    radial-gradient(1200px 600px at 80% 0%, rgba(168,85,247,.18), transparent 60%),
+    radial-gradient(800px 400px at 10% 100%, rgba(251,191,36,.08), transparent 55%),
+    #0A0B14}
+  .container{max-width:1280px;margin:0 auto}
+  .hero{padding:48px 0 64px;border-bottom:1px solid rgba(168,85,247,.18)}
+  .hero .tag{display:inline-flex;align-items:center;gap:8px;padding:6px 14px;border:1px solid rgba(168,85,247,.4);border-radius:99px;background:rgba(168,85,247,.08);font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:2px;color:var(--purple-500);text-transform:uppercase}
+  .hero .tag .dot{width:6px;height:6px;border-radius:50%;background:var(--spark);box-shadow:0 0 12px var(--spark)}
+  .hero h1{font-family:'Plus Jakarta Sans',sans-serif;font-weight:900;font-size:64px;line-height:.95;letter-spacing:-2.5px;margin-top:24px;background:linear-gradient(180deg, #fff 30%, rgba(255,255,255,.5) 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero h1 span{background:linear-gradient(135deg,var(--purple-500),var(--spark));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p{font-family:'Inter',sans-serif;font-size:16px;color:rgba(255,255,255,.65);margin-top:18px;max-width:680px;line-height:1.6}
+  .hero .meta{display:flex;gap:32px;margin-top:32px;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:2px;color:rgba(255,255,255,.4);text-transform:uppercase}
+  .hero .meta strong{color:var(--spark);font-weight:600}
+  .concepts{display:grid;grid-template-columns:1fr;gap:48px;margin-top:48px}
+  .concept{background:rgba(255,255,255,.02);border:1px solid rgba(168,85,247,.18);border-radius:24px;padding:32px;transition:all .3s ease}
+  .concept:hover{border-color:rgba(168,85,247,.45);background:rgba(168,85,247,.04);transform:translateY(-2px)}
+  .concept .head{display:grid;grid-template-columns:auto 1fr auto;gap:24px;align-items:center;margin-bottom:24px}
+  .concept .letter{width:80px;height:80px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-family:'Plus Jakarta Sans',sans-serif;font-weight:900;font-size:42px;color:#fff;letter-spacing:-2px}
+  .concept.b .letter{background:linear-gradient(135deg, #FBBF24, #D4AF37);color:#3B0764;box-shadow:0 12px 30px rgba(251,191,36,.3)}
+  .concept.c .letter{background:linear-gradient(135deg, #7E22CE, #A855F7);box-shadow:0 12px 30px rgba(168,85,247,.4)}
+  .concept .title{font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;font-size:28px;letter-spacing:-1px}
+  .concept .subtitle{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:3px;color:var(--slate-500);text-transform:uppercase;margin-top:4px}
+  .concept .view-btn{padding:14px 22px;border:1px solid rgba(168,85,247,.4);border-radius:99px;color:#fff;font-family:'Plus Jakarta Sans',sans-serif;font-weight:600;font-size:13px;text-decoration:none;background:rgba(168,85,247,.1);transition:all .2s ease}
+  .concept .view-btn:hover{background:var(--purple-500);color:#fff;border-color:var(--purple-500)}
+  .concept .body{display:grid;grid-template-columns:1.4fr 1fr;gap:32px;align-items:center}
+  .concept .preview{aspect-ratio:297/210;border-radius:12px;overflow:hidden;position:relative;background:#000;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+  .concept .preview iframe{width:100%;height:100%;border:0;display:block;pointer-events:none}
+  .concept .info h3{font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:18px;color:#fff;margin-bottom:14px}
+  .concept .info p{font-family:'Inter',sans-serif;font-size:14px;color:rgba(255,255,255,.65);line-height:1.6;margin-bottom:14px}
+  .concept .info ul{list-style:none;padding:0;margin:0}
+  .concept .info li{font-family:'Inter',sans-serif;font-size:13px;color:rgba(255,255,255,.55);padding:6px 0;padding-left:22px;position:relative;line-height:1.5}
+  .concept .info li::before{content:'◆';position:absolute;left:0;top:6px;font-size:9px;color:var(--spark)}
+  .concept .info .tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  .concept .info .tag{padding:5px 10px;border-radius:6px;background:rgba(168,85,247,.1);border:1px solid rgba(168,85,247,.25);font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:1px;color:var(--purple-500);text-transform:uppercase}
+  .concept .info .ok{color:#22C55E;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:1px;margin-top:14px;padding:8px 12px;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.3);border-radius:6px}
+  .footer{margin-top:64px;padding:32px;text-align:center;border-top:1px solid rgba(168,85,247,.18)}
+  .footer p{font-family:'Inter',sans-serif;font-size:13px;color:rgba(255,255,255,.5)}
+  .footer p strong{color:var(--spark)}
+  .footer .files{font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(255,255,255,.4);margin-top:12px;letter-spacing:1px;text-align:left;display:inline-block}
+  @media(max-width:900px){.concept .body{grid-template-columns:1fr}.hero h1{font-size:42px}}
+</style>
+</head>
+<body>
+<div class="container">
+  <section class="hero">
+    <div class="tag"><span class="dot"></span>SISTEMA DE CERTIFICADOS QLICK · v2 · ASSETS REALES</div>
+    <h1>Identidad <span>Institucional</span><br/>Qlick Award 2026</h1>
+    <p>Versión pulida con la firma real de Paul vectorizada y el logo Q oficial. Dos conceptos finalistas listos para decidir: B (Swiss Academic) y C (Dynamic Marketing Authority). Ambos a tamaño A4 landscape, sin overlap, con la firma idéntica al original.</p>
+    <div class="meta">
+      <div><strong>FIRMA</strong> · paul-signature.svg · VECTORIZADA</div>
+      <div><strong>LOGO</strong> · qlick-q-icon.svg · OFICIAL</div>
+      <div><strong>WORDMARK</strong> · Q + lick + spark amarillo</div>
+    </div>
+  </section>
+
+  <section class="concepts">
+
+    <!-- B -->
+    <article class="concept b">
+      <div class="head">
+        <div class="letter">B</div>
+        <div>
+          <div class="title">Swiss Academic &amp; Minimalist</div>
+          <div class="subtitle">LIGHT PREMIUM · FORMAL · IMPRIMIBLE</div>
+        </div>
+        <a class="view-btn" href="02-concept-b-swiss-academic.html" target="_blank">Abrir concepto B ↗</a>
+      </div>
+      <div class="body">
+        <div class="preview"><iframe src="02-concept-b-swiss-academic.html" loading="lazy"></iframe></div>
+        <div class="info">
+          <h3>¿Para quién?</h3>
+          <p>Empresarios, directivos y audiencias tradicionales. Imprime perfecto en cartulina marfil, atraviesa décadas sin parecer fechado. Inspirado en diplomas ejecutivos y certificados Apple/Google.</p>
+          <ul>
+            <li>Fondo marfil cálido con tinta púrpura Qlick</li>
+            <li>Nombre en Fraunces serif itálica con spark lines</li>
+            <li>Sello circular dorado "Verified 2026" con Q real</li>
+            <li>Firma de Paul vectorizada (pixel-perfect al original)</li>
+            <li>QR + verificación en footer con metadata completa</li>
+          </ul>
+          <div class="ok">✓ v2: layout reflowed, sin overlap, firma real al pie</div>
+          <div class="tags">
+            <span class="tag">LIGHT</span>
+            <span class="tag">MINIMAL</span>
+            <span class="tag">PRINT-READY</span>
+            <span class="tag">SERIF</span>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <!-- C -->
+    <article class="concept c">
+      <div class="head">
+        <div class="letter">C</div>
+        <div>
+          <div class="title">Dynamic Marketing Authority</div>
+          <div class="subtitle">HÍBRIDO · HERO NAME · SOCIAL-READY</div>
+        </div>
+        <a class="view-btn" href="03-concept-c-dynamic-authority.html" target="_blank">Abrir concepto C ↗</a>
+      </div>
+      <div class="body">
+        <div class="preview"><iframe src="03-concept-c-dynamic-authority.html" loading="lazy"></iframe></div>
+        <div class="info">
+          <h3>¿Para quién?</h3>
+          <p>El alumno que va a presumir su diploma en LinkedIn/Instagram. El nombre ES el documento. Panel diagonal púrpura con chevrons + nombre a 78px bold = asset viral de marca personal + institucional.</p>
+          <ul>
+            <li>Panel diagonal púrpura con chevrons (pattern)</li>
+            <li>Hero name a 78px Plus Jakarta 900 con gradiente</li>
+            <li>Sello Q oficial flotante en panel + verify card lateral</li>
+            <li>Firma de Paul vectorizada en lugar de autoridad humana</li>
+            <li>Máxima jerarquía al egresado, plataforma al讲师</li>
+          </ul>
+          <div class="ok">✓ v2: Q real en panel púrpura, wordmark "Ql.spark.ck"</div>
+          <div class="tags">
+            <span class="tag">HYBRID</span>
+            <span class="tag">HERO NAME</span>
+            <span class="tag">SOCIAL</span>
+            <span class="tag">CHEVRONS</span>
+          </div>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <footer class="footer">
+    <p>Director Creativo: <strong>Mavis</strong> · Qlick Marketing Digital · 2026</p>
+    <div class="files">
+      docs/qlick-cert-system/<br/>
+      ├─ 00-ANALYSIS.md<br/>
+      ├─ 02-concept-b-swiss-academic.html &nbsp;· FINALIST B<br/>
+      ├─ 03-concept-c-dynamic-authority.html &nbsp;· FINALIST C<br/>
+      ├─ 04-TECH-BLUEPRINT.md<br/>
+      ├─ 05-RECOMMENDATION.md<br/>
+      ├─ assets/<br/>
+      │ &nbsp;├─ paul-signature.svg &nbsp;· 13.2 KB · vectorizada<br/>
+      │ &nbsp;├─ paul-signature.png &nbsp;· transparente<br/>
+      │ &nbsp;├─ qlick-q-icon.svg &nbsp;· 2.2 KB · del PNG oficial<br/>
+      │ &nbsp;├─ qlick-q-icon.png &nbsp;· transparente<br/>
+      │ &nbsp;├─ qlick-wordmark.svg<br/>
+      │ &nbsp;└─ qlick-wordmark-compact.svg<br/>
+      └─ verify-assets.html &nbsp;· preview de los assets
+    </div>
+  </footer>
+</div>
+</body>
+</html>

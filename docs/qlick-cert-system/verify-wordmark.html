@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Wordmark + Concept C v4</title>
+<style>
+  body {
+    margin: 0;
+    padding: 32px;
+    background: #1A0B2E;
+    color: white;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+  }
+  h1 { font-size: 18px; opacity: 0.7; margin: 0 0 18px 0; }
+  h2 { font-size: 14px; opacity: 0.6; margin: 22px 0 12px 0; font-weight: 500; }
+  .row { display: flex; align-items: center; gap: 32px; margin: 14px 0; min-height: 70px; }
+  .label {
+    color: rgba(255,255,255,0.65);
+    font-family: ui-monospace, monospace;
+    font-size: 11px;
+    min-width: 200px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .panel {
+    background: linear-gradient(135deg, #A855F7 0%, #7E22CE 100%);
+    padding: 18px 24px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    height: 70px;
+  }
+</style>
+</head>
+<body>
+  <h1>Wordmark compact — comparison v4 (bullet-glyph dot)</h1>
+
+  <h2>Reference: official brand PNG</h2>
+  <div class="row">
+    <div class="label">Official brand PNG</div>
+    <div class="panel"><img src="verify-original.png" style="height: 60px;"></div>
+  </div>
+
+  <h2>My SVG v4 (bullet character as the dot)</h2>
+  <div class="row">
+    <div class="label">@ viewBox size</div>
+    <img src="assets/qlick-wordmark-compact.svg" style="height: 60px;">
+  </div>
+  <div class="row">
+    <div class="label">@ 2x</div>
+    <img src="assets/qlick-wordmark-compact.svg" style="height: 120px;">
+  </div>
+  <div class="row">
+    <div class="label">In brand panel</div>
+    <div class="panel"><img src="assets/qlick-wordmark-compact.svg" style="height: 60px;"></div>
+  </div>
+
+  <h1 style="margin-top: 32px;">Concept C with bullet-glyph dot fix</h1>
+  <object data="03-concept-c-dynamic-authority.html" type="text/html" style="width: 1100px; height: 780px; border: 0;"></object>
+
+  <h1 style="margin-top: 32px;">Signatures</h1>
+  <div class="row">
+    <div class="label">Paul (vectorized PNG)</div>
+    <img src="assets/paul-signature.png" style="height: 120px;">
+  </div>
+</body>
+</html>

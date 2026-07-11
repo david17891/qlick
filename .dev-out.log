@@ -1,0 +1,50 @@
+
+> qlick-marketing-platform@0.8.0 dev
+> next dev
+
+  ▲ Next.js 14.2.35
+  - Local:        http://localhost:3000
+  - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 3.5s
+ ○ Compiling /cert/[folio] ...
+ ✓ Compiled /cert/[folio] in 19.8s (896 modules)
+ GET /cert/QLK-2026-68558 200 in 23525ms
+ ○ Compiling /api/dev/login ...
+ ✓ Compiled /api/dev/login in 4.9s (531 modules)
+ POST /api/dev/login 200 in 7016ms
+ GET /cert/QLK-2026-68558 200 in 377ms
+ POST /api/dev/login 200 in 1094ms
+ GET /cert/QLK-2026-68558 200 in 112ms
+ POST /api/dev/login 200 in 1089ms
+ GET /cert/QLK-2026-68558 200 in 114ms
+ POST /api/dev/login 200 in 1087ms
+ POST /api/dev/login 200 in 1016ms
+ POST /api/dev/login 200 in 862ms
+ ✓ Compiled in 1413ms (907 modules)
+ ✓ Compiled in 1896ms (865 modules)
+ ✓ Compiled in 1141ms (878 modules)
+ ✓ Compiled in 1666ms (878 modules)
+ ✓ Compiled in 1445ms (865 modules)
+ ✓ Compiled in 593ms (363 modules)
+ ✓ Compiled in 743ms (865 modules)
+ ✓ Compiled in 1222ms (868 modules)
+ ✓ Compiled in 1218ms (881 modules)
+ ✓ Compiled in 815ms (364 modules)
+ ✓ Compiled in 564ms (364 modules)
+ ✓ Compiled in 609ms (364 modules)
+ ✓ Compiled in 513ms (364 modules)
+ ✓ Compiled in 563ms (364 modules)
+ ✓ Compiled in 913ms (364 modules)
+ ✓ Compiled in 640ms (364 modules)
+ ✓ Compiled in 767ms (364 modules)
+ ✓ Compiled in 563ms (364 modules)
+ ✓ Compiled in 370ms (364 modules)
+ ✓ Compiled in 350ms (364 modules)
+ ✓ Compiled in 715ms (868 modules)
+ ✓ Compiled in 459ms (868 modules)
+ ✓ Compiled in 1229ms (868 modules)
+ ✓ Compiled in 1145ms (868 modules)
+ ✓ Compiled in 413ms (364 modules)
+ ✓ Compiled in 425ms (364 modules)

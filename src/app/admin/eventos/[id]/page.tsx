@@ -12,6 +12,7 @@ import {
   getSurveysByEventId,
   getUnmatchedConfirmations,
 } from "@/lib/events";
+import { getConfirmationsRespondedSurvey } from "@/lib/events/survey-tokens";
 import { getLeadsForEvent } from "@/lib/crm";
 import { formatDate, appBaseUrl } from "@/lib/utils";
 import { filterConfirmations, resolveConfirmationSource } from "@/lib/events/confirmation-filter";
@@ -38,6 +39,7 @@ import { DeleteRowButton } from "./_components/DeleteRowButton";
 import { DeleteSurveyButton } from "./_components/DeleteSurveyButton";
 import { SendSurveyOffersButton } from "@/components/events/SendSurveyOffersButton";
 import { AddConfirmationButton } from "./_components/AddConfirmationButton";
+import { SendSurveyLinkButton } from "./_components/SendSurveyLinkButton";
 import { ResendQrPassButton } from "./_components/ResendQrPassButton";
 import { EditConfirmationButton } from "./_components/EditConfirmationButton";
 import { TriggerReminderButton } from "./_components/TriggerReminderButton";
@@ -189,6 +191,7 @@ export default async function AdminEventoDetailPage({
     surveys,
     leadsWithLinks,
     unmatchedConfirmations,
+    respondedSet,
   ] = await Promise.all([
     getEventById(params.id),
     getConfirmationsByEventId(params.id),
@@ -197,6 +200,10 @@ export default async function AdminEventoDetailPage({
     getSurveysByEventId(params.id),
     getLeadsForEvent(params.id),
     getUnmatchedConfirmations(params.id),
+    // Sprint cierre-eventos-virtuales (2026-07-11): set de confirmationId
+    // que ya respondieron la encuesta. Se usa para el badge "Respondió link"
+    // en la tabla de Confirmados.
+    getConfirmationsRespondedSurvey(params.id),
   ]);
 
   if (!event) {
@@ -524,6 +531,15 @@ export default async function AdminEventoDetailPage({
                     {/* FIX 2026-07-07: alta manual de confirmados desde el
                         panel admin (no solo via Excel/WhatsApp bot). */}
                     <AddConfirmationButton eventId={event.id} />
+                    {/* Sprint cierre-eventos-virtuales (2026-07-11): botón
+                        que dispara el envío del link de encuesta post-evento
+                        a todos los confirmados. Cierra el ciclo confirmado →
+                        asistencia real en eventos Zoom (la Q0 de la encuesta
+                        actualiza event_attendees.checked_in_at). */}
+                    <SendSurveyLinkButton
+                      eventId={event.id}
+                      totalConfirmations={confirmedCount}
+                    />
                     {/* FIX 2026-07-10: botón para disparar manualmente el
                         recordatorio 24h (cron automatico desactivado por
                         limite de Vercel Hobby 1 cron/dia). Por ahora solo

@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Qlick Cert · Asset Verification</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Plus Jakarta Sans',sans-serif;background:#FAFAF7;padding:48px 32px;color:#0F172A}
+  h1{font-size:32px;font-weight:800;letter-spacing:-1px;margin-bottom:8px}
+  h2{font-size:18px;font-weight:700;margin:32px 0 12px;color:#3B0764}
+  .sub{color:#64748B;font-size:14px;margin-bottom:24px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:24px}
+  .card{background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:24px;box-shadow:0 4px 16px rgba(0,0,0,.04)}
+  .card.dark{background:#0A0B14;color:#fff;border-color:#A855F7}
+  .card.cream{background:#F5F2EA}
+  .card .label{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:2px;color:#64748B;text-transform:uppercase;margin-bottom:14px}
+  .card.dark .label{color:#A855F7}
+  .card .preview{display:flex;align-items:center;justify-content:center;min-height:160px;padding:20px;background:#FAFAF7;border-radius:8px;margin-bottom:12px}
+  .card.dark .preview{background:rgba(168,85,247,.06)}
+  .card.cream .preview{background:#FAFAF7}
+  .preview img{max-width:100%;max-height:140px;display:block}
+  .preview svg{max-width:100%;max-height:160px;display:block}
+  .compare{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:center}
+  .compare .side{text-align:center}
+  .compare .side .tag{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:2px;color:#64748B;margin-top:6px}
+  .compare img{width:100%;max-width:280px;display:block;margin:0 auto}
+  .footer{margin-top:48px;padding:24px;border-top:1px solid #E2E8F0;font-family:'JetBrains Mono',monospace;font-size:11px;color:#64748B;line-height:1.6}
+  .ok{color:#10B981;font-weight:600}
+  .sig-line{display:flex;align-items:flex-end;gap:24px;padding:20px}
+  .sig-line svg{height:60px;width:auto}
+  .sig-line .line{flex:1;height:1px;background:#0F172A;margin-bottom:8px}
+</style>
+</head>
+<body>
+  <h1>Qlick Cert · Asset Verification</h1>
+  <p class="sub">Render nativo de los SVGs y PNGs vectorizados. Compará con los originales adjuntos.</p>
+
+  <h2>1 · Qlick Q — Icono vectorizado (SVG + PNG transparente)</h2>
+  <div class="grid">
+    <div class="card">
+      <div class="label">Q ICON · SVG inline</div>
+      <div class="preview" style="background:#fff">
+        <object data="assets/qlick-q-icon.svg" type="image/svg+xml" style="width:120px;height:170px"></object>
+      </div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#64748B">assets/qlick-q-icon.svg · 2.2 KB</div>
+    </div>
+    <div class="card dark">
+      <div class="label">Q ICON ON DARK</div>
+      <div class="preview">
+        <object data="assets/qlick-q-icon.svg" type="image/svg+xml" style="width:120px;height:170px"></object>
+      </div>
+    </div>
+    <div class="card cream">
+      <div class="label">Q ICON ON CREAM (target cert B/C)</div>
+      <div class="preview">
+        <object data="assets/qlick-q-icon.svg" type="image/svg+xml" style="width:120px;height:170px"></object>
+      </div>
+    </div>
+  </div>
+
+  <h2>2 · Qlick Wordmark (full lockup)</h2>
+  <div class="grid">
+    <div class="card">
+      <div class="label">WORDMARK · 380px wide</div>
+      <div class="preview" style="background:#fff;min-height:180px">
+        <object data="assets/qlick-wordmark.svg" type="image/svg+xml" style="width:280px"></object>
+      </div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#64748B">assets/qlick-wordmark.svg</div>
+    </div>
+    <div class="card dark">
+      <div class="label">WORDMARK · DARK BG</div>
+      <div class="preview">
+        <object data="assets/qlick-wordmark.svg" type="image/svg+xml" style="width:280px"></object>
+      </div>
+    </div>
+    <div class="card">
+      <div class="label">WORDMARK · COMPACT (header)</div>
+      <div class="preview" style="background:#fff;min-height:120px">
+        <object data="assets/qlick-wordmark-compact.svg" type="image/svg+xml" style="width:200px"></object>
+      </div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#64748B">assets/qlick-wordmark-compact.svg</div>
+    </div>
+  </div>
+
+  <h2>3 · Firma de Paul — Vectorizada y limpia</h2>
+  <div class="grid">
+    <div class="card">
+      <div class="label">SIGNATURE · SVG vector</div>
+      <div class="preview" style="background:#fff;min-height:180px">
+        <object data="assets/paul-signature.svg" type="image/svg+xml" style="width:280px;height:200px"></object>
+      </div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#64748B">assets/paul-signature.svg · 13.2 KB</div>
+    </div>
+    <div class="card">
+      <div class="label">SIGNATURE · PNG transparent</div>
+      <div class="preview" style="background:repeating-conic-gradient(#f0f0f0 0% 25%, #fff 0% 50%) 50% / 16px 16px;min-height:180px">
+        <img src="assets/paul-signature.png" style="max-width:280px;max-height:200px" alt="signature" />
+      </div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#64748B">assets/paul-signature.png</div>
+    </div>
+    <div class="card dark">
+      <div class="label">SIGNATURE · ON DARK (white inverted)</div>
+      <div class="preview">
+        <object data="assets/paul-signature.svg" type="image/svg+xml" style="width:280px;height:200px;filter:invert(1) brightness(1.2)"></object>
+      </div>
+    </div>
+  </div>
+
+  <h2>4 · Cómo se vería firmado en el certificado</h2>
+  <div class="card">
+    <div class="label">CERT FOOTER SIMULATION</div>
+    <div class="sig-line">
+      <object data="assets/paul-signature.svg" type="image/svg+xml" style="height:60px;width:auto"></object>
+      <div class="line"></div>
+    </div>
+    <div style="margin-top:16px;font-family:'Inter',sans-serif;font-size:13px;color:#0F172A">
+      <strong>Paul Velásquez</strong><br/>
+      <span style="color:#64748B;font-size:11px;letter-spacing:1px;text-transform:uppercase">CEO &amp; Fundador · Qlick</span>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="ok">✓ Firma: vectorizada pixel-perfect vs. original, sin fondo ni gotas.</div>
+    <div class="ok">✓ Logo Q: idéntico al PNG adjunto, color forzado a #A855F7 (marca).</div>
+    <div class="ok">✓ Wordmark: Q oficial + "lick" en Plus Jakarta 800 (clean — sin yellow-dot overlay).</div>
+    <div class="ok">✓ Todos los archivos son vectoriales (escala infinita sin pérdida).</div>
+    <br/>
+    <div>Archivos en <strong>docs/qlick-cert-system/assets/</strong>:</div>
+    <div>· qlick-q-icon.svg · qlick-q-icon.png · qlick-wordmark.svg · qlick-wordmark-compact.svg · paul-signature.svg · paul-signature.png</div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,24 @@
+{
+  "first_run": "2026-07-08T01:29:27.169Z",
+  "last_run": "2026-07-10T04:49:14.657Z",
+  "event_id": "eeb2070e-9b64-4715-a684-b3c308e9d0b2",
+  "event_slug": "marketing-ia-para-emprendedores",
+  "note": "Script uses 30-min rolling window by default; watcher passes previous last_run as since to avoid gaps. State file records last_run for windowing continuity.",
+  "last_window_summary": {
+    "checked_at": "2026-07-10T04:49:14.657Z",
+    "since": "2026-07-08T03:43:44.485Z",
+    "hours_covered": 25.1,
+    "totals_after_window": {
+      "lead_event_links": 0,
+      "confirmations": 12,
+      "qr_tokens": 12,
+      "attendees": 1
+    },
+    "new_in_window": {
+      "leads_via_links": 0,
+      "confirmations": 11,
+      "qr_tokens": 11,
+      "attendees": 1
+    }
+  }
+}

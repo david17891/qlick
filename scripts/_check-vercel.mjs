@@ -1,0 +1,12 @@
+import fs from 'fs';
+const raw = fs.readFileSync(0, 'utf8');
+const d = JSON.parse(raw);
+const latest = d.deployments[0];
+console.log('latest deployment:');
+console.log('  url:', latest.url);
+console.log('  state:', latest.state);
+console.log('  ready:', latest.ready);
+console.log('  created:', latest.created);
+console.log('  building:', latest.building);
+console.log('  target:', latest.target);
+console.log('  meta:', JSON.stringify(latest.meta || {}, null, 2));

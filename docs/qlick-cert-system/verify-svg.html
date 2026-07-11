@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>SVG compact v5 verify</title>
+<style>
+  body { padding: 32px; background: #1A0B2E; color: white; font-family: sans-serif; }
+  .row { display: flex; align-items: center; gap: 24px; margin: 16px 0; }
+  .label { font-size: 11px; opacity: 0.6; text-transform: uppercase; min-width: 200px; }
+  .panel {
+    background: linear-gradient(135deg, #A855F7 0%, #7E22CE 100%);
+    padding: 18px 24px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    height: 60px;
+  }
+</style>
+</head>
+<body>
+  <h2>Compact SVG v5 — render in panel context</h2>
+  <div class="row">
+    <div class="label">@ 60px</div>
+    <img src="assets/qlick-wordmark-compact.svg" style="height: 60px;">
+  </div>
+  <div class="row">
+    <div class="label">@ 120px</div>
+    <img src="assets/qlick-wordmark-compact.svg" style="height: 120px;">
+  </div>
+  <div class="row">
+    <div class="label">In brand panel</div>
+    <div class="panel"><img src="assets/qlick-wordmark-compact.svg" style="height: 55px;"></div>
+  </div>
+</body>
+</html>

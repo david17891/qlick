@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Qlick Award · Concepto B · Swiss Academic (Light Minimal)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Dancing+Script:wght@600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --purple-500:#A855F7;
+    --purple-700:#7E22CE;
+    --purple-900:#3B0764;
+    --purple-50:#FAF5FF;
+    --spark:#FBBF24;
+    --spark-500:#F59E0B;
+    --gold:#D4AF37;
+    --gold-light:#E8C879;
+    --gold-deep:#A47E1F;
+    --ink:#1A1A1A;
+    --ink-soft:#3D3D3D;
+    --slate-500:#64748B;
+    --slate-400:#94A3B8;
+    --slate-300:#CBD5E1;
+    --ivory:#FAFAF7;
+    --cream:#F5F2EA;
+    --paper:#FBFAF6;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:#E8E5DE;color:var(--ink);font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased}
+  .stage{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:32px}
+  .cert{
+    width:1123px;height:794px;position:relative;overflow:hidden;
+    background:
+      radial-gradient(ellipse 700px 400px at 50% 0%, #FFFEF9 0%, var(--ivory) 60%, var(--cream) 100%);
+    box-shadow:
+      0 60px 120px -40px rgba(0,0,0,.25),
+      0 30px 60px -20px rgba(0,0,0,.15),
+      0 0 0 1px rgba(0,0,0,.04);
+  }
+  /* Subtle paper warmth */
+  .cert::before{
+    content:'';position:absolute;inset:0;pointer-events:none;opacity:.4;
+    background-image:
+      radial-gradient(circle at 30% 20%, rgba(168,85,247,.025) 0%, transparent 50%),
+      radial-gradient(circle at 70% 80%, rgba(212,175,55,.04) 0%, transparent 50%);
+  }
+  .border-frame{position:absolute;inset:24px;border:1px solid var(--purple-900);pointer-events:none}
+  .border-frame::after{
+    content:'';position:absolute;inset:8px;border:.5px solid var(--purple-900);opacity:.4;
+  }
+  .corner{position:absolute;width:36px;height:36px}
+  .corner svg{width:100%;height:100%}
+  .corner.tl{top:36px;left:36px}
+  .corner.tr{top:36px;right:36px;transform:scaleX(-1)}
+  .corner.bl{bottom:36px;left:36px;transform:scaleY(-1)}
+  .corner.br{bottom:36px;right:36px;transform:scale(-1,-1)}
+  .top-row{
+    position:absolute;top:60px;left:80px;right:80px;
+    display:flex;justify-content:space-between;align-items:center;
+  }
+  /* Brand lockup — uses real Qlick wordmark + vectorized Q icon */
+  .brand{display:flex;align-items:center;gap:14px}
+  .brand .q-icon{
+    width:52px;height:74px;display:flex;align-items:center;justify-content:center;
+  }
+  .brand .q-icon img{width:100%;height:100%;display:block}
+  .brand .wordmark-block{display:flex;flex-direction:column;gap:2px}
+  .brand .wordmark-line{
+    display:flex;align-items:baseline;gap:0;
+  }
+  .brand .wordmark-line .qmark-text{
+    font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;
+    font-size:28px;letter-spacing:-1.2px;color:var(--purple-900);line-height:1;
+  }
+  .brand .wordmark-line .rest{
+    font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;
+    font-size:28px;letter-spacing:-1.2px;color:var(--purple-900);line-height:1;
+  }
+  /* Wordmark approach v.final: clean "lick" text (no overlay).
+     We abandoned the tittle-recolor trick because the yellow dot positioned
+     over the tittle didn't read as professional. The font's natural tittle
+     of "i" stays as rendered. */
+  .brand .tag{font-family:'Inter',sans-serif;font-size:9px;letter-spacing:3px;color:var(--slate-500);text-transform:uppercase;margin-top:6px}
+  .meta-top{text-align:right;font-family:'Inter',sans-serif;color:var(--slate-500);font-size:11px;line-height:1.7}
+  .meta-top .label{color:var(--purple-700);letter-spacing:3px;text-transform:uppercase;font-size:9px;font-weight:600}
+  .meta-top .folio{font-family:'JetBrains Mono',monospace;color:var(--ink);font-size:14px;font-weight:500;margin-top:4px;letter-spacing:1px}
+  .divider{
+    position:absolute;top:148px;left:80px;right:80px;height:1px;
+    background:linear-gradient(90deg, transparent, var(--purple-900) 20%, var(--purple-900) 80%, transparent);
+    opacity:.35;
+  }
+  .divider::after{
+    content:'';position:absolute;top:6px;left:50%;transform:translateX(-50%);
+    width:6px;height:6px;background:var(--spark-500);border-radius:50%;
+  }
+  .content{position:absolute;top:192px;left:80px;right:80px;text-align:center}
+  .content .eyebrow{
+    font-family:'Inter',sans-serif;font-size:11px;letter-spacing:8px;
+    color:var(--purple-700);text-transform:uppercase;font-weight:500;
+  }
+  .content .title{
+    font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;
+    font-size:64px;line-height:1;letter-spacing:-2.5px;color:var(--purple-900);
+    margin-top:18px;
+  }
+  .content .sub{font-family:'Inter',sans-serif;font-size:14px;color:var(--ink-soft);margin-top:6px;letter-spacing:.4px}
+  .content .name{
+    font-family:'Fraunces',serif;font-weight:500;font-style:italic;
+    font-size:62px;line-height:1;letter-spacing:-1px;color:var(--ink);
+    margin:36px 0 6px;position:relative;display:inline-block;padding:0 20px;
+  }
+  .content .name::before, .content .name::after{
+    content:'';position:absolute;top:50%;width:60px;height:1px;background:var(--spark-500);transform:translateY(-50%);
+  }
+  .content .name::before{left:-60px}
+  .content .name::after{right:-60px}
+  .content .reason{font-family:'Inter',sans-serif;font-size:14px;color:var(--ink-soft);margin-top:10px}
+  .content .course{
+    font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:24px;
+    color:var(--purple-900);margin-top:14px;letter-spacing:-.3px;
+  }
+  /* Bottom signature row */
+  .bottom{
+    position:absolute;bottom:90px;left:80px;right:80px;
+    display:grid;grid-template-columns:1fr auto 1fr;gap:48px;align-items:end;
+  }
+  .sig-col{text-align:center}
+  .sig-col .line{display:none}  /* line under signatures removed v.final */
+  /* Real Paul signature from vectorized SVG */
+  .sig-col .signature{
+    height:90px;display:flex;align-items:flex-end;justify-content:flex-start;margin-bottom:8px;
+  }
+  .sig-col .signature img{
+    height:84px;width:auto;display:block;filter:contrast(1.05);margin-left:-14px;
+  }
+  .sig-col .name{font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;font-weight:600;color:var(--ink);letter-spacing:.3px;margin-bottom:2px}
+  .sig-col .role{font-family:'Inter',sans-serif;font-size:10px;color:var(--slate-500);letter-spacing:1px;text-transform:uppercase}
+  .seal{
+    width:96px;height:96px;border-radius:50%;
+    background:radial-gradient(circle at 35% 35%, var(--gold-light), var(--gold) 60%, var(--gold-deep));
+    display:flex;align-items:center;justify-content:center;flex-direction:column;
+    color:#fff;font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;
+    box-shadow:0 8px 24px rgba(164,126,31,.4), inset 0 2px 0 rgba(255,255,255,.3);
+    position:relative;
+  }
+  .seal::before{
+    content:'';position:absolute;inset:4px;border-radius:50%;border:1px dashed rgba(255,255,255,.6);
+  }
+  .seal .q-seal{
+    width:46px;height:66px;display:flex;align-items:center;justify-content:center;margin-bottom:2px;
+  }
+  .seal .q-seal img{width:100%;height:100%;display:block;filter:brightness(0) invert(1)}
+  .seal .label{font-size:7px;letter-spacing:2.5px}
+  .seal .year{font-size:14px;letter-spacing:1px}
+  /* Footer verification row */
+  .footer-row{
+    position:absolute;bottom:40px;left:80px;right:80px;
+    display:flex;justify-content:space-between;align-items:center;
+    font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--slate-500);letter-spacing:1.5px;
+    border-top:.5px solid var(--slate-300);padding-top:14px;
+  }
+  .footer-row .qr-mini{display:flex;align-items:center;gap:8px}
+  .footer-row .qr-mini img{width:32px;height:32px;border:.5px solid var(--slate-300);padding:2px;background:#fff}
+  .footer-row .url{color:var(--purple-700)}
+  .hint{position:absolute;bottom:-30px;left:0;right:0;text-align:center;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--slate-500);letter-spacing:2px}
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="cert">
+    <div class="border-frame"></div>
+    <!-- Corner ornaments -->
+    <div class="corner tl">
+      <svg viewBox="0 0 36 36" fill="none"><path d="M2 14 L2 2 L14 2" stroke="#3B0764" stroke-width="1.2"/><circle cx="2" cy="2" r="2.5" fill="#FBBF24"/></svg>
+    </div>
+    <div class="corner tr">
+      <svg viewBox="0 0 36 36" fill="none"><path d="M2 14 L2 2 L14 2" stroke="#3B0764" stroke-width="1.2"/><circle cx="2" cy="2" r="2.5" fill="#FBBF24"/></svg>
+    </div>
+    <div class="corner bl">
+      <svg viewBox="0 0 36 36" fill="none"><path d="M2 14 L2 2 L14 2" stroke="#3B0764" stroke-width="1.2"/><circle cx="2" cy="2" r="2.5" fill="#FBBF24"/></svg>
+    </div>
+    <div class="corner br">
+      <svg viewBox="0 0 36 36" fill="none"><path d="M2 14 L2 2 L14 2" stroke="#3B0764" stroke-width="1.2"/><circle cx="2" cy="2" r="2.5" fill="#FBBF24"/></svg>
+    </div>
+
+    <!-- Top brand + meta -->
+    <div class="top-row">
+      <div class="brand">
+        <!-- Real Qlick Q icon (vectorized) -->
+        <div class="q-icon"><img src="assets/qlick-q-icon.svg" alt="Qlick Q" /></div>
+        <div class="wordmark-block">
+          <div class="wordmark-line">
+            <span class="rest" style="margin-left:-6px">lick</span>
+          </div>
+          <div class="tag">Marketing Digital Academy</div>
+        </div>
+      </div>
+      <div class="meta-top">
+        <div class="label">FOLIO · CERTIFICATE ID</div>
+        <div class="folio">QLK-2026-8849</div>
+      </div>
+    </div>
+    <div class="divider"></div>
+
+    <!-- Center content -->
+    <div class="content">
+      <div class="eyebrow">Qlick Certified · Official Record</div>
+      <div class="title">Constancia<br/>de Participación</div>
+      <div class="sub">Se otorga la presente a</div>
+      <div class="name">María Fernanda Castillo Reyes</div>
+      <div class="reason">por haber completado satisfactoriamente el programa</div>
+      <div class="course">Masterclass · Marketing Digital &amp; IA 2026</div>
+    </div>
+
+    <!-- Bottom signature row -->
+    <div class="bottom">
+      <div class="sig-col">
+        <div class="signature">
+          <img src="assets/paul-signature.svg" alt="Firma Paul Velásquez" />
+        </div>
+        <div class="name">Paul Velásquez</div>
+        <div class="role">CEO &amp; Fundador · Qlick</div>
+      </div>
+      <div class="seal">
+        <div class="q-seal"><img src="assets/qlick-q-icon.svg" alt="Qlick Q seal" /></div>
+        <div class="label">Verified</div>
+        <div class="year">2026</div>
+      </div>
+      <div class="sig-col">
+        <div class="signature"></div>
+        <div class="name">Sello Qlick</div>
+        <div class="role">Plataforma Académica</div>
+      </div>
+    </div>
+
+    <!-- Footer verification row -->
+    <div class="footer-row">
+      <div class="qr-mini">
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=https://www.qlick.digital/filosofia&color=3B0764&bgcolor=FFFFFF" alt="QR" />
+        <div>
+          <div>ESCANEA LA FRASE · IMPARTIDO POR PAUL VELÁSQUEZ</div>
+          <div class="url">qlick.digital/filosofia</div>
+        </div>
+      </div>
+      <div>297 × 210 mm · A4 LANDSCAPE</div>
+      <div>EMITIDO 07·JUL·2026 · CDMX</div>
+    </div>
+    <div class="hint">CONCEPT B · SWISS ACADEMIC · LIGHT MINIMAL · 1:1 A4 LANDSCAPE · v2 (real assets)</div>
+  </div>
+</div>
+</body>
+</html>

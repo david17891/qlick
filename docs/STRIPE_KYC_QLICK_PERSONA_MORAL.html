@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Stripe KYC — Persona Moral (S.A. o S. de R.L.) — Qlick</title>
+<style>
+  @page { size: letter; margin: 0.6in 0.5in; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #111;
+    line-height: 1.45;
+    max-width: 7.5in;
+    margin: 0.4in auto;
+    padding: 0 0.4in;
+    font-size: 11pt;
+  }
+  h1 { font-size: 22pt; margin: 0 0 4pt; color: #003554; border-bottom: 2pt solid #003554; padding-bottom: 6pt; }
+  h2 { font-size: 13pt; margin: 18pt 0 6pt; color: #003554; padding: 4pt 8pt; background: #e7f0f4; border-left: 3pt solid #003554; }
+  h3 { font-size: 11pt; margin: 12pt 0 4pt; color: #003554; }
+  .meta { font-size: 9pt; color: #555; margin-bottom: 14pt; }
+  .intro { background: #fff8e6; border: 1pt solid #f0d68c; padding: 8pt 12pt; border-radius: 3pt; margin-bottom: 14pt; font-size: 10pt; }
+  ol, ul { margin: 6pt 0 6pt 18pt; }
+  ol li, ul li { margin-bottom: 4pt; }
+  table { width: 100%; border-collapse: collapse; margin: 6pt 0 12pt; font-size: 10pt; }
+  th, td { border: 1pt solid #ccc; padding: 5pt 8pt; text-align: left; vertical-align: top; }
+  th { background: #e7f0f4; color: #003554; font-weight: 600; }
+  code { font-family: "SF Mono", Monaco, "Cascadia Code", monospace; font-size: 9pt; background: #f3f3f3; padding: 1pt 4pt; border-radius: 2pt; }
+  .warn { background: #fff0f0; border: 1pt solid #d77; padding: 8pt 12pt; border-radius: 3pt; margin: 8pt 0; font-size: 10pt; }
+  .warn strong { color: #a33; }
+  .ok { background: #f0fff0; border: 1pt solid #7c7; padding: 8pt 12pt; border-radius: 3pt; margin: 8pt 0; font-size: 10pt; }
+  .step { margin-bottom: 14pt; }
+  .step strong { color: #003554; }
+  .checklist { list-style: none; padding-left: 0; }
+  .checklist li { padding: 3pt 0 3pt 22pt; text-indent: -18pt; }
+  .checklist li:before { content: "☐"; margin-right: 8pt; color: #003554; font-weight: bold; }
+  @media print {
+    body { margin: 0; padding: 0; }
+    .no-print { display: none; }
+    h2 { page-break-after: avoid; }
+    table, .step, .owner { page-break-inside: avoid; }
+  }
+  .footer { margin-top: 28pt; padding-top: 8pt; border-top: 1pt solid #ccc; font-size: 9pt; color: #555; }
+  .glossary dt { font-weight: bold; color: #003554; }
+  .glossary dd { margin: 0 0 6pt 16pt; }
+  .owner { background: #f5f5ff; border: 1pt solid #ccf; padding: 8pt 12pt; border-radius: 3pt; margin: 8pt 0; font-size: 10pt; }
+</style>
+</head>
+<body>
+
+<h1>Stripe KYC — Persona Moral (S.A. o S. de R.L.)</h1>
+<p class="meta">Qlick Marketing Digital · Última actualización: 2026-07-09 (incluye Régimen Simplificado de Confianza / RESICO)</p>
+
+<div class="intro">
+<strong>Propósito:</strong> Completar la verificación de identidad (KYC) de Stripe México para que Qlick pueda recibir pagos con tarjeta en producción, registrado como persona moral (empresa).
+<br><br>
+<strong>Para quién es esta guía:</strong> la persona que operará el dashboard de Stripe en nombre de David, con datos de la empresa.
+<br><br>
+<strong>Tiempo estimado:</strong> 45 minutos a 1.5 horas si ya tiene todos los datos a mano; puede tomar más tiempo si debe pedir documentación al banco o contador.
+<br><br>
+<strong>Antes de empezar, confirme con David:</strong>
+<ul>
+  <li>El tipo jurídico exacto (S.A. de C.V. o S. de R.L. de C.V.)</li>
+  <li>Quiénes son los "owners" con más del 25% de participación (S.A.) o más del 15% (S. de R.L.) — van a tener que aparecer en el KYC</li>
+  <li>Quién será el representante legal en el KYC (puede ser David o alguien de su confianza)</li>
+  <li>El <strong>régimen fiscal</strong> declarado ante el SAT — Qlick está en <strong>Régimen Simplificado de Confianza (RESICO, código 626)</strong> según David. Verifique que el CSF diga "Régimen Simplificado de Confianza" antes de continuar.</li>
+</ul>
+Si Qlick está registrada como Persona Física con Actividad Empresarial, use la otra guía.
+</div>
+
+<h2>1. Datos que debe tener listos — bloque empresa</h2>
+
+<table>
+<tr><th>#</th><th>Dato</th><th>Dónde obtenerlo</th></tr>
+<tr><td>1</td><td>Tipo jurídico exacto</td><td>Acta constitutiva. Opciones válidas: <strong>S.A. de C.V.</strong> o <strong>S. de R.L. de C.V.</strong></td></tr>
+<tr><td>2</td><td>Razón social completa</td><td>Constancia de Situación Fiscal del SAT (CSF)</td></tr>
+<tr><td>3</td><td>RFC de la empresa (12 caracteres)</td><td>CSF del SAT</td></tr>
+<tr><td>4</td><td>Domicilio fiscal completo</td><td>CSF del SAT</td></tr>
+<tr><td>5</td><td>Fecha de constitución</td><td>Acta constitutiva</td></tr>
+<tr><td>5b</td><td>Régimen fiscal del CSF</td><td>Según David, Qlick está en RESICO → código <strong>626 - Régimen Simplificado de Confianza</strong>. Confirme con su CSF que diga exactamente eso.</td></tr>
+</table>
+
+<div class="ok">
+<strong>Sobre el régimen fiscal.</strong> El CSF del SAT incluye un campo "Régimen fiscal" con un código numérico. Para una persona moral en México los regímenes más comunes son:
+<ul>
+  <li><strong>601</strong> — General de Ley Personas Morales (estándar para empresas)</li>
+  <li><strong>626</strong> — Régimen Simplificado de Confianza (RESICO). <strong>Es el que aplica a Qlick.</strong></li>
+  <li><strong>603</strong> — Personas Morales con Fines no Lucrativos (ONGs, A.C.)</li>
+</ul>
+Si su CSF trae otro código distinto a 626, <strong>confirme con David antes de avanzar</strong>. Puede que el régimen haya cambiado o que David tenga info desactualizada.
+</div>
+
+<h2>2. Datos del representante legal</h2>
+
+<table>
+<tr><th>#</th><th>Dato</th><th>Dónde obtenerlo</th></tr>
+<tr><td>6</td><td>Nombre legal completo</td><td>INE del representante (carácter por carácter)</td></tr>
+<tr><td>7</td><td>RFC personal del representante (13 caracteres)</td><td>CSF o INE</td></tr>
+<tr><td>8</td><td>Fecha de nacimiento del representante</td><td>INE</td></tr>
+<tr><td>9</td><td>Dirección personal del representante</td><td>Comprobante de domicilio (&lt; 3 meses)</td></tr>
+<tr><td>10</td><td>CURP del representante</td><td>INE</td></tr>
+</table>
+
+<h2>3. Datos de los owners con participación significativa</h2>
+
+<div class="warn">
+<strong>Quién califica como owner:</strong>
+<ul>
+  <li>S.A. de C.V.: cualquier persona con <strong>más del 25%</strong> de participación accionaria, O cualquier persona con control financiero/operativo (CEO, CFO, Director)</li>
+  <li>S. de R.L. de C.V.: cualquier socio con <strong>más del 15%</strong> de participación</li>
+</ul>
+Si Qlick tiene un solo dueño con 100%, es esa persona. Si tiene varios con menos del umbral, ninguno.
+</div>
+
+<table>
+<tr><th>#</th><th>Dato por cada owner</th><th>Tips</th></tr>
+<tr><td>11</td><td>Nombre completo</td><td>Igual que en su INE</td></tr>
+<tr><td>12</td><td>RFC personal (13 caracteres)</td><td>Cada owner debe tener el suyo</td></tr>
+<tr><td>13</td><td>Fecha de nacimiento</td><td>dd/mm/aaaa</td></tr>
+<tr><td>14</td><td>Dirección personal</td><td>Calle + número + colonia + CP + municipio + estado</td></tr>
+<tr><td>15</td><td>Porcentaje de participación</td><td>Solo para personas con participación accionaria. Si es director sin acciones, dejar vacío</td></tr>
+</table>
+
+<h2>4. Datos bancarios</h2>
+
+<table>
+<tr><th>#</th><th>Dato</th><th>Tips</th></tr>
+<tr><td>16</td><td>CLABE interbancaria de la empresa (18 dígitos)</td><td>App del banco, "datos para transferencia"</td></tr>
+<tr><td>17</td><td>Titular de la cuenta</td><td>Debe ser el nombre de la empresa, no una persona física</td></tr>
+<tr><td>18</td><td>Nombre del banco</td><td>BBVA, Banorte, Santander, HSBC, Scotiabank, Banregio. <strong>Evite neobanks</strong></td></tr>
+</table>
+
+<h2>5. Datos del negocio y contacto público</h2>
+
+<table>
+<tr><th>#</th><th>Dato</th><th>Valor sugerido</th></tr>
+<tr><td>19</td><td>Statement descriptor (5–22 caracteres)</td><td><code>QLICK.DIGITAL</code> o <code>QLICK CURSOS</code></td></tr>
+<tr><td>20</td><td>URL del sitio web</td><td><code>https://qlick.digital</code></td></tr>
+<tr><td>21</td><td>Email de soporte</td><td><code>hola@qlick.digital</code></td></tr>
+<tr><td>22</td><td>Teléfono de soporte</td><td>El que David designe</td></tr>
+<tr><td>23</td><td>Categoría del negocio</td><td>Education &amp; Training</td></tr>
+<tr><td>24</td><td>Descripción del negocio</td><td>100–300 palabras — ver plantilla en sección 6 paso 7</td></tr>
+</table>
+
+<p><strong>Documentos que pueden pedir (preparar por si acaso):</strong></p>
+<ul>
+  <li>INE del representante (frente y vuelta, color, legible)</li>
+  <li>Comprobante de domicilio del representante (&lt; 3 meses)</li>
+  <li>Constancia de Situación Fiscal del SAT (CSF)</li>
+  <li>Acta constitutiva de la empresa</li>
+  <li>Estado de cuenta bancario de la empresa</li>
+</ul>
+
+<h2>6. Pasos en el dashboard</h2>
+
+<div class="step">
+<strong>Paso 1 — Iniciar sesión en Stripe</strong><br>
+URL: <code>https://dashboard.stripe.com/login</code><br>
+Use las credenciales que David creó.
+</div>
+
+<div class="step">
+<strong>Paso 2 — Verificar que está en modo Live</strong><br>
+Arriba a la derecha debe decir <strong>"Live data"</strong>. Si dice "Test data", cámbielo con el toggle.
+</div>
+
+<div class="step">
+<strong>Paso 3 — Iniciar el KYC</strong><br>
+URL: <code>https://dashboard.stripe.com/account/onboarding</code><br>
+Click en <strong>"Add information to start accepting live payments"</strong>.
+</div>
+
+<div class="step">
+<strong>Paso 4 — Tipo de cuenta</strong><br>
+Elegir <strong>"I'm setting up a business"</strong>.
+</div>
+
+<div class="step">
+<strong>Paso 5 — País y tipo jurídico</strong><br>
+País: <strong>Mexico</strong><br>
+Tipo jurídico: <strong>S.A. de C.V.</strong> o <strong>S. de R.L. de C.V.</strong> (el que aplique)
+</div>
+
+<div class="step">
+<strong>Paso 6 — Datos de la empresa</strong><br>
+Llenar con datos #1 a #5 de la sección 1.<br>
+<span style="color:#a33;">⚠ El nombre legal debe coincidir carácter por carácter con el CSF. "S. de R.L." con punto difiere de "S de RL" sin él.</span>
+</div>
+
+<div class="step">
+<strong>Paso 7 — Datos del negocio</strong><br>
+- Nombre legal: la razón social<br>
+- Categoría: <strong>Education &amp; Training</strong><br>
+- Descripción sugerida:<br>
+<em>"Plataforma mexicana de educación online en marketing digital. Ofrece cursos grabados, workshops en vivo y material descargable para emprendedores y profesionales. Mercado: México y Latinoamérica hispanohablante. Sitio web: qlick.digital."</em><br>
+- Sitio web: <code>https://qlick.digital</code><br>
+- Support email y phone: los definidos por David
+</div>
+
+<div class="step">
+<strong>Paso 8 — Datos del representante legal</strong><br>
+Llenar con datos #6 a #10 de la sección 2.<br>
+El representante debe ser la persona autorizada para operar la cuenta.
+</div>
+
+<div class="step">
+<strong>Paso 9 — Owners adicionales (si aplica)</strong><br>
+Stripe le preguntará si hay otros owners con participación significativa. Si Stripe aplica los umbrales de la sección 3, agregue uno por uno.<br>
+Datos por owner: #11 a #15.
+</div>
+
+<div class="step">
+<strong>Paso 10 — Statement descriptor</strong><br>
+URL: <code>https://dashboard.stripe.com/settings/public</code><br>
+Escribir el descriptor (#19).
+</div>
+
+<div class="step">
+<strong>Paso 11 — Cuenta bancaria de la empresa</strong><br>
+- País: Mexico<br>
+- Moneda: MXN<br>
+- Account number: CLABE (#16, 18 dígitos)<br>
+- Account holder: nombre de la empresa (#17)
+</div>
+
+<div class="step">
+<strong>Paso 12 — Subir documentos (si los pide)</strong><br>
+Si Stripe pide verificación adicional:<br>
+- INE del representante (foto, frente y vuelta)<br>
+- CSF del SAT (PDF o foto legible)<br>
+- Estado de cuenta bancario de la empresa (con CLABE visible)<br>
+Foto con buena luz, el documento plano sobre mesa.
+</div>
+
+<div class="step">
+<strong>Paso 13 — Esperar activación</strong><br>
+URL: <code>https://dashboard.stripe.com/account</code><br>
+Sección "Account status":<br>
+- 🟡 <strong>Restricted</strong>: falta algo<br>
+- 🟢 <strong>Complete</strong>: listo
+</div>
+
+<h2>7. Gotchas importantes</h2>
+
+<div class="warn">
+<strong>⚠ Razón social carácter por carácter.</strong> "S. de R.L." vs "S de RL" puede parecer lo mismo pero Stripe rechaza si no coincide con el CSF.
+</div>
+
+<div class="warn">
+<strong>⚠ RESICO (régimen 626).</strong> Qlick está dado de alta en el Régimen Simplificado de Confianza. Verifique que el CSF diga "Régimen Simplificado de Confianza" con código <strong>626</strong>. Si Stripe le pide el régimen fiscal y usted pone otro código (601 General de Ley, etc), la verificación se complica. Si su CSF dice otro régimen, frene y avísele a David.
+</div>
+
+<div class="warn">
+<strong>⚠ Owners.</strong> Si Stripe le pregunta por otros owners y Qlick tiene un solo dueño que es David, indique "No" o agregue a David como owner con 100% de participación.
+</div>
+
+<div class="warn">
+<strong>⚠ Titular de la cuenta bancaria.</strong> Debe ser la empresa (razón social), no una persona. Si está aperturada a nombre de una persona, hay que cambiarla antes de continuar.
+</div>
+
+<div class="warn">
+<strong>⚠ CLABE ≠ número de tarjeta.</strong> 18 dígitos, no 16. Verifique que empieza con código de banco (012, 072, etc).
+</div>
+
+<div class="warn">
+<strong>⚠ Microdepósitos.</strong> Stripe transfiere $1–$5 MXN a la cuenta de la empresa para verificar propiedad. Tarda 1–3 días hábiles. El proceso se pausa hasta confirmarlos.
+</div>
+
+<div class="warn">
+<strong>⚠ No cambiable después.</strong> País, tipo jurídico, RFC de empresa y razón social no se pueden editar una vez confirmados. Verifique tres veces antes de avanzar.
+</div>
+
+<h2>8. Qué le aviso a David cuando termine</h2>
+
+Cuando el estado esté 🟢 <strong>Complete</strong>, envíele a David:
+
+<ol>
+  <li>Screenshot del estado verde en <code>https://dashboard.stripe.com/account</code></li>
+  <li>Confirmación de que puede generar keys live en <code>https://dashboard.stripe.com/apikeys</code> (toggle "Live data")</li>
+  <li>Confirmación de métodos de pago activos:
+    <ul>
+      <li>Cards (obligatorio)</li>
+      <li>OXXO (opcional pero recomendado)</li>
+      <li>SPEI / customer balance (opcional)</li>
+    </ul>
+  </li>
+  <li>URL del webhook endpoint que David va a registrar:<br>
+    <code>https://www.qlick.digital/api/webhooks/stripe</code><br>
+    Eventos requeridos: <code>checkout.session.completed</code>, <code>checkout.session.async_payment_succeeded</code>, <code>checkout.session.async_payment_failed</code>, <code>checkout.session.expired</code>, <code>charge.refunded</code>
+  </li>
+</ol>
+
+<h2>9. Glosario mínimo</h2>
+
+<dl class="glossary">
+<dt>KYC</dt><dd>"Know Your Customer" — verificación obligatoria de identidad por ley.</dd>
+<dt>RFC</dt><dd>Registro Federal de Contribuyentes. Personas físicas = 13 caracteres. Empresas = 12.</dd>
+<dt>CSF</dt><dd>Constancia de Situación Fiscal del SAT. Documento oficial con RFC, razón social, domicilio fiscal, régimen fiscal.</dd>
+<dt>S.A. de C.V.</dt><dd>Sociedad Anónima de Capital Variable. Tipo jurídico común para empresas en México.</dd>
+<dt>S. de R.L. de C.V.</dt><dd>Sociedad de Responsabilidad Limitada de Capital Variable.</dd>
+<dt>Owner (accionista/socio)</dt><dd>Persona con participación accionaria o de control significativo en la empresa.</dd>
+<dt>Representante legal</dt><dd>Persona autorizada para actuar en nombre de la empresa. La que firma contratos y opera cuentas.</dd>
+<dt>CLABE</dt><dd>Clave Bancaria Estandarizada. 18 dígitos. La usa Stripe para depositar las ventas.</dd>
+<dt>Statement descriptor</dt><dd>Texto corto que aparece en el estado de cuenta del cliente.</dd>
+<dt>Microdepósito</dt><dd>Transferencia pequeña ($1–$5 MXN) que Stripe hace para verificar propiedad de la cuenta.</dd>
+<dt>RESICO</dt><dd>Régimen Simplificado de Confianza. Régimen fiscal opcional del SAT para personas físicas y morales con ingresos menores a ciertos topes. Códigos: <strong>626</strong> (persona moral) o <strong>625</strong> (persona física con actividad empresarial). <strong>Qlick está en RESICO.</strong></dd>
+</dl>
+
+<div class="footer">
+¿Dudas en algún paso? Avísele a David con un screenshot. Si el problema es con datos fiscales o SAT, espere a tener la documentación correcta antes de avanzar.
+</div>
+
+</body>
+</html>

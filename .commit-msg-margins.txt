@@ -1,0 +1,29 @@
+fix(cert): margen blanco en print - stage/cert-page collapsan a 297x210mm
+
+David reporto en prod que al imprimir el cert quedaba espacio blanco
+abajo del certificado. Causa raiz:
+
+1. .stage tenia padding: 32px en print (heredado del CSS de screen) +
+   flex-center vertical. El viewport de print es ~794px (210mm) pero
+   el .stage + padding lo expandia a 858px, dejando 32px abajo.
+
+2. @page { size: A4 landscape; margin: 0 } estaba REDECLARADO dentro
+   de @media print (linea 438) - sintaxis invalida. Chrome lo ignoraba
+   silenciosamente y usaba el @page top-level (linea 34), que SI se
+   aplicaba, pero no alcanzaba porque el cert-page heredaba padding.
+
+Fix:
+- @page anidado eliminado (comentario explicando porque estaba mal).
+- .cert-page y .stage forzados a width/height 297mm x 210mm exactos
+  en @media print, con overflow: hidden y min-height: auto.
+- .cert sigue 297x210mm (sin cambios), agregadas break-after /
+  break-inside properties para Safari/Firefox.
+- Reducido padding del .right (de 64/56 a 56/48) para dar mas aire
+  vertical al contenido y evitar que se salga del cert-page.
+
+Verificacion: type-check + lint pasan. David: hard refresh en prod
+(Ctrl+Shift+R), re-emitir cert con attendee dddddddd... y verificar
+Ctrl+P preview sin margen blanco abajo.
+
+Refs: b0ac503 (commit previo con fix parcial de @page)
+Ref: docs/PROJECT-LOG.md entrada Concept C sprint

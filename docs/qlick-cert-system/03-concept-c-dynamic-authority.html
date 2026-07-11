@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Qlick Award · Concepto C · Dynamic Marketing Authority (Hybrid)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600&family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --purple-500:#A855F7;
+    --purple-600:#9333EA;
+    --purple-700:#7E22CE;
+    --purple-800:#6B21A8;
+    --purple-900:#3B0764;
+    --purple-950:#1E0540;
+    --spark:#FBBF24;
+    --spark-500:#F59E0B;
+    --ink:#0F172A;
+    --slate-700:#334155;
+    --slate-500:#64748B;
+    --ivory:#FAFAF7;
+    --cream:#F5F2EA;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:#1A1024;color:#fff;font-family:'Plus Jakarta Sans',sans-serif;-webkit-font-smoothing:antialiased}
+  .stage{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:32px}
+  .cert{
+    width:1123px;height:794px;position:relative;overflow:hidden;
+    background:var(--ivory);
+    box-shadow:0 60px 120px -40px rgba(168,85,247,.6), 0 30px 60px -20px rgba(0,0,0,.7);
+  }
+  /* LEFT DIAGONAL PANEL with chevrons */
+  .left-panel{
+    position:absolute;top:0;bottom:0;left:0;width:38%;
+    background:linear-gradient(180deg, var(--purple-700) 0%, var(--purple-900) 100%);
+    clip-path:polygon(0 0, 100% 0, 78% 100%, 0 100%);
+  }
+  .left-panel::before{
+    content:'';position:absolute;inset:0;
+    background-image:
+      linear-gradient(135deg, rgba(168,85,247,.4) 0%, transparent 40%),
+      radial-gradient(circle at 20% 80%, rgba(251,191,36,.15), transparent 50%);
+  }
+  .chevrons{
+    position:absolute;top:0;left:0;width:100%;height:100%;
+    opacity:.18;pointer-events:none;
+  }
+  .chevrons svg{width:100%;height:100%}
+  .vertical-text{
+    position:absolute;top:62%;left:30px;transform:translateY(-50%) rotate(-90deg);
+    transform-origin:left center;
+    font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:5px;
+    color:rgba(255,255,255,.5);text-transform:uppercase;white-space:nowrap;
+  }
+  /* Brand block on left panel — using real Qlick wordmark */
+  .brand-block{
+    position:absolute;top:60px;left:64px;right:30%;
+    color:#fff;
+  }
+  .brand-block .q-icon{
+    width:84px;height:120px;display:flex;align-items:center;justify-content:center;margin-bottom:18px;
+  }
+  .brand-block .q-icon img{width:100%;height:100%;display:block;filter:drop-shadow(0 8px 24px rgba(0,0,0,.35))}
+  .brand-block .wordmark{
+    font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;font-size:36px;letter-spacing:-1px;color:#fff;line-height:1;
+  }
+  /* Wordmark approach v.final: clean "Qlick" text (no yellow dot overlay) -
+     we abandoned the tittle-recolor trick as not professional enough.
+     The font's natural tittle of "i" stays as rendered (it reads as part of the word). */
+  .brand-block .tag{font-family:'Inter',sans-serif;font-size:10px;letter-spacing:3px;color:rgba(255,255,255,.7);text-transform:uppercase;margin-top:6px}
+  .course-info{
+    position:absolute;bottom:48px;left:64px;right:30%;color:#fff;
+  }
+  .course-info .label{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:3px;color:var(--spark);text-transform:uppercase}
+  .course-info .title{font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:22px;color:#fff;margin-top:6px;letter-spacing:-.3px;line-height:1.15}
+  .course-info .meta{font-family:'Inter',sans-serif;font-size:11px;color:rgba(255,255,255,.6);margin-top:6px;letter-spacing:.3px}
+  /* RIGHT CONTENT */
+  .right{position:absolute;top:0;bottom:0;right:0;width:62%;padding:64px 56px;display:flex;flex-direction:column;justify-content:space-between}
+  .eyebrow-row{display:flex;justify-content:space-between;align-items:flex-start}
+  .eyebrow-row .label{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:4px;color:var(--purple-700);text-transform:uppercase;font-weight:600}
+  .eyebrow-row .folio{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--slate-500);letter-spacing:2px;text-align:right}
+  .eyebrow-row .folio .num{color:var(--ink);font-size:14px;font-weight:600;margin-top:2px;letter-spacing:1px}
+  /* Hero name */
+  .hero{position:relative;margin-top:30px}
+  .hero .small{font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:600;color:var(--slate-500);letter-spacing:.5px;text-transform:uppercase}
+  .hero .presented-to{font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;color:var(--slate-700);margin-top:16px;font-style:italic}
+  .hero .name{
+    font-family:'Plus Jakarta Sans',sans-serif;font-weight:900;
+    font-size:78px;line-height:.95;letter-spacing:-3px;color:var(--ink);
+    margin-top:14px;
+  }
+  .hero .name .word{display:block}
+  .hero .name .accent{
+    background:linear-gradient(135deg, var(--purple-700) 0%, var(--purple-500) 100%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .hero .deco-line{display:flex;align-items:center;gap:14px;margin-top:18px}
+  .hero .deco-line::before, .hero .deco-line::after{
+    content:'';flex:1;height:1px;background:linear-gradient(90deg,var(--purple-700),transparent);
+  }
+  .hero .deco-line::after{background:linear-gradient(-90deg,var(--purple-700),transparent)}
+  .hero .deco-line svg{width:18px;height:18px;color:var(--spark-500)}
+  .hero .reason{font-family:'Inter',sans-serif;font-size:14px;color:var(--slate-700);margin-top:18px;max-width:520px}
+  .hero .course{font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:22px;color:var(--purple-900);margin-top:14px;letter-spacing:-.3px}
+  .hero .course span{color:var(--slate-500);font-weight:500}
+  /* Bottom signature + QR */
+  .bottom{display:grid;grid-template-columns:1.5fr 1fr;gap:40px;align-items:end}
+  .sig-block{}
+  /* Real Paul signature — vectorized SVG, no background */
+  .sig-block .signature{
+    height:90px;display:flex;align-items:flex-end;
+  }
+  .sig-block .signature img{
+    /* SVG stays crisp at any size — no rasterization */
+    height:84px;width:auto;display:block;
+    margin-left:-14px;  /* nudge signature to align its left edge with the name below */
+  }
+  /* divider-line removed v.final — was a horizontal line next to signature */
+  .sig-block .name{font-family:'Plus Jakarta Sans',sans-serif;font-weight:600;font-size:13px;color:var(--ink);margin-top:6px;letter-spacing:.3px}
+  .sig-block .role{font-family:'Inter',sans-serif;font-size:10px;color:var(--slate-500);letter-spacing:1.5px;text-transform:uppercase;margin-top:2px}
+  .verify-block{
+    background:#fff;border:1px solid var(--slate-300);border-radius:12px;padding:14px;
+    display:flex;gap:14px;align-items:center;
+    box-shadow:0 4px 16px rgba(0,0,0,.04);
+  }
+  .verify-block .qr{width:64px;height:64px;border-radius:6px;background:#fff;padding:4px;border:.5px solid var(--slate-300)}
+  .verify-block .qr img{width:100%;height:100%;display:block}
+  .verify-block .text{font-family:'Inter',sans-serif;font-size:10px;color:var(--slate-500);letter-spacing:.5px}
+  .verify-block .text .label{color:var(--purple-700);font-weight:700;letter-spacing:2px;text-transform:uppercase;font-size:9px}
+  .verify-block .text .url{font-family:'JetBrains Mono',monospace;color:var(--ink);font-size:11px;margin-top:2px;word-break:break-all}
+  .verify-block .text .date{font-size:9px;margin-top:4px;color:var(--slate-500)}
+  .sparkle{position:absolute;pointer-events:none}
+  .sparkle.s1{top:30px;right:200px;opacity:.7}
+  .sparkle.s2{top:170px;right:30px;opacity:.4}
+  .hint{position:absolute;bottom:-30px;left:0;right:0;text-align:center;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--slate-500);letter-spacing:2px}
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="cert">
+    <!-- LEFT PANEL -->
+    <div class="left-panel"></div>
+    <div class="chevrons">
+      <svg viewBox="0 0 400 794" preserveAspectRatio="none">
+        <g fill="none" stroke="#fff" stroke-width="1.4">
+          <path d="M-50 100 L100 200 L-50 300"/><path d="M-50 220 L100 320 L-50 420"/><path d="M-50 340 L100 440 L-50 540"/>
+          <path d="M30 100 L180 200 L30 300"/><path d="M30 220 L180 320 L30 420"/><path d="M30 340 L180 440 L30 540"/>
+          <path d="M110 100 L260 200 L110 300"/><path d="M110 220 L260 320 L110 420"/>
+          <path d="M190 100 L340 200 L190 300"/><path d="M190 220 L340 320 L190 420"/>
+          <path d="M270 100 L420 200 L270 300"/><path d="M270 220 L420 320 L270 420"/>
+        </g>
+      </svg>
+    </div>
+    <div class="vertical-text">QLICK MARKETING DIGITAL · OFICIAL · 2026</div>
+
+    <!-- Brand block — using real Qlick Q icon (vectorized from official source) -->
+    <div class="brand-block">
+      <div class="q-icon"><img src="assets/qlick-q-icon.svg" alt="Qlick Q" /></div>
+      <div class="wordmark">Qlick</div>
+      <div class="tag">Marketing Digital Academy</div>
+    </div>
+
+    <!-- Course info at bottom of left -->
+    <div class="course-info">
+      <div class="label">PROGRAMA</div>
+      <div class="title">Masterclass · Marketing<br/>Digital &amp; IA 2026</div>
+      <div class="meta">12 horas · Cohorte Julio 2026</div>
+    </div>
+
+    <!-- RIGHT CONTENT -->
+    <div class="right">
+      <div class="eyebrow-row">
+        <div class="label">QLICK CERTIFIED · CONSTANCIA</div>
+        <div class="folio">
+          FOLIO
+          <div class="num">QLK-2026-8849</div>
+        </div>
+      </div>
+      <!-- HERO NAME -->
+      <div class="hero">
+        <div class="small">Certificado Oficial · 10 de julio de 2026</div>
+        <div class="presented-to">Se otorga la presente a</div>
+        <div class="name">
+          <span class="word">María Fernanda</span>
+          <span class="word accent">Castillo Reyes</span>
+        </div>
+        <div class="deco-line">
+          <svg viewBox="0 0 20 20"><path d="M10 0l1.5 8.5L20 10l-8.5 1.5L10 20l-1.5-8.5L0 10l8.5-1.5z" fill="currentColor"/></svg>
+        </div>
+        <div class="reason">por haber completado satisfactoriamente el programa de formación en marketing digital e inteligencia artificial, demostrando dominio de estrategias, herramientas y metodologías de alto impacto.</div>
+      </div>
+      <!-- Bottom row -->
+      <div class="bottom">
+        <div class="sig-block">
+          <div class="signature">
+            <img src="assets/paul-signature.svg" alt="Firma Paul Velásquez" />
+          </div>
+          <div class="name">Paul Velásquez</div>
+          <div class="role">CEO &amp; Fundador · Imparte este programa</div>
+        </div>
+        <div class="verify-block">
+          <div class="qr">
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https://www.qlick.digital/filosofia&color=3B0764&bgcolor=FFFFFF" alt="QR" />
+          </div>
+          <div class="text">
+            <div class="label">Escanea</div>
+            <div class="url">qlick.digital/<br/>filosofia</div>
+            <div class="date">Emitido 07·JUL·2026</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sparkles -->
+    <svg class="sparkle s1" width="22" height="22" viewBox="0 0 20 20"><path d="M10 0l1.5 8.5L20 10l-8.5 1.5L10 20l-1.5-8.5L0 10l8.5-1.5z" fill="#FBBF24"/></svg>
+    <svg class="sparkle s2" width="14" height="14" viewBox="0 0 20 20"><path d="M10 0l1.5 8.5L20 10l-8.5 1.5L10 20l-1.5-8.5L0 10l8.5-1.5z" fill="#A855F7"/></svg>
+    <div class="hint">CONCEPT C · DYNAMIC MARKETING AUTHORITY · HYBRID HERO · 1:1 A4 LANDSCAPE · v2 (real assets)</div>
+  </div>
+</div>
+</body>
+</html>

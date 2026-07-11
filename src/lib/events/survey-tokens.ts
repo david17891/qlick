@@ -523,3 +523,41 @@ export async function getOrCreateSurveyTokenForContact(
     note: "Token nuevo creado.",
   };
 }
+
+/* ------------------------------------------------------------------ */
+/* Helper: responded-set (sprint cierre-eventos-virtuales 2026-07-11)   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Devuelve el set de `confirmation_id` cuyos survey tokens ya fueron
+ * respondidos (`submitted_survey_id IS NOT NULL`) en el evento.
+ *
+ * Usado por el panel admin (`tab=confirmations`) para mostrar el
+ * badge "Respondió link ✓" por fila. Lookup O(N) sobre los tokens del
+ * evento — fine para el tamaño típico de confirmados de Qlick
+ * (decenas a baja centena). Si el volumen crece, agregar índice en
+ * `event_survey_tokens(event_id, submitted_survey_id)`.
+ */
+export async function getConfirmationsRespondedSurvey(
+  eventId: string,
+): Promise<Set<string>> {
+  if (!isRealMode()) return new Set();
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("event_survey_tokens" as never)
+    .select("confirmation_id, submitted_survey_id")
+    .eq("event_id" as never, eventId)
+    .not("confirmation_id" as never, "is", null)
+    .not("submitted_survey_id" as never, "is", null);
+  if (error || !data) return new Set();
+  const out = new Set<string>();
+  for (const row of (data as unknown as Array<{
+    confirmation_id: string | null;
+    submitted_survey_id: string | null;
+  }>)) {
+    if (row.confirmation_id && row.submitted_survey_id) {
+      out.add(row.confirmation_id);
+    }
+  }
+  return out;
+}

@@ -643,3 +643,67 @@ export async function editConfirmationAction(
   }
   return { ok: result.ok, note: result.note ?? "Sin nota del servidor." };
 }
+
+// ─────────────────────────────────────────────────────────────
+// Sprint cierre-eventos-virtuales (2026-07-11)
+// Disparar envío del link de encuesta post-evento a TODOS los
+// confirmados de un evento. Server action invocada desde el botón
+// "📨 Enviar link de encuesta" en el toolbar del tab Confirmados.
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Dispara el envío del link de encuesta post-evento a todos los
+ * confirmados del evento. La lógica de orquestación vive en
+ * `src/lib/events/send-survey-link.ts`; esta action solo valida
+ * auth + revalida la página.
+ *
+ * FormData: eventId.
+ *
+ * Idempotente a nivel de TOKEN (no duplica `event_survey_tokens`).
+ * Re-enviar el email es esperado — el admin decide cuándo.
+ */
+export async function sendSurveyLinkToAllConfirmationsAction(
+  _prev: FormState | null,
+  formData: FormData,
+): Promise<
+  FormState & {
+    sent?: number;
+    failed?: number;
+    skipped?: number;
+    total?: number;
+  }
+> {
+  const admin = await requireAdmin();
+  if (!admin) {
+    return { ok: false, note: "No autenticado como admin." };
+  }
+  const eventId = formData.get("eventId");
+  if (typeof eventId !== "string" || !eventId) {
+    return { ok: false, note: "Falta eventId." };
+  }
+
+  // Import dinámico: el orquestador trae deps pesadas (Brevo client)
+  // que no queremos en el bundle del route handler si nunca se usa.
+  const { sendSurveyLinkToAllConfirmations } = await import(
+    "@/lib/events/send-survey-link"
+  );
+
+  const result = await sendSurveyLinkToAllConfirmations({
+    eventId,
+    actorEmail: admin.email ?? "admin@qlick",
+  });
+
+  // Solo revalidamos si hubo al menos un envío o un cambio de estado.
+  if (result.ok && (result.sent > 0 || result.failed > 0)) {
+    revalidatePath(`/admin/eventos/${eventId}`);
+  }
+
+  return {
+    ok: result.ok,
+    note: result.note,
+    sent: result.sent,
+    failed: result.failed,
+    skipped: result.skipped,
+    total: result.total,
+  };
+}

@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Qlick Award · Concepto A · Tech Vanguard (Dark Glassmorphism)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=Dancing+Script:wght@600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --purple-500:#A855F7;
+    --purple-600:#9333EA;
+    --purple-700:#7E22CE;
+    --purple-800:#6B21A8;
+    --purple-900:#3B0764;
+    --spark:#FBBF24;
+    --spark-500:#F59E0B;
+    --obsidian-950:#0A0B14;
+    --obsidian-900:#0F1117;
+    --ink:#0F172A;
+    --slate-700:#334155;
+    --slate-500:#64748B;
+    --slate-300:#CBD5E1;
+    --glass:rgba(168,85,247,.08);
+    --glass-border:rgba(168,85,247,.22);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:#050507;color:#fff;font-family:'Plus Jakarta Sans',sans-serif;-webkit-font-smoothing:antialiased}
+  .stage{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:32px}
+  .cert{
+    width:1123px;height:794px;/* ~A4 landscape @96dpi */
+    position:relative;overflow:hidden;border-radius:6px;
+    background:
+      radial-gradient(1200px 600px at 90% -10%, rgba(168,85,247,.28), transparent 60%),
+      radial-gradient(800px 400px at 0% 110%, rgba(251,191,36,.10), transparent 55%),
+      linear-gradient(180deg,#0A0B14 0%, #0E0F1A 100%);
+    box-shadow:
+      0 60px 120px -40px rgba(168,85,247,.45),
+      0 30px 60px -20px rgba(0,0,0,.7),
+      inset 0 0 0 1px rgba(168,85,247,.18);
+  }
+  /* Tech grid background */
+  .grid-bg{
+    position:absolute;inset:0;pointer-events:none;opacity:.35;
+    background-image:
+      linear-gradient(rgba(168,85,247,.07) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(168,85,247,.07) 1px, transparent 1px);
+    background-size:48px 48px;
+    mask-image:radial-gradient(ellipse 80% 70% at 50% 50%, #000 40%, transparent 100%);
+    -webkit-mask-image:radial-gradient(ellipse 80% 70% at 50% 50%, #000 40%, transparent 100%);
+  }
+  /* Animated gradient border */
+  .cert::before{
+    content:'';position:absolute;inset:0;border-radius:6px;padding:1px;
+    background:linear-gradient(135deg, rgba(168,85,247,.0) 0%, rgba(168,85,247,.6) 30%, rgba(251,191,36,.4) 60%, rgba(168,85,247,.0) 100%);
+    -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor;mask-composite:exclude;
+    pointer-events:none;
+  }
+  /* Decorative top-left circuit dots */
+  .dots-top{position:absolute;top:48px;left:48px;display:flex;gap:6px;align-items:center}
+  .dots-top span{width:8px;height:8px;border-radius:50%;background:var(--purple-500);box-shadow:0 0 14px var(--purple-500)}
+  .dots-top span:nth-child(2){background:var(--spark);box-shadow:0 0 14px var(--spark);width:6px;height:6px}
+  .dots-top span:nth-child(3){background:#fff;box-shadow:0 0 10px #fff;width:4px;height:4px;opacity:.7}
+  /* Inner content frame */
+  .frame{position:absolute;inset:32px;border:1px solid rgba(168,85,247,.16);border-radius:3px;pointer-events:none}
+  /* Logo block top-left */
+  .brand{display:flex;align-items:center;gap:14px;position:absolute;top:60px;left:64px}
+  .brand .qmark{
+    width:54px;height:54px;border-radius:14px;
+    background:linear-gradient(135deg,var(--purple-500),var(--purple-700));
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 8px 24px rgba(168,85,247,.45), inset 0 1px 0 rgba(255,255,255,.18);
+  }
+  .brand .qmark svg{width:34px;height:34px}
+  .brand .wordmark{font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;font-size:26px;letter-spacing:-.5px;color:#fff}
+  .brand .wordmark span{color:var(--spark)}
+  .brand .tag{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--purple-500);text-transform:uppercase;margin-top:2px}
+  /* Top-right meta */
+  .meta-top{position:absolute;top:60px;right:64px;text-align:right;font-family:'JetBrains Mono',monospace;color:var(--slate-500);font-size:11px;line-height:1.6}
+  .meta-top .label{color:var(--purple-500);letter-spacing:2px}
+  .meta-top .folio{color:#fff;font-size:13px;font-weight:500;margin-top:4px;letter-spacing:1px}
+  /* Center headline */
+  .headline{position:absolute;top:180px;left:64px;right:64px;text-align:center}
+  .headline .eyebrow{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:6px;color:var(--purple-500);text-transform:uppercase}
+  .headline .eyebrow .dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--spark);box-shadow:0 0 12px var(--spark);margin:0 12px 2px;vertical-align:middle}
+  .headline .title{
+    font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;
+    font-size:88px;line-height:.95;letter-spacing:-3px;
+    background:linear-gradient(180deg, #fff 30%, rgba(255,255,255,.55) 100%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    margin-top:24px;
+  }
+  .headline .title .accent{
+    background:linear-gradient(135deg,var(--purple-500),var(--spark-500));
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  /* Body */
+  .body{position:absolute;top:360px;left:64px;right:64px;text-align:center}
+  .body .lead{font-family:'Plus Jakarta Sans',sans-serif;font-weight:500;font-size:18px;color:rgba(255,255,255,.7);letter-spacing:.5px}
+  .body .name{
+    font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;
+    font-size:64px;line-height:1;letter-spacing:-2px;color:#fff;margin:28px 0 12px;
+  }
+  .body .name .underline{
+    display:inline-block;position:relative;padding-bottom:8px;
+  }
+  .body .name .underline::after{
+    content:'';position:absolute;left:50%;bottom:-6px;transform:translateX(-50%);
+    width:80%;height:2px;
+    background:linear-gradient(90deg,transparent,var(--spark),transparent);
+  }
+  .body .reason{font-family:'Plus Jakarta Sans',sans-serif;font-size:15px;color:var(--slate-300);margin-top:6px;letter-spacing:.3px}
+  .body .course{
+    font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:30px;
+    color:var(--purple-500);margin-top:24px;letter-spacing:-.5px;
+    text-shadow:0 0 40px rgba(168,85,247,.45);
+  }
+  .body .date{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--slate-500);margin-top:14px;letter-spacing:2px}
+  /* Glass card bottom area */
+  .glass{
+    position:absolute;bottom:48px;left:64px;right:64px;
+    background:linear-gradient(180deg,rgba(168,85,247,.10),rgba(168,85,247,.04));
+    backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+    border:1px solid rgba(168,85,247,.22);border-radius:16px;
+    padding:22px 32px;
+    display:grid;grid-template-columns:1.1fr .8fr .8fr 1fr;gap:32px;align-items:center;
+  }
+  .glass .col{font-family:'Inter',sans-serif}
+  .glass .col .label{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:2.5px;color:var(--purple-500);text-transform:uppercase;margin-bottom:8px}
+  .glass .col .value{font-family:'Plus Jakarta Sans',sans-serif;font-weight:600;color:#fff;font-size:14px;line-height:1.3}
+  .glass .col .sub{font-family:'Inter',sans-serif;font-size:11px;color:var(--slate-500);margin-top:3px}
+  .glass .signature{height:48px;display:flex;align-items:center}
+  .glass .signature svg{height:46px;filter:brightness(0) invert(1) drop-shadow(0 0 6px rgba(255,255,255,.2))}
+  .glass .qr{
+    width:72px;height:72px;border-radius:10px;background:#fff;padding:6px;
+    box-shadow:0 0 24px rgba(168,85,247,.35);
+  }
+  .glass .qr img{width:100%;height:100%;display:block}
+  .glass .qr-meta{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--purple-500);margin-top:6px;letter-spacing:1px}
+  .glass .verified{display:inline-flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#22C55E;letter-spacing:1.5px;text-transform:uppercase}
+  .glass .verified .pulse{width:7px;height:7px;border-radius:50%;background:#22C55E;box-shadow:0 0 10px #22C55E;animation:pulse 1.6s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+  /* Floating sparkles */
+  .spark{position:absolute;pointer-events:none;opacity:.7}
+  .spark.s1{top:140px;right:96px}
+  .spark.s2{bottom:200px;left:96px;opacity:.4}
+  .spark.s3{top:280px;right:140px;opacity:.5}
+  /* Corner marks */
+  .corner{position:absolute;width:18px;height:18px;border:1.5px solid var(--purple-500);opacity:.6}
+  .corner.tl{top:40px;left:40px;border-right:none;border-bottom:none}
+  .corner.tr{top:40px;right:40px;border-left:none;border-bottom:none}
+  .corner.bl{bottom:40px;left:40px;border-right:none;border-top:none}
+  .corner.br{bottom:40px;right:40px;border-left:none;border-top:none}
+  /* Footer hint */
+  .hint{position:absolute;bottom:-30px;left:0;right:0;text-align:center;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--slate-500);letter-spacing:2px}
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="cert" id="cert">
+    <!-- Tech grid -->
+    <div class="grid-bg"></div>
+    <!-- Inner frame -->
+    <div class="frame"></div>
+    <!-- Corner marks -->
+    <div class="corner tl"></div>
+    <div class="corner tr"></div>
+    <div class="corner bl"></div>
+    <div class="corner br"></div>
+    <!-- Top-left circuit dots -->
+    <div class="dots-top"><span></span><span></span><span></span></div>
+    <!-- Brand -->
+    <div class="brand">
+      <div class="qmark">
+        <!-- Qlik Q icon simplified -->
+        <svg viewBox="0 0 64 64" fill="none">
+          <path d="M16 14c-4 4-6 10-6 18s2 14 6 18c2.5 2.5 5.5 4 9 4 5 0 9-2 12-5l3 3 6-6-3-3c3-3 5-7 5-11s-2-8-5-11l3-3-6-6-3 3c-3-3-7-5-12-5-3.5 0-6.5 1.5-9 4z" fill="#fff"/>
+          <circle cx="22" cy="22" r="5" fill="#7E22CE"/>
+          <circle cx="42" cy="42" r="5" fill="#7E22CE"/>
+        </svg>
+      </div>
+      <div>
+        <div class="wordmark">Ql<span>i</span>ck</div>
+        <div class="tag">Marketing Digital Academy</div>
+      </div>
+    </div>
+    <!-- Top-right meta -->
+    <div class="meta-top">
+      <div class="label">FOLIO · CERTIFICATE ID</div>
+      <div class="folio">QLK-2026-8849</div>
+      <div style="margin-top:14px"><span class="label">ISSUED</span> &nbsp;07 / 07 / 2026</div>
+    </div>
+    <!-- Sparkles -->
+    <svg class="spark s1" width="20" height="20" viewBox="0 0 20 20"><path d="M10 0l1.5 8.5L20 10l-8.5 1.5L10 20l-1.5-8.5L0 10l8.5-1.5z" fill="#FBBF24"/></svg>
+    <svg class="spark s2" width="14" height="14" viewBox="0 0 20 20"><path d="M10 0l1.5 8.5L20 10l-8.5 1.5L10 20l-1.5-8.5L0 10l8.5-1.5z" fill="#A855F7"/></svg>
+    <svg class="spark s3" width="10" height="10" viewBox="0 0 20 20"><path d="M10 0l1.5 8.5L20 10l-8.5 1.5L10 20l-1.5-8.5L0 10l8.5-1.5z" fill="#FBBF24"/></svg>
+    <!-- Headline -->
+    <div class="headline">
+      <div class="eyebrow">QLICK CERTIFIED<span class="dot"></span>OFFICIAL RECORD</div>
+      <div class="title">Constancia<br/>de <span class="accent">Participación</span></div>
+    </div>
+    <!-- Body -->
+    <div class="body">
+      <div class="lead">Se otorga la presente a</div>
+      <div class="name"><span class="underline">María Fernanda Castillo Reyes</span></div>
+      <div class="reason">por haber completado satisfactoriamente el programa</div>
+      <div class="course">Masterclass · Marketing Digital & IA 2026</div>
+      <div class="date">DURACIÓN 12 HORAS &nbsp;·&nbsp; IMPARTIDO POR PAUL VELÁSQUEZ &nbsp;·&nbsp; 10 DE JULIO DE 2026</div>
+    </div>
+    <!-- Bottom glass strip -->
+    <div class="glass">
+      <div class="col">
+        <div class="label">Firma del Director Fundador</div>
+        <div class="signature">
+          <!-- Stylized Paul signature (placeholder for real transparent PNG) -->
+          <svg viewBox="0 0 220 60" xmlns="http://www.w3.org/2000/svg">
+            <path d="M5 40 C 15 5, 30 5, 35 30 S 55 55, 60 30 S 80 10, 95 35 C 105 50, 125 45, 130 25 S 150 5, 165 35 C 175 50, 195 45, 215 25" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+            <path d="M40 30 C 60 25, 100 35, 140 28 S 180 32, 210 28" stroke="#fff" stroke-width="1.4" fill="none" stroke-linecap="round" opacity=".8"/>
+          </svg>
+        </div>
+        <div class="sub">Paul Velásquez · CEO & Fundador</div>
+      </div>
+      <div class="col">
+        <div class="label">Programa</div>
+        <div class="value">Masterclass<br/>Marketing Digital & IA</div>
+        <div class="sub">Cohorte Julio 2026</div>
+      </div>
+      <div class="col">
+        <div class="label">Verificación</div>
+        <div class="qr">
+          <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https://www.qlick.digital/verify/QLK-2026-8849&color=3B0764&bgcolor=FFFFFF" alt="QR" />
+        </div>
+        <div class="qr-meta">qlick.digital/verify</div>
+      </div>
+      <div class="col" style="text-align:right">
+        <div class="label" style="color:#22C55E">Sistema verificado</div>
+        <div class="verified"><span class="pulse"></span>Blockchain-ready</div>
+        <div class="sub" style="margin-top:8px">Emitido por Qlick Platform<br/>Powered by Satori · 297×210mm</div>
+      </div>
+    </div>
+    <div class="hint">CONCEPT A · TECH VANGUARD · DARK GLASSMORPHISM · 1:1 A4 LANDSCAPE</div>
+  </div>
+</div>
+</body>
+</html>
