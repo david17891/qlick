@@ -11,6 +11,7 @@
     "type-check": "tsc --noEmit",
     "test": "node --experimental-test-module-mocks --import ./tests/loader-register.mjs --experimental-strip-types --test \"tests/*.test.mjs\"",
     "audit:links": "node scripts/audit-links.mjs",
+    "audit:migrations": "node --env-file=.env.local scripts/audit-migrations-applied.mjs",
     "check:supabase": "node scripts/check-supabase-env.mjs",
     "seed:courses": "node scripts/seed-courses.mjs",
     "seed:demo": "node scripts/seed-demo.mjs",

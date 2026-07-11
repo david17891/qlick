@@ -70,7 +70,42 @@ Reglas:
 
 ---
 
-## 4. Ejecutar advisors después de DDL
+## 4. Verificar que las migrations están aplicadas a prod antes de cerrar el sprint
+
+Una migration en el repo NO significa una migration en prod. El sprint
+cierre-eventos-virtuales (2026-07-11) descubrió que la migration
+`20260703180000_event_survey_tokens.sql` llevaba semanas commitada
+pero nunca aplicada a prod. El código la asumía existente y los
+tokens de encuesta se "perdía" silenciosamente hasta que el admin
+UI empezó a fallar con `PGRST205`.
+
+**Regla:** después de aplicar migrations a prod, **antes** de
+declarar el sprint listo, correr:
+
+```bash
+node --env-file=.env.local scripts/audit-migrations-applied.mjs
+```
+
+El script parsea las migrations locales (`CREATE TABLE`, `ADD COLUMN`,
+`CREATE INDEX`) y las cruza con el OpenAPI spec de PostgREST + introspección
+de columnas. Reporta:
+
+- **TABLAS pendientes** (CREATE TABLE en migration, no existe en prod)
+- **COLUMNAS pendientes** (ADD COLUMN en migration, no existe en prod)
+- **ÍNDICES** (no auditables vía PostgREST — ver `pg_indexes` en SQL Editor)
+
+Si el script marca pendientes, **bloquea** el avance a features
+nuevas hasta aplicar las migrations faltantes a prod.
+
+**Hard-fail gate pre-merge a main:** un PR que introduce una
+migration nueva debe pasar este audit. Si el script marca la
+migration como pendiente, el merge queda bloqueado.
+
+Disponible también como `npm run audit:migrations`.
+
+---
+
+## 5. Ejecutar advisors después de DDL
 
 Después de cualquier DDL, el agente ejecuta los advisors de Supabase
 (security + performance) y reporta hallazgos en el commit/doc.
@@ -85,7 +120,7 @@ No se "silencian" advisors sin justificación documentada. Si un advisor marca
 
 ---
 
-## 5. Documentar cada acción MCP/CLI
+## 6. Documentar cada acción MCP/CLI
 
 Cada acción MCP/CLI que afecte el estado del proyecto se documenta en el commit
 o en un doc `*_REPORT.md`, con:
@@ -101,7 +136,7 @@ Ver plantilla en `docs/SUPABASE_MCP_RUNBOOK.md` §11.
 
 ---
 
-## 6. Mantener fallback demo hasta validar la migración real
+## 7. Mantener fallback demo hasta validar la migración real
 
 La app debe poder correr **sin Supabase** (modo demo) hasta que la migración
 real esté validada de punta a punta:
@@ -120,7 +155,7 @@ Hasta entonces:
 
 ---
 
-## 7. Secretos
+## 8. Secretos
 
 - **Nunca** commitear claves (`.env.local` está en `.gitignore`).
 - **Nunca** poner claves en `NEXT_PUBLIC_*` (excepto URL y publishable key).
@@ -131,7 +166,7 @@ Hasta entonces:
 
 ---
 
-## 8. Privacidad / RLS / Aviso de privacidad
+## 9. Privacidad / RLS / Aviso de privacidad
 
 Bloqueadores duros para capturar datos reales de clientes/leads/alumnos:
 
@@ -145,7 +180,7 @@ siguen en modo demo.
 
 ---
 
-## 9. Resumen — qué puede y qué no puede hacer el agente
+## 10. Resumen — qué puede y qué no puede hacer el agente
 
 | Acción | ¿Agente solo? |
 | ------ | :-----------: |

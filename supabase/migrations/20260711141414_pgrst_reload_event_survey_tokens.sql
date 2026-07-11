@@ -1,0 +1,45 @@
+-- ============================================================
+-- pgrst reload para event_survey_tokens (schema cache stale)
+-- ============================================================
+-- Síntoma: /admin/eventos/[id] falla con "No se pudieron generar
+--   tokens: Error leyendo tokens existentes: PGRST205" al disparar
+--   el botón "Enviar link de encuesta".
+--
+-- Causa raíz: PostgREST tiene un schema cache que se invalida
+--   cuando se aplican migraciones nuevas. La migration
+--   20260706030000_event_surveys_unique_and_pgrst_reload.sql ya
+--   tenía un `NOTIFY pgrst, 'reload schema'` al final, pero las
+--   15 migraciones aplicadas DESPUÉS (20260706120000 ... 20260711100000)
+--   no volvieron a hacer reload. Resultado: la tabla
+--   `event_survey_tokens` (creada en 20260703180000) está en la
+--   DB real pero NO en el cache de PostgREST.
+--
+--   PostgREST responde con PGRST205 "Could not find the table
+--   'public.event_survey_tokens' in the schema cache" + hint
+--   "Perhaps you meant the table 'public.event_qr_tokens'"
+--   (esa sí está en el cache porque se creó antes de la
+--   primera invalidación).
+--
+-- Fix: NOTIFY pgrst, 'reload schema' al final de esta migration.
+--   Idempotente, no destructivo, safe de correr N veces.
+--
+-- Patrón a futuro: TODA migration que cree o modifique tablas
+--   del schema `public` debe terminar con `NOTIFY pgrst, 'reload
+--   schema';` para que el cache de PostgREST no quede stale.
+--   Idealmente, el tooling de migrations lo mete automático al
+--   final si la última línea es DDL.
+--
+-- Aplicación: la primera vez se aplicó via SQL Editor del
+--   dashboard (sesión 2026-07-11, sprint cierre-eventos-virtuales)
+--   para destrabar la operación. Esta migration queda versionada
+--   para que el fix sea idempotente si se reaplica en otro
+--   ambiente (staging, dev).
+-- ============================================================
+
+-- FIX: forzar reload de PostgREST schema cache para que la tabla
+-- event_survey_tokens (creada en 20260703180000) sea visible de nuevo.
+-- Esto es idempotente y seguro de correr múltiples veces.
+-- Aplicar via SQL Editor del dashboard (no via pg client directo,
+-- porque el listener de pgrst solo escucha a sesiones conectadas
+-- vía el proxy de Supabase).
+NOTIFY pgrst, 'reload schema';

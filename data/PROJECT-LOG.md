@@ -21,6 +21,34 @@
 
 ---
 
+## 2026-07-11 ~14:30 — Migrations pendientes en prod: event_survey_tokens + admin_audit_log.before/after
+
+- **Pregunta:** El admin UI en `/admin/eventos/[id]` fallaba con `PGRST205: Could not find the table 'public.event_survey_tokens' in the schema cache` al disparar el botón "Enviar link de encuesta". El probe reveló que la tabla NO EXISTÍA en prod. La migration `20260703180000_event_survey_tokens.sql` estaba commitada en el repo desde el 2026-07-03 pero nunca se aplicó. El audit script reveló también 2 columnas faltantes en `admin_audit_log` (`before`/`after` jsonb) de la migration `20260629000000_admin_audit_log_diff.sql` — diff view del audit log nunca funcionó en prod.
+
+- **Decision:** Aplicar ambas migrations a prod via SQL Editor (no via `supabase db push` porque no había DB_PASSWORD en env.local) + `NOTIFY pgrst, 'reload schema'` después de cada una. Crear `scripts/audit-migrations-applied.mjs` que parsea `CREATE TABLE` / `ADD COLUMN` / `CREATE INDEX` de las migrations locales y los cruza con el OpenAPI spec de PostgREST. Reporta lo que está pendiente. Disponible como `npm run audit:migrations`.
+
+- **Razón:** El code path de Qlick asumía que ambas tablas existían (token generation, diff view del audit log). Como la falta se manifestaba como "feature degrada silenciosamente" hasta que algo explícito las tocaba, el bug pasó desapercibido durante semanas. El fix retroactivo + el script de audit cierran el loop: en adelante, cada merge a main puede correr `npm run audit:migrations` y detectar migrations fantasma antes de que se acumulen más.
+
+- **Impacto:**
+  - Botón "Enviar link de encuesta" del admin vuelve a funcionar (genera tokens de encuesta post-evento para confirmados).
+  - Diff view en `/admin/system/audit-log` ahora puede mostrar snapshots antes/después (las cols `before`/`after` existen).
+  - `npm run audit:migrations` queda como gate pre-merge para detectar migrations no aplicadas a prod.
+
+- **Trigger:** David clickeó "Enviar link de encuesta" en producción y vio el error PGRST205. La session debug encontró que NO era un problema de cache stale (el NOTIFY no recargó la tabla) sino que la tabla literalmente no existía. El audit subsiguiente descubrió las 2 cols de `admin_audit_log` también pendientes.
+
+- **Archivos tocados (1 nuevo, 1 modificado, 1 nuevo en repo pero aplicado a prod):**
+  - **NUEVO** `scripts/audit-migrations-applied.mjs` (parser de DDL + probe via OpenAPI spec + reporte).
+  - **NUEVO** `supabase/migrations/20260711141414_pgrst_reload_event_survey_tokens.sql` (solo NOTIFY pgrst; defensivo para que el fix quede versionado si se reaplica en staging/dev).
+  - **MODIFICADO** `package.json` (nuevo script `audit:migrations`).
+  - **MODIFICADO** `docs/AGENT_SUPABASE_PROTOCOL.md` (nueva regla §4b: verificar migrations aplicadas a prod antes de declarar listo).
+  - **APLICADO A PROD (vía SQL Editor):** `supabase/migrations/20260703180000_event_survey_tokens.sql` + `supabase/migrations/20260629000000_admin_audit_log_diff.sql`.
+
+- **Validación post-fix:** `node --env-file=.env.local scripts/audit-migrations-applied.mjs` → 0 tablas pendientes, 0 columnas pendientes. Round-trip de `event_survey_tokens` (SELECT, INSERT con FK válida, DELETE) verificado via REST.
+
+- **Lección operacional:** Una migration se considera "lista" solo cuando (a) está commitada al repo, (b) está aplicada a prod, y (c) `npm run audit:migrations` la confirma. El sprint de cierre-eventos-virtuales (2026-07-11 ~10:40) ya documentó esta misma trampa ("Pendiente: Aplicar la migration en Supabase antes del próximo deploy") y aún así esta migration se quedó sin aplicar. El audit script es la red de seguridad.
+
+---
+
 ## 2026-07-11 ~10:40 — Sprint cierre-eventos-virtuales: UPSERT attendee + promote lead en Q0
 
 - **Pregunta:** Cuando un confirmado respondía la Q0 de la encuesta post-evento por el link email/WhatsApp (camino "email-only", sin haber abierto el gate virtual ni escaneado el QR), su asistencia NO quedaba registrada en el funnel del evento ni en el CRM. Dos gaps:
