@@ -1,12 +1,43 @@
 # Qlick LMS — Roadmap
 
 > Fuente de verdad del plan del LMS. Cualquier desvío se conversa y se actualiza acá.
-> Última revisión: 2026-07-06 18:42 — **v0.9.0 (CRM Inteligente v2.0)** cerrado. Fase 4 (Calendario + Tareas + Notificaciones) planificada.
+> Última revisión: 2026-07-08 18:15 — **Sprint Cert Email (v0.9.2)** cerrado en `feat/certificados-concept-c`. E2E validado Supabase + Brevo. Pendiente: pilotaje con attendees reales en evento del 11/jul.
 
 ---
 
 ## Estado actual
 
+- [x] **v0.9.2 — Sprint Cert Email (envío batch de constancias)** — sprint cerrado el 2026-07-08 en rama `feat/certificados-concept-c` (deploy prod OK en `www.qlick.digital`, E2E validado)
+  - Handoff completo: `docs/HANDOFF_v0.9.2_CERT_EMAIL.md` ← **leer primero**
+  - Status vivo: `docs/STATUS.md` (snapshot del 2026-07-08 18:15)
+  - Commit: `f3e4447` (sprint completo, 9 archivos)
+  - **Qué incluye:**
+    - **`/cert/[folio]` pasa a público** (antes requería cookie admin). El folio es el secreto: random sobre 100k combinaciones, no adivinable. Hardening futuro: JWT con expiración.
+    - **Panel admin `CertificateBatchPanel`** con UX de 2 pasos: preview (cargado por `getCertificateBatchPreviewAction`) + confirmación (`sendBatchCertificatesAction`). Muestra desglose por canal (email / WhatsApp fallback / skipped).
+    - **Email transaccional con Brevo** (`noreply@qlick.digital`). Template con saludo personalizado, datos del evento, folio en mono, CTA grande "Ver mi constancia", instrucciones Ctrl+P.
+    - **Fallback WhatsApp**: link `wa.me/[phone]?text=...` pre-armado con mensaje + link al cert. Abre `web.whatsapp.com` en browser de David (NO bot).
+    - **Idempotencia**: RPC `issue_event_certificate` ya es idempotente. El email puede re-enviarse si David corre el batch 2 veces.
+    - **Migration**: extiende `event_email_log` con `email_type='certificate'` (CHECK constraint) + `event_certificate_id` (FK nullable) + índice.
+    - **12 tests nuevos** para el template (incluido XSS en `<title>` descubierto durante desarrollo, ya arreglado).
+  - **Validado E2E** (David + Mavis, 2026-07-08 18:10):
+    - Supabase: 1 fila `event_email_log` con `email_type='certificate'`, `ok=true`, `event_certificate_id` poblado.
+    - Brevo: 1 transactional email con subject correcto, recipient OK, timestamp coherente (diferencia 1s vs Supabase log).
+  - **Lección XSS**: subject del correo se inyectaba sin escapar en `<title>` y `<meta>` — fix aplicado, tests blindan el comportamiento. Regla universal: escapar TODA interpolación en HTML, testear TODOS los campos dinámicos.
+  - **Pendiente:** pilotaje real con attendees del evento 11/jul (no hubo asistentes para esta prueba). Cleanup DB de dev artifacts (DDDDDDD/QLK-2026-68558).
+- [x] **v0.9.1 — Sprint Certificados Concept C** — sprint cerrado el 2026-07-08 en rama `feat/certificados-concept-c` (aún NO mergeada a `main`; deploy prod OK en `www.qlick.digital`)
+  - Handoff completo: `docs/HANDOFF_v0.9.1_CERT_CONCEPT_C.md` ← **leer primero**
+  - Status vivo: `docs/STATUS.md` (snapshot del 2026-07-08)
+  - 6 commits: `8454577` (base) → `338a4f6` (admin) → `6553e6d` (cleanup) → `b0ac503` (márgenes) → `e2418a9` (margen blanco) → `511d15c` (`@page` 297mm + PrintCertButton)
+  - **Qué incluye:**
+    - **Cert HTML imprimible 1:1 con design Concept C aprobado** (`docs/qlick-cert-system/03-concept-c-dynamic-authority.html`).
+    - **Server action `issueCertificateAction`** con auth admin (`requireAdmin()`), validaciones e idempotencia por `(event_id, attendee_id)`.
+    - **Client Component `IssueCertButton`** en admin check-in tab (✨ Emitir cert) + Client Component `PrintCertButton` con `document.fonts.ready`.
+    - **Fix crítico de print**: `@page { size: 297mm 210mm; margin: 0 }` (NO keyword `A4 landscape` — Chrome ambigüa el keyword con drivers Letter y produce margen blanco vertical).
+    - **Assets como data URLs** (signature, isotipo, wordmark) para evitar 404 en print.
+    - **12 TTF** de Plus Jakarta Sans / Inter / JetBrains Mono cargados en `public/certificates/fonts/`.
+  - **Trade-off aceptado:** HTML imprimible en lugar de PDF server-side (Vercel Hobby no aguanta headless browsers; `@react-pdf/renderer` falla con binary deps en Windows). David imprime local con Ctrl+P o el botón "🖨️ Imprimir".
+  - **Validado en prod:** folio `QLK-2026-68558` para attendee `dddddddd-dddd-dddd-dddd-dddddddddddd`. Print preview en A4 horizontal sin margen blanco en márgenes "Predeterminado" ni "Ninguno".
+  - **Pendiente:** merge a `main` + cleanup DB de dev artifacts + decisión Paso 2 (script bulk + envío por correo).
 - [x] **v0.9.0 — CRM Inteligente v2.0 (Fases 1 + 2 + 3)** — release cerrado el 2026-07-06 (HEAD `main`, commit `ec9eb55`, tag `v1.1-crm1-stable` para pre-Fase 2-3)
   - Handoff completo: `docs/HANDOFF_v0.9.0_CRM_INTELIGENTE.md` ← **leer primero**
   - Status vivo: `docs/STATUS.md` (snapshot del release)

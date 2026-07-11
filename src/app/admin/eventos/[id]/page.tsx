@@ -737,7 +737,7 @@ export default async function AdminEventoDetailPage({
                     description="Proba quitar el filtro de fuente o limpiar la busqueda."
                   />
                 ) : (
-                  <Table headers={["Nombre", "Email", "Teléfono", "Fuente", "Confirmó", ""]}>
+                  <Table headers={["Nombre", "Email", "Teléfono", "Fuente", "Confirmó", "Link", ""]}>
                     {filteredConfirmations.map((c) => (
                       <tr key={c.id} className="hover:bg-brand-50/30">
                         <td className="px-5 py-3 font-medium text-ink">{c.name}</td>
@@ -774,6 +774,26 @@ export default async function AdminEventoDetailPage({
                         </td>
                         <td className="px-5 py-3 text-ink-muted text-xs">
                           {formatDate(c.confirmedAt)}
+                        </td>
+                        {/* Sprint cierre-eventos-virtuales (2026-07-11):
+                            badge "Respondió link" — verde si el confirmado
+                            ya respondió la encuesta post-evento (su token
+                            tiene submitted_survey_id), gris en caso contrario.
+                            Es el proxy de "asistencia real" para eventos
+                            virtuales/hybrid. */}
+                        <td className="px-5 py-3">
+                          {respondedSet.has(c.id) ? (
+                            <Badge tone="success" title="Ya respondió la encuesta post-evento">
+                              ✓ Link
+                            </Badge>
+                          ) : (
+                            <span
+                              className="text-[10px] text-ink-muted italic"
+                              title="Aún no respondió la encuesta post-evento"
+                            >
+                              —
+                            </span>
+                          )}
                         </td>
                         <td className="px-5 py-3 text-right">
                           <div className="inline-flex items-center gap-2 justify-end">

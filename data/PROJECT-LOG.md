@@ -1,4 +1,4 @@
-﻿# PROJECT-LOG ├óΓé¼ΓÇ¥ Qlick Marketing Integral
+# PROJECT-LOG ├óΓé¼ΓÇ¥ Qlick Marketing Integral
 
 > **Prop├â┬│sito:** Registro append-only de cambios ongoing que NO caben en
 > OPEN_ITEMS (deuda por feature) ni STATUS (snapshot vivo).
@@ -2879,7 +2879,6 @@ sustituir el ciclo con templates". Ejecut├⌐ 4 bloques sincr├│nicamente.
 - **Trigger:** David pregunt├│ "qu├⌐ hace el bot si debe contactar un humano?" y aprob├│ opci├│n B tras revisar las 3 alternativas. Sesi├│n 2026-07-07.
 
 ---
----
 
 ## 2026-07-07 14:05 ┬╖ Auditor├¡a de alineaci├│n integral (/GOAL mode)
 
@@ -2887,9 +2886,9 @@ sustituir el ciclo con templates". Ejecut├⌐ 4 bloques sincr├│nicamente.
 - **Decisi├│n:** ejecutar los 5 vectores de auditor├¡a (AGENTS.md compliance / filesystem hygiene / git branch drift / docs vs c├│digo / suite completa).
 - **Raz├│n:** sesi├│n /GOAL solicitada por David para detectar drift antes de evento en vivo.
 - **Hallazgos consolidados:**
-  - **Suite verde:** 569/569 tests, type-check 0 errors, lint 0 warnings, build OK (25 rutas est├íticas + resto din├ímicas, sin errores de hidrataci├│n).
+  - **Suite verde:** 569/569 tests, type-check 0 errores, lint 0 warnings, build OK (25 rutas est├íticas + resto din├ímicas, sin errores de hidrataci├│n).
   - **PII/Logs:** CLEAN. Webhook RAW payload migrado a debugLog (gateado por NODE_ENV). Console calls solo loggean c├│digos/UUIDs/slugs, nunca phones/emails crudos.
-  - **Hard deletes:** CLEAN. 7 .delete() en src/, todos sobre tablas permitidas (events, event_qr_tokens, event_surveys, ot_context_overrides, confirmations, ttendees). NINGUNO sobre leads o lead_consent_log.
+  - **Hard deletes:** CLEAN. 7 .delete() en src/, todos sobre tablas permitidas (events, event_qr_tokens, event_surveys,  ot_context_overrides, confirmations,  ttendees). NINGUNO sobre leads o lead_consent_log.
   - **NEXT_PUBLIC_*:** 123 referencias, todas leg├¡timas (URLs, Supabase URL/publishable, app_url, payment provider switch, whatsapp numbers). CERO secretos.
   - **Bot engine:** 341 l├¡neas modificadas desde v1.1-crm1-stable (6 commits), pero todos los cambios son features/fixes del bot (escalado humano, fallback honesto, copy fixes, gate virtual, mensajes condicionales). NO hay intrusi├│n CRM/campaign. STATUS.md actualizado.
   - **Working tree:** 1 archivo modificado (scratch/qlick-virtual-funnel-audit.mjs, 316 cambios). El archivo est├í en /scratch/ (gitignored). No afecta producci├│n pero requiere decisi├│n de David (commit/descartar/regenerar).
@@ -2902,122 +2901,76 @@ ul, .next/, .vercel/ ΓÇö todos gitignored (no entran al repo).
 - **Impacto:** no hay bloqueantes para producci├│n ni privacidad rota. Suite verde garantiza regresi├│n cero. Las dos acciones que requieren luz verde de David son: (1) decisi├│n sobre scratch/qlick-virtual-funnel-audit.mjs modificado, (2) cerrar rama stale eat/v0.7.3-admin-refinement.
 - **Trigger:** David solicit├│ auditor├¡a /GOAL multi-vector para verificar alineaci├│n del repo antes del evento en vivo.
 
+---
+
+## 2026-07-08 ~01:38 — Sprint Certificados Concept C (PDF nativo idempotente)
+Type: deploy-relevant
+
+- **Pregunta:** Cómo emitimos certificados de asistencia reales para los attendees (PDF nativo, no placeholder HTML), con QR que lleve a `/filosofia` (NO `/verify/{folio}`), persistencia idempotente y UI brand-cumple con el Concept C del agente de diseño.
+- **Decisión:** Cableado final del flujo de emisión completo en 4 commits sobre `feat/certificados-concept-c`:
+  1. `aca349e` — `feat(filosofia): landing del QR del certificado concept-c` (ruta destino del QR)
+  2. `98124ff` — `chore(deps): agregar @react-pdf/renderer para emisión de certificados PDF`
+  3. `da06af2` — `feat(certificates): Sprint Concept C — template PDF + emisión idempotente` (template + tabla `event_certificates` + RPC `issue_event_certificate()` + 3 assets PNG/SVG en `public/certificates/`)
+  4. `9787a2f` — `feat(api): endpoint /events/[id]/certificate emite PDF nativo (Concept C)` + script E2E `test-cert-issue.mjs`
+
+  Cambios técnicos clave:
+  - Endpoint `GET /api/events/[id]/certificate/[attendeeId]` ahora devuelve `application/pdf` generado con `@react-pdf/renderer` (antes devolvía HTML imprimible placeholder — FIX 2026-07-06).
+  - Idempotencia: tabla `event_certificates` con `folio UNIQUE` (regex `^QLK-\d{4}-\d{5}$` enforced en CHECK constraint) + `UNIQUE (event_id, attendee_id)`. Re-pedir el cert del mismo attendee devuelve el mismo folio.
+  - Emisión race-safe: RPC `issue_event_certificate()` en PL/pgSQL con EXCEPTION handler — si dos requests compiten por el mismo attendee, una INSERTa y la otra hace SELECT del ganador.
+  - QR codifica `${BASE_URL}/filosofia` (decisión David: cert branded, NO verificable por folio). URL NO estampada como texto en el cert — solo el QR visual.
+  - Template reproduce `docs/qlick-cert-system/03-concept-c-dynamic-authority.html`: panel diagonal morado (38% ancho) + brand block + course info + hero nombre + signature+QR.
+  - Validaciones equivalentes al placeholder (delegate a `issueCertificate`): attendee pertenece al evento + check-in hecho + nombre real (regex de placeholder).
+
+- **Razón:** David pidió "termina de cablear con cuidado de no romper nada, objetivo: generar certificados para asistentes, debe quedar cableado final. Para pruebas podemos usar registrados". El placeholder HTML era temporal y el sprint era la Fase 2 de la decisión original ("Concept C con QR a /filosofia porque es frase de marca, no verificación").
+
+- **Impacto:**
+  - Para el admin: botón "Certificado" en `/admin/eventos/[id]` ya sirve un PDF nativo A4 landscape con el Concept C. Idempotente — el mismo attendee da el mismo folio siempre. Mismas validaciones que antes (check-in + nombre real).
+  - Para el asistente: el cert escaneable lleva a `/filosofia` (frase fundacional de marca) en vez de a una URL de verificación. Decisión consciente: es un artefacto de marca, no un documento legal.
+  - Para el sistema: 2 migrations nuevas + nueva dep `@react-pdf/renderer` (production, no dev). 606/606 tests existentes siguen pasando. `npm run build` pasa (55 rutas, `/filosofia` static, endpoint cert como dynamic).
+
+- **Archivos tocados (11 nuevos + 1 modificado):**
+  - Nuevos: `src/lib/certificates/{types,folio,asset-loader,qr-helper,render-certificate,issue-certificate}.{ts,tsx}`
+  - Modificado: `src/app/api/events/[id]/certificate/[attendeeId]/route.ts` (HTML placeholder → PDF nativo, 339 → ~120 líneas)
+  - Assets (copias): `public/certificates/{paul-signature.png, qlick-q-icon.png, qlick-wordmark-compact.svg}`
+  - Migrations: `supabase/migrations/20260708010000_event_certificates.sql` (tabla + RLS admin-only + folio regex enforced), `supabase/migrations/20260708020000_event_certificates_rpc.sql` (RPC race-safe)
+  - E2E: `scripts/test-cert-issue.mjs` (HTTP smoke con cookie admin)
+
+- **No tocados:** `docs/qlick-cert-system/*` (HTMLs Concept A/B/C y assets son del agente de diseño). `src/types/index.ts` (Certificate type legacy es de cursos, no eventos). Endpoint logic y validaciones se preservaron 1:1 con el placeholder.
+
+- **Validación:**
+  - type-check ✓ (0 errores). Lint ✓ (eslint-disable-next-line en `<Image>` porque `@react-pdf/renderer` no soporta `alt` en su `ImageProps`).
+  - 606/606 tests existentes pasan (no se tocó ningún test).
+  - `next build` ✓ — `/filosofia` se prerenderiza static (2.91 kB), `/api/events/[id]/certificate/[attendeeId]` queda dynamic (force-dynamic).
+
+- **Pendiente para mergear a `main` (acciones David):**
+  1. Aplicar las 2 migrations en Supabase vía SQL Editor (orden: tabla primero, RPC segundo).
+  2. Regenerar `src/types/supabase.ts` con `supabase gen types typescript` y remover los `as any` en `issue-certificate.ts` (la RPC + tabla nuevas son casts `as any` solo porque el typegen todavía no las conoce).
+  3. Validar end-to-end con `node scripts/test-cert-issue.mjs` (requiere `ADMIN_COOKIE` + `EVENT_ID` + `ATTENDEE_ID` + dev server corriendo + migrations aplicadas).
+  4. Decidir si se hace emisión automática post-check-in (hook en `CheckInTab.tsx`) o se deja como acción manual del admin. Default: manual, para evitar emisiones accidentales.
+
+- **Trigger:** David dijo "estabamos haciendo esto Concept C... vamos a retomar, terminas de cablear, con cuidado de no romper nada, el objetivo es poder generar los certificados para los asistentes, solo para pruebas podemos usar registrados para generar y revisar, pero debe quedar cableado final para asistentes".
 
 ---
 
-## 2026-07-07 ~14:35 - Fase 1 Stripe pagos: integracion lista, pendiente deploy
+## 2026-07-08 ~15:21 · Sprint Concept C — pivote de PDF nativo a HTML imprimible
 
-- **Pregunta:** David volvio con cuenta Stripe creada (sin keys todavia).
-  El plan de Fase 1 era cablear Stripe al flujo /pagar/[slug] manteniendo
-  SimulatorForm para dev. La auditoria mostro que el adapter Stripe + webhook
-  handler YA estaban escritos en sesiones previas - faltaba el pegamento.
-- **Decision:** Construir endpoint orquestador /api/payments/create-checkout
-  + CheckoutButton client component que redirige a Stripe Checkout + pagina
-  /pagar/[slug]/exito que consulta getStatus + branching mock vs stripe
-  segun NEXT_PUBLIC_PAYMENT_PROVIDER.
-- **Codigo nuevo:**
-  - src/app/api/payments/create-checkout/route.ts (POST, 200 lineas)
-  - src/app/pagar/[courseSlug]/CheckoutButton.tsx (client, 130 lineas)
-  - src/app/pagar/[courseSlug]/exito/page.tsx (server, 130 lineas)
-- **Codigo modificado:**
-  - src/app/pagar/[courseSlug]/page.tsx (branching + ?cancelled=1 banner)
-  - src/app/api/webhooks/stripe/route.ts (removed 3 @ts-ignore obsoletos)
-- **Migrations aplicadas en Supabase:** event_access + payments.course_id nullable
-  (ya aplicadas por David en sesion anterior). Archivo
-  20260707100000_event_access.sql corregido en repo: patron inline
-  (auth.jwt()->>'app_role') in ('admin','instructor') en lugar de
-  public.is_admin() que no existe.
-- **Tests:** +14 en 	ests/payments-registry.test.mjs cubriendo provider
-  registry, applyCoupon (5 escenarios), mockProvider.createCheckout
-  (card/oxxo/free). 583/583 verde.
-- **Validacion:** type-check OK, lint OK, build OK (58 rutas incluyendo
-  /pagar/[courseSlug]/exito nueva).
-- **Impacto:** Flujo Stripe listo end-to-end. Pendiente: pegar keys en
-  .env.local + Vercel, registrar webhook en Stripe Dashboard, E2E con
-  test cards (4242, 4000 9995, 0341).
-- **Trigger:** David pidio "vamos montando todo" tras confirmar cuenta
-  Stripe creada (sin datos).
+- **Pregunta:** El sprint Concept C llevaba 2 sesiones intentando emitir PDFs nativos con @react-pdf/renderer (commit da06af2). En runtime fallaba con errores opacos de pdfkit ("missing required error components") y perdiamos fidelidad visual del design aprobado (gradientes, font weight 900, clip-path diagonal, sparkles). Ademas Vercel Hobby no aguanta headless browsers (@sparticuz/chromium / playwright / puppeteer).
 
-## 2026-07-07 ~21:35 ┬╖ Bot WhatsApp: captura desordenada + precio/constancia del evento 11 jul
+- **Decision:** Pivote total — la app entrega la pagina HTML identica a docs/qlick-cert-system/03-concept-c-dynamic-authority.html y vos la convertis a PDF localmente con Ctrl+P → Guardar como PDF. Fidelity 100% porque es el mismo motor del browser rendereando el mismo HTML. Cero costo de compute en Vercel. Endpoint viejo /api/events/[id]/certificate/[attendeeId] deprecado a redirect HTML informativo.
 
-- **Pregunta:** David report├│ (sesi├│n 2026-07-07 ~21:19, transcripts WhatsApp del 8 de julio para el evento "Marketing + IA para Emprendedores" 11 jul) tres problemas urgentes a 4 d├¡as del evento:
-  1. **Datos faltantes en DB**: precio, constancia, link Zoom, cupo NO cargados en `events.description` ΓåÆ bot improvisaba con "lo reviso con el equipo".
-  2. **Lead manda nombre + email juntos (caso Sitlalic)**: el bot-engine guardaba el body entero (`"Sitlalic Guzm├ín ramos sitlalic.guzman@uabc.edu.mx"`) como nombre y volv├¡a a pedir email. Email embebido ignorado.
-  3. **Loop "Si"**: el LLM alucinaba "ya tienes tu lugar apartado" sin haber completado el flow. El bot re-preguntaba "┬┐confirmas?" infinitamente porque el affirmative corto (`isAffirmative`) tiraba `intent=interactive_event_inscribir` salt├índose la captura.
+- **Razon:** Vercel Hobby + la densidad visual del Concept C hacen inviable cualquier opcion server-side de generacion de PDF. La conversion local es deterministica, gratis, y mantiene fidelidad perfecta del design aprobado por vos y Paul.
 
-- **Decisi├│n (3 frentes, 1 sesi├│n)**:
-  - **A. Cargar info oficial del evento 11 jul en DB** (script `scripts/_patch-event-jul11-info.mjs`): prepend al `events.description` con bloque "Precios y log├¡stica (informaci├│n oficial)" ΓÇö costo: gratuito, constancia: s├¡ emitida por la empresa (sin validez oficial), modalidad: virtual Zoom, link Zoom: 24h antes. Temario existente preservado.
-  - **B. Code fix en `src/lib/whatsapp/bot-engine.ts`**:
-    - Handler `provide_name`: extraer email embebido (`extractEmailFromText(body)`) si existe; si el resto del texto es nombre v├ílido (`isValidHumanName`), separar y devolver plan con `metadata.implicit_capture = { name, email }`. processInboundMessage ejecuta side-effects de provide_email (update lead, generateQrToken, createConfirmation, sendEventQrPassEmail) cuando el plan tiene ese flag.
-    - Pre-procesador (l├¡nea ~3859, override `interactive_event_inscribir` por `awaitingConfirmationForSlug` + affirmative): si hay `awaitingField` activo, NO saltar a `interactive_event_inscribir` ΓÇö re-clasificar con `detectIntent` (flujo normal: provide_name/email/question). Bloquea el loop "Si" durante captura.
-    - Handler `question`: aceptar nuevo arg `pendingAwaitingField`. Si est├í, preservar `awaiting_field` en metadata del outbound (no se pierde el flow cuando lead hace pregunta intermedia). Inyectar instrucci├│n al LLM como sufijo de `lastIncomingMessage` para que cierre re-preguntando el campo.
-    - `event_rules` del evento: agregar 6 reglas nuevas (anti-alucinaci├│n "ya tienes tu lugar apartado" sin email capturado + reglas de captura desordenada + reglas de affirmative loop).
-  - **C. Handler provide_name frente a pregunta intermedia**: si body es pregunta (no nombre), devolver mensaje que reconoce la pregunta y promete responderla al completar registro, manteniendo `awaiting_field="name"`. Refactor futuro: invocar LLM desde provide_name para responder preguntas frecuentes mientras se completa la captura.
+- **Impacto:** Nueva pagina /cert/[folio] (server component, auth admin por cookie). Replica 1:1 el Concept C: panel morado diagonal con chevrons, brand block, course-info (con auto-wrap del titulo si es largo), hero name partido en 2 lineas (accent en segunda palabra), deco-line con estrella amarilla, reason, signature de Paul Velasquez, QR hacia qlick.digital/filosofia, sparkles decorativos. El boton Certificado del admin (/admin/eventos/[id]) ahora apunta a /cert/[folio] con fallback al endpoint viejo si no hay folio. Fonts Plus Jakarta Sans + Inter + JetBrains Mono cargadas desde Google Fonts CDN. Como bonus, corregir 2 PNGs que estaban corruptos en UTF-16 desde el commit original (paul-signature.png y qlick-q-icon.png).
 
-- **Raz├│n:** David expl├¡citamente pidi├│ "arreglar todo ya, adem├ís... capacidad de atrapar datos aunque no est├⌐n en orden, prioridad capturar datos y cerrar lead". El funnel actual ten├¡a fugas cr├¡ticas 4 d├¡as antes del evento.
+- **Trigger:** Sesiones paralelas del cert se paraban pidiendo visualizacion vs iterando PDF. David pidio explicitamente "centremonos en que tu haces las pruebas si necesitas validacion visual me dices ve a revisarlo y donde" y cerro el loop: yo hice el screenshot, lo mostre, David valido visualmente, hicimos cleanup del cert debug y commit.
 
-- **Impacto:**
-  - Bot contesta precio/constancia/Zoom/temario del evento 11 jul con datos oficiales (sin improvisar).
-  - Lead que manda nombre + email juntos se registra en 1 turno (QR generado, email enviado, confirmation creada). Antes: 3-4 turnos con fricci├│n.
-  - "Si" durante captura de nombre/email NO dispara inscripci├│n falsa ΓÇö mantiene el flow actual.
-  - Pregunta intermedia mientras se espera nombre/email YA NO pierde el awaiting_field ΓÇö pr├│ximo turno re-entra como provide_name/provide_email.
+- **Validacion:** Screenshot full-page de localhost:3000/cert/QLK-2026-69164 (folio de prueba, attendee Mavis Demo Test, evento Marketing IA para Emprendedores) — renderizado completo, layout identico al design aprobado, isotipo Q + firma de Paul visibles, datos inyectados correctos. Commit 8454577 en feat/certificados-concept-c.
 
-- **Archivos tocados:**
-  - `src/lib/whatsapp/bot-engine.ts` (~250 l├¡neas modificadas, todas con comentarios FIX 2026-07-07).
-  - `tests/whatsapp-bot-capture-disorderly.test.mjs` (nuevo, 23 tests).
-  - `scripts/_inspect-event-for-bot.mjs` (nuevo, diagn├│stico DB).
-  - `scripts/_patch-event-jul11-info.mjs` (nuevo, UPDATE DB con info del evento).
-  - `scripts/_patch-event-rules-no-affirm.mjs` (nuevo, UPDATE event_rules del evento).
+- **Cleanup:** Cert debug QLK-2026-69164 + attendee mavis+test@qlick.app eliminados de la DB via SQL Editor (David). ADMIN_EMAIL_ALLOWLIST revertido a vacio en .env.local (estaba seteado a mavis+debug@qlick.app solo para validacion local). Dev server detenido.
 
-- **Validaci├│n:** type-check Γ£ô (0 errores), lint Γ£ô (0 warnings), 606/606 tests Γ£ô (583 ΓåÆ 606, +23 nuevos), build Γ£ô. DB cambios aplicados (description + event_rules del evento AA4E / id `eeb2070e-...`).
+- **Coordinacion con otro agente:** Sesion paralela mvs_84fdd5764db0416195a07ed2f351c8cf (rama feat/event-reminders-whatsapp) hizo cross-branch accidental, sus archivos terminaron en mi working tree. Resolvimos via chat: yo no commitee sus archivos (event-reminders.ts, email/reminder.ts, templates/reminder.ts, vercel.json, tests/cron-event-reminders.test.mjs), los deje como modified para que los recupere al checkout de su rama. Mi commit cc03c0f se hizo por error en su rama (working tree estaba ahi) — movido a feat/certificados-concept-c via reset --hard ea4f096 + cherry-pick 8454577.
 
-- **Trigger:** David pidi├│ resolver las dudas b├ísicas del evento del 11 jul a 4 d├¡as de la fecha.
-
-- **Pendiente post-evento 11 jul:** refactor para extraer la l├│gica duplicada del side-effect chain de provide_email (update email + QR + confirmation + email) en una helper `executeEmailRegistration` llamada desde ambos paths (case provide_email + bloque implicit_capture). Hoy son ~80 l├¡neas duplicadas con comentario "REFACTOR: extract to helper".
-
-## 2026-07-07 ~22:00 ┬╖ Registro manual de Gabriela Ter├ín + fix hora landing publica
-
-- **Pregunta:** David (sesi├│n 2026-07-07 ~21:50) atendi├│ manualmente a una persona por WhatsApp directo (no v├¡a bot) que dio los datos: **Gabriela Ter├ín ΓÇö terangabriela467@gmail.com**. Pidi├│ registrarla al evento y tener capacidad futura de agregar confirmados manuales. Adicionalmente David cambi├│ la hora del evento del 11 jul a las 11 AM pero la landing publica `https://qlick-three.vercel.app/eventos/marketing-ia-para-emprendedores` segu├¡a mostrando hora incorrecta (dependiente del timezone del navegador del visitante, no del server).
-
-- **Decisi├│n (3 frentes)**:
-  - **A. Nuevo script `scripts/_register-attendee-manual.mjs`** (CLI): acepta `--event <slug|shortCode>`, `--name`, `--email`, `--phone` (opcional), `--dry-run`, `--no-email`. Pipeline: resolve evento ΓåÆ upsert lead (consent=true, source='manual') ΓåÆ create/find confirmation ΓåÆ create QR token ΓåÆ sendEventQrPassEmail (best-effort si Brevo configurada). Idempotente en cada paso. Sentinel para attendees sin tel├⌐fono: `+1manual<email_hash>` (columna `attendee_phone_normalized` es NOT NULL). Fallback de `NEXT_PUBLIC_APP_URL` al dominio can├│nico `https://www.qlick.digital` cuando la var no est├í seteada en el script.
-  - **B. Fix bug hora en `src/app/eventos/[slug]/EventView.tsx:formatEventDate`**: agregu├⌐ `timeZone: EVENT_TIMEZONE` (America/Phoenix) a `toLocaleString` y sufijo "(hora Pac├¡fico)" al final. ANTES: el c├│digo usaba la zona horaria del navegador del visitante (un lead en CDMX ve├¡a otra hora). AHORA: TODOS los visitantes ven la hora real del evento (11:00 hora Pac├¡fico para el evento del 11 jul), igual que admin y emails.
-  - **C. Ejecuci├│n real:** Gabriela Ter├ín fue registrada en DB via el script nuevo. Lead `cf300cc0-fb81-41d8-9e99-cefd271e1c84` + confirmation `57584fc3-48a9-43ea-8ad4-3e8ce331264d` + QR token `fVKaEdx3QcFC2HPzon0de12APTwmf4qy` con URL `https://www.qlick.digital/check-in/fVKaEdx3QcFC2HPzon0de12APTwmf4qy`. Email NO se envi├│ en este run (Brevo API key ausente en session local; est├í encriptada en Vercel runtime). Verificaci├│n de Vercel via `vercel env ls`: `BREVO_API_KEY` S├ì est├í configurada en Preview + Production (Brevo, Resend migration previa).
-
-- **Raz├│n:** David expl├¡citamente pidi├│ (a) registrar a Gabriela ya, (b) tener capacidad futura de agregar confirmados manuales sin bot, (c) arreglar el bug de la hora.
-
-- **Impacto:**
-  - Gabriela queda registrada como confirmada del evento AA4E con QR token; el admin panel /admin/eventos/[id] la muestra en el tab Confirmados.
-  - David puede correr el script en cualquier momento para futuros confirmados manuales.
-  - Landing p├║blica ahora muestra 11:00 hora Pac├¡fico sin importar desde d├│nde se abra (m├│vil, desktop, zona horaria visitante).
-  - Email de Gabriela queda como gap operacional (gap menor: Brevo funciona en Vercel runtime, la pr├│xima vez que alguien se inscriba por el bot le llega el email normal).
-
-- **Archivos tocados:**
-  - `scripts/_register-attendee-manual.mjs` (nuevo, ~330 l├¡neas).
-  - `src/app/eventos/[slug]/EventView.tsx` (modificado: agregar `timeZone: EVENT_TIMEZONE` + import de `@/lib/datetime`).
-  - **No tocados:** `event_qr_tokens` schema (la columna `lead_id` que el bot-engine usa como fallback NO existe ΓÇö bug latente del bot-engine.ts:973; el script lo replica correctamente usando solo `attendee_phone_normalized`).
-
-- **Validaci├│n:** type-check Γ£ô (0 errores), lint Γ£ô, 606/606 tests Γ£ô (no toqu├⌐ tests), build OK.
-
-- **Commits:** `3bd532e` en main, pusheado a `origin/main` por la sesi├│n Mavis con credenciales api-box + GH_TOKEN. Auto-deploy Vercel disparado.
-
-- **Pendiente:** resolver el email de Gabriela (Brevo local vac├¡a). Opciones: (a) David pega `BREVO_API_KEY` en `.env.local` y yo regenero el email con el script nuevo; (b) creo endpoint admin `/api/admin/resend-event-email` para futuros re-env├¡os sin necesidad de script local. Default: dejar para que ella reciba el recordatorio de 24h antes que sale por el cron de reminders.
-
-- **Trigger:** David pidi├│ "poder confirmar manuales, poder agregarlos" durante la revisi├│n del fix de captura desordenada del evento 11 jul.
-
-
-### 2026-07-08 - feat(pagos): FASE 2 hardening pre-live
-Type: deploy-relevant
-
-- **Commit:** 6eecf2a en main, pusheado a origin/main (135be8e..6eecf2a).
-- **Vectores resueltos (4):**
-  - V1: amount validation anti-fraude en webhook (status=suspicious_amount_discrepancy)
-  - V2: RPC get_user_id_by_email O(1) (reemplaza listUsers perPage:1000)
-  - V3: Becas $0 inline (provider=scholarship_free, sin Stripe)
-  - V4: Rate limit 3/h IP+email en resendGuestAccessLink
-- **Validacion:** type-check OK, lint OK, 618/618 tests OK (606 + 12 nuevos en tests/payments-fase2-hardening.test.mjs), build OK.
-- **Pendiente go-live:** David testea 4 vectores E2E en incognito, luego flip a sk_live_* via checklist en docs/PAYMENTS_AUDIT_2026-07-08.md seccion FASE 2.
-- **Trigger:** SRE marco los 4 como MUST-FIX en auditoria del 2026-07-08 04:00. Bloqueante para sk_live_*.
+---
 
 ### 2026-07-10 ~05:17 - fix(reminders) SQL || docs(sprint3) backlog + cross-review aprobado
 Type: deploy-relevant
@@ -3050,4 +3003,116 @@ Type: deploy-relevant
   hace cross-review conmigo antes de su commit + push.
 - **Trigger:** coordinacion con agent paralelo (serializacion para evitar
   conflictos en mismo working tree, post-mortem del incidente de la
-  madrugada donde se cruzaron working trees). David aprobo el plan ordenado.
+  - Pregunta intermedia mientras se espera nombre/email YA NO pierde el awaiting_field — próximo turno re-entra como provide_name/provide_email.
+
+- **Archivos tocados:**
+  - `src/lib/whatsapp/bot-engine.ts` (~250 líneas modificadas, todas con comentarios FIX 2026-07-07).
+  - `tests/whatsapp-bot-capture-disorderly.test.mjs` (nuevo, 23 tests).
+  - `scripts/_inspect-event-for-bot.mjs` (nuevo, diagnóstico DB).
+  - `scripts/_patch-event-jul11-info.mjs` (nuevo, UPDATE DB con info del evento).
+  - `scripts/_patch-event-rules-no-affirm.mjs` (nuevo, UPDATE event_rules del evento).
+
+- **Validación:** type-check ✓ (0 errores), lint ✓ (0 warnings), 606/606 tests ✓ (583 → 606, +23 nuevos), build ✓. DB cambios aplicados (description + event_rules del evento AA4E / id `eeb2070e-...`).
+
+- **Trigger:** David pidió resolver las dudas básicas del evento del 11 jul a 4 días de la fecha.
+
+- **Pendiente post-evento 11 jul:** refactor para extraer la lógica duplicada del side-effect chain de provide_email (update email + QR + confirmation + email) en una helper `executeEmailRegistration` llamada desde ambos paths (case provide_email + bloque implicit_capture). Hoy son ~80 líneas duplicadas con comentario "REFACTOR: extract to helper".
+
+## 2026-07-07 ~22:00 · Registro manual de Gabriela Terán + fix hora landing publica
+
+- **Pregunta:** David (sesión 2026-07-07 ~21:50) atendió manualmente a una persona por WhatsApp directo (no vía bot) que dio los datos: **Gabriela Terán — terangabriela467@gmail.com**. Pidió registrarla al evento y tener capacidad futura de agregar confirmados manuales. Adicionalmente David cambió la hora del evento del 11 jul a las 11 AM pero la landing publica `https://qlick-three.vercel.app/eventos/marketing-ia-para-emprendedores` seguía mostrando hora incorrecta (dependiente del timezone del navegador del visitante, no del server).
+
+- **Decisión (3 frentes)**:
+  - **A. Nuevo script `scripts/_register-attendee-manual.mjs`** (CLI): acepta `--event <slug|shortCode>`, `--name`, `--email`, `--phone` (opcional), `--dry-run`, `--no-email`. Pipeline: resolve evento → upsert lead (consent=true, source='manual') → create/find confirmation → create QR token → sendEventQrPassEmail (best-effort si Brevo configurada). Idempotente en cada paso. Sentinel para attendees sin teléfono: `+1manual<email_hash>` (columna `attendee_phone_normalized` es NOT NULL). Fallback de `NEXT_PUBLIC_APP_URL` al dominio canónico `https://www.qlick.digital` cuando la var no está seteada en el script.
+  - **B. Fix bug hora en `src/app/eventos/[slug]/EventView.tsx:formatEventDate`**: agregué `timeZone: EVENT_TIMEZONE` (America/Phoenix) a `toLocaleString` y sufijo "(hora Pacífico)" al final. ANTES: el código usaba la zona horaria del navegador del visitante (un lead en CDMX veía otra hora). AHORA: TODOS los visitantes ven la hora real del evento (11:00 hora Pacífico para el evento del 11 jul), igual que admin y emails.
+  - **C. Ejecución real:** Gabriela Terán fue registrada en DB via el script nuevo. Lead `cf300cc0-fb81-41d8-9e99-cefd271e1c84` + confirmation `57584fc3-48a9-43ea-8ad4-3e8ce331264d` + QR token `fVKaEdx3QcFC2HPzon0de12APTwmf4qy` con URL `https://www.qlick.digital/check-in/fVKaEdx3QcFC2HPzon0de12APTwmf4qy`. Email NO se envió en este run (Brevo API key ausente en session local; está encriptada en Vercel runtime). Verificación de Vercel via `vercel env ls`: `BREVO_API_KEY` SÍ está configurada en Preview + Production (Brevo, Resend migration previa).
+
+- **Razón:** David explícitamente pidió (a) registrar a Gabriela ya, (b) tener capacidad futura de agregar confirmados manuales sin bot, (c) arreglar el bug de la hora.
+
+- **Impacto:**
+  - Gabriela queda registrada como confirmada del evento AA4E con QR token; el admin panel /admin/eventos/[id] la muestra en el tab Confirmados.
+  - David puede correr el script en cualquier momento para futuros confirmados manuales.
+  - Landing pública ahora muestra 11:00 hora Pacífico sin importar desde dónde se abra (móvil, desktop, zona horaria visitante).
+  - Email de Gabriela queda como gap operacional (gap menor: Brevo funciona en Vercel runtime, la próxima vez que alguien se inscriba por el bot le llega el email normal).
+
+- **Archivos tocados:**
+  - `scripts/_register-attendee-manual.mjs` (nuevo, ~330 líneas).
+  - `src/app/eventos/[slug]/EventView.tsx` (modificado: agregar `timeZone: EVENT_TIMEZONE` + import de `@/lib/datetime`).
+  - **No tocados:** `event_qr_tokens` schema (la columna `lead_id` que el bot-engine usa como fallback NO existe — bug latente del bot-engine.ts:973; el script lo replica correctamente usando solo `attendee_phone_normalized`).
+
+- **Validación:** type-check ✓ (0 errores), lint ✓, 606/606 tests ✓ (no toqué tests), build OK.
+
+- **Commits:** `3bd532e` en main, pusheado a `origin/main` por la sesión Mavis con credenciales api-box + GH_TOKEN. Auto-deploy Vercel disparado.
+
+- **Pendiente:** resolver el email de Gabriela (Brevo local vacía). Opciones: (a) David pega `BREVO_API_KEY` en `.env.local` y yo regenero el email con el script nuevo; (b) creo endpoint admin `/api/admin/resend-event-email` para futuros re-envíos sin necesidad de script local. Default: dejar para que ella reciba el recordatorio de 24h antes que sale por el cron de reminders.
+
+- **Trigger:** David pidió "poder confirmar manuales, poder agregarlos" durante la revisión del fix de captura desordenada del evento 11 jul.
+
+---
+
+## 2026-07-08 ~01:38 — Sprint Certificados Concept C (PDF nativo idempotente)
+
+- **Pregunta:** Cómo emitimos certificados de asistencia reales para los attendees (PDF nativo, no placeholder HTML), con QR que lleve a `/filosofia` (NO `/verify/{folio}`), persistencia idempotente y UI brand-cumple con el Concept C del agente de diseño.
+- **Decisión:** Cableado final del flujo de emisión completo en 4 commits sobre `feat/certificados-concept-c`:
+  1. `aca349e` — `feat(filosofia): landing del QR del certificado concept-c` (ruta destino del QR)
+  2. `98124ff` — `chore(deps): agregar @react-pdf/renderer para emisión de certificados PDF`
+  3. `da06af2` — `feat(certificates): Sprint Concept C — template PDF + emisión idempotente` (template + tabla `event_certificates` + RPC `issue_event_certificate()` + 3 assets PNG/SVG en `public/certificates/`)
+  4. `9787a2f` — `feat(api): endpoint /events/[id]/certificate emite PDF nativo (Concept C)` + script E2E `test-cert-issue.mjs`
+
+  Cambios técnicos clave:
+  - Endpoint `GET /api/events/[id]/certificate/[attendeeId]` ahora devuelve `application/pdf` generado con `@react-pdf/renderer` (antes devolvía HTML imprimible placeholder — FIX 2026-07-06).
+  - Idempotencia: tabla `event_certificates` con `folio UNIQUE` (regex `^QLK-\d{4}-\d{5}$` enforced en CHECK constraint) + `UNIQUE (event_id, attendee_id)`. Re-pedir el cert del mismo attendee devuelve el mismo folio.
+  - Emisión race-safe: RPC `issue_event_certificate()` en PL/pgSQL con EXCEPTION handler — si dos requests compiten por el mismo attendee, una INSERTa y la otra hace SELECT del ganador.
+  - QR codifica `${BASE_URL}/filosofia` (decisión David: cert branded, NO verificable por folio). URL NO estampada como texto en el cert — solo el QR visual.
+  - Template reproduce `docs/qlick-cert-system/03-concept-c-dynamic-authority.html`: panel diagonal morado (38% ancho) + brand block + course info + hero nombre + signature+QR.
+  - Validaciones equivalentes al placeholder (delegate a `issueCertificate`): attendee pertenece al evento + check-in hecho + nombre real (regex de placeholder).
+
+- **Razón:** David pidió "termina de cablear con cuidado de no romper nada, objetivo: generar certificados para asistentes, debe quedar cableado final. Para pruebas podemos usar registrados". El placeholder HTML era temporal y el sprint era la Fase 2 de la decisión original ("Concept C con QR a /filosofia porque es frase de marca, no verificación").
+
+- **Impacto:**
+  - Para el admin: botón "Certificado" en `/admin/eventos/[id]` ya sirve un PDF nativo A4 landscape con el Concept C. Idempotente — el mismo attendee da el mismo folio siempre. Mismas validaciones que antes (check-in + nombre real).
+  - Para el asistente: el cert escaneable lleva a `/filosofia` (frase fundacional de marca) en vez de a una URL de verificación. Decisión consciente: es un artefacto de marca, no un documento legal.
+  - Para el sistema: 2 migrations nuevas + nueva dep `@react-pdf/renderer` (production, no dev). 606/606 tests existentes siguen pasando. `npm run build` pasa (55 rutas, `/filosofia` static, endpoint cert como dynamic).
+
+- **Archivos tocados (11 nuevos + 1 modificado):**
+  - Nuevos: `src/lib/certificates/{types,folio,asset-loader,qr-helper,render-certificate,issue-certificate}.{ts,tsx}`
+  - Modificado: `src/app/api/events/[id]/certificate/[attendeeId]/route.ts` (HTML placeholder → PDF nativo, 339 → ~120 líneas)
+  - Assets (copias): `public/certificates/{paul-signature.png, qlick-q-icon.png, qlick-wordmark-compact.svg}`
+  - Migrations: `supabase/migrations/20260708010000_event_certificates.sql` (tabla + RLS admin-only + folio regex enforced), `supabase/migrations/20260708020000_event_certificates_rpc.sql` (RPC race-safe)
+  - E2E: `scripts/test-cert-issue.mjs` (HTTP smoke con cookie admin)
+
+- **No tocados:** `docs/qlick-cert-system/*` (HTMLs Concept A/B/C y assets son del agente de diseño). `src/types/index.ts` (Certificate type legacy es de cursos, no eventos). Endpoint logic y validaciones se preservaron 1:1 con el placeholder.
+
+- **Validación:**
+  - type-check ✓ (0 errores). Lint ✓ (eslint-disable-next-line en `<Image>` porque `@react-pdf/renderer` no soporta `alt` en su `ImageProps`).
+  - 606/606 tests existentes pasan (no se tocó ningún test).
+  - `next build` ✓ — `/filosofia` se prerenderiza static (2.91 kB), `/api/events/[id]/certificate/[attendeeId]` queda dynamic (force-dynamic).
+
+- **Pendiente para mergear a `main` (acciones David):**
+  1. Aplicar las 2 migrations en Supabase vía SQL Editor (orden: tabla primero, RPC segundo).
+  2. Regenerar `src/types/supabase.ts` con `supabase gen types typescript` y remover los `as any` en `issue-certificate.ts` (la RPC + tabla nuevas son casts `as any` solo porque el typegen todavía no las conoce).
+  3. Validar end-to-end con `node scripts/test-cert-issue.mjs` (requiere `ADMIN_COOKIE` + `EVENT_ID` + `ATTENDEE_ID` + dev server corriendo + migrations aplicadas).
+  4. Decidir si se hace emisión automática post-check-in (hook en `CheckInTab.tsx`) o se deja como acción manual del admin. Default: manual, para evitar emisiones accidentales.
+
+- **Trigger:** David dijo "estabamos haciendo esto Concept C... vamos a retomar, terminas de cablear, con cuidado de no romper nada, el objetivo es poder generar los certificados para los asistentes, solo para pruebas podemos usar registrados para generar y revisar, pero debe quedar cableado final para asistentes".
+
+---
+
+## 2026-07-08 ~15:21 · Sprint Concept C — pivote de PDF nativo a HTML imprimible
+
+- **Pregunta:** El sprint Concept C llevaba 2 sesiones intentando emitir PDFs nativos con @react-pdf/renderer (commit da06af2). En runtime fallaba con errores opacos de pdfkit ("missing required error components") y perdiamos fidelidad visual del design aprobado (gradientes, font weight 900, clip-path diagonal, sparkles). Ademas Vercel Hobby no aguanta headless browsers (@sparticuz/chromium / playwright / puppeteer).
+
+- **Decision:** Pivote total — la app entrega la pagina HTML identica a docs/qlick-cert-system/03-concept-c-dynamic-authority.html y vos la convertis a PDF localmente con Ctrl+P → Guardar como PDF. Fidelity 100% porque es el mismo motor del browser rendereando el mismo HTML. Cero costo de compute en Vercel. Endpoint viejo /api/events/[id]/certificate/[attendeeId] deprecado a redirect HTML informativo.
+
+- **Razon:** Vercel Hobby + la densidad visual del Concept C hacen inviable cualquier opcion server-side de generacion de PDF. La conversion local es deterministica, gratis, y mantiene fidelidad perfecta del design aprobado por vos y Paul.
+
+- **Impacto:** Nueva pagina /cert/[folio] (server component, auth admin por cookie). Replica 1:1 el Concept C: panel morado diagonal con chevrons, brand block, course-info (con auto-wrap del titulo si es largo), hero name partido en 2 lineas (accent en segunda palabra), deco-line con estrella amarilla, reason, signature de Paul Velasquez, QR hacia qlick.digital/filosofia, sparkles decorativos. El boton Certificado del admin (/admin/eventos/[id]) ahora apunta a /cert/[folio] con fallback al endpoint viejo si no hay folio. Fonts Plus Jakarta Sans + Inter + JetBrains Mono cargadas desde Google Fonts CDN. Como bonus, corregir 2 PNGs que estaban corruptos en UTF-16 desde el commit original (paul-signature.png y qlick-q-icon.png).
+
+- **Trigger:** Sesiones paralelas del cert se paraban pidiendo visualizacion vs iterando PDF. David pidio explicitamente "centremonos en que tu haces las pruebas si necesitas validacion visual me dices ve a revisarlo y donde" y cerro el loop: yo hice el screenshot, lo mostre, David valido visualmente, hicimos cleanup del cert debug y commit.
+
+- **Validacion:** Screenshot full-page de localhost:3000/cert/QLK-2026-69164 (folio de prueba, attendee Mavis Demo Test, evento Marketing IA para Emprendedores) — renderizado completo, layout identico al design aprobado, isotipo Q + firma de Paul visibles, datos inyectados correctos. Commit 8454577 en feat/certificados-concept-c.
+
+- **Cleanup:** Cert debug QLK-2026-69164 + attendee mavis+test@qlick.app eliminados de la DB via SQL Editor (David). ADMIN_EMAIL_ALLOWLIST revertido a vacio en .env.local (estaba seteado a mavis+debug@qlick.app solo para validacion local). Dev server detenido.
+
+- **Coordinacion con otro agente:** Sesion paralela mvs_84fdd5764db0416195a07ed2f351c8cf (rama feat/event-reminders-whatsapp) hizo cross-branch accidental, sus archivos terminaron en mi working tree. Resolvimos via chat: yo no commitee sus archivos (event-reminders.ts, email/reminder.ts, templates/reminder.ts, vercel.json, tests/cron-event-reminders.test.mjs), los deje como modified para que los recupere al checkout de su rama. Mi commit cc03c0f se hizo por error en su rama (working tree estaba ahi) — movido a feat/certificados-concept-c via reset --hard ea4f096 + cherry-pick 8454577.
+>>>>>>> feat/certificados-concept-c
