@@ -21,6 +21,38 @@
 
 ---
 
+## 2026-07-11 ~10:40 — Sprint cierre-eventos-virtuales: UPSERT attendee + promote lead en Q0
+
+- **Pregunta:** Cuando un confirmado respondía la Q0 de la encuesta post-evento por el link email/WhatsApp (camino "email-only", sin haber abierto el gate virtual ni escaneado el QR), su asistencia NO quedaba registrada en el funnel del evento ni en el CRM. Dos gaps:
+  1. El bloque attendance check de `surveys-server.ts` hacía UPDATE sobre un row existente de `event_attendees`. Si no existía, no aplicaba. El confirmado email-only quedaba con `checked_in_at=NULL`.
+  2. Aunque el `checked_in_at` se seteara, el `lead.status` NO se promovía a `event_attended` en el CRM (el funnel quedaba desfasado).
+
+- **Decisión:** Reescribir el bloque para hacer **UPSERT** del attendee (con `source='survey_attended'`, nuevo valor del enum) y **promover el lead** a `event_attended` con tag `event:{slug}:attended`. Mismo patrón que `api/check-in/route.ts:409-437`. Refactor: extraer la decisión "asistió" al helper puro `detectAttendanceCheck` para que sea testeable sin DB.
+
+- **Razón:** Cierra el ciclo "confirmado → asistencia real" para el caso email-only antes del próximo evento Zoom. Sin esto, los confirmados que solo abren el link del email (los más comunes en producción real) no quedan contados como asistentes, y el CRM no refleja la realidad.
+
+- **Impacto:**
+  - Confirmados email-only ahora SÍ quedan como asistentes (nuevo row `event_attendees` con `source='survey_attended'`).
+  - Sus leads SÍ avanzan a `event_attended` en el CRM.
+  - Idempotente: si el confirmado ya tenía row (gate click o check-in), solo se setea `checked_in_at` preservando `source` original.
+  - Si el lead ya estaba en `event_attended`, no-op. Si estaba en `lost`/`archived`, respetamos (no resucitamos).
+
+- **Archivos tocados (1 nuevo, 4 modificados, 1 migration, 1 test):**
+  - **NUEVO** `supabase/migrations/20260711100000_event_attendee_source_survey_attended.sql` (ALTER TYPE ADD VALUE).
+  - **NUEVO** `src/lib/events/survey-attendance-check.ts` (helper puro `detectAttendanceCheck`).
+  - **NUEVO** `tests/survey-attendance-check.test.mjs` (10 tests del helper).
+  - **MODIFICADO** `src/lib/events/surveys-server.ts:271-360` (UPSERT attendee + promote lead + usa helper).
+  - **MODIFICADO** `src/types/events.ts:50-69` (nuevo valor en `EventAttendeeSource`).
+  - **MODIFICADO** `src/types/supabase.ts:1676-1684, 1871-1880` (typegen actualizado).
+
+- **Validación:** type-check ✓ · lint ✓ · **1066/1066 tests pass** (de 1056 → +10 nuevos) · build ✓. Push OK a `fix/cierre-eventos-virtuales-promote-lead-upsert-attendee`.
+
+- **Pendiente:** Aplicar la migration en Supabase antes del próximo deploy. David corre en SQL Editor: `supabase/migrations/20260711100000_event_attendee_source_survey_attended.sql`. Sin esto, el INSERT con `source='survey_attended'` falla con `invalid input value for enum`.
+
+- **Trigger:** Sesión David 2026-07-11 ~10:34 ("estoy confundido, resume que falta y que se debe arreglar"), pidió específicamente los gaps #1 y #2 del feature de link con encuesta. Commit `1e97849` en `fix/cierre-eventos-virtuales-promote-lead-upsert-attendee`.
+
+---
+
 ## 2026-06-29 ~02:30 ├é┬╖ Loop OAuth student con email admin
 
 - **Pregunta:** El login OAuth de alumno redirige a `/login` en loop infinito
