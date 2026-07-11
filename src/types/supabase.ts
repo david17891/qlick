@@ -1678,6 +1678,7 @@ export type Database = {
         | "imported_excel"
         | "zoom_export"
         | "manual"
+        | "survey_attended"
       event_confirmation_source:
         | "imported_excel"
         | "public_form"
@@ -1873,6 +1874,7 @@ export const Constants = {
         "imported_excel",
         "zoom_export",
         "manual",
+        "survey_attended",
       ],
       event_confirmation_source: [
         "imported_excel",
