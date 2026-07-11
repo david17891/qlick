@@ -9,5 +9,9 @@
       "path": "/api/cron/survey-reminders",
       "schedule": "0 5 * * *"
     }
+  ],
+  "alias": [
+    "qlick.digital",
+    "www.qlick.digital"
   ]
 }

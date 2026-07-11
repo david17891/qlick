@@ -12,10 +12,16 @@
  * y la misma lógica de actualización de payment + grantAccess.
  *
  * DEV-ONLY: este endpoint está bajo `/api/dev/` para hacer explícito que es
- * solo para desarrollo. En producción, debería ser eliminado o protegido con
- * un flag de environment. (Ver TODO al final.)
+ * solo para desarrollo. En producción, devuelve 404 (ver guard al inicio).
  *
- * Auth: requiere sesión de estudiante (no admin). Si no, 401.
+ * Auth (FIX 2026-07-11 A-3): dos modos válidos, en orden de precedencia:
+ *   1. **Header `x-dev-admin-secret`**: si `process.env.DEV_ADMIN_SECRET`
+ *      está configurado Y el header matchea, pasa sin auth de estudiante.
+ *      Para callers admin (scripts, tests, Playwright E2E).
+ *   2. **Sesión de estudiante** (`getCurrentStudent`): fallback para el
+ *      Client Component `/pagar/[courseSlug]/exito` que llama desde el browser.
+ *
+ * Si ninguno de los dos, 401. En producción, 404 antes de llegar acá.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -75,24 +81,56 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 1. Auth: solo estudiantes.
-  const session = await getCurrentStudent();
-  if (!session) {
-    return NextResponse.json(
-      { ok: false, message: "Necesitás iniciar sesión para simular un pago." },
-      { status: 401 },
-    );
-  }
+  // 1. Auth (FIX 2026-07-11 A-3): header DEV_ADMIN_SECRET O sesión de estudiante.
+  const providedSecret = req.headers.get("x-dev-admin-secret");
+  const expectedSecret = process.env.DEV_ADMIN_SECRET;
+  const isAdminCall = Boolean(
+    expectedSecret && providedSecret && providedSecret === expectedSecret,
+  );
 
   // 2. Parse body.
-  let body: SimulateRequest;
+  let body: SimulateRequest & { userId?: string };
   try {
-    body = (await req.json()) as SimulateRequest;
+    body = (await req.json()) as SimulateRequest & { userId?: string };
   } catch {
     return NextResponse.json(
       { ok: false, message: "Body inválido (JSON requerido)." },
       { status: 400 },
     );
+  }
+
+  // 3. Resolvemos el userId de la operación según el modo de auth.
+  //    Si isAdminCall, necesitamos un userId del body (campo opcional `userId`).
+  //    Si sesión de estudiante, usamos session.userId.
+  let effectiveUserId: string;
+  if (isAdminCall) {
+    // En modo admin, el caller DEBE especificar a qué userId se le
+    // simula el pago (no hay sesión). Si no viene, error 400.
+    if (typeof body.userId !== "string" || !body.userId) {
+      return NextResponse.json(
+        {
+          ok: false,
+          message:
+            "Modo admin (x-dev-admin-secret) requiere campo `userId` en el body.",
+        },
+        { status: 400 },
+      );
+    }
+    effectiveUserId = body.userId;
+  } else {
+    // Fallback: sesión de estudiante (Client Component).
+    const session = await getCurrentStudent();
+    if (!session) {
+      return NextResponse.json(
+        {
+          ok: false,
+          message:
+            "Necesitás enviar x-dev-admin-secret o tener sesión de estudiante para simular un pago.",
+        },
+        { status: 401 },
+      );
+    }
+    effectiveUserId = session.userId;
   }
 
   if (!body.courseSlug || typeof body.courseSlug !== "string") {
@@ -124,7 +162,7 @@ export async function POST(req: NextRequest) {
   // 4. Crear o encontrar el payment (idempotencia).
   //    Usamos un idempotency_key determinístico basado en user+course+method+event
   //    para que el simulador sea idempotente.
-  const idempotencyKey = `sim_${session.userId}_${course.id}_${method}_${body.event}`;
+  const idempotencyKey = `sim_${effectiveUserId}_${course.id}_${method}_${body.event}`;
   const newStatus = mapEventToStatus(body.event);
   const amountMxn = body.amountMxn ?? course.priceMXN ?? 0;
 
@@ -134,7 +172,7 @@ export async function POST(req: NextRequest) {
   const { data: existing } = await supabase
     .from("payments")
     .select("id, status")
-    .eq("user_id", session.userId)
+    .eq("user_id", effectiveUserId)
     .eq("course_id", course.id)
     .eq("idempotency_key", idempotencyKey)
     .maybeSingle();
@@ -158,7 +196,7 @@ export async function POST(req: NextRequest) {
     const { data: created, error: insErr } = await supabase
       .from("payments")
       .insert({
-        user_id: session.userId,
+        user_id: effectiveUserId,
         course_id: course.id,
         provider: "mock",
         external_reference: `MOCK-${idempotencyKey}`,
@@ -185,7 +223,7 @@ export async function POST(req: NextRequest) {
   if (body.event === "paid") {
     try {
       await grantAccess({
-        userId: session.userId,
+        userId: effectiveUserId,
         courseId: course.id,
         source: "simulated_payment",
         paymentId,
@@ -200,7 +238,7 @@ export async function POST(req: NextRequest) {
       // es para el ORIGEN del enrollment (qr/organic/referral/campaign), no el
       // método de pago, así que null es correcto.
       const enrollResult = await enrollUserInCourse(
-        session.userId,
+        effectiveUserId,
         course.id,
         null,
       );

@@ -671,6 +671,23 @@ export async function sendSurveyLinkToAllConfirmationsAction(
     failed?: number;
     skipped?: number;
     total?: number;
+    /**
+     * FIX 2026-07-11 (Gap #3): desglose por confirmado. Solo se devuelve
+     * si el orquestador lo expone — útil para que el admin vea los
+     * `waLink` pre-armados (los que tiene que mandar manual) y los
+     * errores individuales.
+     */
+    items?: Array<{
+      confirmationId: string;
+      attendeeName: string;
+      email: string | null;
+      phoneNormalized: string | null;
+      channel: "email" | "whatsapp" | "none";
+      sent: boolean;
+      note: string;
+      surveyUrl: string | null;
+      waLink: string | null;
+    }>;
   }
 > {
   const admin = await requireAdmin();
@@ -705,6 +722,10 @@ export async function sendSurveyLinkToAllConfirmationsAction(
     failed: result.failed,
     skipped: result.skipped,
     total: result.total,
+    // FIX 2026-07-11 (Gap #3): el orquestador ya devuelve items. Los
+    // exponemos al cliente para que el admin vea los waLinks de los
+    // confirmados con phone sin email (los que tiene que mandar manual).
+    items: result.items,
   };
 }
 

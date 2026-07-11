@@ -12,7 +12,7 @@ import {
   getSurveysByEventId,
   getUnmatchedConfirmations,
 } from "@/lib/events";
-import { getConfirmationsRespondedSurvey } from "@/lib/events/survey-tokens";
+import { getRespondedSurveySets } from "@/lib/events/survey-tokens";
 import { getLeadsForEvent } from "@/lib/crm";
 import { formatDate, appBaseUrl } from "@/lib/utils";
 import { filterConfirmations, resolveConfirmationSource } from "@/lib/events/confirmation-filter";
@@ -191,7 +191,7 @@ export default async function AdminEventoDetailPage({
     surveys,
     leadsWithLinks,
     unmatchedConfirmations,
-    respondedSet,
+    respondedSets,
   ] = await Promise.all([
     getEventById(params.id),
     getConfirmationsByEventId(params.id),
@@ -200,10 +200,11 @@ export default async function AdminEventoDetailPage({
     getSurveysByEventId(params.id),
     getLeadsForEvent(params.id),
     getUnmatchedConfirmations(params.id),
-    // Sprint cierre-eventos-virtuales (2026-07-11): set de confirmationId
-    // que ya respondieron la encuesta. Se usa para el badge "Respondió link"
-    // en la tabla de Confirmados.
-    getConfirmationsRespondedSurvey(params.id),
+    // FIX 2026-07-11 (Gap #5): el helper ahora devuelve 2 sets:
+    // - `confirmationIds` para tab Confirmados.
+    // - `attendeeIds` para tab Asistentes (tokens del bot/cron sin
+    //   confirmation_id linkeado).
+    getRespondedSurveySets(params.id),
   ]);
 
   if (!event) {
@@ -782,7 +783,7 @@ export default async function AdminEventoDetailPage({
                             Es el proxy de "asistencia real" para eventos
                             virtuales/hybrid. */}
                         <td className="px-5 py-3">
-                          {respondedSet.has(c.id) ? (
+                          {respondedSets.confirmationIds.has(c.id) ? (
                             <Badge tone="success" title="Ya respondió la encuesta post-evento">
                               ✓ Link
                             </Badge>

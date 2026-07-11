@@ -528,36 +528,83 @@ export async function getOrCreateSurveyTokenForContact(
 /* Helper: responded-set (sprint cierre-eventos-virtuales 2026-07-11)   */
 /* ------------------------------------------------------------------ */
 
+export interface RespondedSurveySets {
+  /** Set de `confirmation_id` cuyos survey tokens ya fueron respondidos. */
+  confirmationIds: Set<string>;
+  /**
+   * Set de `attendee_id` cuyos survey tokens ya fueron respondidos
+   * PERO no tienen `confirmation_id` (tokens creados por el bot de
+   * WhatsApp o el cron de `survey-reminders`, que no linkean a una
+   * confirmation específica).
+   *
+   * FIX 2026-07-11 (Gap #5): antes solo se matcheaban tokens con
+   * `confirmation_id IS NOT NULL`. Los respondedores que vinieron del
+   * bot/cron no aparecían con badge "✓ Link" en la tab Confirmados.
+   * Ahora se exponen aparte para que la UI pueda mostrarlos en la
+   * tab Asistentes (donde se matchea por `attendee_id`).
+   */
+  attendeeIds: Set<string>;
+}
+
 /**
- * Devuelve el set de `confirmation_id` cuyos survey tokens ya fueron
- * respondidos (`submitted_survey_id IS NOT NULL`) en el evento.
+ * Devuelve 2 sets de IDs cuyos survey tokens ya fueron respondidos
+ * (`submitted_survey_id IS NOT NULL`) en el evento:
  *
- * Usado por el panel admin (`tab=confirmations`) para mostrar el
- * badge "Respondió link ✓" por fila. Lookup O(N) sobre los tokens del
- * evento — fine para el tamaño típico de confirmados de Qlick
- * (decenas a baja centena). Si el volumen crece, agregar índice en
+ * - `confirmationIds`: tokens que tienen `confirmation_id` linkeado.
+ *   La tab Confirmados usa este set para mostrar el badge "✓ Link".
+ * - `attendeeIds`: tokens SIN `confirmation_id` pero CON `attendee_id`.
+ *   La tab Asistentes usa este set para mostrar el badge "✓ Link".
+ *
+ * Lookup O(N) sobre los tokens del evento — fine para el tamaño
+ * típico de confirmados de Qlick (decenas a baja centena). Si el
+ * volumen crece, agregar índice en
  * `event_survey_tokens(event_id, submitted_survey_id)`.
+ */
+export async function getRespondedSurveySets(
+  eventId: string,
+): Promise<RespondedSurveySets> {
+  const empty: RespondedSurveySets = {
+    confirmationIds: new Set(),
+    attendeeIds: new Set(),
+  };
+  if (!isRealMode()) return empty;
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("event_survey_tokens" as never)
+    .select("confirmation_id, attendee_id, submitted_survey_id")
+    .eq("event_id" as never, eventId)
+    .not("submitted_survey_id" as never, "is", null);
+  if (error || !data) return empty;
+  const out: RespondedSurveySets = {
+    confirmationIds: new Set(),
+    attendeeIds: new Set(),
+  };
+  for (const row of (data as unknown as Array<{
+    confirmation_id: string | null;
+    attendee_id: string | null;
+    submitted_survey_id: string | null;
+  }>)) {
+    if (!row.submitted_survey_id) continue;
+    if (row.confirmation_id) {
+      out.confirmationIds.add(row.confirmation_id);
+    } else if (row.attendee_id) {
+      out.attendeeIds.add(row.attendee_id);
+    }
+  }
+  return out;
+}
+
+/**
+ * DEPRECATED wrapper de `getRespondedSurveySets` para mantener
+ * backward-compat con código que ya importaba esta función.
+ * Devuelve solo el set de confirmationIds.
+ *
+ * FIX 2026-07-11 (Gap #5): preferir `getRespondedSurveySets` para
+ * tener también los attendeeIds.
  */
 export async function getConfirmationsRespondedSurvey(
   eventId: string,
 ): Promise<Set<string>> {
-  if (!isRealMode()) return new Set();
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("event_survey_tokens" as never)
-    .select("confirmation_id, submitted_survey_id")
-    .eq("event_id" as never, eventId)
-    .not("confirmation_id" as never, "is", null)
-    .not("submitted_survey_id" as never, "is", null);
-  if (error || !data) return new Set();
-  const out = new Set<string>();
-  for (const row of (data as unknown as Array<{
-    confirmation_id: string | null;
-    submitted_survey_id: string | null;
-  }>)) {
-    if (row.confirmation_id && row.submitted_survey_id) {
-      out.add(row.confirmation_id);
-    }
-  }
-  return out;
+  const sets = await getRespondedSurveySets(eventId);
+  return sets.confirmationIds;
 }

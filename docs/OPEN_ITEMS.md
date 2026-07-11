@@ -2025,7 +2025,34 @@ El commit `9c606de` ("captura universal de nombre humano en cualquier turno", me
 | 5 | **G-5** plantillas Meta creadas en Business Manager | 1 h + 24-48h Meta approval |
 | 6 | **G-6** 5 migrations aplicadas en Supabase | `npx supabase migration list` o SQL Editor |
 | 7 | **G-7** NEXT_PUBLIC_APP_URL en Vercel env vars | `vercel env ls production` + `vercel env add` con `https://www.qlick.digital` |
-| 8 | **Vercel aliases** agregar `productionAlias` | `vercel.json` + Vercel UI |
+
+### Sprint housekeeping 2026-07-11 ~12:20 Phoenix (Mavis implementó todo lo que podía solo)
+
+**Motivación:** David pidió "todo lo que puedes implementar solo" — cerrar los 5 gaps REALES que tocan código y que Mavis verificó en la sesión de reauditoría previa.
+
+**Resultado:** 5 gaps cerrados en una sola sesión, con validación completa (type-check ✓, lint ✓, 1066/1066 tests ✓).
+
+### Detalle de los 5 fixes
+
+| Gap | Archivo | Cambio |
+|---|---|---|
+| **Gap #3** modal detalle del envío | `src/app/admin/eventos/[id]/_components/SendSurveyLinkButton.tsx` + `src/app/admin/eventos/[id]/_actions.ts` | El botón "📨 Enviar link de encuesta" ahora muestra un botón "Ver detalle (N)" después del envío, que abre un modal con tabla por confirmado: nombre, contacto, canal (email/WhatsApp/sin canal), estado, y ACCIÓN (botón "💬 Mandar" para abrir WhatsApp Web con el waLink pre-armado de los confirmados con phone sin email). Antes David tenía que reconstruir el mensaje a mano del audit log. |
+| **Gap #4** rate-limit + dry-run | `src/app/admin/eventos/[id]/_components/SendSurveyLinkButton.tsx` | 1) Cooldown de 30s después del envío exitoso con countdown visible (evita doble click accidental que gasta emails de Brevo). 2) Checkbox "Solo preview (no enviar emails)" que pasa `dryRun=true` al server action — genera tokens y prepara links sin mandar emails. Útil para validar alcance antes del envío real. |
+| **Gap #5** responded set con attendee_id | `src/lib/events/survey-tokens.ts` + `src/app/admin/eventos/[id]/page.tsx` | El helper `getConfirmationsRespondedSurvey` (que solo matcheaba tokens con `confirmation_id`) se reemplaza por `getRespondedSurveySets` que devuelve 2 sets: `confirmationIds` (tokens con confirmation_id linkeado) + `attendeeIds` (tokens del bot/cron sin confirmation_id). La tab Confirmados usa el primero, la tab Asistentes (futuro) puede usar el segundo. El helper viejo se mantiene como wrapper para backward-compat. |
+| **A-3** simulate-webhook DEV_ADMIN_SECRET | `src/app/api/dev/simulate-webhook/route.ts` | El endpoint ahora acepta 2 modos de auth: (1) header `x-dev-admin-secret` (cualquier script admin), (2) sesión de estudiante (Client Component, sin cambio de comportamiento). Si `process.env.DEV_ADMIN_SECRET` está set Y el header matchea, pasa sin sesión de estudiante. En modo admin, el body debe incluir `userId` del usuario target. Mantiene guard de producción (404). |
+| **Vercel aliases** | `vercel.json` | Agregado `"alias": ["qlick.digital", "www.qlick.digital"]`. **Nota:** la memory rule previa mencionaba `productionAlias` que NO existe en el schema oficial de Vercel (el campo es `alias`). Vercel reasigna estos aliases automáticamente cuando un deploy a `main` queda `READY`. Antes de este fix, los aliases apuntaban al deploy anterior y David tenía que reasignarlos manualmente con `vercel alias set ...` (lo vivió el 2026-07-09). |
+
+### Pendientes (post-sprint 2026-07-11)
+
+**Mavis NO puede tocar (requieren acción de David):**
+- **G-5** plantillas Meta en Business Manager (1 h + 24-48h Meta approval)
+- **G-6** 5 migrations aplicadas en Supabase (verificar con `npx supabase migration list`)
+- **G-7** `NEXT_PUBLIC_APP_URL` en Vercel env vars (verificar valor actual con `vercel env ls production`)
+
+**Deuda P2 (futuro):**
+- **Gap #6** tests E2E del orquestador `send-survey-link.ts` (con mocks de Supabase + Brevo)
+- **Fase 4 CRM** paginación server-side (sprint 3-5 días)
+- **Audit voseo en pre-commit hook** (automatizar el script)
 
 ### Documentación actualizada en este pase
 
