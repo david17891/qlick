@@ -51,7 +51,19 @@ export type EventAttendeeSource =
   | "check_in"
   | "imported_excel"
   | "zoom_export"
-  | "manual";
+  | "manual"
+  /**
+   * FIX 2026-07-11 (sprint cierre-eventos-virtuales): el attendee fue
+   * confirmado porque respondió "Sí" en la Q0 de la encuesta post-evento
+   * (`isAttendanceCheck=true`). Usado por `surveys-server.ts` cuando
+   * el confirmado NUNCA abrió el gate virtual NI escaneó el QR — el
+   * UPSERT crea el row al vuelo con `checked_in_at=now()`. Si el row
+   * ya existía (gate click o check-in previo), se preserva el `source`
+   * original y solo se actualiza `checked_in_at` (idempotente).
+   *
+   * Migration: `20260711100000_event_attendee_source_survey_attended.sql`.
+   */
+  | "survey_attended";
 
 /** Tipo de vínculo lead ↔ event record (para `lead_event_links`). */
 export type LeadEventLinkType = "confirmation" | "attendee" | "survey";

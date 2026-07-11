@@ -1,0 +1,22 @@
+-- Sprint cierre-eventos-virtuales — fix 2026-07-11.
+--
+-- Agrega el valor `survey_attended` al enum `event_attendee_source`
+-- para identificar a los attendees cuyo `checked_in_at` se setea vía
+-- respuesta "Sí" en la Q0 de la encuesta post-evento (NO por check-in
+-- presencial, NO por click en el gate virtual, NO por import).
+--
+-- Hasta ahora el bloque attendance check de `surveys-server.ts:271-344`
+-- hacía UPDATE sobre un row existente de `event_attendees` con
+-- `source` heredado. Si el confirmado NUNCA había abierto el gate
+-- virtual ni escaneado el QR (camino email-only), el UPDATE no
+-- aplicaba → `checked_in_at` quedaba NULL → el funnel de asistencia
+-- no lo contaba.
+--
+-- FIX: el bloque ahora hace UPSERT con `source='survey_attended'`
+-- + checked_in_at=now() si el row no existe. Esto requiere que el
+-- enum acepte el nuevo valor.
+--
+-- Idempotente (ADD VALUE IF NOT EXISTS — Postgres 9.6+).
+-- Safe to re-run: si el valor ya existe, no-op.
+
+alter type public.event_attendee_source add value if not exists 'survey_attended';

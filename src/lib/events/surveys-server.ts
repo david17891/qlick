@@ -268,66 +268,167 @@ export async function createSurvey(
     // Silenciar import warning
     void calculateLeadScore;
 
-    // ────── Post-hook: attendance check (migration 20260707000000) ──────
+    // ────── Post-hook: attendance check (FIX 2026-07-11 cierre-eventos-virtuales) ──────
+    //
     // Si la survey tiene una pregunta con `isAttendanceCheck=true` y el
-    // usuario respondió la opción positiva (score > 0), marcamos
-    // `event_attendees.checked_in_at = now()` para confirmar asistencia
-    // real. Esto es el segundo proxy de asistencia virtual: el gate
-    // (click en SÍ, VOY) ya creó el attendee con checked_in_at=null;
-    // la survey lo confirma como realmente presente.
+    // usuario respondió la opción positiva (score > 0):
+    //
+    // 1. **UPSERT event_attendees** (antes UPDATE que fallaba silencioso si
+    //    el row no existía — gap que dejaba a confirmados email-only sin
+    //    check-in en el funnel de asistencia).
+    //    - Si ya existe row con (event_id, email) o (event_id, phone):
+    //      UPDATE `checked_in_at=now()` (preserva el `source` original:
+    //      check_in / zoom_export / etc.). Idempotente.
+    //    - Si NO existe: INSERT con `source='survey_attended'`,
+    //      `checked_in_at=now()`. migration
+    //      `20260711100000_event_attendee_source_survey_attended.sql`
+    //      agrega el valor al enum.
+    //
+    // 2. **PROMOVER lead a `event_attended`** en el CRM. Mismo patrón que
+    //    `api/check-in/route.ts:409-437`. Si el lead ya estaba en
+    //    `event_attended`, no-op. Si está en `lost`/`archived`, respetamos
+    //    (no resucitamos sin revisión manual). Tag
+    //    `event:{slug}:attended` para tracking por evento.
     //
     // Best-effort: si falla, la encuesta YA está persistida. El attendee
-    // queda con checked_in_at=null (sin confirmar), pero el survey ya
-    // capturó la respuesta del usuario.
+    // queda con `checked_in_at=null` (sin confirmar) y el lead sin
+    // promover, pero el survey capturó la respuesta del usuario.
     if (input.surveyConfig) {
-      const attQ = input.surveyConfig.questions.find(
-        (q) => q.isAttendanceCheck === true,
+      // FIX 2026-07-11: la decisión "asistió" se delega al helper puro
+      // `detectAttendanceCheck` (src/lib/events/survey-attendance-check.ts)
+      // para que sea testeable sin DB. La lógica de DB (UPSERT attendee
+      // + promote lead) sigue acá.
+      const { detectAttendanceCheck } = await import(
+        "./survey-attendance-check"
       );
-      if (attQ) {
-        const respValue = responses[attQ.id];
-        const respOption = attQ.options?.find((o) => o.id === respValue);
-        const attended = respOption && respOption.score > 0;
-        if (attended && (input.respondentEmail || input.phoneNormalized)) {
+      const detection = detectAttendanceCheck({
+        surveyConfig: input.surveyConfig,
+        responses,
+      });
+      const attQ = detection.questionId
+        ? input.surveyConfig.questions.find(
+            (q) => q.id === detection.questionId,
+          )
+        : null;
+      if (detection.attended && attQ) {
+        const respValue = detection.optionId;
+        if (input.respondentEmail || input.phoneNormalized) {
           const supabase2 = createSupabaseAdminClient();
-          let query = supabase2
-            .from("event_attendees")
-            .update({ checked_in_at: new Date().toISOString() } as never)
-            .eq("event_id" as never, input.eventId);
-          // Match por email O phone (PostgREST or).
-          // Construimos dos queries separadas y usamos la primera que
-          // matchee (más simple que OR con PostgREST filters).
-          if (input.respondentEmail) {
-            const { error: emailErr } = await supabase2
+          const nowIso = new Date().toISOString();
+          const emailLower = input.respondentEmail
+            ? input.respondentEmail.trim().toLowerCase()
+            : null;
+
+          // 1) UPSERT event_attendees (gap #2 fix).
+          //
+          // Buscar primero si ya existe un row con (event_id, email) o
+          // (event_id, phone). Si sí, UPDATE. Si no, INSERT.
+          // Hacemos 2 queries de lookup (email + phone) y un SELECT
+          // combinado para no duplicar rows.
+          let existingAttendeeId: string | null = null;
+          let existingSource: string | null = null;
+          if (emailLower) {
+            const { data: rowByEmail } = await supabase2
               .from("event_attendees")
-              .update({ checked_in_at: new Date().toISOString() } as never)
+              .select("id, source, checked_in_at")
               .eq("event_id" as never, input.eventId)
-              .eq("email" as never, input.respondentEmail.trim().toLowerCase())
-              .is("checked_in_at" as never, null);
-            if (emailErr) {
-              // eslint-disable-next-line no-console
-              console.warn("[surveys-server] attendance check email update falló", {
-                code: emailErr.code,
-              });
+              .eq("email" as never, emailLower)
+              .maybeSingle();
+            if (rowByEmail) {
+              const r = rowByEmail as {
+                id: string;
+                source: string | null;
+                checked_in_at: string | null;
+              };
+              existingAttendeeId = r.id;
+              existingSource = r.source;
             }
           }
-          if (input.phoneNormalized) {
-            const { error: phoneErr } = await supabase2
+          if (!existingAttendeeId && input.phoneNormalized) {
+            const { data: rowByPhone } = await supabase2
               .from("event_attendees")
-              .update({ checked_in_at: new Date().toISOString() } as never)
+              .select("id, source, checked_in_at")
               .eq("event_id" as never, input.eventId)
               .eq("phone_normalized" as never, input.phoneNormalized)
-              .is("checked_in_at" as never, null);
-            if (phoneErr) {
-              // eslint-disable-next-line no-console
-              console.warn("[surveys-server] attendance check phone update falló", {
-                code: phoneErr.code,
-              });
+              .maybeSingle();
+            if (rowByPhone) {
+              const r = rowByPhone as {
+                id: string;
+                source: string | null;
+                checked_in_at: string | null;
+              };
+              existingAttendeeId = r.id;
+              existingSource = r.source;
             }
           }
-          // `query` lo construimos para el typecheck — la lógica real
-          // está arriba (email + phone separados). Marcamos `void` para
-          // silenciar lint.
-          void query;
+
+          if (existingAttendeeId) {
+            // Row existe → UPDATE solo checked_in_at (preserva source).
+            // Idempotente: si ya estaba checkeado, sigue siendo now() (mismo
+            // segundo aprox, no afecta métricas).
+            const { error: updErr } = await supabase2
+              .from("event_attendees")
+              .update({ checked_in_at: nowIso } as never)
+              .eq("id" as never, existingAttendeeId);
+            if (updErr) {
+              // eslint-disable-next-line no-console
+              console.warn(
+                "[surveys-server] attendance check UPDATE attendee falló",
+                {
+                  code: updErr.code,
+                  attendeeId: existingAttendeeId,
+                },
+              );
+            }
+          } else {
+            // Row NO existe → INSERT con source='survey_attended' (nuevo).
+            // Race condition: si otro proceso inserta entre el lookup y
+            // el INSERT, choca por UNIQUE(event_id, email) si email viene.
+            // Manejamos 23505 (unique violation) re-leyendo.
+            const { error: insErr } = await supabase2
+              .from("event_attendees")
+              .insert({
+                event_id: input.eventId,
+                confirmation_id: input.confirmationId ?? null,
+                name: null, // el survey no tiene campo nombre; queda null
+                email: emailLower,
+                phone_normalized: input.phoneNormalized ?? null,
+                source: "survey_attended",
+                checked_in_at: nowIso,
+                checked_in_by: "survey:Q0",
+              } as never);
+            if (insErr && insErr.code !== "23505") {
+              // eslint-disable-next-line no-console
+              console.warn(
+                "[surveys-server] attendance check INSERT attendee falló",
+                {
+                  code: insErr.code,
+                  eventId: input.eventId,
+                },
+              );
+            } else if (insErr && insErr.code === "23505") {
+              // Race: alguien insertó entre el lookup y nuestro INSERT.
+              // UPDATEamos ese row.
+              const { data: racedRow } = await supabase2
+                .from("event_attendees")
+                .select("id")
+                .eq("event_id" as never, input.eventId)
+                .or(
+                  emailLower
+                    ? `email.eq.${emailLower},phone_normalized.eq.${input.phoneNormalized ?? "null"}`
+                    : `phone_normalized.eq.${input.phoneNormalized ?? "null"}`,
+                )
+                .maybeSingle();
+              if (racedRow) {
+                const racedId = (racedRow as { id: string }).id;
+                await supabase2
+                  .from("event_attendees")
+                  .update({ checked_in_at: nowIso } as never)
+                  .eq("id" as never, racedId);
+              }
+            }
+          }
+
           // eslint-disable-next-line no-console
           console.info(
             "[surveys-server] attendance check: attendee confirmado via survey",
@@ -335,10 +436,82 @@ export async function createSurvey(
               eventId: input.eventId,
               questionId: attQ.id,
               response: respValue,
-              email: input.respondentEmail ?? null,
+              email: emailLower,
               phone: input.phoneNormalized ?? null,
+              existingAttendeeId,
+              existingSource,
+              upserted: !existingAttendeeId,
             },
           );
+
+          // 2) PROMOVER lead a event_attended (gap #1 fix).
+          // Mismo patrón que `api/check-in/route.ts:409-437`.
+          if (emailLower || input.phoneNormalized) {
+            // Buscar el lead por email O phone (mismo event.slug para el tag).
+            const [{ data: leadByEmail }, { data: eventRow }] =
+              await Promise.all([
+                emailLower
+                  ? supabase2
+                      .from("leads")
+                      .select("id, status, tags")
+                      .eq("email" as never, emailLower)
+                      .limit(1)
+                      .maybeSingle()
+                  : Promise.resolve({ data: null as never }),
+                supabase2
+                  .from("events")
+                  .select("slug")
+                  .eq("id" as never, input.eventId)
+                  .maybeSingle(),
+              ]);
+            const { data: leadByPhone } =
+              !leadByEmail && input.phoneNormalized
+                ? await supabase2
+                    .from("leads")
+                    .select("id, status, tags")
+                    .eq("phone_normalized" as never, input.phoneNormalized)
+                    .limit(1)
+                    .maybeSingle()
+                : { data: null as never };
+            const lead = (leadByEmail ?? leadByPhone) as
+              | { id: string; status: string; tags: string[] | null }
+              | null;
+            if (lead) {
+              const wasAttended = lead.status === "event_attended";
+              const wasClosed =
+                lead.status === "lost" || lead.status === "archived";
+              if (!wasAttended && !wasClosed) {
+                const eventSlug =
+                  (eventRow as { slug: string } | null)?.slug ?? null;
+                const tagToAdd = eventSlug
+                  ? `event:${eventSlug}:attended`
+                  : null;
+                const existingTags = lead.tags ?? [];
+                const mergedTags = tagToAdd
+                  ? existingTags.includes(tagToAdd)
+                    ? existingTags
+                    : [...existingTags, tagToAdd]
+                  : existingTags;
+                await supabase2
+                  .from("leads")
+                  .update({
+                    status: "event_attended",
+                    tags: mergedTags,
+                    last_contacted_at: nowIso,
+                  } as never)
+                  .eq("id" as never, lead.id);
+                // eslint-disable-next-line no-console
+                console.info(
+                  "[surveys-server] lead promovido a event_attended via survey Q0",
+                  {
+                    leadId: lead.id,
+                    eventId: input.eventId,
+                    eventSlug,
+                  },
+                );
+              }
+            }
+          }
         }
       }
     }
