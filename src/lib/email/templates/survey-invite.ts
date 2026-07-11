@@ -111,7 +111,7 @@ export function renderSurveyInviteEmail(
               y nos dejes feedback rápido.
             </p>
             <p style="margin:0 0 22px 0;font-size:15px;line-height:1.6;color:#3b2f55;">
-              Tardás menos de <strong>2 minutos</strong>. La primera pregunta
+              Tardas menos de <strong>2 minutos</strong>. La primera pregunta
               es solo un Sí / No sobre tu asistencia.
             </p>
           </td>
@@ -133,7 +133,7 @@ export function renderSurveyInviteEmail(
         <tr>
           <td style="padding:0 32px 24px 32px;">
             <p style="margin:0 0 6px 0;font-size:12px;line-height:1.5;color:#6b5d80;">
-              Si el botón no funciona, copiá y pegá este link en tu navegador:
+              Si el botón no funciona, copia y pega este link en tu navegador:
             </p>
             <p style="margin:0;font-size:12px;line-height:1.5;color:#7c3aed;word-break:break-all;">
               <a href="${safeUrl}" style="color:#7c3aed;text-decoration:underline;">${safeUrl}</a>
@@ -148,7 +148,7 @@ export function renderSurveyInviteEmail(
               ${esc(sender)} · Qlick Marketing Digital
             </p>
             <p style="margin:6px 0 0 0;font-size:11px;color:#9b8cb0;">
-              Si no pudiste asistir, no te preocupes — solo decinos "No pude"
+              Si no pudiste asistir, no te preocupes — solo dinos "No pude"
               en la primera pregunta y te avisamos del próximo evento.
             </p>
           </td>
@@ -168,11 +168,11 @@ export function renderSurveyInviteEmail(
     "",
     "Para cerrar el círculo y enviarte el certificado de asistencia (si",
     "corresponde), necesitamos que confirmes si estuviste presente y nos",
-    "dejes feedback rápido. Tardás menos de 2 minutos.",
+    "dejes feedback rápido. Tardas menos de 2 minutos.",
     "",
     `👉 Responder encuesta: ${input.surveyUrl}`,
     "",
-    "Si no pudiste asistir, no te preocupes — solo decinos 'No pude' en la",
+    "Si no pudiste asistir, no te preocupes — solo dinos 'No pude' en la",
     "primera pregunta y te avisamos del próximo evento.",
     "",
     `— ${sender}`,
