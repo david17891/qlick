@@ -65,12 +65,17 @@ import type {
 } from "./agent-provider";
 import type { AgentToolDefinition } from "./agent-tools";
 import type { ActiveEventContext } from "./event-context-loader";
-import { buildSystemPrompt, buildTaskPrompt } from "./agent-prompts";
+import {
+  buildSystemPrompt,
+  buildSuperExecutivePrompt,
+  buildTaskPrompt
+} from "./agent-prompts";
 import { getAgentTools } from "./agent-tools";
 import { executeExtractAndSaveContact } from "./tool-executors/extract-contact";
 import {
   readSystemSetting,
-  KEY_DEEPSEEK_TOOLS_ENABLED
+  KEY_DEEPSEEK_TOOLS_ENABLED,
+  KEY_BOT_GLOBAL_MODE
 } from "../admin/system-settings-server";
 
 // ---------------------------------------------------------------------------
@@ -504,18 +509,16 @@ async function runWithToolLoop(
   context: AgentContext
 ): Promise<AgentResult> {
   // Construir prompts una sola vez (se reusan en la 2ª vuelta).
-  const isFirstMessage =
-    typeof context.isFirstMessage === "boolean"
-      ? context.isFirstMessage
-      : (context.conversationWindow?.messages.length ?? 0) === 0;
-  const systemPrompt = buildSystemPrompt(
-    context.profile,
-    context.activeEvent,
-    isFirstMessage,
-    context.eventsListBlock
+  // Sprint v15 PR #2.5a: dispatch entre socrático y Súper Ejecutivo
+  // según `bot_global_mode`. Si el modo es `socratic_no_tools_v1`,
+  // `tools` se queda en array vacío (regla dura del sprint).
+  const systemPrompt = await pickSystemPromptForMode(
+    context,
+    context.supabase
   );
+  const noToolsMode = await isSocraticNoToolsMode(context.supabase);
   const userPrompt = buildTaskPrompt(task, context);
-  const tools = getAgentTools();
+  const tools = noToolsMode ? [] : getAgentTools();
 
   // 1ª vuelta: Pro (porque suggest_reply es PRO_PRIORITY). Con tools.
   const first = await callDeepSeekChat({
@@ -729,6 +732,71 @@ function wrapRawAsAgentResult(
 // Provider exportado
 // ---------------------------------------------------------------------------
 
+/**
+ * Sprint v15 PR #2.5a (I-FINAL-3): dispatch entre buildSystemPrompt
+ * (socrático clásico, default) y buildSuperExecutivePrompt según
+ * `bot_global_mode` en system_settings.
+ *
+ * Modos soportados (alineados con la siembra de PR #1 en
+ * `ai_bot_rules` → `scope='mode'` y `system_settings.bot_global_mode`):
+ *   - "socratic_autopilot_v2":  socrático con tools. Default histórico.
+ *   - "socratic_no_tools_v1":   socrático SIN tools (forzado abajo).
+ *   - "super_executive":        prompt Súper Ejecutivo (PR #2).
+ *
+ * El modo se lee con `readSystemSetting(KEY_BOT_GLOBAL_MODE)` (caché
+ * 30s in-memory). Si la DB falla o devuelve null, cae al default
+ * `socratic_autopilot_v2`.
+ *
+ * Pure helper, exportado para tests.
+ */
+export async function pickSystemPromptForMode(
+  context: AgentContext,
+  supabase?: unknown
+): Promise<string> {
+  let mode: string | null = "socratic_autopilot_v2"; // default
+  // FIX 2026-07-11: `readSystemSetting` solo lee de la DB (su signature
+  // es `(key: string)`). El `supabase` se ignora — la función crea su
+  // propio cliente. Si la DB falla o devuelve null, default.
+  try {
+    const v = await readSystemSetting(KEY_BOT_GLOBAL_MODE);
+    if (typeof v === "string") mode = v;
+  } catch {
+    // DB falló. Default.
+  }
+  // `supabase` se acepta en la signature para mantener consistencia con
+  // otros call sites, pero la versión actual de readSystemSetting la ignora.
+  void supabase;
+
+  if (mode === "super_executive") {
+    return buildSuperExecutivePrompt(context);
+  }
+  // Modo socrático (cualquier variante).
+  const isFirstMessage =
+    typeof context.isFirstMessage === "boolean"
+      ? context.isFirstMessage
+      : (context.conversationWindow?.messages.length ?? 0) === 0;
+  return buildSystemPrompt(
+    context.profile,
+    context.activeEvent,
+    isFirstMessage,
+    context.eventsListBlock
+  );
+}
+
+/**
+ * Sprint v15 PR #2.5a: true si el modo actual es `socratic_no_tools_v1`.
+ * En ese modo, `tools_enabled` se fuerza a false (regla dura del sprint).
+ */
+export async function isSocraticNoToolsMode(supabase?: unknown): Promise<boolean> {
+  void supabase; // ver pickSystemPromptForMode
+  try {
+    const v = await readSystemSetting(KEY_BOT_GLOBAL_MODE);
+    return v === "socratic_no_tools_v1";
+  } catch {
+    return false;
+  }
+}
+
 export const deepseekAgentProvider: AIAgentProvider = {
   name: "deepseek",
   displayName: "DeepSeek (V4-Flash + V4-Pro escalado)",
@@ -780,11 +848,10 @@ export const deepseekAgentProvider: AIAgentProvider = {
       typeof context.isFirstMessage === "boolean"
         ? context.isFirstMessage
         : (context.conversationWindow?.messages.length ?? 0) === 0;
-    const systemPrompt = buildSystemPrompt(
-      context.profile,
-      context.activeEvent,
-      isFirstMessage,
-      context.eventsListBlock
+    // Sprint v15 PR #2.5a: dispatch entre socrático y Súper Ejecutivo.
+    const systemPrompt = await pickSystemPromptForMode(
+      context,
+      context.supabase
     );
     const userPrompt = buildTaskPrompt(task, context);
 

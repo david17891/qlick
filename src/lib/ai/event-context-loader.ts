@@ -224,6 +224,10 @@ export function formatHumanDuration(
  *
  * FIX 2026-07-05 (Fase 7b): incluye `eventRules` (personalidad + reglas del
  * admin). El LLM DEBE responder siguiendo estas reglas.
+ *
+ * Sprint v15 PR #2 (N-NEW-2): inyecta también la cabecera "TIPO DE OFERTA"
+ * derivada de `classifyEventType(args)` para que el LLM sepa con qué
+ * copy veraz responder (gratis / pago / b2b / unknown defensivo).
  */
 function formatPromptBlock(args: {
   title: string;
@@ -243,6 +247,23 @@ function formatPromptBlock(args: {
   if (args.description) {
     lines.push("", "Detalles:", args.description);
   }
+  // Sprint v15 PR #2: cabecera de tipo de oferta. Usa classifyEventType
+  // (exportada abajo) con prioridad `price > descripción > unknown`.
+  const offer = classifyEventType({
+    price: null, // `formatPromptBlock` no recibe price; cae a heurística de descripción.
+    description: args.description,
+    format: null
+  });
+  const offerLabel: Record<typeof offer, string> = {
+    free_masterclass: "GRATUITA (masterclass / webinar)",
+    paid_workshop: "DE PAGO (taller / curso)",
+    b2b_service: "SERVICIO B2B (consultoría / retainer)",
+    unknown: "DESCONOCIDA (sé veraz, deriva con el equipo si falta info)"
+  };
+  lines.push(
+    "",
+    `=== TIPO DE OFERTA: ${offerLabel[offer]} ===`
+  );
   if (args.eventRules.personality || args.eventRules.rules.length > 0) {
     lines.push("", "=== REGLAS DEL BOT (OBLIGATORIAS) ===");
     if (args.eventRules.personality) {
@@ -525,4 +546,62 @@ export async function loadAllActiveEvents(): Promise<ActiveEventContext[]> {
   } catch {
     return [];
   }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Sprint v15 PR #2: clasificación del tipo de oferta                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Tipo de evento para el prompt Súper Ejecutivo. Exportado desde este
+ * archivo (NO desde `agent-provider.ts`) para mantener una sola fuente
+ * de verdad: el loader tiene acceso al `EventRow` completo, mientras que
+ * el provider solo recibe el `AgentContext` con el `eventOfferType` ya
+ * calculado. La forma del tipo (`EventOfferType`) SÍ vive en
+ * `agent-provider.ts` para que sea importable sin dependencias circulares.
+ */
+export type { EventOfferType } from "./agent-provider";
+
+/**
+ * Clasificador determinista del tipo de oferta de un evento.
+ *
+ * Sprint v15 PR #2 (N-NEW-2): prioridad dura `price` (verdad de la DB)
+ * sobre heurística de texto. Esto garantiza que el prompt Súper Ejecutivo
+ * SIEMPRE sepa con qué copy veraz responder (gratis / pago / b2b / unknown).
+ *
+ * Reglas (en orden de prioridad):
+ *   1. `price > 0`         → "paid_workshop" (verdad dura).
+ *   2. `price === 0`       → "free_masterclass".
+ *   3. description matchea
+ *      /gratis|sin costo|entrada libre/i → "free_masterclass".
+ *   4. `kind === "b2b"`    → "b2b_service" (configuración explícita del admin).
+ *   5. default            → "unknown" (defensivo, copy veraz de "déjame
+ *                                     confirmarte con el equipo").
+ *
+ * El parámetro `kind` se acepta opcional para que el caller pueda pasar
+ * el `event_rules.kind` (config del admin) si lo tiene. Default: null
+ * (no se considera b2b_service por kind).
+ *
+ * Pure function, exportada para tests unitarios.
+ */
+export function classifyEventType(evt: {
+  price?: number | null;
+  description?: string | null;
+  format?: string | null;
+  kind?: string | null;
+}): import("./agent-provider").EventOfferType {
+  // Prioridad 1: price es verdad dura de la DB.
+  if (typeof evt.price === "number" && evt.price > 0) return "paid_workshop";
+  if (evt.price === 0) return "free_masterclass";
+
+  // Prioridad 2: kind explícito del admin (en event_rules).
+  if (evt.kind === "b2b") return "b2b_service";
+
+  // Prioridad 3: heurística de texto en descripción.
+  if (evt.description && /gratis|sin costo|entrada libre/i.test(evt.description)) {
+    return "free_masterclass";
+  }
+
+  // Default defensivo.
+  return "unknown";
 }

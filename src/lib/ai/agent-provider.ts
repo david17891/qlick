@@ -16,12 +16,42 @@
  * Tambien hay un safety net post-process (`src/lib/whatsapp/safety-net.ts`) que
  * strippea saludos redundantes cuando hay historial.
  *
+ * Sprint v15 PR #2 (Torre de Control — Cerebro Súper Ejecutivo):
+ * `AgentContext` se extiende con tres campos opcionales para que el prompt
+ * Súper Ejecutivo (buildSuperExecutivePrompt) pueda:
+ *   - `eventOfferType`: clasificación dura del evento (gratis / pago / b2b / unknown).
+ *   - `eventRules`:     reglas locales del evento (jerarquía: SSOT gana sobre local).
+ *   - `isFreeEvent`:    atajo derivado de `eventOfferType === "free_masterclass"`.
+ * Ver docs/DECISIONS.md D-025.
+ *
  * Ver docs/AI_AGENT_GUARDRAILS.md y docs/WHATSAPP_AI_AGENT_STRATEGY.md.
  */
 
 import type { AIAgentProfile, LeadIntent } from "@/types";
 
 export type AIAgentProviderName = "mock" | "openrouter" | "deepseek";
+
+/**
+ * Sprint v15 PR #2: clasificación de la oferta del evento activo.
+ *
+ * - "free_masterclass": masterclass / webinar gratuito. price=0 o heurística
+ *                       de "gratis|sin costo|entrada libre" en descripción.
+ * - "paid_workshop":    taller / curso con precio > 0 (verdad dura en price).
+ * - "b2b_service":      servicio empresarial (consultoría, agencia, retainer).
+ *                       Lo setea explícitamente el admin en `event_rules.kind`
+ *                       o se infiere por descripción.
+ * - "unknown":          fallback defensivo cuando ninguna de las anteriores
+ *                       aplica. El prompt Súper Ejecutivo trata unknown con
+ *                       copy veraz de "déjame confirmarte con el equipo".
+ *
+ * Exportada desde `agent-provider.ts` (NO desde event-context-loader) para
+ * evitar imports circulares entre el loader y los providers / prompts.
+ */
+export type EventOfferType =
+  | "free_masterclass"
+  | "paid_workshop"
+  | "b2b_service"
+  | "unknown";
 
 export interface AgentContext {
   /** Perfil del negocio (nombre, tono, reglas). */
@@ -68,6 +98,35 @@ export interface AgentContext {
    * corre en modo demo.
    */
   supabase?: unknown;
+  /**
+   * Sprint v15 PR #2 (I-FINAL-4): clasificación de la oferta del evento
+   * activo. El bot-engine la calcula con `classifyEventType(activeEvent)`
+   * y la pasa al provider. El prompt Súper Ejecutivo la usa para elegir
+   * la rama de copy veraz (gratis → "registro gratuito"; pago → "enlace
+   * de pago"; b2b → "te conecto con un especialista"; unknown → defensivo).
+   */
+  eventOfferType?: EventOfferType;
+  /**
+   * Sprint v15 PR #2 (M-NEW-5): reglas locales del evento activo
+   * (texto libre que el admin configuró en `event_rules.rules`).
+   *
+   * JERARQUÍA (D-025 + AGENTS.md §Jerarquía de Especialización):
+   * Si una regla local entra en contradicción con una Regla de Oro
+   * Global (`ai_bot_rules`), la GLOBAL PREVALECE. El prompt Súper
+   * Ejecutivo inyecta esta cláusula explícitamente.
+   */
+  eventRules?: string[];
+  /**
+   * Sprint v15 PR #2 (N-NEW-1): atajo `eventOfferType === "free_masterclass"`.
+   * Se pasa a `validateAgentReply(reply, { isFreeEvent })` para excluir
+   * la palabra "gratis" del filtro de FORBIDDEN_PHRASES en masterclasses
+   * gratuitas (donde decir "registro gratuito" es copy veraz, no alucinación).
+   *
+   * `validateAgentReply` mantiene prohibidas en todos los modos las frases
+   * de falsa confirmación ("te di acceso", "acceso listo", "confirmo tu pago",
+   * "pago aprobado") — D-016 sigue vigente para TODO el flujo.
+   */
+  isFreeEvent?: boolean;
 }
 
 export type AgentTask =

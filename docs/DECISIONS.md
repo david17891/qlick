@@ -596,3 +596,41 @@ decidiÃ³, por quÃ©, quÃ© alternativas se consideraron, el riesgo y cÃ³mo reverti
 
 
 ---
+
+## D-025 · Agente Comercial Súper Ejecutivo y Modo Autónomo con Guardrails Duros (Sprint v15)
+
+- **Fecha:** 2026-07-11
+- **Decisión:**
+  1. Crear el modo super_executive en system_settings.bot_global_mode (sumado a los modos socratic_autopilot_v2 y socratic_no_tools_v1 que ya existían). El provider deepseek dispatchea entre uildSystemPrompt (socrático) y uildSuperExecutivePrompt (Súper Ejecutivo) según este flag.
+  2. El bot de WhatsApp opera por defecto en **Modo Autónomo con Guardrails Duros**. Esto DEROGA D-016 (modo sugerencia para CRM) para el canal de WhatsApp — el bot auto-envía respuestas con copy veraz validado por alidateAgentReply + stripEscalateFlag + safety-net. El modo sugerencia se reserva para el CRM (donde el humano edita antes de enviar).
+  3. El prompt Súper Ejecutivo (uildSuperExecutivePrompt en src/lib/ai/agent-prompts.ts) tiene 4 ramas de copy veraz según EventOfferType:
+     - ree_masterclass: "Te paso los detalles y el enlace para que finalices tu registro gratuito en la plataforma."
+     - paid_workshop:    "Te aparto tu lugar en el taller en este momento. Te paso el enlace de pago para que completes tu inscripción y asegures tu cupo." (cero anglicismos; nunca "right now" / "liga").
+     - 2b_service:      "Te conecto con un especialista de nuestro equipo que te contactará en breve, o si prefieres te paso el enlace para elegir tu horario disponible." + emite [[ESCALATE_HUMAN]].
+     - unknown:          "Déjame confirmarte los detalles exactos con nuestro equipo de coordinación para darte la información precisa."
+  4. Jerarquía de Reglas (D-025 + AGENTS.md §Jerarquía de Especialización): si una regla local del evento (event_rules.rules) entra en contradicción con una Regla de Oro Global (i_bot_rules), LA GLOBAL PREVALECE. Esta cláusula se inyecta explícitamente en el prompt del Súper Ejecutivo.
+  5. alidateAgentReply (en src/lib/ai/guardrails.ts) acepta un segundo parámetro opcional context: { isFreeEvent?: boolean; allowedPhrases?: string[] }. Si isFreeEvent === true, excluye la palabra "gratis" del filtro de FORBIDDEN_PHRASES (copy veraz en masterclass gratuita). Las frases de falsa confirmación ("te di acceso", "acceso listo", "confirmo tu pago", "pago aprobado") SIGUEN prohibidas en todos los modos (D-016 sigue vigente para esos 4 strings).
+  6. stripEscalateFlag(text) (en src/lib/ai/guardrails.ts) limpia el flag interno [[ESCALATE_HUMAN]] del output del LLM antes de enviarlo al lead. El orquestador (bot-engine) usa la presencia del flag para inyectar el handoff a humano.
+  7. classifyEventType(evt) (en src/lib/ai/event-context-loader.ts) clasifica el evento con prioridad dura: price > 0 ? paid_workshop, price === 0 ? ree_masterclass, heurística de descripción (/gratis|sin costo|entrada libre/i) ? ree_masterclass, default ? unknown.
+  8. Siembra: super_executive se habilita en system_settings con ot_global_mode = 'super_executive' (UPSERT idempotente vía Management API, ver migration 20260711140000_bot_control_tower_v15.sql para la siembra inicial de los 2 modos socratic_*; el UPSERT a super_executive se hace vía scripts/upsert-system-setting.mjs en este PR).
+- **Motivo:**
+  1. El sprint v15 PR #1 (Torre de Control AI, cerrado en commit 6773c89) sembró la UI y la DB para que el admin controle 3 modos del bot. PR #2 entrega el "cerebro" del modo Súper Ejecutivo (el más avanzado de los 3) con copy veraz específico por tipo de oferta.
+  2. El bug raíz que motivó la separación: el bot prometía "Ya quedó reservado tu acceso", "Te agendo el martes a las 3pm", "right now", "liga" — todo copy falso o anglicismo. El prompt Súper Ejecutivo prohíbe explícitamente cada uno de estos patrones.
+  3. La derogación de D-016 (modo sugerencia) para WhatsApp es porque el bot YA está en modo autónomo (auto-envía con guardrails) desde sprints anteriores; la decisión es formalizar lo que ya se hacía en código.
+  4. La jerarquía de reglas (global > local) es la única forma de evitar que un admin deshabilite accidentalmente una Regla de Oro global con un event_rules.rules local.
+- **Alternativas consideradas:**
+  1. Dejar el bot en modo sugerencia para todo (no auto-enviar) ? rechazada: el funnel actual YA depende del auto-envío (latencia < 2.5s end-to-end).
+  2. Quitar el filtro de "gratis" para todos los modos ? rechazada: en paid_workshop y 2b_service decir "gratis" sigue siendo alucinación.
+  3. Jerarquía al revés (local > global) ? rechazada: un admin con acceso a event_rules podría bypasear la Regla de Oro global accidentalmente.
+  4. No tener modo super_executive y solo tener los 2 socráticos ? rechazada: la nueva copy veraz por tipo de oferta requiere su propio prompt.
+- **Impacto:**
+  - El admin ahora puede alternar entre 3 modos desde /admin?tab=bot sin redeploy. El cambio se refleja en ~30s (caché de system_settings).
+  - El bot de WhatsApp sigue auto-enviando (latencia <2.5s E2E), pero con copy veraz que no promete QR autogestionado, no confirma pagos, no usa anglicismos.
+  - Las Reglas de Oro Globales (i_bot_rules) prevalecen sobre reglas locales — el admin ya no puede deshabilitarlas accidentalmente vía event_rules.
+  - El log de outbound ahora adjunta uto_sent_source: "bot" para que el admin distinga respuestas del bot vs. templates deterministas.
+  - El modo socratic_no_tools_v1 se mantiene como Kill Switch SRE: desactiva el tool loop sin tocar el prompt socrático.
+- **Riesgo:**
+  - El modo super_executive está sembrado pero NO activado por default. El admin debe activarlo manualmente desde /admin?tab=bot. Esto es defensa en profundidad (D-007 reverse): no se siembra un modo cuyo prompt aún no se ha probado.
+  - classifyEventType actualmente NO tiene acceso a price (la columna events.price no existe; el precio va en description). El bot clasifica con la heurística de descripción. Si la descripción NO contiene "gratis" / "sin costo" / "entrada libre", clasifica como unknown (defensivo). Migración futura: agregar events.price y pasarlo al context.
+  - La inyección de [[ESCALATE_HUMAN]] requiere que el handoff esté activo. Si sendHumanHandoff falla, la escalación se loggea pero el lead recibe el copy sin el flag (sin escalación real). Aceptable para v15; v16 cierra este gap.
+- **Reversibilidad:** Alta. ot_global_mode se cambia con un UPSERT; el código del provider dispatchea por string. Si super_executive da problemas, volver a socratic_autopilot_v2 con 1 click. Si se quiere remover el modo, eliminar la rama en pickSystemPromptForMode + el case en uildSuperExecutivePrompt. El mode queda huérfano en system_settings pero inerte.

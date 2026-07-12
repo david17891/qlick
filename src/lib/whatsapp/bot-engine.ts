@@ -59,7 +59,10 @@ import {
   recordAndCheckRateLimit
 } from "../ai";
 import { sendHumanHandoff } from "./human-handoff";
-import { mustEscalateToHuman } from "../ai/guardrails";
+import { mustEscalateToHuman, stripEscalateFlag } from "../ai/guardrails";
+// FIX 2026-07-11 (Sprint v15 PR #2.5b): clasificador del tipo de oferta
+// para el prompt Súper Ejecutivo. Se calcula con prioridad price>descripción>unknown.
+import { classifyEventType } from "../ai/event-context-loader";
 import { stripGreetingIfHasHistory, isAckOnly } from "./safety-net";
 import { extractEmailFromText } from "./email-extract";
 import { getAIAgentProfile } from "../crm/agent-utils";
@@ -3689,6 +3692,18 @@ case "interactive_event_inscribir": {
       const lastIncomingMessageWithReminder = pendingAwaitingField
         ? `${body}\n\n[Recordatorio interno: el bot está esperando que el lead entregue su ${pendingAwaitingField}. Después de responder la duda, cierra el mensaje pidiendo ese dato.]`
         : body;
+      // Sprint v15 PR #2.5b (I-FINAL-5): calculamos tipo de oferta, reglas
+      // locales e isFreeEvent ANTES del `if (rateLimit.allowed)` para que
+      // estén disponibles en todo el case (también post-AgentResult para
+      // `validateAgentReply` con `isFreeEvent`).
+      const eventRules = activeEvent?.eventRules?.rules ?? [];
+      const eventOfferType: import("../ai/agent-provider").EventOfferType = activeEvent
+        ? classifyEventType({
+            description: activeEvent.description,
+            format: activeEvent.format
+          })
+        : "unknown";
+      const isFreeEvent = eventOfferType === "free_masterclass";
       if (rateLimit.allowed) {
         // FIX 2026-07-10 (Sprint 2 sub-sprint 2D): resolver el cliente
         // Supabase admin localmente para pasárselo al tool loop. En la
@@ -3703,6 +3718,10 @@ case "interactive_event_inscribir": {
           getSupabase(),
           new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000))
         ]);
+        // Sprint v15 PR #2.5b (I-FINAL-5): los 3 campos ya se calcularon
+        // ANTES del `if (rateLimit.allowed)` (más arriba) para que estén
+        // disponibles también en el path post-AgentResult (`validateAgentReply`
+        // con `isFreeEvent`, y `metadata.auto_sent_source`).
         result = await agent.run("suggest_reply", {
           profile,
           leadName: cleanLeadName,
@@ -3720,6 +3739,12 @@ case "interactive_event_inscribir": {
           // historial de conversación). Más confiable que `conversationWindow`
           // porque el loader puede fallar silenciosamente.
           isFirstMessage: args.isFirstMessage,
+          // Sprint v15 PR #2.5b: pasar tipo de oferta + reglas locales +
+          // isFreeEvent al provider. El prompt Súper Ejecutivo los usa para
+          // elegir la rama de copy veraz (gratis / pago / b2b / unknown).
+          eventOfferType,
+          eventRules,
+          isFreeEvent,
           // FIX 2026-07-10 (Sprint 2 sub-sprint 2D): inyectar leadId y
           // supabase para que el tool loop (sub-sprint 2C) pueda ejecutar
           // `extract_and_save_contact_info` con `UPDATE` real a
@@ -3752,7 +3777,12 @@ case "interactive_event_inscribir": {
             `Rate limited: ${rateLimit.callCount} calls in 60s window for phone; resetMs=${rateLimit.resetMs}. DeepSeek not called.`
         };
       }
-      let content = result.content?.trim();
+      // Sprint v15 PR #2.5b (I-FINAL-5): strip del flag [[ESCALATE_HUMAN]]
+      // post-AgentResult. El orquestador usa la presencia del flag para
+      // inyectar handoff a humano (más abajo). El texto que SÍ se le
+      // manda al lead ya viene sin el flag.
+      const escalated = (result.content ?? "").includes("[[ESCALATE_HUMAN]]");
+      let content = stripEscalateFlag(result.content ?? "").trim();
       if (!content) {
         content =
           "Disculpa, no pude procesar tu mensaje. ¿Me lo puedes reformular? Si necesitas atención personalizada escríbenos a hola@qlick.marketing.";
@@ -3770,7 +3800,12 @@ case "interactive_event_inscribir": {
       const hasHistory = !args.isFirstMessage;
       content = stripGreetingIfHasHistory(content, hasHistory);
       // Validar guardrails: si el LLM metió una frase prohibida, fallback.
-      const validation = validateAgentReply(content);
+      // Sprint v15 PR #2.5b: el contexto incluye `isFreeEvent` (atajo de
+      // `eventOfferType === "free_masterclass"`) para que el filtro NO
+      // bloquee la palabra "gratis" en copy veraz de masterclass gratuita.
+      // El cálculo se hizo ANTES de invocar al provider (más arriba) y se
+      // reusa aquí. Si el context no lo trae (modo demo), default false.
+      const validation = validateAgentReply(content, { isFreeEvent });
       if (!validation.ok) {
         // eslint-disable-next-line no-console
         console.warn("[whatsapp/bot] guardrail bloqueó respuesta LLM", {
@@ -5916,6 +5951,12 @@ export async function processInboundMessage(
   // CRM mostraba como respuesta. Ahora: si el send falló, NO dejamos
   // huella falsa en la DB; solo loggeamos el error para debugging.
   let outboundConvId: string | null = null;
+  // FIX 2026-07-11 (Sprint v15 PR #2.5b, I-FINAL-5): variables de scope
+  // para que el metadata del outbound pueda adjuntar `auto_sent_source`
+  // y `event_offer_type` sin necesidad de hacer cast sobre `plan`. Las
+  // declaramos aquí (al scope del `processInboundMessage`) y las reusa
+  // el bloque de persistencia más abajo.
+  const isBotAuthored = !plan.templateName;
   if (supabase && sendResult.ok) {
     outboundConvId = await persistConversation(supabase, {
       lead_id: lead.id,
@@ -5928,10 +5969,21 @@ export async function processInboundMessage(
       // (ej. awaiting_field del flow secuencial nombre → email).
       // Spread DESPUES de los defaults para que el plan pueda
       // override si necesita.
+      //
+      // FIX 2026-07-11 (Sprint v15 PR #2.5b, I-FINAL-5): adjuntar
+      // `auto_sent_source: "bot"` cuando la respuesta fue auto-enviada
+      // por el agente (vs. plantilla estática). Permite que analytics /
+      // /admin/bot/stats diferencien "respuesta del bot" de "template
+      // determinista" (welcome, register, etc.).
       metadata: {
         intent,
         templateName: plan.templateName ?? null,
         demo: sendResult.demo ?? false,
+        // FIX 2026-07-11: source del auto-envío. Si el plan es
+        // `text` o `interactive` y NO tiene templateName, fue el bot.
+        // (Templates deterministas siempre setean templateName.)
+        auto_sent: isBotAuthored,
+        auto_sent_source: isBotAuthored ? "bot" : "template",
         ...(plan.metadata ?? {})
       }
     });

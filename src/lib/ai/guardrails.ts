@@ -132,17 +132,81 @@ const FORBIDDEN_PHRASES = [
 ];
 
 /**
+ * Sprint v15 PR #2 (N-NEW-1 / I-FINAL-11): helper que limpia el flag
+ * `[[ESCALATE_HUMAN]]` del output del LLM antes de enviarlo al lead.
+ *
+ * Por qué:
+ *   El prompt Súper Ejecutivo (buildSuperExecutivePrompt) emite este flag
+ *   como convención interna cuando detecta que el caso requiere escalación
+ *   a humano (ej. servicio b2b, queja, duda sensible). Es una MARCA para
+ *   el orquestador, NO algo que el lead deba ver.
+ *
+ *   El orquestador (bot-engine) usa la presencia de `[[ESCALATE_HUMAN]]`
+ *   para:
+ *     1. Marcar el metadata con `auto_escalate: true`.
+ *     2. Inyectar el handoff en `human_handoff`.
+ *     3. Strippearlo del texto que SÍ se le manda al lead (con esta función).
+ *
+ * Uso:
+ *   const cleanContent = stripEscalateFlag(agentResult.content);
+ *   if (cleanContent !== agentResult.content) { /* escalación detectada *\/ }
+ *
+ * Pure function, exportada para tests.
+ */
+export function stripEscalateFlag(text: string): string {
+  if (!text) return "";
+  return text.replace(/\[\[ESCALATE_HUMAN\]\]/gi, "").trim();
+}
+
+/**
+ * Sprint v15 PR #2 (N-NEW-1 / I-FINAL-11): contexto opcional de
+ * `validateAgentReply` para afinar el filtro por tipo de oferta.
+ *
+ * - `isFreeEvent`:    si true, excluye "gratis" del filtro (copy veraz en
+ *                     masterclass gratuita — el bot SÍ puede decir
+ *                     "registro gratuito" sin que sea alucinación).
+ * - `allowedPhrases`: lista adicional de frases que NO se filtran
+ *                     (escape hatch explícito; usar con cuidado).
+ *
+ * Las frases de falsa confirmación ("te di acceso", "acceso listo",
+ * "confirmo tu pago", "pago aprobado") SIGUEN prohibidas en TODOS los
+ * modos (D-016 sigue vigente) — no se desactivan vía contexto.
+ */
+export interface ValidateReplyContext {
+  isFreeEvent?: boolean;
+  allowedPhrases?: string[];
+}
+
+/**
  * Valida una propuesta de respuesta del agente. Devuelve {ok, reasons}.
  * Si ok=false, la UI no debe ofrecer ese texto sin editar.
+ *
+ * Sprint v15 PR #2: el segundo parámetro `context` es opcional. Si
+ * `context.isFreeEvent === true`, se excluye la palabra "gratis" del
+ * filtro de FORBIDDEN_PHRASES (la masterclass gratuita SÍ puede usar
+ * la palabra "gratis" en copy veraz). El resto de frases prohibidas
+ * permanecen inamovibles.
  */
-export function validateAgentReply(reply: string): {
-  ok: boolean;
-  reasons: string[];
-} {
+export function validateAgentReply(
+  reply: string,
+  context?: ValidateReplyContext
+): { ok: boolean; reasons: string[] } {
   const reasons: string[] = [];
   const t = reply.toLowerCase();
 
-  for (const phrase of FORBIDDEN_PHRASES) {
+  // Construir lista efectiva de frases prohibidas respetando el contexto.
+  // Sprint v15 PR #2: si `isFreeEvent`, "gratis" NO se filtra (copy veraz
+  // en masterclass gratuita). El resto sigue prohibido.
+  const effectiveForbidden = context?.isFreeEvent
+    ? FORBIDDEN_PHRASES.filter((p) => p !== "gratis")
+    : FORBIDDEN_PHRASES;
+
+  // Si el caller pasó `allowedPhrases`, esas se quitan del filtro
+  // (escape hatch explícito; default: lista vacía).
+  const allowed = new Set((context?.allowedPhrases ?? []).map((s) => s.toLowerCase()));
+  const finalForbidden = effectiveForbidden.filter((p) => !allowed.has(p));
+
+  for (const phrase of finalForbidden) {
     if (t.includes(phrase)) {
       reasons.push(`Contiene término prohibido: "${phrase}"`);
     }

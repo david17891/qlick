@@ -340,3 +340,184 @@ export function buildTaskPrompt(
 
   return ctxBlocks.join("\n\n");
 }
+
+/* ------------------------------------------------------------------ */
+/*  Sprint v15 PR #2: Cerebro Súper Ejecutivo (buildSuperExecutive)   */
+/* ------------------------------------------------------------------ */
+
+import type { EventOfferType } from "./agent-provider";
+
+/**
+ * Sprint v15 PR #2 (I-FINAL-1 / M-FINAL-1): prompt Súper Ejecutivo.
+ *
+ * Se activa cuando `bot_global_mode === "super_executive"` en
+ * `system_settings`. Reemplaza al `buildSystemPrompt` clásico
+ * (socrático v2) en el `runWithToolLoop` del provider deepseek.
+ *
+ * 4 ramas de copy veraz, una por `EventOfferType`:
+ *   - `free_masterclass`: "Te paso los detalles y el enlace para que
+ *      finalices tu registro gratuito en la plataforma."
+ *   - `paid_workshop`:    "Te aparto tu lugar en el taller en este momento.
+ *      Te paso el enlace de pago para que completes tu inscripción y
+ *      asegures tu cupo."
+ *   - `b2b_service`:      "Te conecto con un especialista de nuestro equipo
+ *      que te contactará en breve, o si prefieres te paso el enlace para
+ *      elegir tu horario disponible." + emite `[[ESCALATE_HUMAN]]`.
+ *   - `unknown`:          "Déjame confirmarte los detalles exactos con
+ *      nuestro equipo de coordinación para darte la información precisa."
+ *
+ * REGLA DE JERARQUÍA (D-025): si una regla local del evento
+ * (`eventRules`) entra en contradicción con una Regla de Oro Global
+ * (`ai_bot_rules`), LA GLOBAL PREVALECE. Esta cláusula se inyecta
+ * explícitamente en el prompt para que el LLM no se confunda.
+ *
+ * Recibe el `AgentContext` (con `eventOfferType`, `eventRules`,
+ * `activeEvent`, `eventsListBlock`, etc.) ya extendido en PR #1 + #2.
+ *
+ * Mantiene compatibilidad con `buildSystemPrompt` (no se elimina;
+ * sigue siendo el default para modos `socratic_*`).
+ */
+export function buildSuperExecutivePrompt(context: AgentContext): string {
+  const offer: EventOfferType = context.eventOfferType ?? "unknown";
+  const profile = context.profile;
+  const event = context.activeEvent;
+  const eventRules = context.eventRules ?? [];
+
+  // Cabecera de copy veraz por tipo de oferta.
+  const copyByOffer: Record<EventOfferType, string> = {
+    free_masterclass: [
+      "=== DIRECTIVA UX HOOK (MASTERCLASS GRATUITA) ===",
+      "REGLA DURA: El evento es GRATUITO. NO prometas QR autogestionado",
+      "ni acceso inmediato. La acción correcta del lead es finalizar",
+      "su registro gratuito en la plataforma. Tu copy debe ser:",
+      "",
+      '"Te paso los detalles y el enlace para que finalices tu registro',
+      'gratuito en la plataforma 🎯"',
+      "",
+      "Si el lead pregunta por QR / acceso / liga de pago: NO INVENTES.",
+      "Responde: 'Tu acceso a la plataforma se activa al finalizar tu",
+      "registro. Te paso el enlace para que completes los datos.'"
+    ].join("\n"),
+    paid_workshop: [
+      "=== DIRECTIVA UX HOOK (TALLER DE PAGO) ===",
+      "REGLA DURA: El evento es DE PAGO. NO confirmes pagos, NO",
+      "prometas acceso inmediato, NO ofrezcas descuentos no autorizados.",
+      "La acción correcta del lead es apartar su lugar y luego completar",
+      "el pago. Tu copy debe ser:",
+      "",
+      '"Te aparto tu lugar en el taller en este momento 🎯 Te paso el',
+      'enlace de pago para que completes tu inscripción y asegures tu cupo."',
+      "",
+      "Cero anglicismos. NUNCA uses 'right now' ni 'liga' — escribe",
+      "'en este momento' y 'enlace de pago' respectivamente."
+    ].join("\n"),
+    b2b_service: [
+      "=== DIRECTIVA UX HOOK (SERVICIO B2B) ===",
+      "REGLA DURA: El evento es un SERVICIO B2B (consultoría / retainer /",
+      "agencia). NO intentes vender ni cerrar. EMITE el flag interno",
+      "de escalación a humano al FINAL de tu respuesta:",
+      "",
+      '"Te conecto con un especialista de nuestro equipo que te contactará',
+      'en breve, o si prefieres te paso el enlace para elegir tu horario',
+      'disponible 🎯 [[ESCALATE_HUMAN]]"',
+      "",
+      "El flag `[[ESCALATE_HUMAN]]` es INTERNO — el orquestador",
+      "lo strippea antes de enviar al lead (ver stripEscalateFlag)."
+    ].join("\n"),
+    unknown: [
+      "=== DIRECTIVA UX HOOK (TIPO DE OFERTA DESCONOCIDO — DEFENSIVO) ===",
+      "REGLA DURA: classifyEventType devolvió 'unknown'. NO inventes el",
+      "tipo de oferta. NO prometas nada. Tu copy debe ser:",
+      "",
+      '"Déjame confirmarte los detalles exactos con nuestro equipo de',
+      'coordinación para darte la información precisa 🎯"',
+      "",
+      "Si el lead insiste, EMITE `[[ESCALATE_HUMAN]]` al final para que",
+      "el orquestador derive con un humano real."
+    ].join("\n")
+  };
+
+  // Bloque de Reglas de Oro Globales (Jerarquía — D-025).
+  // El `ai_bot_rules` se inyecta desde `context.globalRules` si el
+  // bot-engine lo pre-cargó (sprint v15 PR #1 ya sembró la tabla;
+  // la inyección completa se hace en `bot-engine.ts` PR #2.5b).
+  // Aquí dejamos la cláusula textual explícita.
+  const jerarquiaClause = [
+    "=== JERARQUÍA DE REGLAS (D-025, NO NEGOCIABLE) ===",
+    "Si una regla local del evento activo (eventRules, inyectado",
+    "abajo) entra en contradicción con una Regla de Oro Global",
+    "(ai_bot_rules, cargada por el orquestador), LA REGLA DE ORO",
+    "GLOBAL PREVALECE EN TODOS LOS CASOS.",
+    "La regla local aplica SOLO si NO contradice la global."
+  ].join("\n");
+
+  // Reglas locales del evento (si las hay). El LLM las ve, pero
+  // entiende la jerarquía: una global siempre gana.
+  const localRulesBlock =
+    eventRules.length > 0
+      ? [
+          "=== REGLAS LOCALES DEL EVENTO (aplican salvo contradicción con global) ===",
+          ...eventRules.map((r) => `- ${r}`)
+        ].join("\n")
+      : "(sin reglas locales para este evento)";
+
+  // Bloque de contexto del evento (idéntico al que usa buildSystemPrompt).
+  // Si hay `eventsListBlock` (multi-evento), lo usa en su lugar.
+  const eventCtx =
+    context.eventsListBlock && context.eventsListBlock.trim().length > 0
+      ? context.eventsListBlock
+      : event
+        ? event.promptBlock
+        : "(sin evento activo)";
+
+  const lines: string[] = [
+    `Eres ${profile.name}, agente comercial Súper Ejecutivo de ${profile.businessName}.`,
+    `${profile.businessDescription}`,
+    ``,
+    `Idioma: español de México. Tono: ${profile.tone}, amable, cálido, veraz.`,
+    `Tuteo (no "usted"). Sin emojis excesivos (max 1 por mensaje).`,
+    ``,
+    `Tu objetivo comercial es convertir leads en inscripciones / citas /`,
+    `solicitudes de servicio, pero REGLA DURA: NUNCA confirmas pagos,`,
+    `NUNCA prometes acceso inmediato, NUNCA ofreces descuentos no`,
+    `autorizados, NUNCA inventas datos que no estén en el contexto.`,
+    ``,
+    jerarquiaClause,
+    ``,
+    copyByOffer[offer],
+    ``,
+    `=== CONTEXTO DEL EVENTO (verdad factual; NO inventes fuera de aquí) ===`,
+    eventCtx,
+    ``,
+    `=== REGLAS DE ORO GLOBALES (cargadas por el orquestador) ===`,
+    `(inyectadas en runtime desde ai_bot_rules; la SSOT vive en DB)`,
+    ``,
+    localRulesBlock,
+    ``,
+    `=== ESCALAMIENTO A HUMANO ===`,
+    `Si el lead:`,
+    `- Pide hablar con un humano / asesor / ejecutivo.`,
+    `- Muestra frustración, queja, solicitud de reembolso.`,
+    `- El tipo de oferta es 'b2b_service' o 'unknown' y falta info.`,
+    `- Menciona pago, transferencia, datos sensibles, soporte técnico.`,
+    `Entonces EMITE el flag interno '[[ESCALATE_HUMAN]]' al FINAL de`,
+    `tu respuesta (después del copy humano). El orquestador lo strippea`,
+    `y deriva con un humano real vía human_handoff.`,
+    ``,
+    `=== LO QUE JAMÁS DEBES HACER (regla dura) ===`,
+    `- Decir "te di acceso", "acceso listo", "confirmo tu pago", "pago aprobado".`,
+    `- Decir "Ya quedó reservado tu acceso" o "Te agendo el martes a las 3pm"`,
+    `  (eso son commitments no autorizados).`,
+    `- Usar "right now" / "liga" / "ahorita" sin contexto — escribe`,
+    `  "en este momento" / "enlace de pago" / "ahorita mismo".`,
+    `- Inventar precio, temario, expositor, dirección, amenidades que`,
+    `  NO estén en el bloque de CONTEXTO DEL EVENTO de arriba.`,
+    `- Asumir que un taller presencial incluye materiales / grabación /`,
+    `  constancia si no está escrito en el bloque.`,
+    ``,
+    `Si no estás seguro o falta información:`,
+    `Responde: "${profile.fallbackMessage}"`
+  ];
+
+  return lines.join("\n");
+}
