@@ -21,6 +21,46 @@
 
 ---
 
+## 2026-07-11 ~19:30 — CI smoke E2E en verde: 3 GitHub Secrets configurados + fine-grained PAT con scope "Secrets"
+
+- **Pregunta:** Los últimos 3 pushes a `main` (`654e6b6` typegen, `433ad62` 78 tests, `e7fd2bb` audit script) fallaron el `smoke:audit` job del workflow con "missing SUPABASE_URL/REF/KEY" — los secrets no estaban configurados en GitHub Actions. El CI llevaba semanas en rojo pre-existente sin que se detectara.
+
+- **Decisión:**
+  1. David habilitó scope "Secrets: Read and write" en el fine-grained PAT `github_pat_11AJ3BMCA0...` (Settings → Developer settings → Personal access tokens). No requirió regenerar el token.
+  2. Configuré los 3 secrets en `david17891/qlick` vía `gh secret set` con pipe (valores NO aparecen en argv ni en logs):
+     - `SUPABASE_URL` = valor de `NEXT_PUBLIC_SUPABASE_URL` del `.env.local`
+     - `SUPABASE_SECRET_KEY` = valor de `SUPABASE_SECRET_KEY` del `.env.local` (formato nuevo `sb_secret_***`, 43 chars, válido — se omite valor por push protection)
+     - `SUPABASE_PROJECT_REF` = `ugpejblymtbwtsoiykyj` (extraído del subdominio de la URL, no es sensitive)
+  3. Empty commit `1f042ad` + push a `main` para triggerear el workflow via `push` event.
+  4. Cron `smoke-watcher-v2` (1 min, sessionMode=sessionId) monitoreó el run; en el primer tick (30s después del push) vio `conclusion: success` y se autodestruyó. Race condition: el daemon ya tenía enqueueado un segundo tick que se disparó 1 min después, pero como el cron ya estaba borrado, fue no-op.
+
+- **Razón:** El CI no podía validar el smoke E2E contra DB real sin los secrets. Sin CI verde, los merges a main no tenían red de seguridad para detectar migrations no aplicadas a prod (precisamente lo que se rompió en el sprint anterior con `event_survey_tokens`).
+
+- **Impacto:**
+  - Run `29176681182` (commit `1f042ad`) → `conclusion: success` después de 1m18s.
+  - 3 pushes consecutivos a main que antes fallaban ahora tienen red de seguridad real.
+  - El `npm run audit:migrations` (del commit `e7fd2bb`) puede correr en CI en cada PR, no solo en local.
+  - Lección operativa guardada en MEMORY.md: cuando el workflow dura <2 min, mejor polling manual desde sesión root que cron (race condition entre tick programado y delete).
+
+- **Trigger:** Sprint cierre-eventos-virtuales del 2026-07-11 10:30 ya documentó que `npm run audit:migrations` quedaba como "red de seguridad" — pero la red estaba rota porque el CI no corría el smoke E2E. Esta sesión cierra el loop.
+
+- **Archivos tocados (0 código, solo infra):**
+  - **3 GitHub Secrets nuevos** en `david17891/qlick` (encriptados en reposo, accesibles solo por Actions runners).
+  - **1 fine-grained PAT actualizado** (scope "Secrets: Read and write" agregado al existente, sin regenerar).
+  - **1 commit vacío** `1f042ad` para triggerear el workflow.
+  - **0 cambios de código**.
+
+- **Lección operacional:**
+  1. Fine-grained PAT scopes son granulares — `Actions: R+W` ≠ `Secrets: R+W`. Para escribir GitHub Secrets, se necesita scope explícito "Secrets" en "Repository permissions".
+  2. Los fine-grained PATs se pueden editar sin regenerar (cambiar scopes no afecta expiración ni revoca tokens activos).
+  3. `gh secret set` con pipe (`$value | gh secret set NAME`) NO loguea el valor en argv ni en transcript de PowerShell — es la forma correcta de setear secrets con valor dinámico.
+  4. `SUPABASE_SECRET_KEY` con formato `sb_secret_***` (43 chars) es el formato nuevo de Supabase post-2024, NO un JWT. La suposición previa de "truncado" estaba mal.
+  5. `SUPABASE_PROJECT_REF` es el subdominio de la URL de Supabase (`https://<ref>.supabase.co`). Es público, no sensitive — se puede inferir de la URL sin pedirlo a David.
+
+- **Pendiente menor:** El `SUPABASE_SECRET_KEY` del `.env.local` (línea 20) tiene un valor que se ve algo estructurado (no random de 256 bits). El CI pasó con ese valor, así que ES válido, pero la aleatoriedad se ve baja. Si en el futuro algún script hace asumpciones sobre el formato, podría romperse. Considerar regenerar el secret en Supabase → "Generate new token" y actualizar `.env.local` + Vercel + GitHub.
+
+---
+
 ## 2026-07-11 ~14:30 — Migrations pendientes en prod: event_survey_tokens + admin_audit_log.before/after
 
 - **Pregunta:** El admin UI en `/admin/eventos/[id]` fallaba con `PGRST205: Could not find the table 'public.event_survey_tokens' in the schema cache` al disparar el botón "Enviar link de encuesta". El probe reveló que la tabla NO EXISTÍA en prod. La migration `20260703180000_event_survey_tokens.sql` estaba commitada en el repo desde el 2026-07-03 pero nunca se aplicó. El audit script reveló también 2 columnas faltantes en `admin_audit_log` (`before`/`after` jsonb) de la migration `20260629000000_admin_audit_log_diff.sql` — diff view del audit log nunca funcionó en prod.

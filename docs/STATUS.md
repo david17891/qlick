@@ -8,10 +8,9 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-11 11:50 Phoenix — **Cierre-eventos-virtuales: link con encuesta + UPSERT attendee + promote lead + audit voseo completo**.
-> Sprint implementado y verificado: feature de "enviar link de encuesta post-evento a confirmados" operativa (botón "📨 Enviar link de encuesta" en `/admin/eventos/[id]?tab=confirmations`). Cuando un confirmado responde la Q0 "¿Asististe?" con Sí, ahora se hace UPSERT del attendee con `source='survey_attended'` (nuevo valor del enum, migration `20260711100000` aplicada por David en Supabase) + se promueve el lead a `event_attended` con tag `event:{slug}:attended` en el CRM. Fix de 2 gaps críticos: (1) confirmados email-only no contaban como asistentes; (2) el CRM no reflejaba la asistencia real. Helper puro `detectAttendanceCheck` extraído para testear sin DB. **Audit de voseo** en todo el copy visible al cliente (5 templates de email + bot-engine + UI admin + 9 archivos más): 17 voseos reales corregidos (4 del email + 13 en otros archivos), validados con `scripts/_audit-voseo-templates.mjs` (212 archivos escaneados, 209 limpios, 3 falsos positivos documentados). Validación: 1066/1066 tests verde, lint verde, type-check verde, build OK.
+> **Última actualización:** 2026-07-11 19:30 Phoenix — **CI smoke E2E en verde por primera vez**: 3 GitHub Secrets configurados (`SUPABASE_URL`, `SUPABASE_PROJECT_REF`, `SUPABASE_SECRET_KEY`), fine-grained PAT con scope "Secrets: Read and write" habilitado, smoke workflow verde en run `29176681182` (1m18s) — cierra 3 pushes consecutivos que fallaban el `smoke:audit` job por secrets no configurados. También cerrado el incidente del commit `e7fd2bb` (migrations `event_survey_tokens` + `admin_audit_log.before/after` aplicadas a prod vía SQL Editor + `NOTIFY pgrst` ejecutado). El botón "📨 Enviar link de encuesta" del admin ya funciona en prod sin PGRST205. Validación local: 1144/1144 tests verde, type-check ✓, lint ✓.
 >
-> Estado anterior (2026-07-10 5:32): recordatorios manuales de eventos + envío de certificados Concept C activos. Sigue vigente.
+> Estado anterior (2026-07-11 11:50): Sprint cierre-eventos-virtuales (link con encuesta + UPSERT attendee + promote lead + audit voseo). Sigue vigente — la migration `20260711100000` aplicada por David ese día sigue activa.
 
 ---
 

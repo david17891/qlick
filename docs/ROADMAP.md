@@ -1,12 +1,22 @@
 # Qlick LMS — Roadmap
 
 > Fuente de verdad del plan del LMS. Cualquier desvío se conversa y se actualiza acá.
-> Última revisión: 2026-07-11 11:50 Phoenix — **Sprint cierre-eventos-virtuales + Audit voseo** cerrado en `main` (5 commits del feature + 2 hotfixes de copy). Validación 1066/1066 tests. Migración `20260711100000` aplicada en Supabase por David.
+> Última revisión: 2026-07-11 19:30 Phoenix — **Sprint CI verde + secrets config** cerrado (3 GitHub Secrets + fine-grained PAT scope "Secrets"). Smoke workflow verde por primera vez en run `29176681182`. Sin cambios de código — solo infra. Estado anterior (11:50): Sprint cierre-eventos-virtuales + Audit voseo cerrado en `main`. Validación 1144/1144 tests.
 
 ---
 
 ## Estado actual
 
+- [x] **v0.9.4 — Sprint CI verde + GitHub Secrets config (operacional)** — sprint cerrado el 2026-07-11 19:30 Phoenix. NO incluye cambios de código, solo infra.
+  - **Qué incluye:**
+    - **3 GitHub Secrets** configurados en `david17891/qlick` (encriptados en reposo): `SUPABASE_URL`, `SUPABASE_PROJECT_REF` (extraído del subdominio, público), `SUPABASE_SECRET_KEY` (de `.env.local`, formato `sb_secret_xxx` válido).
+    - **Fine-grained PAT actualizado**: scope "Secrets: Read and write" agregado al existente `github_pat_11AJ3BMCA0...` sin regenerar el token.
+    - **Smoke workflow verde** por primera vez en run `29176681182` (1m18s) — los 3 pushes consecutivos a `main` que fallaban (`654e6b6`, `433ad62`, `e7fd2bb`) ahora pasan.
+    - **Cierre del incidente del commit `e7fd2bb`**: migrations `event_survey_tokens` (`20260703180000`) y `admin_audit_log.before/after` (`20260629000000`) aplicadas a prod vía SQL Editor + `NOTIFY pgrst` ejecutado. El botón "📨 Enviar link de encuesta" del admin ya funciona sin PGRST205.
+  - **Status vivo:** `docs/STATUS.md` (snapshot 2026-07-11 19:30).
+  - **Traza completa:** `data/PROJECT-LOG.md` entrada `2026-07-11 ~19:30`.
+  - **Validación:** 1144/1144 tests verde, type-check ✓, lint ✓, build ✓, smoke E2E ✓.
+  - **Lección operativa:** fine-grained PAT scopes son granulares — `Actions: R+W` ≠ `Secrets: R+W`. Para escribir GitHub Secrets se necesita scope explícito. Polling manual desde sesión root es mejor que cron para CI <2 min (race condition entre tick programado y delete).
 - [x] **v0.9.3 — Sprint Cierre-Eventos-Virtuales (link con encuesta + UPSERT attendee + promote lead + audit voseo)** — sprint cerrado el 2026-07-11 en `main` (5 commits del feature + 2 hotfixes de copy). Validado: type-check ✓ · lint ✓ · 1066/1066 tests ✓ · build ✓. Migration `20260711100000_event_attendee_source_survey_attended.sql` aplicada.
   - Handoff: este sprint NO tiene handoff dedicado (sprint corto end-to-end); toda la info en `docs/STATUS.md` sección "Sprint cierre-eventos-virtuales (2026-07-11 10:30 — 11:50 Phoenix)" + `data/PROJECT-LOG.md` entrada `2026-07-11 ~10:40`.
   - Status vivo: `docs/STATUS.md` (snapshot 2026-07-11 11:50).
