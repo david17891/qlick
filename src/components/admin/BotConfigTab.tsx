@@ -243,7 +243,10 @@ export function BotConfigTab() {
   };
 
   const onSelectMode = (m: BotMode) => {
-    if (m === "super_executive") return; // 🔒 Próximamente en PR #2
+    // FIX 2026-07-12 (Sprint v16 hotfix UI #6): el candado de
+    // "super_executive" se elimina. El modo YA está implementado
+    // en el provider deepseek (sprint v15 PR #2) y sembrado en
+    // system_settings. David lo activa desde esta misma UI.
     setMode(m);
   };
 
@@ -353,9 +356,9 @@ export function BotConfigTab() {
               icon="🚀"
               titulo="Agente Comercial Súper Ejecutivo"
               descripcion="Closer consultivo proactivo con Directiva UX Hook y escalación semántica."
-              activo={false}
-              disabled={true}
-              badge="🔒 Próximamente en PR #2"
+              activo={mode === "super_executive"}
+              disabled={false}
+              badge="⚡ LISTO / ACTIVO"
               onClick={() => onSelectMode("super_executive")}
             />
           </div>
@@ -363,6 +366,21 @@ export function BotConfigTab() {
       </Card>
 
       {/* 2. Toggles de Bloques de Contexto */}
+      {/* FIX 2026-07-12 (Sprint v16 hotfix UI #7): banner de claridad
+          para que el admin entienda que las Reglas de Oro y los
+          Bloques de Contexto aplican a los 3 modos por igual. */}
+      <div
+        className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900"
+        role="note"
+        aria-live="polite"
+      >
+        <p className="font-semibold mb-1">ℹ️ Las Reglas de Oro y Bloques de Contexto aplican por igual</p>
+        <p>
+          Estos ajustes alimentan a los 3 modos (Socrático v1, Socrático v2 y
+          Súper Ejecutivo). Cambiar de modo NO desactiva las reglas ni los
+          bloques que configures aquí.
+        </p>
+      </div>
       <Card>
         <CardHeader>
           <div>
