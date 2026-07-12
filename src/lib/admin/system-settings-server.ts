@@ -60,6 +60,38 @@ export const KEY_BOT_PAUSED_GLOBAL = "bot_paused_global" as const;
 // bloquea plantillas fuera de ventana y alerta en la UI.
 export const KEY_BOT_DAILY_OUTBOUND_LIMIT = "bot_daily_outbound_limit" as const;
 
+/**
+ * Sprint v16 Hotfix #3: SSOT del tipo del modo global del bot.
+ *
+ * El set cerrado de 3 valores los define el provider deepseek
+ * (`src/lib/ai/deepseek-provider.ts`) y la UI los enumera en
+ * `BotConfigTab`. Esta union es la fuente de verdad — el type guard
+ * `isBotGlobalMode` se usa en el endpoint dedicado y en cualquier
+ * lectura runtime de `system_settings.bot_global_mode`.
+ *
+ * Mantener alineado con `BotMode` en `src/components/admin/BotConfigTab.tsx`
+ * y con los 3 system prompts en `src/lib/ai/agent-prompts.ts`.
+ */
+export type BotGlobalMode =
+  | "socratic_autopilot_v2"
+  | "socratic_no_tools_v1"
+  | "super_executive";
+
+/**
+ * Type guard runtime: ¿es `x` un `BotGlobalMode` válido?
+ *
+ * Útil cuando se lee `system_settings.bot_global_mode` y el jsonb puede
+ * traer basura (valor viejo tras rename, edición manual, seed parcial).
+ * Devolver `false` deja al caller decidir fallback al default o al env var.
+ */
+export function isBotGlobalMode(x: unknown): x is BotGlobalMode {
+  return (
+    x === "socratic_autopilot_v2" ||
+    x === "socratic_no_tools_v1" ||
+    x === "super_executive"
+  );
+}
+
 /** Tipo de la fila de system_settings (jsonb value). */
 type SettingValue = unknown;
 
