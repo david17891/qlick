@@ -325,17 +325,6 @@ export function BotConfigTab() {
 
   return (
     <div className="space-y-6">
-      {/* Banner PR #1 */}
-      <Card className="border-amber-200 bg-amber-50/40">
-        <CardBody className="p-4 text-sm text-ink-soft">
-          ℹ️ <strong>PR #1 (release actual):</strong> las Reglas de Oro que crees
-          aquí se persisten y se muestran en la lista, pero la inyección al bot
-          (al <code>buildSystemPrompt</code>) se habilita en el <strong>PR #2</strong>.
-          Por ahora puedes crear, activar/desactivar y eliminar reglas; el bot
-          sigue operando con su modo actual sin consumirlas.
-        </CardBody>
-      </Card>
-
       {/* 1. Selector de Modos */}
       <Card>
         <CardHeader>
@@ -427,8 +416,7 @@ export function BotConfigTab() {
             <div>
               <h2 className="text-lg font-semibold text-ink">Reglas de Oro (ai_bot_rules)</h2>
               <p className="text-xs text-ink-muted mt-1">
-                Top {stats?.bot_max_active_rules ?? 8} por prioridad e inyecciones.
-                Las inyecciones al prompt se activan en PR #2.
+                Top {stats?.bot_max_active_rules ?? 8} por prioridad se inyectan al prompt del bot.
               </p>
             </div>
             <Button
@@ -446,6 +434,84 @@ export function BotConfigTab() {
               Aún no hay reglas. Crea la primera con &quot;+ Nueva regla&quot;.
             </p>
           ) : (
+            <>
+            {/* FIX 2026-07-12 (hotfix UI #2.2): Guía Rápida colapsable
+                arriba de la tabla. Antes había un banner ámbar del
+                sprint v15 PR #1 (ya mergeado). Ahora la guía explica
+                en lenguaje llano cómo funcionan las reglas. */}
+            <details
+              open
+              className="mb-4 rounded-lg border border-sky-200 bg-sky-50/40 p-3 text-sm text-ink-soft"
+            >
+              <summary className="cursor-pointer font-semibold text-ink">
+                📚 Guía Rápida: Cómo usar las Reglas de Oro
+              </summary>
+              <div className="mt-3 space-y-3 leading-relaxed">
+                <p>
+                  Las <strong>Reglas de Oro</strong> son instrucciones que se
+                  inyectan en el prompt del bot. Las top&nbsp;
+                  {stats?.bot_max_active_rules ?? 8} por prioridad entran a
+                  cada respuesta que el bot genera.
+                </p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>
+                    <strong>Prioridad (1-100):</strong> si dos reglas chocan,
+                    gana la del número más alto. Ejemplo: una regla de
+                    prioridad <code>100</code> siempre vence a una de{" "}
+                    <code>10</code>. Las top&nbsp;
+                    {stats?.bot_max_active_rules ?? 8} por puntaje se inyectan
+                    al prompt en cada turno.
+                  </li>
+                  <li>
+                    <strong>Alcance (Scope):</strong>{" "}
+                    <code>global</code> aplica a todo el CRM, sin importar qué
+                    curso o evento consulte el lead. Los scopes{" "}
+                    <code>curso_&lt;slug&gt;</code> o{" "}
+                    <code>evento_&lt;slug&gt;</code> se encienden solo cuando
+                    el lead pregunta por ese ítem específico. Úsalo para
+                    reglas de precio o vigencia de un solo producto.
+                  </li>
+                  <li>
+                    <strong>Descuentos:</strong> el bot puede ofrecer una
+                    promo temporal con los campos{" "}
+                    <code>discount_percent</code> y <code>valid_until</code>.
+                    Sirve para que el bot mencione una rebaja por tiempo
+                    limitado sin violar los guardrails de precios
+                    canónicos.
+                  </li>
+                </ul>
+                <div className="rounded-md border border-slate-200 bg-white p-3">
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                    Ejemplos claros
+                  </p>
+                  <ul className="space-y-2 text-sm">
+                    <li>
+                      <strong>Prioridad 100 · Global:</strong>{" "}
+                      <em>
+                        &quot;Si preguntan por factura, decir que los precios
+                        incluyen IVA y emitimos factura en 24h.&quot;
+                      </em>
+                    </li>
+                    <li>
+                      <strong>Prioridad 80 ·{" "}
+                      <code>curso_marketing-avanzado</code>:</strong>{" "}
+                      <em>
+                        &quot;Si el lead pregunta por el curso de marketing
+                        avanzado, menciona que el primer módulo es gratis
+                        y el certificado es digital.&quot;
+                      </em>
+                    </li>
+                    <li>
+                      <strong>Prioridad 60 · Global:</strong>{" "}
+                      <em>
+                        &quot;Si dicen &apos;gracias&apos;, responde breve y
+                        ofrece agendar una llamada con un humano.&quot;
+                      </em>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </details>
             <table className="w-full text-sm">
               <thead className="text-ink-muted text-xs uppercase">
                 <tr>
@@ -495,6 +561,7 @@ export function BotConfigTab() {
                 ))}
               </tbody>
             </table>
+            </>
           )}
         </CardBody>
       </Card>
@@ -690,17 +757,35 @@ export function BotConfigTab() {
                     <p className="text-[10px] text-ink-muted">
                       Protege de cobros sorpresivos. Default 50/día en pruebas.
                     </p>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={10000}
-                      defaultValue={stats.bot_daily_outbound_limit}
-                      onBlur={(e) => {
-                        const n = Number(e.target.value);
-                        if (Number.isFinite(n) && n >= 0) void handleChangeDailyLimit(n);
-                      }}
-                      className="mt-1 w-full"
-                    />
+                    <div className="mt-1 flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min={0}
+                        max={10000}
+                        defaultValue={stats.bot_daily_outbound_limit}
+                        onBlur={(e) => {
+                          const n = Number(e.target.value);
+                          if (Number.isFinite(n) && n >= 0) void handleChangeDailyLimit(n);
+                        }}
+                        className="w-full"
+                      />
+                      {/* FIX 2026-07-12 (hotfix UI #2.4): botón rápido
+                          para subir a 500 en sesiones de prueba
+                          intensivas. Evita teclear 500 manualmente.
+                          A1 de PR #18 ya es no-op si el valor no
+                          cambió, así que es seguro darle click si
+                          el actual ya es 500. */}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void handleChangeDailyLimit(500)}
+                        disabled={statsLoading}
+                        title="Subir el tope a 500 envíos rolling 24h (modo pruebas intensivas)"
+                      >
+                        ⚡ Subir a 500 (Pruebas)
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -793,7 +878,11 @@ function ModeTarjeta(props: {
       className={
         "text-left p-4 rounded-xl border-2 transition " +
         (activo
-          ? "border-brand-500 bg-brand-50/60"
+          ? // FIX 2026-07-12 (hotfix UI #2.3): alto contraste cuando
+            // está activo. Antes el estilo era casi idéntico al
+            // inactivo, confundiendo al admin. Ahora border emerald
+            // sólido + ring + sombra.
+            "border-emerald-500 bg-emerald-50 ring-2 ring-emerald-500/40 shadow-md"
           : disabled
             ? "border-slate-200 bg-slate-50/40 cursor-not-allowed opacity-60"
             : "border-brand-100 hover:border-brand-300 hover:bg-brand-50/40")
@@ -804,6 +893,18 @@ function ModeTarjeta(props: {
         <span className="text-2xl">{icon}</span>
         {badge && <Badge tone="warning">{badge}</Badge>}
       </div>
+      {/* FIX 2026-07-12 (hotfix UI #2.3): badge explícito de estado
+          arriba del título. El admin sabe en un vistazo cuál es el
+          modo en operación vs cuál está disponible para click. */}
+      {activo ? (
+        <Badge tone="success" className="mb-2 font-bold">
+          🟢 MODO ACTUALMENTE EN OPERACIÓN
+        </Badge>
+      ) : (
+        <Badge tone="neutral" className="mb-2">
+          ⚪ Clic para Activar
+        </Badge>
+      )}
       <div className="font-semibold text-ink">{titulo}</div>
       <div className="text-xs text-ink-muted mt-1">{descripcion}</div>
     </button>
