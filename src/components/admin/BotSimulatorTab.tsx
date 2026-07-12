@@ -273,7 +273,9 @@ export function BotSimulatorTab({ currentMode }: BotSimulatorTabProps) {
                   disabled={sending}
                   className="h-4 w-4 accent-brand-500"
                 />
-                <span className="text-xs">☑️ Ignorar pausa per-lead</span>
+                <span className="text-xs" title="Si la casilla 'Ignorar pausa' está activa, el simulador responderá aunque en producción el lead tenga el bot pausado.">
+                  ☑️ Ignorar pausa per-lead
+                </span>
               </label>
               <Button
                 variant="ghost"
@@ -419,8 +421,14 @@ export function BotSimulatorTab({ currentMode }: BotSimulatorTabProps) {
 
                 {/* Intención + Tools */}
                 <div className="rounded-lg border border-brand-100 p-3">
-                  <p className="text-xs font-semibold text-ink-muted mb-1">
-                    🎯 Intención & Herramientas
+                  <p
+                    className="text-xs font-semibold text-ink-muted mb-1"
+                    title="Clasificación semántica del mensaje (ej. pregunta general, intento de inscripción o escalación) + funciones internas consultadas por el modelo (ej. extract-contact para guardar datos)."
+                  >
+                    🎯 Intención &amp; Herramientas ℹ️
+                  </p>
+                  <p className="text-[10px] text-ink-muted italic mb-1">
+                    Clasificación semántica del mensaje + funciones internas consultadas por el modelo (ej. <code>extract-contact</code>).
                   </p>
                   <p className="text-sm">
                     Intent: <code className="bg-slate-100 px-1 rounded">{lastResponse.telemetry.intent}</code>
@@ -445,12 +453,16 @@ export function BotSimulatorTab({ currentMode }: BotSimulatorTabProps) {
                     onClick={() => setRulesOpen((v) => !v)}
                     className="w-full text-left flex items-center justify-between"
                     aria-expanded={rulesOpen}
+                    title="Directivas de máxima prioridad (ai_bot_rules) que el bot obedeció en este turno. Top N por puntaje se inyectan al prompt."
                   >
                     <p className="text-xs font-semibold text-ink-muted">
-                      🧠 Reglas de Oro Inyectadas ({lastResponse.telemetry.injectedRules.length})
+                      🧠 Reglas de Oro Inyectadas ({lastResponse.telemetry.injectedRules.length}) ℹ️
                     </p>
                     <span aria-hidden="true">{rulesOpen ? "▲" : "▼"}</span>
                   </button>
+                  <p className="text-[10px] text-ink-muted italic mt-1">
+                    Directivas de máxima prioridad (<code>ai_bot_rules</code>) que el bot obedeció en este turno.
+                  </p>
                   {rulesOpen && (
                     <ul className="mt-2 space-y-1 text-xs">
                       {lastResponse.telemetry.injectedRules.length === 0 ? (
@@ -481,12 +493,16 @@ export function BotSimulatorTab({ currentMode }: BotSimulatorTabProps) {
                     onClick={() => setEventOpen((v) => !v)}
                     className="w-full text-left flex items-center justify-between"
                     aria-expanded={eventOpen}
+                    title="Masterclass o Taller cargado desde BD sobre el cual la IA calculó su respuesta y precios. Solo eventos que inician en el futuro o hace menos de 6h (margen de gracia)."
                   >
                     <p className="text-xs font-semibold text-ink-muted">
-                      📅 Contexto de Evento Activo
+                      📅 Contexto de Evento Activo ℹ️
                     </p>
                     <span aria-hidden="true">{eventOpen ? "▲" : "▼"}</span>
                   </button>
+                  <p className="text-[10px] text-ink-muted italic mt-1">
+                    Masterclass o Taller cargado desde BD sobre el cual la IA calculó su respuesta y precios.
+                  </p>
                   {eventOpen && (
                     <div className="mt-2 text-xs">
                       {lastResponse.telemetry.eventContext ? (

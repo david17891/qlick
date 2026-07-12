@@ -359,6 +359,17 @@ export async function loadActiveEventContext(
     // pueda desambiguar eventos por código único, no por título.
     // FIX 2026-07-07: typegen regenerado, ya no necesitamos `from("events" as never)`
     // ni el cast inline del row — todo infiere directo del Row type.
+    //
+    // FIX 2026-07-12 (sprint v17 hotfix #1, post-v0.9.6): filtrar eventos
+    // pasados en la carga por defecto (sin slug). Antes, `order starts_at
+    // ASC limit 1` podía tomar un evento ya vencido con status=published
+    // e inyectarlo al bot como "=== EVENTO ACTIVO ===", provocando que
+    // ofreciera cursos pasados. Ahora pedimos solo eventos que inician
+    // en el futuro o hace menos de 6h (margen de gracia por si el
+    // webinar está en curso o tuvo un delay).
+    const graceStartIso = new Date(
+      Date.now() - 6 * 60 * 60 * 1000
+    ).toISOString();
     const { data, error } = slug
       ? await supabase
           .from("events")
@@ -375,6 +386,7 @@ export async function loadActiveEventContext(
             "id, slug, short_code, title, description, starts_at, ends_at, location, status, requires_name, event_rules, format, streaming_url, streaming_provider, streaming_access_note"
           )
           .eq("status", "published")
+          .gte("starts_at", graceStartIso)
           .order("starts_at", { ascending: true })
           .limit(1)
           .maybeSingle();
