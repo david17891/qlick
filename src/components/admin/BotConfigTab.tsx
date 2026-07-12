@@ -131,6 +131,10 @@ export function BotConfigTab() {
   const [showNewRuleModal, setShowNewRuleModal] = useState(false);
   // Sprint v16 PR #2.3: state de los controles de pausa global + kill-switch.
   const [togglingGlobalPause, setTogglingGlobalPause] = useState(false);
+  // Sprint v16 Hotfix #3: mientras se persiste `onSelectMode` en
+  // system_settings vía /api/admin/bot/mode, deshabilitamos los botones
+  // para evitar doble click + rollback fantasma.
+  const [modeSaving, setModeSaving] = useState(false);
   const [newRule, setNewRule] = useState<{
     instruction: string;
     priority: number;
@@ -249,13 +253,61 @@ export function BotConfigTab() {
     setBlocks((b) => ({ ...b, [key]: !b[key] }));
   };
 
-  const onSelectMode = (m: BotMode) => {
-    // FIX 2026-07-12 (Sprint v16 hotfix UI #6): el candado de
-    // "super_executive" se elimina. El modo YA está implementado
-    // en el provider deepseek (sprint v15 PR #2) y sembrado en
-    // system_settings. David lo activa desde esta misma UI.
-    setMode(m);
-  };
+  // Sprint v16 Hotfix #3 — persistencia real de la selección de modo.
+  //
+  // Antes (sprint v15 PR #1 / v16 PR #2): `onSelectMode` solo cambiaba el
+  // estado local. El backend (provider deepseek) seguía leyendo el modo
+  // viejo de system_settings hasta que el caché TTL 30s expirara. Eso es
+  // exactamente el "medio segundo" en el que la UI y el backend desfasaban.
+  //
+  // Ahora: optimistic update + POST a `/api/admin/bot/mode` (endpoint
+  // dedicado que la auditoría v16 R2 anticipaba) + refetch de stats para
+  // reconciliar `bot_global_mode` con la SSOT. Si el POST falla → rollback
+  // del modo local + mostrar el error. No-op si ya está activo.
+  const onSelectMode = useCallback(
+    async (m: BotMode) => {
+      if (modeSaving) return; // evita doble click durante el POST
+      if (m === mode) return; // no-op si ya es el modo activo
+      const prev = mode;
+      setMode(m); // optimistic
+      setModeSaving(true);
+      try {
+        const r1 = await fetch("/api/admin/bot/mode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: m })
+        });
+        if (!r1.ok) {
+          const j = (await r1.json().catch(() => ({}))) as { error?: string };
+          throw new Error(j.error ?? `HTTP ${r1.status}`);
+        }
+        // Reconciliar con la SSOT: refetch de stats para que
+        // `stats.bot_global_mode` refleje el valor persistido.
+        const r2 = await fetch("/api/admin/bot/stats", { cache: "no-store" });
+        if (r2.ok) {
+          const j2 = (await r2.json()) as { ok: boolean; data?: BotStats; error?: string };
+          if (j2.ok && j2.data) {
+            setStats(j2.data);
+            // Sincronización explícita: si la SSOT trae un valor distinto
+            // al optimistic (carrera con otro admin), adoptamos el de DB.
+            if (j2.data.bot_global_mode && j2.data.bot_global_mode !== m) {
+              setMode(j2.data.bot_global_mode as BotMode);
+            }
+          }
+        }
+      } catch (err) {
+        setMode(prev); // rollback: el modo local vuelve al valor anterior
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Error al guardar modo en base de datos"
+        );
+      } finally {
+        setModeSaving(false);
+      }
+    },
+    [mode, modeSaving]
+  );
 
   const onCreateRule = () => {
     setError(null);
@@ -331,33 +383,65 @@ export function BotConfigTab() {
           <h2 className="text-lg font-semibold text-ink">Modo Global del Bot</h2>
         </CardHeader>
         <CardBody className="space-y-3">
-          <div className="grid gap-3 md:grid-cols-3">
-            <ModeTarjeta
-              icon="🟢"
-              titulo="Modo Socrático / Autopilot v2"
-              descripcion="Flujo consultivo socrático e invocación automática de herramientas (extract-contact)."
-              activo={mode === "socratic_autopilot_v2"}
-              disabled={false}
-              onClick={() => onSelectMode("socratic_autopilot_v2")}
-            />
-            <ModeTarjeta
-              icon="🔵"
-              titulo="Modo Socrático sin Herramientas v1"
-              descripcion="Modo LLM single-shot (deepseek_tools_enabled = false). Sin tool-calling."
-              activo={mode === "socratic_no_tools_v1"}
-              disabled={false}
-              onClick={() => onSelectMode("socratic_no_tools_v1")}
-            />
-            <ModeTarjeta
-              icon="🚀"
-              titulo="Agente Comercial Súper Ejecutivo"
-              descripcion="Closer consultivo proactivo con Directiva UX Hook y escalación semántica."
-              activo={mode === "super_executive"}
-              disabled={false}
-              badge="⚡ LISTO / ACTIVO"
-              onClick={() => onSelectMode("super_executive")}
-            />
-          </div>
+          {/*
+            Sprint v16 Hotfix #3 — anti-flicker de carga.
+
+            Antes: useState inicializaba `mode = "socratic_autopilot_v2"`
+            por defecto y medio segundo después, cuando `fetchStats()`
+            terminaba, saltaba a `stats.bot_global_mode`. Eso dibujaba un
+            modo falso por ~500ms antes de sincronizar con la SSOT.
+
+            Ahora: mientras `statsLoading === true && stats === null`
+            (carga inicial sin respuesta aún), mostramos skeleton
+            placeholder. Solo cuando llega la primera respuesta pintamos
+            las 3 ModeTarjeta con el modo activo real. Después, los
+            cambios de modo vía `onSelectMode` actualizan al instante
+            (optimistic + POST + refetch).
+          */}
+          {statsLoading && !stats ? (
+            <div className="space-y-2" aria-busy="true" aria-live="polite">
+              <p className="text-sm text-ink-muted">
+                Cargando configuración activa desde base de datos…
+              </p>
+              <div className="grid gap-3 md:grid-cols-3">
+                {[0, 1, 2].map((i) => (
+                  <div
+                    key={i}
+                    className="h-32 rounded-xl border border-slate-200 bg-slate-50 animate-pulse"
+                    aria-hidden="true"
+                  />
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-3">
+              <ModeTarjeta
+                icon="🟢"
+                titulo="Modo Socrático / Autopilot v2"
+                descripcion="Flujo consultivo socrático e invocación automática de herramientas (extract-contact)."
+                activo={mode === "socratic_autopilot_v2"}
+                disabled={modeSaving}
+                onClick={() => void onSelectMode("socratic_autopilot_v2")}
+              />
+              <ModeTarjeta
+                icon="🔵"
+                titulo="Modo Socrático sin Herramientas v1"
+                descripcion="Modo LLM single-shot (deepseek_tools_enabled = false). Sin tool-calling."
+                activo={mode === "socratic_no_tools_v1"}
+                disabled={modeSaving}
+                onClick={() => void onSelectMode("socratic_no_tools_v1")}
+              />
+              <ModeTarjeta
+                icon="🚀"
+                titulo="Agente Comercial Súper Ejecutivo"
+                descripcion="Closer consultivo proactivo con Directiva UX Hook y escalación semántica."
+                activo={mode === "super_executive"}
+                disabled={modeSaving}
+                badge="⚡ LISTO / ACTIVO"
+                onClick={() => void onSelectMode("super_executive")}
+              />
+            </div>
+          )}
         </CardBody>
       </Card>
 
