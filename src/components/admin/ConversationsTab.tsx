@@ -252,8 +252,28 @@ export function ConversationsTab() {
       setSelectedLeadId(leadId);
       // Fetch detalle (puede haber cambiado desde el último poll).
       void fetchDetail(leadId);
-      // Marcar como leído. Si falla, no spameamos error: la UI ya
-      // muestra el último mensaje, solo que el 🟢 quedará pegado.
+      // FIX 2026-07-12 (hotfix UI): optimistic update del lastReadAt
+      // para que el badge 🟢 "Nuevo" desaparezca INMEDIATAMENTE al
+      // hacer clic, sin esperar el PATCH del server. Si el server falla
+      // en silencio, el siguiente poll lo reconcilia.
+      const nowIso = new Date().toISOString();
+      setConversations((prev) =>
+        prev.map((c) => (c.leadId === leadId ? { ...c, lastReadAt: nowIso } : c))
+      );
+      // FIX 2026-07-12 (hotfix UI #1): scroll INSTANTÁNEO al fondo al
+      // abrir un chat, sin animación `smooth` y sin afectar el scroll
+      // del body. Usamos `scrollTop = scrollHeight` (no scrollIntoView).
+      // Lo hacemos después de seleccionar el lead para que el
+      // `messagesContainerRef` apunte al contenedor activo.
+      window.requestAnimationFrame(() => {
+        const el = messagesContainerRef.current;
+        if (el) {
+          el.scrollTop = el.scrollHeight;
+          setIsNearBottom(true);
+          setNewMessageToastCount(0);
+        }
+      });
+      // Marcar como leído en el server (monotonic GREATEST en SQL).
       try {
         await fetch(`/api/admin/crm/conversations?leadId=${encodeURIComponent(leadId)}`, {
           method: "PATCH",
@@ -280,10 +300,16 @@ export function ConversationsTab() {
   }, []);
 
   // Auto-scroll al fondo cuando llegan mensajes nuevos SOLO si está cerca.
+  // FIX 2026-07-12 (hotfix UI #1): scroll INSTANTÁNEO sin animación.
+  // Antes: `scrollIntoView({ behavior: "smooth" })` movía el scroll del
+  // body y producía un efecto "molesto" cuando el admin tenía otro
+  // scroll position. Ahora: scrollTop = scrollHeight (instantáneo,
+  // solo afecta el contenedor del chat).
   useEffect(() => {
     if (!selectedConv) return;
     if (isNearBottom) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      const el = messagesContainerRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
     } else {
       // Incrementa el contador del pill. M2: solo se ve si el admin
       // está scrolleando arriba.
@@ -292,7 +318,8 @@ export function ConversationsTab() {
   }, [selectedConv?.messages.length, isNearBottom, selectedConv]);
 
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = messagesContainerRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
     setNewMessageToastCount(0);
   }, []);
 
@@ -491,7 +518,7 @@ export function ConversationsTab() {
                 : "Bot respondiendo a todos los leads"
             }
           >
-            {botPausedGlobal ? "▶️ Reanudar Todos" : "⏸️ Pausar Todos"}
+            {botPausedGlobal ? "⚠️ Reanudar Bot IA Global" : "🤖 Pausar Bot (Todos los Leads)"}
           </Button>
         </CardHeader>
         <CardBody className="flex-1 overflow-y-auto p-0">
@@ -506,9 +533,18 @@ export function ConversationsTab() {
               {conversations.map((c) => {
                 const lastMsg = c.messages[c.messages.length - 1];
                 const isSelected = c.leadId === selectedLeadId;
+                // FIX 2026-07-12 (hotfix UI #2): el badge 🟢 "Nuevo" se
+                // muestra si el último mensaje es inbound Y su timestamp
+                // es estrictamente mayor al lastReadAt del admin. Si el
+                // admin nunca abrió el chat, lastReadAt es null y el
+                // badge se muestra (correcto). Al hacer clic, el
+                // optimistic update de selectLead setea lastReadAt = now,
+                // haciendo que el badge desaparezca al instante.
                 const isUnread =
-                  lastMsg?.direction === "inbound" &&
-                  (!c.updatedAt || new Date(c.updatedAt).getTime() > Date.now() - 1000 * 60 * 60 * 24);
+                  !!lastMsg &&
+                  lastMsg.direction === "inbound" &&
+                  (!c.lastReadAt ||
+                    new Date(lastMsg.at).getTime() > new Date(c.lastReadAt).getTime());
                 return (
                   <li
                     key={c.id}
@@ -520,7 +556,7 @@ export function ConversationsTab() {
                   >
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-sm font-medium text-ink truncate">
-                        {c.leadId.slice(0, 8)}…
+                        {c.leadName || c.leadPhone || c.leadId.slice(0, 8)}
                       </p>
                       {isUnread && (
                         <Badge tone="success" title="Mensaje nuevo del lead">🟢 Nuevo</Badge>
@@ -555,7 +591,7 @@ export function ConversationsTab() {
             <CardHeader className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200">
               <div>
                 <p className="text-sm font-semibold text-ink">
-                  Chat · Lead {selectedLeadId.slice(0, 8)}…
+                  Chat con: {selectedConv?.leadName || selectedConv?.leadPhone || `Lead ${selectedLeadId.slice(0, 8)}`}
                 </p>
                 {selectedLeadId && botPauseByLead[selectedLeadId]?.bot_paused && (
                   <Badge tone="warning" className="mt-1">
@@ -578,13 +614,13 @@ export function ConversationsTab() {
                       : "Pausar el bot para este lead"
                   }
                 >
-                  {botPauseByLead[selectedLeadId ?? ""]?.bot_paused ? "▶️ Reanudar" : "⏸️ Pausar Bot"}
+                  {botPauseByLead[selectedLeadId ?? ""]?.bot_paused ? "▶️ Reanudar Bot (Este Lead)" : "🤖 Pausar Bot (Este Lead)"}
                 </Button>
                 <Button
                   type="button"
                   size="sm"
                   variant="ghost"
-                  onClick={() => window.open(`/admin/crm?leadId=${selectedLeadId}`, "_blank")}
+                  onClick={() => window.open(`/admin?tab=crm&leadId=${encodeURIComponent(selectedLeadId ?? "")}`, "_blank")}
                 >
                   Ver en CRM
                 </Button>

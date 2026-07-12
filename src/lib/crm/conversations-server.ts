@@ -268,11 +268,18 @@ export async function listRealConversations(): Promise<Conversation[]> {
     }
 
     const key = leadId ?? `phone:${row.phone_normalized}`;
+    // FIX 2026-07-12 (Sprint v16 hotfix UI): si el match devolvió un
+    // lead, propagamos su nombre y teléfono al Conversation para que la
+    // UI muestre "Juan Pérez" en lugar del UUID truncado.
+    const matchedLead = leadId ? leadsById.get(leadId) : null;
     const conv =
       conversationsByLeadId.get(key) ??
       ({
         id: key,
         leadId: leadId ?? "",
+        leadName: matchedLead?.name ?? matchedLead?.phone ?? row.phone_normalized,
+        leadPhone: matchedLead?.phone ?? row.phone_normalized,
+        lastReadAt: matchedLead?.last_read_at ?? null,
         channel: "whatsapp",
         status: "open",
         updatedAt: row.created_at,

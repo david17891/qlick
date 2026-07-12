@@ -260,6 +260,15 @@ export interface Conversation {
   /** Última actualización (ISO). */
   updatedAt: string;
   messages: ConversationMessage[];
+  // Sprint v16 hotfix UI: nombre y teléfono del lead ya resueltos
+  // (no el UUID) para mostrar en la lista/cabecera del chat.
+  leadName?: string | null;
+  leadPhone?: string | null;
+  // FIX 2026-07-12: timestamp de la última lectura del admin. El badge
+  // 🟢 "Nuevo" se muestra si el último inbound es más reciente que
+  // lastReadAt. Sprint v16 PR #1 ya tiene la columna en DB
+  // (leads.last_read_at); PR #1.5 (PATCH) y PR #2 (UI) la propagan.
+  lastReadAt?: string | null;
 }
 
 /* ------------------------------------------------------------------ */
