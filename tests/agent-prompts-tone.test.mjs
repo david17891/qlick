@@ -180,3 +180,71 @@ test("T8: el prompt sigue conteniendo JERARQUÍA DE REGLAS (D-025) intacta", asy
     "las reglas locales deben seguir inyectándose"
   );
 });
+
+/* ================================================================== */
+/* Sprint v0.9.7 hotfix (post-v0.9.7): Anti-Alucinación de Acompañantes */
+/* ================================================================== */
+
+test("T9 (sprint v0.9.7 hotfix): el prompt contiene el bloque LÍMITE TÉCNICO DE REGISTRO", async () => {
+  const { buildSuperExecutivePrompt } = await import(PROMPTS_URL);
+  const prompt = buildSuperExecutivePrompt(buildContext());
+  assert.ok(
+    prompt.includes("LÍMITE TÉCNICO DE REGISTRO"),
+    "el prompt debe contener el bloque 'LÍMITE TÉCNICO DE REGISTRO'"
+  );
+  assert.ok(
+    prompt.includes("ANTI-ALUCINACIÓN"),
+    "el bloque debe marcarse explícitamente como anti-alucinación"
+  );
+});
+
+test("T10 (sprint v0.9.7 hotfix): el prompt explica el registro individual por WhatsApp", async () => {
+  const { buildSuperExecutivePrompt } = await import(PROMPTS_URL);
+  const prompt = buildSuperExecutivePrompt(buildContext());
+  assert.ok(
+    prompt.includes("REGISTRO INDIVIDUAL POR NÚMERO DE WHATSAPP"),
+    "el prompt debe advertir al LLM que SOLO guarda datos del titular"
+  );
+  assert.ok(
+    prompt.includes("extract_and_save_contact_info"),
+    "el prompt debe mencionar la tool concreta para que el LLM entienda el límite"
+  );
+  assert.ok(
+    prompt.includes("NUNCA prometas ni confirmes"),
+    "el prompt debe tener la regla dura 'NUNCA prometas ni confirmes' para acompañantes"
+  );
+  assert.ok(
+    prompt.includes("hermano") || prompt.includes("socio") || prompt.includes("amigo"),
+    "el prompt debe nombrar explícitamente los roles de acompañante (hermano/socio/amigo)"
+  );
+});
+
+test("T11 (sprint v0.9.7 hotfix): el prompt incluye copy de redirección al acompañante", async () => {
+  const { buildSuperExecutivePrompt } = await import(PROMPTS_URL);
+  const prompt = buildSuperExecutivePrompt(buildContext());
+  assert.ok(
+    prompt.includes("RESPUESTA ANTE PEDIDO DE ACOMPAÑANTES"),
+    "el prompt debe incluir la sección de respuesta al pedido de acompañantes"
+  );
+  assert.ok(
+    prompt.includes("solo puedo asociar un registro por número de WhatsApp"),
+    "el copy honesto debe explicar el límite al lead"
+  );
+  assert.ok(
+    prompt.includes("que nos mande un hola desde su WhatsApp"),
+    "el copy debe redirigir al acompañante a escribir desde su propio número"
+  );
+});
+
+test("T12 (sprint v0.9.7 hotfix): el bloque anti-alucinación aparece ANTES de las Reglas de Oro", async () => {
+  const { buildSuperExecutivePrompt } = await import(PROMPTS_URL);
+  const prompt = buildSuperExecutivePrompt(buildContext());
+  const idxAnti = prompt.indexOf("LÍMITE TÉCNICO DE REGISTRO");
+  const idxReglasOro = prompt.indexOf("REGLAS DE ORO GLOBALES");
+  assert.ok(idxAnti > 0, "debe aparecer el bloque anti-alucinación");
+  assert.ok(idxReglasOro > 0, "debe aparecer el bloque de Reglas de Oro");
+  assert.ok(
+    idxAnti < idxReglasOro,
+    `el bloque anti-alucinación (idx ${idxAnti}) debe aparecer ANTES de las Reglas de Oro (idx ${idxReglasOro})`
+  );
+});
