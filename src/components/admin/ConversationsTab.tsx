@@ -112,7 +112,21 @@ export function ConversationsTab() {
   const [togglingGlobal, setTogglingGlobal] = useState(false);
 
   // ===== Realtime / polling (X4, M1) =====
+  // FIX 2026-07-12 (auditoría v16 #R1): un solo AbortController compartido
+  // para TODOS los fetches del componente. En unmount, abortamos.
+  // Cada fetch individual puede ser cancelado por el AbortController
+  // (signal) sin spammear AbortControllers. Cleanup en useEffect.
   const pollAbortRef = useRef<AbortController | null>(null);
+  // Contador de fetches en flight para evitar updates sobre componente
+  // desmontado (defense in depth aunque React 18 ya no crashea).
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      pollAbortRef.current?.abort();
+    };
+  }, []);
 
   // ===== selectedConv derivado =====
   const selectedConv = useMemo<Conversation | null>(
@@ -121,25 +135,63 @@ export function ConversationsTab() {
   );
 
   /* ---------------------------------------------------------------- */
+  /*  Fetch helper (auditoría v16 #R1)                                */
+  /* ---------------------------------------------------------------- */
+
+  /**
+   * Wrapper sobre `fetch` que:
+   *   1. Adjunta automáticamente el `signal` del AbortController compartido
+   *      para que se cancele en unmount.
+   *   2. Valida 2xx antes de parsear JSON (auditoría v16 #A4).
+   *   3. NO setea state si el componente está desmontado
+   *      (`isMountedRef.current === false`).
+   *
+   * Si el caller necesita un signal dedicado (p. ej. un fetch
+   * one-shot que se cancela al re-disparar), puede pasar el suyo.
+   */
+  const safeFetch = useCallback(
+    async (input: string, init?: RequestInit & { signal?: AbortSignal }) => {
+      const signal = init?.signal ?? pollAbortRef.current?.signal;
+      const res = await fetch(input, { ...init, signal });
+      if (!res.ok) {
+        let detail = `HTTP ${res.status}`;
+        try {
+          const j = (await res.json()) as { error?: string };
+          if (j?.error) detail = j.error;
+        } catch {
+          // ignore parse errors on 4xx/5xx
+        }
+        throw new Error(detail);
+      }
+      return res;
+    },
+    []
+  );
+
+  /* ---------------------------------------------------------------- */
   /*  Fetch maestro (lista completa)                                  */
   /* ---------------------------------------------------------------- */
 
   const fetchConversations = useCallback(async (signal?: AbortSignal) => {
+    if (!isMountedRef.current) return;
     setLoadingList(true);
     setError(null);
     try {
-      const res = await fetch("/api/admin/crm/conversations", { signal });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const res = await safeFetch("/api/admin/crm/conversations", { signal });
       const json = (await res.json()) as ConversationsApiResponse;
       if (!json.ok) throw new Error(json.error ?? "Error desconocido");
-      setConversations((json.conversations as Conversation[]) ?? []);
+      if (isMountedRef.current) {
+        setConversations((json.conversations as Conversation[]) ?? []);
+      }
     } catch (err) {
       if ((err as { name?: string }).name === "AbortError") return;
-      setError(err instanceof Error ? err.message : String(err));
+      if (isMountedRef.current) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
     } finally {
-      setLoadingList(false);
+      if (isMountedRef.current) setLoadingList(false);
     }
-  }, []);
+  }, [safeFetch]);
 
   /* ---------------------------------------------------------------- */
   /*  Fetch detalle (chat completo de un lead)                        */
@@ -147,18 +199,18 @@ export function ConversationsTab() {
 
   const fetchDetail = useCallback(
     async (leadId: string, signal?: AbortSignal) => {
+      if (!isMountedRef.current) return;
       setLoadingDetail(true);
       try {
-        const res = await fetch(
+        const res = await safeFetch(
           `/api/admin/crm/conversations?leadId=${encodeURIComponent(leadId)}`,
           { signal }
         );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = (await res.json()) as ConversationsApiResponse;
         if (!json.ok) throw new Error(json.error ?? "Error desconocido");
         const conv = json.conversation ?? null;
         // SPRINT v16: el server ya ordena ASC (R1). Si llega null, fallback a lista maestra.
-        if (conv) {
+        if (conv && isMountedRef.current) {
           setConversations((prev) => {
             const idx = prev.findIndex((c) => c.leadId === leadId);
             if (idx === -1) return [conv, ...prev];
@@ -169,12 +221,14 @@ export function ConversationsTab() {
         }
       } catch (err) {
         if ((err as { name?: string }).name === "AbortError") return;
-        setError(err instanceof Error ? err.message : String(err));
+        if (isMountedRef.current) {
+          setError(err instanceof Error ? err.message : String(err));
+        }
       } finally {
-        setLoadingDetail(false);
+        if (isMountedRef.current) setLoadingDetail(false);
       }
     },
-    []
+    [safeFetch]
   );
 
   /* ---------------------------------------------------------------- */
@@ -182,13 +236,12 @@ export function ConversationsTab() {
   /* ---------------------------------------------------------------- */
 
   const pollLight = useCallback(async () => {
+    if (!isMountedRef.current) return;
     try {
-      const res = await fetch("/api/admin/crm/conversations?poll=true", {
-        signal: pollAbortRef.current?.signal
-      });
-      if (!res.ok) return;
+      const res = await safeFetch("/api/admin/crm/conversations?poll=true");
       const json = (await res.json()) as ConversationsApiResponse;
       if (!json.ok) return;
+      if (!isMountedRef.current) return;
       const light = (json.conversations as LightConversation[]) ?? [];
       // Comparar updatedAt; si cambió, refetch completo.
       setConversations((prev) => {
@@ -206,7 +259,7 @@ export function ConversationsTab() {
         }
         if (changed) {
           // Dispara un refetch completo en background (sin await).
-          void fetchConversations(pollAbortRef.current?.signal);
+          void fetchConversations();
         }
         return prev; // no mutamos, el refetch actualizará.
       });
@@ -214,7 +267,7 @@ export function ConversationsTab() {
       if ((err as { name?: string }).name === "AbortError") return;
       // Silencioso: el polling no debe spammear errores a la UI.
     }
-  }, [fetchConversations]);
+  }, [fetchConversations, safeFetch]);
 
   useEffect(() => {
     // Fetch inicial.
@@ -265,7 +318,12 @@ export function ConversationsTab() {
       // del body. Usamos `scrollTop = scrollHeight` (no scrollIntoView).
       // Lo hacemos después de seleccionar el lead para que el
       // `messagesContainerRef` apunte al contenedor activo.
+      //
+      // FIX 2026-07-12 (auditoría v16 #A2): el guard `isMountedRef`
+      // evita setState sobre componente desmontado. No cancelamos
+      // el RAF explícitamente (el guard cubre el caso edge).
       window.requestAnimationFrame(() => {
+        if (!isMountedRef.current) return;
         const el = messagesContainerRef.current;
         if (el) {
           el.scrollTop = el.scrollHeight;
@@ -274,17 +332,23 @@ export function ConversationsTab() {
         }
       });
       // Marcar como leído en el server (monotonic GREATEST en SQL).
+      // FIX 2026-07-12 (auditoría v16 #A4): validar 2xx antes de seguir.
+      // best-effort: si falla, el optimistic update del state local ya
+      // se aplicó y el siguiente poll reconcilia.
       try {
-        await fetch(`/api/admin/crm/conversations?leadId=${encodeURIComponent(leadId)}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({})
-        });
+        await safeFetch(
+          `/api/admin/crm/conversations?leadId=${encodeURIComponent(leadId)}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({})
+          }
+        );
       } catch {
         // best-effort.
       }
     },
-    [fetchDetail]
+    [fetchDetail, safeFetch]
   );
 
   /* ---------------------------------------------------------------- */
@@ -335,14 +399,12 @@ export function ConversationsTab() {
       if (!ok) return;
       setSoftDeleting(true);
       try {
-        const res = await fetch(
+        // FIX 2026-07-12 (auditoría v16 #R1 + #A4): safeFetch valida 2xx
+        // y adjunta el AbortController compartido.
+        await safeFetch(
           `/api/admin/crm/conversations?leadId=${encodeURIComponent(leadId)}`,
           { method: "DELETE" }
         );
-        if (!res.ok) {
-          const j = (await res.json().catch(() => ({}))) as { error?: string };
-          throw new Error(j.error ?? `HTTP ${res.status}`);
-        }
         // FIX 2026-07-12: optimistic UI. Quito la conversación de la lista
         // inmediatamente. Si el server fallara, el refetch del poll
         // la traería de vuelta (defensa en profundidad).
@@ -351,10 +413,10 @@ export function ConversationsTab() {
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       } finally {
-        setSoftDeleting(false);
+        if (isMountedRef.current) setSoftDeleting(false);
       }
     },
-    [selectedLeadId]
+    [selectedLeadId, safeFetch]
   );
 
   /* ---------------------------------------------------------------- */
@@ -363,25 +425,27 @@ export function ConversationsTab() {
 
   const fetchBotPause = useCallback(
     async (leadId: string) => {
+      if (!isMountedRef.current) return;
       try {
-        const res = await fetch(
+        const res = await safeFetch(
           `/api/admin/leads/${encodeURIComponent(leadId)}/bot-pause`
         );
-        if (!res.ok) return;
         const json = (await res.json()) as { ok: boolean; bot_paused?: boolean; bot_paused_reason?: string | null };
         if (!json.ok) return;
-        setBotPauseByLead((prev) => ({
-          ...prev,
-          [leadId]: {
-            bot_paused: json.bot_paused === true,
-            bot_paused_reason: json.bot_paused_reason ?? null
-          }
-        }));
+        if (isMountedRef.current) {
+          setBotPauseByLead((prev) => ({
+            ...prev,
+            [leadId]: {
+              bot_paused: json.bot_paused === true,
+              bot_paused_reason: json.bot_paused_reason ?? null
+            }
+          }));
+        }
       } catch {
         // best-effort.
       }
     },
-    []
+    [safeFetch]
   );
 
   useEffect(() => {
@@ -395,7 +459,8 @@ export function ConversationsTab() {
       try {
         const current = botPauseByLead[leadId];
         const next = !(current?.bot_paused === true);
-        const res = await fetch(
+        // FIX 2026-07-12 (auditoría v16 #R1 + #A4): safeFetch valida 2xx.
+        await safeFetch(
           `/api/admin/leads/${encodeURIComponent(leadId)}/bot-pause`,
           {
             method: "PATCH",
@@ -403,21 +468,17 @@ export function ConversationsTab() {
             body: JSON.stringify({ botPaused: next })
           }
         );
-        if (!res.ok) {
-          const j = (await res.json().catch(() => ({}))) as { error?: string };
-          throw new Error(j.error ?? `HTTP ${res.status}`);
-        }
-        setBotPauseByLead((prev) => ({
+        if (isMountedRef.current) setBotPauseByLead((prev) => ({
           ...prev,
           [leadId]: { bot_paused: next, bot_paused_reason: next ? "manual" : null }
         }));
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       } finally {
-        setPausingLeadId(null);
+        if (isMountedRef.current) setPausingLeadId(null);
       }
     },
-    [botPauseByLead]
+    [botPauseByLead, safeFetch]
   );
 
   /* ---------------------------------------------------------------- */
@@ -425,15 +486,17 @@ export function ConversationsTab() {
   /* ---------------------------------------------------------------- */
 
   const fetchGlobalPause = useCallback(async () => {
+    if (!isMountedRef.current) return;
     try {
-      const res = await fetch("/api/admin/bot/global-pause");
-      if (!res.ok) return;
+      const res = await safeFetch("/api/admin/bot/global-pause");
       const json = (await res.json()) as GlobalPauseStatus;
-      setBotPausedGlobal(json.bot_paused_global === true);
+      if (isMountedRef.current) {
+        setBotPausedGlobal(json.bot_paused_global === true);
+      }
     } catch {
       // best-effort.
     }
-  }, []);
+  }, [safeFetch]);
 
   useEffect(() => {
     void fetchGlobalPause();
@@ -443,22 +506,21 @@ export function ConversationsTab() {
     setTogglingGlobal(true);
     try {
       const next = !botPausedGlobal;
-      const res = await fetch("/api/admin/bot/global-pause", {
+      // FIX 2026-07-12 (auditoría v16 #R1 + #A4): safeFetch valida 2xx.
+      await safeFetch("/api/admin/bot/global-pause", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ botPausedGlobal: next })
       });
-      if (!res.ok) {
-        const j = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(j.error ?? `HTTP ${res.status}`);
-      }
-      setBotPausedGlobal(next);
+      if (isMountedRef.current) setBotPausedGlobal(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      if (isMountedRef.current) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
     } finally {
-      setTogglingGlobal(false);
+      if (isMountedRef.current) setTogglingGlobal(false);
     }
-  }, [botPausedGlobal]);
+  }, [botPausedGlobal, safeFetch]);
 
   /* ---------------------------------------------------------------- */
   /*  Envío de mensaje                                                */
@@ -471,7 +533,8 @@ export function ConversationsTab() {
     setSending(true);
     setSendFeedback(null);
     try {
-      const res = await fetch("/api/admin/crm/conversations", {
+      // FIX 2026-07-12 (auditoría v16 #R1 + #A4): safeFetch valida 2xx.
+      await safeFetch("/api/admin/crm/conversations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -480,20 +543,20 @@ export function ConversationsTab() {
           direction: "outbound"
         })
       });
-      if (!res.ok) {
-        const j = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(j.error ?? `HTTP ${res.status}`);
+      if (isMountedRef.current) {
+        setDraftBody("");
+        setSendFeedback("Enviado ✓");
+        // Refetch detalle para que aparezca el mensaje nuevo en orden.
+        void fetchDetail(selectedLeadId);
       }
-      setDraftBody("");
-      setSendFeedback("Enviado ✓");
-      // Refetch detalle para que aparezca el mensaje nuevo en orden.
-      void fetchDetail(selectedLeadId);
     } catch (err) {
-      setSendFeedback(err instanceof Error ? `Error: ${err.message}` : "Error");
+      if (isMountedRef.current) {
+        setSendFeedback(err instanceof Error ? `Error: ${err.message}` : "Error");
+      }
     } finally {
-      setSending(false);
+      if (isMountedRef.current) setSending(false);
     }
-  }, [draftBody, selectedLeadId, fetchDetail]);
+  }, [draftBody, selectedLeadId, fetchDetail, safeFetch]);
 
   /* ---------------------------------------------------------------- */
   /*  Render                                                           */
@@ -606,7 +669,14 @@ export function ConversationsTab() {
                   size="sm"
                   variant={botPauseByLead[selectedLeadId ?? ""]?.bot_paused ? "outline" : "ghost"}
                   onClick={() => selectedLeadId && void handleToggleBotPause(selectedLeadId)}
-                  disabled={pausingLeadId === selectedLeadId}
+                  // FIX 2026-07-12 (auditoría v16 A3): disable mientras
+                  // carga el estado per-lead o mientras está en flight
+                  // la mutación. Sin esto, el admin podría pausar
+                  // un lead sin saber el estado actual.
+                  disabled={
+                    pausingLeadId === selectedLeadId ||
+                    (selectedLeadId !== null && botPauseByLead[selectedLeadId] === undefined)
+                  }
                   aria-pressed={botPauseByLead[selectedLeadId ?? ""]?.bot_paused === true}
                   title={
                     botPauseByLead[selectedLeadId ?? ""]?.bot_paused

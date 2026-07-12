@@ -189,31 +189,38 @@ export function BotConfigTab() {
   }, [stats]);
 
   // Sprint v16 PR #2.3: handler para cambiar el límite diario.
-  // FIX 2026-07-12: el endpoint actual de /api/admin/bot/stats es
-  // solo GET. El cambio de `bot_daily_outbound_limit` se hace
-  // directamente contra system_settings (sin endpoint dedicado
-  // todavía — se puede agregar en sprint v17 si la UI lo necesita).
+  // FIX 2026-07-12 (auditoría v16 #A1): comparar valor previo antes
+  // de POST. El input dispara onChange por cada keystroke; sin este
+  // guard, teclear "100" hace 3 round-trips al server y 3 escrituras
+  // en system_settings.
+  //
+  // FIX 2026-07-12 (auditoría v16 #A4): el endpoint /api/admin/bot/stats
+  // se consulta tras el POST. Validamos 2xx inline (best-effort: si
+  // falla el refresh, el siguiente poll reconcilia).
   const handleChangeDailyLimit = useCallback(
     async (newLimit: number) => {
+      // A1: no-op si el valor no cambió.
+      if (newLimit === stats?.bot_daily_outbound_limit) return;
       try {
-        const res = await fetch("/api/admin/system-setting", {
+        const r1 = await fetch("/api/admin/system-setting", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ key: "bot_daily_outbound_limit", value: newLimit })
         });
-        if (!res.ok) {
-          const j = (await res.json().catch(() => ({}))) as { error?: string };
-          throw new Error(j.error ?? `HTTP ${res.status}`);
+        if (!r1.ok) {
+          const j = (await r1.json().catch(() => ({}))) as { error?: string };
+          throw new Error(j.error ?? `HTTP ${r1.status}`);
         }
         // Refetch inline.
         const r2 = await fetch("/api/admin/bot/stats", { cache: "no-store" });
+        if (!r2.ok) return; // best-effort; el próximo poll reconcilia.
         const j2 = (await r2.json()) as { ok: boolean; data?: BotStats; error?: string };
         if (j2.ok && j2.data) setStats(j2.data);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       }
     },
-    []
+    [stats?.bot_daily_outbound_limit]
   );
 
   const refreshStats = useCallback(async () => {
