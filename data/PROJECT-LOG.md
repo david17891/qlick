@@ -3393,3 +3393,37 @@ pm run typegen en esta rama � agregar a docs/OPEN_ITEMS.md como nota para spri
 - **Trigger:** David hizo pruebas reales en vivo del sprint v16 y detectó las 4 fricciones; las mandó explícitamente como "Hotfix #2 del Sprint v16" con 4 ajustes exactos.
 
 - **Riesgo operacional:** ninguno. Solo UI/UX. Sin cambios al comportamiento del bot, sin migraciones, sin cambios de API.
+
+---
+
+## 2026-07-12 01:48 — Sprint v16 hotfix #3 (PR #20): persistencia real de modo + anti-flicker de carga
+
+- **Pregunta:** durante pruebas en vivo del sprint v16 (post hotfix #2 mergeado en PR #19) David detectó 2 bugs críticos en `BotConfigTab.tsx`: (1) `onSelectMode` solo cambiaba el estado local de React — el provider deepseek seguía leyendo el modo viejo de `system_settings.bot_global_mode` hasta que el caché TTL 30s expirara, dejando UI y backend desfasados. (2) `useState<BotMode>("socratic_autopilot_v2")` inicializaba con Socrático v2 por defecto y ~500ms después saltaba a `stats.bot_global_mode` — flicker visible al cargar la pestaña.
+
+- **Decisión:** fix en 1 PR (`feat/fase-16-6-hotfix-ui-3`), 2 commits atómicos:
+  1. **Backend** — crear endpoint dedicado `/api/admin/bot/mode` (el que la auditoría v16 R2 anticipaba para keys sensibles tipo `bot_global_mode`, fuera del allowlist del endpoint genérico `/api/admin/system-setting`). Patrón idéntico a `/api/admin/bot/global-pause` (M4). + SSOT del tipo `BotGlobalMode` + type guard `isBotGlobalMode` en `system-settings-server.ts`.
+  2. **Frontend** — `onSelectMode` ahora hace optimistic + POST + refetch con rollback si falla. Skeleton anti-flicker mientras `statsLoading && !stats`. Estado `modeSaving` deshabilita los botones durante el POST.
+
+- **Razón:**
+  - La spec inicial del sprint v16 PR #1 (BotConfigTab) tenía este bug endémico: la UI se renderizaba contra estado local sin esperar a la SSOT. Hotfix #1 y #2 solo ajustaron estilo (modo claro, guía, atajo pruebas) — el bug de persistencia pasó por alto.
+  - El allowlist de R2 en `/api/admin/system-setting` rechazaba `bot_global_mode` por diseño ("cambios sensibles con su propio flujo; el toggle UI vive en BotConfigTab contra endpoints dedicados de v15 / v17"). El endpoint dedicado de v17 era lo que faltaba — este PR lo entrega.
+  - El refetch inline tras POST sigue el mismo patrón que `handleToggleGlobalPause` y `handleChangeDailyLimit` del sprint v16 — consistencia en la torre de control.
+  - No se agregó `bot_global_mode` al allowlist del genérico porque R2 explícitamente lo excluyó. Mejor respetar la decisión de diseño que reescribir el allowlist con un "except".
+
+- **Impacto:**
+  - **Persistencia real**: cada click en una `ModeTarjeta` ahora hace `POST /api/admin/bot/mode { mode: m }` antes de cerrar la operación. El provider deepseek ve el cambio en el siguiente turno (caché invalidado en `setSystemSetting`). Sin desfase UI vs backend.
+  - **Anti-flicker**: la sección "Modo Global del Bot" muestra 3 placeholders `animate-pulse` + "Cargando configuración activa desde base de datos…" mientras la primera respuesta de `/api/admin/bot/stats` no ha llegado. Solo después pinta las 3 tarjetas con el modo activo real.
+  - **Rollback seguro**: si el POST falla (DB caída, 500, network), el modo local vuelve al valor anterior y aparece un toast rojo. La UI nunca queda en estado inconsistente con la SSOT.
+  - **Defensa en profundidad**: el endpoint dedicado valida contra un set cerrado de 3 valores. Un bug en la UI que mande un string arbitrario se rechaza con 400 antes de tocar la DB.
+  - **SSOT + type guard**: `BotGlobalMode` queda como fuente de verdad del tipo; `isBotGlobalMode` se usa en lectura (defensivo) y escritura (rechazo). Cualquier ruta futura que lea `system_settings.bot_global_mode` puede reusar el guard sin duplicar la lógica de validación.
+  - Validación: `npm run type-check` ✓, `npm run lint` ✓ (0/0), `npm test` 1173/1173 ✓, `npm run build` ✓ (endpoint `/api/admin/bot/mode` listado en el build manifest).
+  - PR #20 abierto a main con `--merge --delete-branch` (pendiente David pushear). 2 commits en la rama `feat/fase-16-6-hotfix-ui-3`: `5073496` (backend) + `1b1d954` (frontend).
+
+- **Trigger:** David pidió hotfix #3 explícitamente tras detectar los 2 bugs en pruebas en vivo del sprint v16. El hotfix cierra la última fricción UI/UX del sprint v16 antes de declarar v16 cerrado del todo.
+
+- **Riesgo operacional:**
+  - El caché 30s en `readSystemSetting` se invalida explícitamente en `setSystemSetting(KEY_BOT_GLOBAL_MODE, ...)`, así que el cambio es visible en el siguiente turno del bot (no hay que esperar TTL).
+  - El endpoint dedicado es más estricto que el genérico — no acepta `value: <cualquier cosa>`. Si en el futuro hace falta extender el dominio de modos (e.g. un 4to modo), hay que actualizar la union `BotGlobalMode`, el type guard, y el switch de validación en el route.
+  - Sin migraciones (no toca schema). El endpoint vive en `/api/admin/bot/mode` y la SSOT del tipo en `system-settings-server.ts`. La KEY canónica (`KEY_BOT_GLOBAL_MODE = "bot_global_mode"`) ya existía.
+  - El estado `modeSaving` deshabilita los 3 botones durante el POST (~50-200ms típico en Vercel region iad1 → Supabase US West). UX aceptable; si David reporta lentitud perceptible, se puede mover el POST a `startTransition` y mostrar un spinner inline.
+  - Pendiente menor: la sección "Cargando configuración..." se muestra incluso cuando `stats === null` por error de DB. Considerar agregar un estado de error específico (botón "Reintentar") en sprint v17 si David lo nota en uso real.

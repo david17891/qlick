@@ -8,9 +8,43 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-11 19:30 Phoenix — **CI smoke E2E en verde por primera vez**: 3 GitHub Secrets configurados (`SUPABASE_URL`, `SUPABASE_PROJECT_REF`, `SUPABASE_SECRET_KEY`), fine-grained PAT con scope "Secrets: Read and write" habilitado, smoke workflow verde en run `29176681182` (1m18s) — cierra 3 pushes consecutivos que fallaban el `smoke:audit` job por secrets no configurados. También cerrado el incidente del commit `e7fd2bb` (migrations `event_survey_tokens` + `admin_audit_log.before/after` aplicadas a prod vía SQL Editor + `NOTIFY pgrst` ejecutado). El botón "📨 Enviar link de encuesta" del admin ya funciona en prod sin PGRST205. Validación local: 1144/1144 tests verde, type-check ✓, lint ✓.
+> **Última actualización:** 2026-07-12 01:48 Phoenix — **Sprint v16 hotfix #3 mergeado (PR #20)**: persistencia real de `onSelectMode` en `system_settings` (antes solo cambiaba estado local) + anti-flicker de carga en la sección de Modos (skeleton mientras `statsLoading && !stats`, ya no dibuja un modo falso por 500ms). Crea endpoint dedicado `/api/admin/bot/mode` (la auditoría v16 R2 ya lo había anticipado) con SSOT del tipo `BotGlobalMode` + type guard `isBotGlobalMode` en `system-settings-server.ts`. Validación: 1173/1173 tests, type-check ✓, lint 0/0, build ✓ (endpoint listado en `/api/admin/bot/mode`). La deuda pre-existente del STATUS (no refleja sprint v16 PR #14/#16/#17 ni hotfix #1/#2) queda como pendiente menor — la cubre otra sesión.
 >
-> Estado anterior (2026-07-11 11:50): Sprint cierre-eventos-virtuales (link con encuesta + UPSERT attendee + promote lead + audit voseo). Sigue vigente — la migration `20260711100000` aplicada por David ese día sigue activa.
+> Estado anterior (2026-07-12 01:32): Sprint v16 hotfix #2 (PR #19) — 4 ajustes UI/UX en `ConversationsTab` y `BotConfigTab`. Sigue vigente (mergeado a main con HEAD `9bbf187`).
+
+---
+
+## Sprint v16 — Hotfix #3 (2026-07-12 01:48): persistencia real de modo + anti-flicker
+
+**Cambios:**
+
+1. **Endpoint dedicado `/api/admin/bot/mode`** (`src/app/api/admin/bot/mode/route.ts`, 95 líneas, patrón idéntico a `/api/admin/bot/global-pause`):
+   - `GET` → `{ ok, mode: BotMode | null }` leyendo `system_settings.bot_global_mode`.
+   - `POST` con body `{ mode: "socratic_autopilot_v2" | "socratic_no_tools_v1" | "super_executive" }` → UPSERT en system_settings. Idempotente. Valida contra set cerrado de 3 valores; cualquier otro string → 400.
+   - `requireAdmin` + `checkSupabaseConfig` (mismo guard que el resto del admin).
+2. **SSOT `BotGlobalMode` + type guard `isBotGlobalMode`** en `src/lib/admin/system-settings-server.ts` (32 líneas nuevas). El type guard se usa tanto en lectura (defensivo contra jsonb viejo) como en escritura (rechazo antes del UPSERT).
+3. **`onSelectMode` ahora persiste** en `BotConfigTab.tsx` (commit frontend):
+   - Optimistic update + POST a `/api/admin/bot/mode` + refetch de `/api/admin/bot/stats` para reconciliar `stats.bot_global_mode` con la SSOT.
+   - Si el POST falla → rollback del modo local + `setError` con el mensaje.
+   - No-op si ya está activo el modo.
+   - Estado `modeSaving` deshabilita las 3 ModeTarjeta durante el POST.
+4. **Anti-flicker de carga** en la sección "Modo Global del Bot":
+   - Antes: `useState<BotMode>("socratic_autopilot_v2")` inicializaba con Socrático v2 por defecto. Cuando `fetchStats()` terminaba (~500ms después), saltaba a `stats.bot_global_mode`. La UI dibujaba un modo falso por medio segundo.
+   - Ahora: mientras `statsLoading && !stats`, muestra 3 placeholders animados con `animate-pulse` + el mensaje *"Cargando configuración activa desde base de datos…"*. Solo cuando llega la primera respuesta de `/api/admin/bot/stats` se pintan las 3 ModeTarjeta con el modo activo real.
+
+**Rama:** `feat/fase-16-6-hotfix-ui-3` (desde main, 2 commits atómicos: backend endpoint+tipo, frontend onSelectMode+skeleton).
+
+**Validación:** type-check ✓ · lint ✓ (0/0) · **1173/1173 tests verde** (mismo baseline que hotfix #2) · build ✓ (endpoint `/api/admin/bot/mode` listado en el build manifest).
+
+**Lo que David puede hacer ya en producción (después del merge + deploy):**
+- Cambiar de modo en `/admin` → tab "Bot" → sección "Modo Global del Bot" → click en la tarjeta. El cambio se persiste en `system_settings.bot_global_mode` antes de que el botón vuelva a estar disponible. El provider deepseek lo lee en el siguiente turno (caché 30s invalidado en el `setSystemSetting`).
+- Si la base de datos no responde, el modo local hace rollback y aparece un toast rojo con el error. La UI nunca queda en estado inconsistente con la SSOT.
+- La carga inicial de la pestaña ya no parpadea: skeleton visible hasta que llega `bot_global_mode` real de la DB.
+
+**Riesgo operacional:**
+- El caché 30s en `readSystemSetting` se invalida explícitamente al hacer `setSystemSetting(KEY_BOT_GLOBAL_MODE, ...)`, así que el provider ve el cambio en el siguiente turno (no requiere esperar el TTL). Mismo patrón que `bot_paused_global` (M4) y `bot_daily_outbound_limit` (M2).
+- El endpoint dedicado es más estricto que el genérico: el set cerrado de 3 valores es defensa en profundidad contra un bug en la UI que mande strings arbitrarios.
+- Sin migraciones (no toca schema). El endpoint vive en `/api/admin/bot/mode` y la SSOT del tipo en `system-settings-server.ts`.
 
 ---
 
