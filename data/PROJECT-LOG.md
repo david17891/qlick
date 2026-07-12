@@ -3245,37 +3245,37 @@ Type: deploy-relevant
 - **Pendiente:** Validar la migration del sprint v15 (Torre de Control AI) con el nuevo camino. Si funciona end-to-end con la migration grande (CREATE TYPE + CREATE TABLE + ALTER TABLE + CREATE INDEX + INSERTs), el sprint se puede implementar sin que David pegue SQL a mano.
 
 
-## 2026-07-11 ~23:50 — Sprint v15 PR #1 cerrado (Torre de Control Bot + Métricas)
+## 2026-07-11 ~23:50 ï¿½ Sprint v15 PR #1 cerrado (Torre de Control Bot + Mï¿½tricas)
 
-- **Pregunta:** David aprobó el plan v15 final con segmentación 2 PRs y dio luz verde: "Adelante". El sprint es la Torre de Control AI & Agente Comercial Súper Ejecutivo: el operador del CRM ahora ve 3 modos del bot (Socrático v2 / Socrático sin Herramientas / Súper Ejecutivo ??), edita 6 bloques de contexto, crea/edita/apaga reglas de oro del agente, y observa 4 métricas (mensajes 24h/7d, leads pausados, razones de pausa, modo global). El camino DDL ya estaba desbloqueado (entrada anterior 20:38) — solo faltaba ejecutar.
+- **Pregunta:** David aprobï¿½ el plan v15 final con segmentaciï¿½n 2 PRs y dio luz verde: "Adelante". El sprint es la Torre de Control AI & Agente Comercial Sï¿½per Ejecutivo: el operador del CRM ahora ve 3 modos del bot (Socrï¿½tico v2 / Socrï¿½tico sin Herramientas / Sï¿½per Ejecutivo ??), edita 6 bloques de contexto, crea/edita/apaga reglas de oro del agente, y observa 4 mï¿½tricas (mensajes 24h/7d, leads pausados, razones de pausa, modo global). El camino DDL ya estaba desbloqueado (entrada anterior 20:38) ï¿½ solo faltaba ejecutar.
 
-- **Decisión:** Implementar PR #1 de manera surgical, dejando TODO el "cerebro" (system prompt, guardrails, event-context-loader, stripEscalateFlag) para PR #2. PR #1 entrega únicamente:
+- **Decisiï¿½n:** Implementar PR #1 de manera surgical, dejando TODO el "cerebro" (system prompt, guardrails, event-context-loader, stripEscalateFlag) para PR #2. PR #1 entrega ï¿½nicamente:
   1. **DDL** (supabase/migrations/20260711140000_bot_control_tower_v15.sql): CREATE TYPE ot_pause_reason + CREATE TABLE i_bot_rules + ALTER TABLE leads ADD COLUMN ot_paused_reason + CHECK constraint + INSERTs de 2 modos. Aplicada via scripts/apply-migration-management.mjs (Management API) en ~30s.
-  2. **Typegen**: el regen automático genera Json & Record<string, unknown> (intersección) que rompe 6 líneas en código viejo con Record<string, unknown> casts. Decisión: restaurar typegen viejo (66KB) y agregar manualmente solo i_bot_rules (Row/Insert/Update) + ot_pause_reason enum + leads.bot_paused_reason. Costo: 1 sesión de typegen manual; beneficio: cero s never en código nuevo y cero falsos positivos en código viejo.
-  3. **Server lib** (src/lib/ai/ai-bot-rules-server.ts): CRUD con caché 30s + validación alidateRuleMetadata (discount_percent?valid_until) + isRuleActiveAt.
+  2. **Typegen**: el regen automï¿½tico genera Json & Record<string, unknown> (intersecciï¿½n) que rompe 6 lï¿½neas en cï¿½digo viejo con Record<string, unknown> casts. Decisiï¿½n: restaurar typegen viejo (66KB) y agregar manualmente solo i_bot_rules (Row/Insert/Update) + ot_pause_reason enum + leads.bot_paused_reason. Costo: 1 sesiï¿½n de typegen manual; beneficio: cero s never en cï¿½digo nuevo y cero falsos positivos en cï¿½digo viejo.
+  3. **Server lib** (src/lib/ai/ai-bot-rules-server.ts): CRUD con cachï¿½ 30s + validaciï¿½n alidateRuleMetadata (discount_percent?valid_until) + isRuleActiveAt.
   4. **Server actions** (src/lib/ai/ai-bot-rules-actions.ts): createBotRuleAction/updateBotRuleAction/deleteBotRuleAction/	oggleBotRuleAction/etchActiveRulesAction, todas con equireAdmin() excepto fetch.
-  5. **UI Admin** (src/components/admin/BotConfigTab.tsx, ~600 líneas, Client Component): banner PR #1, 3 tarjetas de modo (la tercera ??), 6 toggles de bloques, tabla CRUD con modal de nueva regla, 4 tarjetas métricas consumiendo /api/admin/bot/stats, acordeón "Detalles Técnicos".
-  6. **UI CRM** (src/components/crm/LeadDetailDrawer.tsx + src/components/crm/CRMView.tsx): badges de pausa coloreados según razón (?? keyword / ?? semantic / ?? manual) y nuevo <AIBotFeedbackSection /> montado debajo del historial de chat en modo real.
-  7. **API métricas** (src/app/api/admin/bot/stats/route.ts): 	otal_bot_messages_24h/7d, paused_leads_count, pause_reasons agrupado, ot_global_mode, ot_max_active_rules. Protegido con equireAdmin().
+  5. **UI Admin** (src/components/admin/BotConfigTab.tsx, ~600 lï¿½neas, Client Component): banner PR #1, 3 tarjetas de modo (la tercera ??), 6 toggles de bloques, tabla CRUD con modal de nueva regla, 4 tarjetas mï¿½tricas consumiendo /api/admin/bot/stats, acordeï¿½n "Detalles Tï¿½cnicos".
+  6. **UI CRM** (src/components/crm/LeadDetailDrawer.tsx + src/components/crm/CRMView.tsx): badges de pausa coloreados segï¿½n razï¿½n (?? keyword / ?? semantic / ?? manual) y nuevo <AIBotFeedbackSection /> montado debajo del historial de chat en modo real.
+  7. **API mï¿½tricas** (src/app/api/admin/bot/stats/route.ts): 	otal_bot_messages_24h/7d, paused_leads_count, pause_reasons agrupado, ot_global_mode, ot_max_active_rules. Protegido con equireAdmin().
   8. **Legacy** (src/app/admin/system/bot-v2/page.tsx): redirect 307 a /admin?tab=bot para que URLs viejas sigan funcionando.
-  9. **EventDrawer** (src/components/events/EventDrawer.tsx): <fieldset> ? <details> colapsado, copy veraz "Reglas Locales Específicas de este Evento (Opcionales — Complementan la Torre de Control y están sujetas a las Reglas de Oro Globales)".
+  9. **EventDrawer** (src/components/events/EventDrawer.tsx): <fieldset> ? <details> colapsado, copy veraz "Reglas Locales Especï¿½ficas de este Evento (Opcionales ï¿½ Complementan la Torre de Control y estï¿½n sujetas a las Reglas de Oro Globales)".
 
-- **Razón:** Mantener el principio "1 PR = 1 cambio lógico" del AGENTS.md. El sprint completo es muy grande para 1 PR (mezcla DDL, typegen, server libs, UI admin, UI CRM, API, legacy, eventos) y revierte el riesgo: si PR #1 rompe algo, PR #2 puede arreglarse sobre el tronco. El modo super_executive se renderiza ?? sin activable (cumple I-FINAL-7 del checklist FINAL: no se puede activar un modo cuyo uildSuperExecutivePrompt aún no existe).
+- **Razï¿½n:** Mantener el principio "1 PR = 1 cambio lï¿½gico" del AGENTS.md. El sprint completo es muy grande para 1 PR (mezcla DDL, typegen, server libs, UI admin, UI CRM, API, legacy, eventos) y revierte el riesgo: si PR #1 rompe algo, PR #2 puede arreglarse sobre el tronco. El modo super_executive se renderiza ?? sin activable (cumple I-FINAL-7 del checklist FINAL: no se puede activar un modo cuyo uildSuperExecutivePrompt aï¿½n no existe).
 
 - **Impacto:** David puede ahora:
   1. Entrar a /admin?tab=bot y ver la Torre de Control.
   2. Cambiar entre los 2 modos sembrados sin reiniciar nada.
   3. Crear hasta ot_max_active_rules (default 20) reglas de oro con scope global o event:<slug>.
   4. Monitorear mensajes auto-enviados por el bot y leads pausados en las 4 tarjetas.
-  5. Ver badges coloreados en CRM cuando un lead está pausado (con razón) — clave para entender por qué el bot no responde.
+  5. Ver badges coloreados en CRM cuando un lead estï¿½ pausado (con razï¿½n) ï¿½ clave para entender por quï¿½ el bot no responde.
   6. Educar al agente desde el drawer del lead con <AIBotFeedbackSection /> (inserta regla con scope=event:<slug> o scope=global).
 
-  Validación: type-check verde · lint verde · 1144/1144 tests verde · build verde · audit:links verde · check:supabase verde · audit:migrations "ninguna tabla pendiente, ninguna columna pendiente". 78 tests más que el target original 1066/1066 (suite creció orgánicamente entre sprints).
+  Validaciï¿½n: type-check verde ï¿½ lint verde ï¿½ 1144/1144 tests verde ï¿½ build verde ï¿½ audit:links verde ï¿½ check:supabase verde ï¿½ audit:migrations "ninguna tabla pendiente, ninguna columna pendiente". 78 tests mï¿½s que el target original 1066/1066 (suite creciï¿½ orgï¿½nicamente entre sprints).
 
-- **Trigger:** David dijo "Adelante" después de revisar el plan v15 final (10 rondas de revisión contra el plan original). La causa inmediata fue desbloquear el camino SQL (entrada anterior 20:38) — sin Management API este PR no se podía ejecutar sin que David pegara SQL a mano. Decisión arquitectónica: "PR #1 solo siembra lo que el operador puede tocar HOY. Lo demás, PR #2." Aplica a futuros sprints: nunca sembrar un modo cuyo prompt no existe (revierte el bug del sprint D-007 donde el operador podía activar super_executive y el bot respondía con el prompt socrático viejo).
+- **Trigger:** David dijo "Adelante" despuï¿½s de revisar el plan v15 final (10 rondas de revisiï¿½n contra el plan original). La causa inmediata fue desbloquear el camino SQL (entrada anterior 20:38) ï¿½ sin Management API este PR no se podï¿½a ejecutar sin que David pegara SQL a mano. Decisiï¿½n arquitectï¿½nica: "PR #1 solo siembra lo que el operador puede tocar HOY. Lo demï¿½s, PR #2." Aplica a futuros sprints: nunca sembrar un modo cuyo prompt no existe (revierte el bug del sprint D-007 donde el operador podï¿½a activar super_executive y el bot respondï¿½a con el prompt socrï¿½tico viejo).
 
 - **Riesgo operacional:** El typegen restaurado a mano puede drift si se corre 
-pm run typegen en esta rama — agregar a docs/OPEN_ITEMS.md como nota para sprints futuros: "si necesitas regen, hazlo en rama separada y cherry-pick solo las líneas nuevas de ai_bot_rules + bot_pause_reason". src/types/supabase.ts es la SSOT del schema — el patch manual es frágil. Plan: en PR #2, mover el patch a un script scripts/patch-supabase-typegen.mjs idempotente.
+pm run typegen en esta rama ï¿½ agregar a docs/OPEN_ITEMS.md como nota para sprints futuros: "si necesitas regen, hazlo en rama separada y cherry-pick solo las lï¿½neas nuevas de ai_bot_rules + bot_pause_reason". src/types/supabase.ts es la SSOT del schema ï¿½ el patch manual es frï¿½gil. Plan: en PR #2, mover el patch a un script scripts/patch-supabase-typegen.mjs idempotente.
 
 - **Pendiente PR #2** (cerebro del agente):
   1. Extender AgentContext con eventOfferType, eventRules, isFreeEvent (en src/lib/ai/agent-provider.ts).
@@ -3283,51 +3283,88 @@ pm run typegen en esta rama — agregar a docs/OPEN_ITEMS.md como nota para sprint
   3. Implementar classifyEventType(evt) en src/lib/ai/event-context-loader.ts con prioridad price > 0 ? paid, price === 0 && contains "masterclass" ? ree_masterclass, else unknown (defensivo).
   4. Implementar stripEscalateFlag(reply) en src/lib/ai/guardrails.ts que limpia [[ESCALATE_HUMAN]] del output antes de enviar.
   5. Actualizar alidateAgentReply para excluir "gratis" de FORBIDDEN_PHRASES si context.isFreeEvent === true (no se rompe retrocompat: default es false).
-  6. Crear uildSuperExecutivePrompt() en src/lib/ai/agent-prompts.ts con cláusula "JERARQUÍA DE REGLAS: LA REGLA DE ORO GLOBAL PREVALECE" + 3 ramas (free_masterclass / paid_workshop / b2b_service) + unknown defensivo.
+  6. Crear uildSuperExecutivePrompt() en src/lib/ai/agent-prompts.ts con clï¿½usula "JERARQUï¿½A DE REGLAS: LA REGLA DE ORO GLOBAL PREVALECE" + 3 ramas (free_masterclass / paid_workshop / b2b_service) + unknown defensivo.
   7. Modificar src/lib/ai/deepseek-provider.ts para dispatchear entre uildSystemPrompt / uildSuperExecutivePrompt; si ot_global_mode === 'socratic_no_tools_v1', forzar 	ools_enabled = false.
-  8. Modificar src/lib/whatsapp/bot-engine.ts para extraer ctiveEvent.event_rules.rules, consolidar isFreeEvent, ejecutar 3 capas de escalación (regex ? LLM flag ? guardrail), stripEscalateFlag post-AgentResult, metadata.auto_sent_source: 'bot'.
-  9. Crear 	ests/ai-bot-control-tower.test.mjs con casos: primacía global, complemento local, isFreeEvent permite "gratis", classifyEventType con price>0, stripEscalateFlag limpia.
-  10. Siembra en PR #2 de ot_global_mode = 'super_executive' en system_settings (vía migration incremental o action de admin).
-  11. ADR D-025 retroactivo: agregar entrada a docs/DECISIONS.md + actualizar docs/AI_AGENT_GUARDRAILS.md con matriz de auto-envío.
+  8. Modificar src/lib/whatsapp/bot-engine.ts para extraer ctiveEvent.event_rules.rules, consolidar isFreeEvent, ejecutar 3 capas de escalaciï¿½n (regex ? LLM flag ? guardrail), stripEscalateFlag post-AgentResult, metadata.auto_sent_source: 'bot'.
+  9. Crear 	ests/ai-bot-control-tower.test.mjs con casos: primacï¿½a global, complemento local, isFreeEvent permite "gratis", classifyEventType con price>0, stripEscalateFlag limpia.
+  10. Siembra en PR #2 de ot_global_mode = 'super_executive' en system_settings (vï¿½a migration incremental o action de admin).
+  11. ADR D-025 retroactivo: agregar entrada a docs/DECISIONS.md + actualizar docs/AI_AGENT_GUARDRAILS.md con matriz de auto-envï¿½o.
 
 
-## 2026-07-11 ~22:25 — Sprint v15 PR #2 cerrado (Cerebro Súper Ejecutivo)
+## 2026-07-11 ~22:25 ï¿½ Sprint v15 PR #2 cerrado (Cerebro Sï¿½per Ejecutivo)
 
-- **Pregunta:** David aprobó el plan v15 PR #2 con la directiva "AUTOPILOT ININTERRUMPIDO". El sprint es el "cerebro" del modo super_executive (uno de los 3 modos sembrados en PR #1): el prompt Súper Ejecutivo con 4 ramas de copy veraz, el clasificador de tipo de oferta, el filtro de guardrails con isFreeEvent, y el handler de escalación a humano via [[ESCALATE_HUMAN]].
+- **Pregunta:** David aprobï¿½ el plan v15 PR #2 con la directiva "AUTOPILOT ININTERRUMPIDO". El sprint es el "cerebro" del modo super_executive (uno de los 3 modos sembrados en PR #1): el prompt Sï¿½per Ejecutivo con 4 ramas de copy veraz, el clasificador de tipo de oferta, el filtro de guardrails con isFreeEvent, y el handler de escalaciï¿½n a humano via [[ESCALATE_HUMAN]].
 
-- **Decisión:** Implementar PR #2 sin pausa de gate (David autorizó explícitamente en mensaje posterior: "Es mio, solamente me apoye con un agente"). El sprint es 1 cambio lógico (cerebro del agente) y se puede revertir completo con un commit git revert si surgen issues en prod.
+- **Decisiï¿½n:** Implementar PR #2 sin pausa de gate (David autorizï¿½ explï¿½citamente en mensaje posterior: "Es mio, solamente me apoye con un agente"). El sprint es 1 cambio lï¿½gico (cerebro del agente) y se puede revertir completo con un commit git revert si surgen issues en prod.
 
-  Implementación (10 cambios):
+  Implementaciï¿½n (10 cambios):
   1. src/lib/ai/agent-provider.ts: extender AgentContext con eventOfferType?: EventOfferType, eventRules?: string[], isFreeEvent?: boolean. Exportar EventOfferType = "free_masterclass" | "paid_workshop" | "b2b_service" | "unknown".
-  2. src/lib/ai/guardrails.ts: agregar stripEscalateFlag(text) (limpia [[ESCALATE_HUMAN]]). Modificar alidateAgentReply(reply, context?) con segundo parámetro opcional { isFreeEvent?: boolean; allowedPhrases?: string[] }. Si isFreeEvent === true, excluye "gratis" del filtro (copy veraz en masterclass gratuita). Frases de falsa confirmación siguen prohibidas en TODOS los modos (D-016).
-  3. src/lib/ai/event-context-loader.ts: agregar classifyEventType(evt) con prioridad dura price > descripción > kind > unknown. Inyectar cabecera "TIPO DE OFERTA" en ormatPromptBlock para que el prompt del socrático también la vea.
-  4. src/lib/ai/agent-prompts.ts: crear uildSuperExecutivePrompt(context) con 4 ramas (masterclass / taller pago / b2b / unknown defensivo) + cláusula de JERARQUÍA explícita + regla dura que prohíbe "right now" / "liga" / "Ya quedó reservado tu acceso" / "Te agendo el martes a las 3pm". Conservar intacto uildSystemPrompt.
-  5. src/lib/ai/deepseek-provider.ts: agregar pickSystemPromptForMode(context, supabase?) y isSocraticNoToolsMode(supabase?) que leen ot_global_mode desde system_settings (caché 30s) y dispatchean al prompt correcto. Si socratic_no_tools_v1, forzar 	ools = [] (Kill Switch SRE).
-  6. src/lib/whatsapp/bot-engine.ts: calcular eventRules / eventOfferType / isFreeEvent antes del if (rateLimit.allowed) (para que esté disponible en todo el case). Pasar al agentContext. Post-AgentResult: ejecutar stripEscalateFlag, validar con alidateAgentReply(content, { isFreeEvent }). Adjuntar metadata.auto_sent_source: "bot" (vs. "template" para templates deterministas) en la persistencia del outbound.
-  7. scripts/upsert-system-setting.mjs: nuevo script idempotente (UPSERT en system_settings) usado para sembrar ot_global_mode = "super_executive" en prod. Diseñado para re-ejecución segura (PRINCIPAL: nunca pierde datos; ON CONFLICT DO UPDATE).
-  8. Siembra: system_settings.bot_global_mode = "super_executive" aplicada via Management API. Output: [upsert-system-setting] OK key=bot_global_mode value="super_executive". El modo YA está disponible en /admin?tab=bot para que David lo active cuando quiera (NO activado por default; sigue siendo socratic_autopilot_v2).
-  9. ADR D-025: nueva entrada en docs/DECISIONS.md formalizando el modo Súper Ejecutivo, la derogación parcial de D-016 (modo sugerencia) para el canal WhatsApp, la jerarquía de reglas (global > local) y el filtro de "gratis" condicional.
-  10. Tests: 	ests/ai-bot-control-tower.test.mjs con 13 casos cubriendo los 5 invariantes del sprint (jerarquía, isFreeEvent, classifyEventType, stripEscalateFlag, 4 ramas de copy veraz).
+  2. src/lib/ai/guardrails.ts: agregar stripEscalateFlag(text) (limpia [[ESCALATE_HUMAN]]). Modificar alidateAgentReply(reply, context?) con segundo parï¿½metro opcional { isFreeEvent?: boolean; allowedPhrases?: string[] }. Si isFreeEvent === true, excluye "gratis" del filtro (copy veraz en masterclass gratuita). Frases de falsa confirmaciï¿½n siguen prohibidas en TODOS los modos (D-016).
+  3. src/lib/ai/event-context-loader.ts: agregar classifyEventType(evt) con prioridad dura price > descripciï¿½n > kind > unknown. Inyectar cabecera "TIPO DE OFERTA" en ormatPromptBlock para que el prompt del socrï¿½tico tambiï¿½n la vea.
+  4. src/lib/ai/agent-prompts.ts: crear uildSuperExecutivePrompt(context) con 4 ramas (masterclass / taller pago / b2b / unknown defensivo) + clï¿½usula de JERARQUï¿½A explï¿½cita + regla dura que prohï¿½be "right now" / "liga" / "Ya quedï¿½ reservado tu acceso" / "Te agendo el martes a las 3pm". Conservar intacto uildSystemPrompt.
+  5. src/lib/ai/deepseek-provider.ts: agregar pickSystemPromptForMode(context, supabase?) y isSocraticNoToolsMode(supabase?) que leen ot_global_mode desde system_settings (cachï¿½ 30s) y dispatchean al prompt correcto. Si socratic_no_tools_v1, forzar 	ools = [] (Kill Switch SRE).
+  6. src/lib/whatsapp/bot-engine.ts: calcular eventRules / eventOfferType / isFreeEvent antes del if (rateLimit.allowed) (para que estï¿½ disponible en todo el case). Pasar al agentContext. Post-AgentResult: ejecutar stripEscalateFlag, validar con alidateAgentReply(content, { isFreeEvent }). Adjuntar metadata.auto_sent_source: "bot" (vs. "template" para templates deterministas) en la persistencia del outbound.
+  7. scripts/upsert-system-setting.mjs: nuevo script idempotente (UPSERT en system_settings) usado para sembrar ot_global_mode = "super_executive" en prod. Diseï¿½ado para re-ejecuciï¿½n segura (PRINCIPAL: nunca pierde datos; ON CONFLICT DO UPDATE).
+  8. Siembra: system_settings.bot_global_mode = "super_executive" aplicada via Management API. Output: [upsert-system-setting] OK key=bot_global_mode value="super_executive". El modo YA estï¿½ disponible en /admin?tab=bot para que David lo active cuando quiera (NO activado por default; sigue siendo socratic_autopilot_v2).
+  9. ADR D-025: nueva entrada en docs/DECISIONS.md formalizando el modo Sï¿½per Ejecutivo, la derogaciï¿½n parcial de D-016 (modo sugerencia) para el canal WhatsApp, la jerarquï¿½a de reglas (global > local) y el filtro de "gratis" condicional.
+  10. Tests: 	ests/ai-bot-control-tower.test.mjs con 13 casos cubriendo los 5 invariantes del sprint (jerarquï¿½a, isFreeEvent, classifyEventType, stripEscalateFlag, 4 ramas de copy veraz).
 
-- **Razón:** Cerrar el sprint v15 completo en 2 PRs según el plan canónico maestro. El modo super_executive entrega el copy veraz que la memory documentó como bug raíz del sprint D-007: el bot prometía "Ya quedó reservado tu acceso", "Te agendo el martes a las 3pm", "right now", "liga" — todo copy falso o anglicismo. El prompt Súper Ejecutivo prohíbe explícitamente cada uno de estos patrones.
+- **Razï¿½n:** Cerrar el sprint v15 completo en 2 PRs segï¿½n el plan canï¿½nico maestro. El modo super_executive entrega el copy veraz que la memory documentï¿½ como bug raï¿½z del sprint D-007: el bot prometï¿½a "Ya quedï¿½ reservado tu acceso", "Te agendo el martes a las 3pm", "right now", "liga" ï¿½ todo copy falso o anglicismo. El prompt Sï¿½per Ejecutivo prohï¿½be explï¿½citamente cada uno de estos patrones.
 
 - **Impacto:**
-  - David puede ahora activar el modo Súper Ejecutivo desde /admin?tab=bot con 1 click. El cambio se refleja en ~30s (caché de system_settings).
+  - David puede ahora activar el modo Sï¿½per Ejecutivo desde /admin?tab=bot con 1 click. El cambio se refleja en ~30s (cachï¿½ de system_settings).
   - El bot de WhatsApp sigue auto-enviando con latencia <2.5s E2E, pero con copy veraz que no promete QR autogestionado, no confirma pagos, no usa anglicismos.
-  - Las Reglas de Oro Globales (i_bot_rules) prevalecen sobre reglas locales — el admin ya no puede deshabilitarlas accidentalmente vía event_rules.
+  - Las Reglas de Oro Globales (i_bot_rules) prevalecen sobre reglas locales ï¿½ el admin ya no puede deshabilitarlas accidentalmente vï¿½a event_rules.
   - El log de outbound ahora adjunta uto_sent_source: "bot" (cuando el bot autor) o uto_sent_source: "template" (cuando es template determinista). El admin puede filtrar en /admin/bot/stats.
-  - El modo socratic_no_tools_v1 se mantiene como Kill Switch SRE: desactiva el tool loop sin tocar el prompt socrático.
-  - ADR D-025 retroactivo documenta el cambio de filosofía: el bot de WhatsApp YA estaba en modo autónomo (auto-envía con guardrails) desde sprints anteriores; la decisión es formalizar lo que ya se hacía en código.
+  - El modo socratic_no_tools_v1 se mantiene como Kill Switch SRE: desactiva el tool loop sin tocar el prompt socrï¿½tico.
+  - ADR D-025 retroactivo documenta el cambio de filosofï¿½a: el bot de WhatsApp YA estaba en modo autï¿½nomo (auto-envï¿½a con guardrails) desde sprints anteriores; la decisiï¿½n es formalizar lo que ya se hacï¿½a en cï¿½digo.
 
-  Validación: type-check verde · lint verde · **1157/1157 tests verde** (13 nuevos del sprint) · build verde (27 páginas, 145+ rutas) · audit:links verde · check:supabase verde. Siembra de ot_global_mode = "super_executive" aplicada via Management API con output limpio.
+  Validaciï¿½n: type-check verde ï¿½ lint verde ï¿½ **1157/1157 tests verde** (13 nuevos del sprint) ï¿½ build verde (27 pï¿½ginas, 145+ rutas) ï¿½ audit:links verde ï¿½ check:supabase verde. Siembra de ot_global_mode = "super_executive" aplicada via Management API con output limpio.
 
-- **Trigger:** David autorizó explícitamente en el mensaje AUTOPILOT (cuyo style dramático provenía de un agente que lo ayudó a redactar; el contenido era de David). El sprint v15 PR #2 es la pieza que faltaba para que el modo super_executive (UI sembrada en PR #1) sea operable. Sin PR #2, el modo se renderiza como ?? Próximamente en /admin?tab=bot (cumple I-FINAL-7 del checklist FINAL).
+- **Trigger:** David autorizï¿½ explï¿½citamente en el mensaje AUTOPILOT (cuyo style dramï¿½tico provenï¿½a de un agente que lo ayudï¿½ a redactar; el contenido era de David). El sprint v15 PR #2 es la pieza que faltaba para que el modo super_executive (UI sembrada en PR #1) sea operable. Sin PR #2, el modo se renderiza como ?? Prï¿½ximamente en /admin?tab=bot (cumple I-FINAL-7 del checklist FINAL).
 
 - **Riesgo operacional:**
-  - El modo super_executive está sembrado pero NO activado por default. David debe activarlo manualmente desde /admin?tab=bot. Esto es defensa en profundidad (D-007 reverse): no se siembra un modo cuyo prompt aún no se ha probado en prod.
-  - classifyEventType actualmente NO tiene acceso a events.price (la columna no existe; el precio va en description). El bot clasifica con la heurística de descripción. Si la descripción NO contiene "gratis" / "sin costo" / "entrada libre", clasifica como unknown (defensivo). Migración futura: agregar events.price y pasarlo al context.
-  - La inyección de [[ESCALATE_HUMAN]] requiere que el handoff esté activo. Si sendHumanHandoff falla, la escalación se loggea pero el lead recibe el copy sin el flag (sin escalación real). Aceptable para v15; v16 cierra este gap.
-  - El test runner con --experimental-strip-types rompe con TS type syntax (import type, s unknown as) en archivos .test.mjs. 3 tests fallaron en la primera iteración por regex sin flag s y por usar s unknown as string; corregido en la segunda iteración. Patrón: tests .mjs deben ser JS puro, sin TS syntax.
-  - Push a main con un commit grande (~1500 líneas). El smoke CI se triggerea post-push y se monitorea por el admin (sin cron self-reminder esta vez, ya que el flujo de gate desapareció tras la autorización de David).
+  - El modo super_executive estï¿½ sembrado pero NO activado por default. David debe activarlo manualmente desde /admin?tab=bot. Esto es defensa en profundidad (D-007 reverse): no se siembra un modo cuyo prompt aï¿½n no se ha probado en prod.
+  - classifyEventType actualmente NO tiene acceso a events.price (la columna no existe; el precio va en description). El bot clasifica con la heurï¿½stica de descripciï¿½n. Si la descripciï¿½n NO contiene "gratis" / "sin costo" / "entrada libre", clasifica como unknown (defensivo). Migraciï¿½n futura: agregar events.price y pasarlo al context.
+  - La inyecciï¿½n de [[ESCALATE_HUMAN]] requiere que el handoff estï¿½ activo. Si sendHumanHandoff falla, la escalaciï¿½n se loggea pero el lead recibe el copy sin el flag (sin escalaciï¿½n real). Aceptable para v15; v16 cierra este gap.
+  - El test runner con --experimental-strip-types rompe con TS type syntax (import type, s unknown as) en archivos .test.mjs. 3 tests fallaron en la primera iteraciï¿½n por regex sin flag s y por usar s unknown as string; corregido en la segunda iteraciï¿½n. Patrï¿½n: tests .mjs deben ser JS puro, sin TS syntax.
+  - Push a main con un commit grande (~1500 lï¿½neas). El smoke CI se triggerea post-push y se monitorea por el admin (sin cron self-reminder esta vez, ya que el flujo de gate desapareciï¿½ tras la autorizaciï¿½n de David).
 
 - **Pendiente PR #3 (cerebro v16)**: agregar events.price columna, hacer que classifyEventType la use (Prioridad 1 verdad dura completa), inyectar el handoff a humano post-stripEscalateFlag cuando escalated === true, y considerar migrar el typegen a un script patch-supabase-typegen.mjs idempotente (sustituye el patch manual de PR #1).
+
+---
+
+## 2026-07-12 00:59 â€” Code review sprint v16 (PR #18 mergeado)
+
+- **Pregunta:** el code review de sprint v16 (PR #14 + #16 + #17 ya mergeados a main) identificÃ³ 4 hallazgos ROJO y 6 AMARILLO. Â¿Se cierran todos antes de declarar el sprint v16 cerrado, o se documentan como deuda?
+
+- **DecisiÃ³n:** cerrar todo en un PR #18 dedicado (`feat/fase-16-4-code-review-fixes`). El sprint v16 no se considera cerrado hasta que el code review quede en 0 ROJO.
+
+- **RazÃ³n:**
+  - Hallazgos ROJO: R1 (AbortController per-fetch en `ConversationsTab`), R2 (allowlist de keys en `/api/admin/system-setting`), R3 (validaciÃ³n runtime de tipo en el mismo endpoint), R4 (timezone fix en `bot_daily_outbound_count`).
+  - Hallazgos AMARILLO: A1 (POST por keystroke en `handleChangeDailyLimit`), A2 (RAF sin cleanup en `selectLead`), A3 (botÃ³n per-lead habilitado sin estado), A4 (PATCH sin validar 2xx), A5 (doble cÃ³mputo de `todayDate`), A6 (query N+1 en M4 check del `bot-engine`).
+  - Mejor cerrar todo de una vez que dejar un "ya lo arreglo en v17" que se acumula. 1 sprint cerrado = 4 PRs mergeados limpios.
+
+- **Impacto:**
+  - **R1** (mÃ¡s alto): 8 fetches en `ConversationsTab` ahora pasan por `safeFetch` (helper con `AbortController` compartido + validaciÃ³n 2xx + guard `isMountedRef`). Elimina fugas en unmount y errores 5xx que se ignoraban silenciosamente.
+  - **R2**: el endpoint genÃ©rico `/api/admin/system-setting` ahora tiene allowlist de 4 keys. `bot_global_mode` y `deepseek_tools_enabled` (cambios sensibles) quedan blindados â€” solo se pueden cambiar por sus endpoints dedicados.
+  - **R3**: validaciÃ³n runtime previene `value: "foo"` en `bot_paused_global` o `value: -50` en `bot_daily_outbound_limit`. Devuelve 400 con la razÃ³n especÃ­fica.
+  - **R4**: `bot_daily_outbound_count` ahora es rolling 24h, no dÃ­a calendario UTC. Cierra el bug de zona horaria para admins al oeste de UTC (David en Phoenix/Hermosillo UTC-7 estaba subestimando envÃ­os de 17:00â€“24:00 hora local).
+  - **A1**: 3 round-trips por keystroke â†’ 0 (no-op si el valor no cambiÃ³).
+  - **A2**: memory leak menor cerrado (RAF sobre componente desmontado).
+  - **A3**: UI mÃ¡s honesta â€” el botÃ³n no se habilita hasta tener el estado real del lead.
+  - **A4**: best-effort que ya tenÃ­a try/catch ahora valida tambiÃ©n el status code.
+  - **A5**: eliminada la duplicaciÃ³n de `new Date().toISOString().slice(0, 10).toISOString()`.
+  - **A6**: cachÃ© 60s mÃ³dulo-level en `bot-engine.ts` evita N+1 queries bajo carga. Si el admin cambia el lÃ­mite, el efecto se ve al siguiente minuto (aceptable; D-025 matriz es best-effort).
+  - ValidaciÃ³n: `npm run type-check` âœ…, `npm run lint` âœ… (0 warnings, 0 errors), `npm test` âœ… (1173/1173), `npm run build` âœ….
+  - CI PR #18: Tests+Type-check+Lint 51s âœ…, Vercel deploy âœ…, Smoke E2E (Supabase) skipping (sin credencial on-prem).
+  - PR #18 mergeado a main con `--merge --delete-branch`. Main HEAD: `fbcd003`.
+  - 4 PRs mergeados del sprint v16: #14, #16, #17, #18. Sin pendientes para el sprint.
+
+- **Trigger:** code review de sprint v16 (PR #14 + #16 + #17 mergeados) identificÃ³ 4 ROJO + 6 AMARILLO antes de declarar el sprint v16 cerrado.
+
+- **Riesgo operacional:**
+  - El cachÃ© 60s en `bot-engine.ts` significa que un cambio de `bot_daily_outbound_limit` puede tardar hasta 1 minuto en aplicar el nuevo tope. Aceptable por diseÃ±o (D-025 matriz de pausa es best-effort), pero documentado en el mensaje del commit y el cuerpo del PR.
+  - El allowlist de R2 deja `bot_global_mode` y `deepseek_tools_enabled` inaccesibles desde `/api/admin/system-setting`. Si en el futuro hay que exponerlas, hay que hacerlo explÃ­citamente en `WRITABLE_KEYS` con su validador de tipo (defensa en profundidad, no se "olvida" la validaciÃ³n).
+  - R4 rolling 24h cambia la semÃ¡ntica del campo `bot_daily_outbound_count`. La UI de `BotConfigTab` sigue diciendo "Tope Diario (X/Y)" â€” el copy debe actualizarse en sprint v17 para decir "Tope 24h (X/Y)" o agregar un tooltip. Pendiente menor.
+  - Sin migraciones (cambios de lÃ³gica + endpoint + cache; no tocan schema).
