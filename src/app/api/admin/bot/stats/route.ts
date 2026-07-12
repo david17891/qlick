@@ -96,12 +96,20 @@ export async function GET(): Promise<NextResponse<BotStatsResponse>> {
   // 1. Mensajes bot (outbound) en 24h y 7d.
   //    Filtra por metadata->>'auto_sent_source' = 'bot'. En PR #1 esto
   //    devuelve 0 (el flag lo setea bot-engine.ts en PR #2).
+  //
+  // FIX 2026-07-12 (auditoría v16 R4 + A5): antes el kill-switch
+  // counter usaba `created_at >= medianoche UTC` (zona horaria del
+  // server), lo que en zonas al oeste (Phoenix UTC-7, Hermosillo
+  // UTC-7) subestimaba los envíos hechos entre 17:00 y 24:00 hora
+  // local. Cambiamos a ventana rolling 24h: refleja "últimas 24
+  // horas" sin depender de zona. `bot_daily_outbound_limit` se
+  // interpreta como "tope rolling 24h" en la UI.
   const since24hIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const since7dIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const since30dIso = new Date(
     Date.now() - META_FREE_QUOTA_ROLLING_DAYS * 24 * 60 * 60 * 1000
   ).toISOString();
-  const todayDate = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const todayDate = new Date().toISOString().slice(0, 10); // YYYY-MM-DD (zona server, para bot_usage_daily)
 
   const [
     r24,
@@ -112,7 +120,7 @@ export async function GET(): Promise<NextResponse<BotStatsResponse>> {
     pausedSemantic,
     pausedManual,
     usageToday,
-    countToday
+    countLast24h
   ] = await Promise.all([
     supabase
       .from("lead_whatsapp_conversations")
@@ -157,14 +165,17 @@ export async function GET(): Promise<NextResponse<BotStatsResponse>> {
       .from("bot_usage_daily")
       .select("prompt_tokens, completion_tokens, call_count, estimated_cost_cents")
       .eq("date", todayDate),
-    // Kill-Switch counter: outbound auto_enviados HOY (para mostrar
-    // progreso contra `bot_daily_outbound_limit`).
+    // Kill-Switch counter: outbound auto_enviados en las últimas 24h
+    // (ventana rolling, no día calendario UTC). FIX 2026-07-12 (R4):
+    // antes filtraba por `created_at >= medianoche UTC`, lo que
+    // subestimaba envíos en zonas al oeste. FIX 2026-07-12 (A5):
+    // reusamos `since24hIso` en lugar de recalcular.
     supabase
       .from("lead_whatsapp_conversations")
       .select("id", { count: "exact", head: true })
       .eq("direction", "outbound")
       .eq("metadata->>auto_sent_source", "bot")
-      .gte("created_at", new Date(new Date().toISOString().slice(0, 10)).toISOString())
+      .gte("created_at", since24hIso)
   ]);
 
   // 2. Settings actuales.
@@ -219,9 +230,10 @@ export async function GET(): Promise<NextResponse<BotStatsResponse>> {
         "≈ Proyección rolling 30d (Meta no expone el saldo exacto de las 1,000 conversaciones gratuitas de servicio). El conteo es local.",
       // M4: switch maestro de pausa global.
       bot_paused_global: globalPaused === true,
-      // Kill-Switch diario: default 50 envíos/día en pruebas.
+      // Kill-Switch rolling 24h: default 50 envíos/día en pruebas.
+      // FIX 2026-07-12 (R4): el conteo es rolling, no día calendario UTC.
       bot_daily_outbound_limit: typeof dailyLimit === "number" ? dailyLimit : 50,
-      bot_daily_outbound_count: countToday.count ?? 0,
+      bot_daily_outbound_count: countLast24h.count ?? 0,
       generated_at: new Date().toISOString(),
     },
   });

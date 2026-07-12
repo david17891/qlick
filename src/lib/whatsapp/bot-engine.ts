@@ -65,6 +65,18 @@ import { mustEscalateToHuman, stripEscalateFlag } from "../ai/guardrails";
 // (bot_paused_global, bot_daily_outbound_limit).
 import { resolveEffectivePause } from "../ai/deepseek-cost";
 import { readSystemSetting, KEY_BOT_PAUSED_GLOBAL, KEY_BOT_DAILY_OUTBOUND_LIMIT } from "../admin/system-settings-server";
+
+// FIX 2026-07-12 (auditoría v16 A6): caché módulo-level de 60s para
+// el conteo rolling 24h de outbound auto_enviados. El conteo se
+// consulta antes de cada intent del bot; sin caché, un pico de
+// mensajes entrantes hace N+1 queries idénticas. 60s es un trade-off
+// razonable: si el admin cambia el límite, el efecto se ve al
+// siguiente minuto. Los settings (bot_paused_global, daily_limit) ya
+// tienen caché 30s en `readSystemSetting` (TTL interno del módulo
+// system-settings-server).
+type OutboundCountCache = { value: number; expiresAt: number };
+let outboundCountCache: OutboundCountCache | null = null;
+const OUTBOUND_COUNT_CACHE_TTL_MS = 60_000;
 // FIX 2026-07-11 (Sprint v15 PR #2.5b): clasificador del tipo de oferta
 // para el prompt Súper Ejecutivo. Se calcula con prioridad price>descripción>unknown.
 import { classifyEventType } from "../ai/event-context-loader";
@@ -4159,20 +4171,34 @@ export async function processInboundMessage(
         };
       }
       // FIX 2026-07-12: Kill-Switch diario. Cuenta outbound auto_enviados
-      // (metadata->>auto_sent_source = 'bot') desde las 00:00 hora local.
-      const dayStart = new Date();
-      dayStart.setHours(0, 0, 0, 0);
-      const dayStartIso = dayStart.toISOString();
-      const { count: outboundToday } = await supabase
-        .from("lead_whatsapp_conversations")
-        .select("id", { count: "exact", head: true })
-        .eq("direction", "outbound")
-        .eq("metadata->>auto_sent_source", "bot")
-        .gte("created_at", dayStartIso);
-      if ((outboundToday ?? 0) >= dailyLimit) {
+      // (metadata->>auto_sent_source = 'bot') en ventana rolling 24h
+      // (alineado con R4 en /api/admin/bot/stats: no usamos día
+      // calendario UTC para evitar subestimar en zonas al oeste).
+      // FIX 2026-07-12 (auditoría v16 A6): cache 60s para evitar
+      // N+1 queries idénticas bajo carga. Si el admin cambia el
+      // límite, el efecto se ve al siguiente minuto.
+      const now = Date.now();
+      let outboundToday: number;
+      if (outboundCountCache && outboundCountCache.expiresAt > now) {
+        outboundToday = outboundCountCache.value;
+      } else {
+        const since24hIso = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+        const { count } = await supabase
+          .from("lead_whatsapp_conversations")
+          .select("id", { count: "exact", head: true })
+          .eq("direction", "outbound")
+          .eq("metadata->>auto_sent_source", "bot")
+          .gte("created_at", since24hIso);
+        outboundToday = count ?? 0;
+        outboundCountCache = {
+          value: outboundToday,
+          expiresAt: now + OUTBOUND_COUNT_CACHE_TTL_MS
+        };
+      }
+      if (outboundToday >= dailyLimit) {
         debugLog("[whatsapp/bot] daily limit reached, abort", {
           leadId: lead.id,
-          outboundToday: outboundToday ?? 0,
+          outboundToday,
           dailyLimit
         });
         return {
@@ -4181,7 +4207,7 @@ export async function processInboundMessage(
           leadId: lead.id,
           responseKind: "none",
           demo: false,
-          note: `Kill-Switch diario activado: ${outboundToday ?? 0}/${dailyLimit} outbound hoy. Sin respuesta.`
+          note: `Kill-Switch diario activado: ${outboundToday}/${dailyLimit} outbound rolling 24h. Sin respuesta.`
         };
       }
     } catch (err) {
