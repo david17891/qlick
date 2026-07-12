@@ -76,6 +76,25 @@ export interface ExtractContactResult {
   demo: boolean;
   /** Nota legible para logging. Sin PII. */
   note: string;
+  /**
+   * Sprint v0.9.8 Mejora 3: status del resultado. Si el email tiene un
+   * typo de dominio conocido (ej. "@gmai.com"), el status es
+   * "needs_domain_confirmation" y el email NO se guarda. El LLM lee
+   * este status y le pide al lead una confirmación amable del
+   * dominio antes de reintentar. Ausente = flujo normal.
+   */
+  status?: "needs_domain_confirmation";
+  /**
+   * Sprint v0.9.8 Mejora 3: dominio correcto sugerido (ej. "gmail.com").
+   * Presente solo si `status === "needs_domain_confirmation"`.
+   */
+  suggested_domain?: string;
+  /**
+   * Sprint v0.9.8 Mejora 3: dominio crudo que el lead dio (ej. "gmai.com").
+   * Presente solo si `status === "needs_domain_confirmation"`. Útil para
+   * que el LLM haga la pregunta de confirmación.
+   */
+  raw_domain?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -202,6 +221,60 @@ export function validateAndNormalizeEmail(
 }
 
 /* ------------------------------------------------------------------ */
+/* Sprint v0.9.8 Mejora 3: Detección de typos en dominios de correo  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Diccionario de errores tipográficos comunes en dominios de correo.
+ * Map: typo (lowercase) → dominio correcto (lowercase).
+ *
+ * Cobertura: los typos más frecuentes que David documentó en el brief
+ * de v0.9.8 (`@gmai.com`, `@hotmai.com`, `@outlook.co`, `@yahho.com`).
+ * Si el LLM recibe un email con uno de estos dominios, NO abortamos
+ * con error genérico; pedimos confirmación amable al lead.
+ *
+ * Cómo extender: agregar más keys al dict (lowercase). NO incluir
+ * dominios válidos aunque sean cortos (e.g. no agregar "gm.com" → "gmail.com"
+ * porque gm.com es un dominio válido de General Motors).
+ */
+export const DOMAIN_TYPOS: Readonly<Record<string, string>> = Object.freeze({
+  "gmai.com": "gmail.com",
+  "gmal.com": "gmail.com",
+  "gmail.co": "gmail.com",
+  "gmial.com": "gmail.com",
+  "gnail.com": "gmail.com",
+  "hotmai.com": "hotmail.com",
+  "hotmal.com": "hotmail.com",
+  "hotmil.com": "hotmail.com",
+  "hotmial.com": "hotmail.com",
+  "outlook.co": "outlook.com",
+  "outlok.com": "outlook.com",
+  "outloo.com": "outlook.com",
+  "yahho.com": "yahoo.com",
+  "yaho.com": "yahoo.com",
+  "yhoo.com": "yahoo.com"
+});
+
+/**
+ * Detecta si un email tiene un typo de dominio conocido.
+ *
+ * @returns `null` si el email no tiene typo (o el email es null/inválido).
+ *          `{ suggestedDomain: string, rawDomain: string }` si hay typo.
+ */
+export function detectDomainTypo(
+  email: string | null | undefined
+): { suggestedDomain: string; rawDomain: string } | null {
+  if (!email) return null;
+  const normalized = email.trim().toLowerCase();
+  const atIdx = normalized.lastIndexOf("@");
+  if (atIdx < 0) return null;
+  const domain = normalized.slice(atIdx + 1);
+  const suggested = DOMAIN_TYPOS[domain];
+  if (!suggested) return null;
+  return { suggestedDomain: suggested, rawDomain: domain };
+}
+
+/* ------------------------------------------------------------------ */
 /* Tool execution                                                      */
 /* ------------------------------------------------------------------ */
 
@@ -264,12 +337,25 @@ export async function executeExtractAndSaveContact(
 
   let validatedEmail: string | null = null;
   let emailError: string | undefined;
+  let domainTypoSuggestion: { suggestedDomain: string; rawDomain: string } | null =
+    null;
   if (rawEmail) {
-    const normalized = validateAndNormalizeEmail(rawEmail);
-    if (normalized) {
-      validatedEmail = normalized;
+    // Sprint v0.9.8 Mejora 3: detectar typos de dominio ANTES de validar.
+    // Si hay un typo conocido (ej. "@gmai.com"), NO abortamos con
+    // error genérico: devolvemos `status: "needs_domain_confirmation"`
+    // para que el LLM pida confirmación amable al lead.
+    const typo = detectDomainTypo(rawEmail);
+    if (typo) {
+      domainTypoSuggestion = typo;
+      // NO marcamos emailError: la validación semántica es válida
+      // (formato correcto), solo hay ambigüedad de dominio.
     } else {
-      emailError = "Formato de email inválido.";
+      const normalized = validateAndNormalizeEmail(rawEmail);
+      if (normalized) {
+        validatedEmail = normalized;
+      } else {
+        emailError = "Formato de email inválido.";
+      }
     }
   }
 
@@ -282,6 +368,26 @@ export async function executeExtractAndSaveContact(
       persisted: false,
       demo: ctx.supabase === null,
       note: "Ninguno de los datos pasó la validación."
+    };
+  }
+
+  // 3.5. Sprint v0.9.8 Mejora 3: si hay typo de dominio, devolver ack
+  // con `status: "needs_domain_confirmation"` ANTES de persistir. El LLM
+  // lee este status y le pide al lead una confirmación amable del
+  // dominio ("¿tu correo termina en gmail.com?"). NO guardamos el
+  // email con typo — sería una alucinación.
+  if (domainTypoSuggestion) {
+    return {
+      ok: true,
+      persisted: false,
+      demo: ctx.supabase === null,
+      status: "needs_domain_confirmation",
+      suggested_domain: domainTypoSuggestion.suggestedDomain,
+      raw_domain: domainTypoSuggestion.rawDomain,
+      saved_name: validatedName ?? undefined,
+      // El email NO se guarda todavía.
+      error_email: undefined,
+      note: `El dominio "${domainTypoSuggestion.rawDomain}" parece tener un typo tipográfico. Sugerencia: "${domainTypoSuggestion.suggestedDomain}". Pídele confirmación natural al lead antes de guardar.`
     };
   }
 
