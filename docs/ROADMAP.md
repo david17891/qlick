@@ -1,12 +1,23 @@
 # Qlick LMS — Roadmap
 
 > Fuente de verdad del plan del LMS. Cualquier desvío se conversa y se actualiza acá.
-> Última revisión: 2026-07-11 19:30 Phoenix — **Sprint CI verde + secrets config** cerrado (3 GitHub Secrets + fine-grained PAT scope "Secrets"). Smoke workflow verde por primera vez en run `29176681182`. Sin cambios de código — solo infra. Estado anterior (11:50): Sprint cierre-eventos-virtuales + Audit voseo cerrado en `main`. Validación 1144/1144 tests.
+> Última revisión: 2026-07-12 02:03 Phoenix — **Sprint v0.9.5 Torre de Control Bot v16** cerrado en `main` (HEAD `0ccdabc`, PRs #14·#16·#17·#18·#19·#20). Torre de Control operativa: selector de modo persistente, 3 system prompts, Reglas de Oro CRUD, Bloques de Contexto, Radar de Costos DeepSeek, kill-switch diario, switch maestro "Pausar Bot para Todos", Conversations Tab nivel 1 con realtime y matriz de pausa. Validación 1173/1173 tests, Vercel auto-deploy OK. Handoff: `docs/HANDOFF_v0.9.5_TORRE_CONTROL_BOT_V16.md`. Estado anterior (v0.9.4 19:30): CI verde + GitHub Secrets.
 
 ---
 
 ## Estado actual
 
+- [x] **v0.9.5 — Sprint Torre de Control Bot v16 (Torre de Control + Radar de Costos + Conversations Tab)** — sprint cerrado el 2026-07-12 02:03 Phoenix en `main` (HEAD `0ccdabc`). 6 PRs mergeados (#14, #16, #17, #18, #19, #20) sin cambios de schema.
+  - Handoff completo: `docs/HANDOFF_v0.9.5_TORRE_CONTROL_BOT_V16.md` — **leer primero**
+  - Status vivo: `docs/STATUS.md` (snapshot 2026-07-12 02:03).
+  - Traza por PR: `data/PROJECT-LOG.md` entradas `2026-07-12 01:32` (hotfix #2) y `2026-07-12 01:48` (hotfix #3) + las de los 4 PRs anteriores.
+  - **Qué incluye:**
+    - **Torre de Control** (`BotConfigTab`): selector de 3 modos (Socrático v1 / Socrático v2 / Súper Ejecutivo) con persistencia real vía endpoint dedicado `/api/admin/bot/mode` (la auditoría v16 R2 ya lo anticipaba), 6 Bloques de Contexto, CRUD de Reglas de Oro (top N por prioridad se inyectan al prompt), métricas en vivo, Radar de Costos DeepSeek con cupo Meta rolling 30d, kill-switch diario con 2 atajos (input numérico + "⚡ Subir a 500"), switch maestro "Pausar Bot para Todos" (M4).
+    - **Conversations Tab** (`ConversationsTab`): buzón nivel 1 con orden natural humano, soft-delete transaccional, matriz de pausa global/lead, realtime Supabase, badge 🟢 "Nuevo" robusto (revisa toda la lista, no solo el último).
+    - **Endpoint `bot/stats`**: tokens hoy, costo USD, proyección 30d, cupo Meta con barra de progreso, outbound count rolling 24h, pausa global.
+    - **Code review (PR #18)**: 4 ROJO + 6 AMARILLO cerrados — `safeFetch` helper (AbortController + 2xx + isMountedRef), allowlist de 4 keys en `/api/admin/system-setting`, validación runtime de tipo, caché 60s módulo-level en `bot-engine.ts`, rolling 24h en `bot_daily_outbound_count` (cerró bug zona horaria Phoenix UTC-7).
+    - **3 hotfixes UI** (PR #17, #19, #20): scroll instantáneo, badge unread pegado, nombres visibles, súper ejecutivo desbloqueado, isUnread robusto, Guía Rápida de Reglas de Oro, distinción visual de ModeTarjeta activo/inactivo, atajo "Subir a 500", persistencia real de `onSelectMode`, anti-flicker de carga con skeleton.
+  - **Validación:** `npm run type-check` ✓ · `npm run lint` ✓ (0/0) · `npm test` ✓ **1173/1173** (+107 desde v0.9.4) · `npm run build` ✓ (3 endpoints nuevos listados: `/api/admin/bot/{mode,global-pause,stats}`) · Vercel auto-deploy OK en cada PR · GitHub Actions Tests+Type-check+Lint 54s ✓.
 - [x] **v0.9.4 — Sprint CI verde + GitHub Secrets config (operacional)** — sprint cerrado el 2026-07-11 19:30 Phoenix. NO incluye cambios de código, solo infra.
   - **Qué incluye:**
     - **3 GitHub Secrets** configurados en `david17891/qlick` (encriptados en reposo): `SUPABASE_URL`, `SUPABASE_PROJECT_REF` (extraído del subdominio, público), `SUPABASE_SECRET_KEY` (de `.env.local`, formato `sb_secret_xxx` válido).

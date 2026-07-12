@@ -3427,3 +3427,41 @@ pm run typegen en esta rama � agregar a docs/OPEN_ITEMS.md como nota para spri
   - Sin migraciones (no toca schema). El endpoint vive en `/api/admin/bot/mode` y la SSOT del tipo en `system-settings-server.ts`. La KEY canónica (`KEY_BOT_GLOBAL_MODE = "bot_global_mode"`) ya existía.
   - El estado `modeSaving` deshabilita los 3 botones durante el POST (~50-200ms típico en Vercel region iad1 → Supabase US West). UX aceptable; si David reporta lentitud perceptible, se puede mover el POST a `startTransition` y mostrar un spinner inline.
   - Pendiente menor: la sección "Cargando configuración..." se muestra incluso cuando `stats === null` por error de DB. Considerar agregar un estado de error específico (botón "Reintentar") en sprint v17 si David lo nota en uso real.
+
+---
+
+## 2026-07-12 02:03 — Sprint v0.9.5 Torre de Control Bot v16 CERRADO (PR #20 mergeado a main)
+
+- **Pregunta:** David aprobó el merge directo de PR #20 tras revisar verbalmente los 3 argumentos arquitectónicos de la decisión de crear el endpoint dedicado `/api/admin/bot/mode` (en lugar de agregar `bot_global_mode` al allowlist genérico). Con la aprobación, ¿qué queda pendiente para cerrar formalmente el sprint v16?
+
+- **Decisión:**
+  1. **Merge PR #20 con `--merge --delete-branch`**: confirmado por Mavis con `gh pr merge 20 --merge --delete-branch`. Branch `feat/fase-16-6-hotfix-ui-3` borrado de origin.
+  2. **Handoff escrito** `docs/HANDOFF_v0.9.5_TORRE_CONTROL_BOT_V16.md` (siguiente versión después de v0.9.4 CI verde + GitHub Secrets). Cubre las 6 features, los 6 PRs, validación, decisiones arquitectónicas (D-025, R2, safeFetch, caché 60s, rolling 24h, optimistic + rollback) y riesgos.
+  3. **ROADMAP actualizado** con v0.9.5 cerrado arriba de v0.9.4.
+  4. **STATUS.md** snapshot vivo actualizado a 2026-07-12 02:03 Phoenix con el cierre del sprint.
+  5. **PROJECT-LOG** con esta entrada (cierre formal del sprint).
+  6. **Todo en 1 commit** + push a main con PR-style diff (rama `chore/hand-v0.9.5-sprint-v16-cierre` o directo, depende del flujo de Mavis).
+
+- **Razón:**
+  - La regla del AGENTS.md es taxativa: "Handoff escrito (si cierra fase) en `docs/HANDOFF_<version>_<fase>.md`" y "Update de `docs/ROADMAP.md`" al cierre de cada fase.
+  - Sin handoff, el siguiente sprint (v0.9.6 o v0.10.x) arranca con knowledge tácito en memoria de Mavis que se pierde al rotar sesión. El handoff es la única forma de que Mavis (o David) en 3 meses entienda qué hizo el sprint v16 sin leer 6 PRs y 3 hotfixes.
+  - El sprint v16 NO tocó schema (0 migraciones) — todo es lógica + endpoints + caché + UI. Eso lo hace el sprint "más limpio" de los últimos 3 (v0.9.3 sí tocó schema con `event_attendee_source_survey_attended`).
+  - El sprint v16 cubre 3 tracks conceptuales (Torre de Control, Radar de Costos, Conversations Tab) que se fueron construyendo en paralelo y mergeando en orden. El handoff unifica la narrativa.
+
+- **Impacto:**
+  - **6 PRs mergeados** al sprint v16 (PR #14, #16, #17, #18, #19, #20) — todos a `main` con `--merge --delete-branch`. Branch principal (`feat/fase-16-6-hotfix-ui-3`) ya borrado de origin.
+  - **Main HEAD:** `0ccdabc` (Merge pull request #20 from david17891/feat/fase-16-6-hotfix-ui-3).
+  - **+107 tests** desde v0.9.4 (1066 → 1173). Baseline actual: 1173/1173 verde.
+  - **3 endpoints nuevos** bajo `/api/admin/bot/*`: `mode` (sprint v16 hotfix #3), `global-pause` (M4), `stats` (todas las métricas). Todos validados en build manifest.
+  - **Vercel auto-deploy** disparado en cada PR merge (último: run `29186675027`, 54s). Producción tiene la Torre de Control operativa.
+  - **Handoff completo** para que el siguiente Mavis (o David en 3 meses) entienda el sprint sin leer 6 PRs.
+  - **Bot en control operativo por primera vez**: David puede cambiar de modo, pausar el bot, ajustar el tope diario, gestionar Reglas de Oro, monitorear costos de DeepSeek, y atender el buzón de conversaciones — todo desde la UI admin, sin redeploy.
+
+- **Trigger:** David aprobó merge directo con argumento verbal: "defensa en profundidad con type guard + simetría RESTful con `/api/admin/bot/*` + optimistic UI con rollback = estándar de oro". Cierre formal del sprint v16 que se venía construyendo desde v0.9.0.
+
+- **Riesgo operacional:**
+  - **Caché 60s en `bot-engine.ts`** (code review v16): cambio de `bot_daily_outbound_limit` tarda hasta 1 minuto en aplicar el nuevo tope. Aceptable por diseño (D-025 matriz best-effort). Documentado en handoff.
+  - **Caché 30s en `readSystemSetting`**: cambio de `bot_global_mode` se ve en el siguiente turno del bot (no requiere TTL completo). `setSystemSetting` invalida explícitamente.
+  - **Sin migraciones** (no toca schema). El sprint v16 entero es lógica + endpoints + caché + UI. Eso reduce el riesgo de drift entre el repo y la DB de prod.
+  - **Pendientes menores** documentados en handoff: (a) skeleton en sección de Modos sin botón "Reintentar" específico cuando `stats === null` por error de DB, (b) label "Tope Diario" debería decir "Tope 24h" tras el cambio de zona horaria en code review v16. Ambos son no-bloqueantes para el cierre del sprint.
+  - **Próximo sprint** (v0.9.6 o v0.10.x) puede arrancar limpiamente. Sugerencia del sprint v16: pilotaje real en producción con el bot corriendo durante 1-2 semanas para validar el flujo "cambio de modo → siguiente turno del bot" antes de iterar sobre la UI de la Torre de Control.

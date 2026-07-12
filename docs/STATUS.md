@@ -8,9 +8,32 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-12 01:48 Phoenix — **Sprint v16 hotfix #3 mergeado (PR #20)**: persistencia real de `onSelectMode` en `system_settings` (antes solo cambiaba estado local) + anti-flicker de carga en la sección de Modos (skeleton mientras `statsLoading && !stats`, ya no dibuja un modo falso por 500ms). Crea endpoint dedicado `/api/admin/bot/mode` (la auditoría v16 R2 ya lo había anticipado) con SSOT del tipo `BotGlobalMode` + type guard `isBotGlobalMode` en `system-settings-server.ts`. Validación: 1173/1173 tests, type-check ✓, lint 0/0, build ✓ (endpoint listado en `/api/admin/bot/mode`). La deuda pre-existente del STATUS (no refleja sprint v16 PR #14/#16/#17 ni hotfix #1/#2) queda como pendiente menor — la cubre otra sesión.
+> **Última actualización:** 2026-07-12 02:03 Phoenix — **Sprint v0.9.5 Torre de Control Bot v16 CERRADO** (PR #20 mergeado a `main`, HEAD `0ccdabc`, branch `feat/fase-16-6-hotfix-ui-3` borrado). 6 PRs mergeados al sprint (#14, #16, #17, #18, #19, #20). David aprobó el merge directo. Handoff completo: `docs/HANDOFF_v0.9.5_TORRE_CONTROL_BOT_V16.md`. Validación final: type-check ✓, lint ✓ (0/0), 1173/1173 tests, build ✓ (3 endpoints nuevos en `/api/admin/bot/{mode,global-pause,stats}`), Vercel auto-deploy OK. Sprint v16 cerrado.
 >
-> Estado anterior (2026-07-12 01:32): Sprint v16 hotfix #2 (PR #19) — 4 ajustes UI/UX en `ConversationsTab` y `BotConfigTab`. Sigue vigente (mergeado a main con HEAD `9bbf187`).
+> Estado anterior (2026-07-12 01:48): Sprint v16 hotfix #3 (PR #20) — última fricción del sprint, persistencia real + anti-flicker. Sigue vigente como parte del sprint v16 ahora cerrado.
+
+---
+
+## Sprint v0.9.5 — Cierre Torre de Control Bot v16 (2026-07-12 02:03 Phoenix)
+
+**Resumen:** David aprobó merge directo de PR #20 tras revisión verbal de los 3 argumentos arquitectónicos (defensa en profundidad con type guard, simetría RESTful con `/api/admin/bot/*`, optimistic UI con rollback). Cierra la **Torre de Control del Bot de WhatsApp** que se venía construyendo desde v0.9.0: panel admin único con selector de modo persistente, 3 system prompts, Reglas de Oro CRUD, Bloques de Contexto, Radar de Costos DeepSeek, kill-switch diario, switch maestro "Pausar Bot para Todos", Conversations Tab nivel 1 con realtime y matriz de pausa.
+
+**Cambios totales del sprint (6 PRs, 0 migraciones):**
+
+- **Torre de Control** (`BotConfigTab`): 3 modos (Socrático v1, Socrático v2, Súper Ejecutivo), 6 Bloques de Contexto, CRUD de Reglas de Oro (top N por prioridad se inyectan al prompt), 4 Métricas en vivo, Radar de Costos, 2 Controles Operativos (pausa global + kill-switch diario).
+- **Conversations Tab** (`ConversationsTab`): buzón nivel 1 con orden natural humano, soft-delete transaccional, matriz de pausa global/lead, realtime Supabase, badge 🟢 "Nuevo" robusto.
+- **3 endpoints nuevos** bajo `/api/admin/bot/*`: `mode` (POST/GET, sprint v16 hotfix #3), `global-pause` (POST/GET, M4), `stats` (GET, todas las métricas).
+- **Code review (PR #18)**: 4 ROJO + 6 AMARILLO cerrados. `safeFetch` helper, allowlist de 4 keys operativas, validación runtime de tipo, caché 60s módulo-level, rolling 24h.
+- **SSOT `BotGlobalMode` + type guard** en `system-settings-server.ts` (sprint v16 hotfix #3).
+- **+107 tests** desde v0.9.4 (1066 → 1173).
+
+**Rama:** feat/fase-16-6-hotfix-ui-3 (3 commits atómicos: backend, frontend, docs) mergeada a `main` con `--merge --delete-branch` por Mavis tras aprobación de David.
+
+**Validación:** type-check ✓ · lint ✓ (0/0) · **1173/1173 tests** · build ✓ (3 endpoints listados) · Vercel auto-deploy OK · GitHub Actions Tests+Type-check+Lint 54s ✓.
+
+**Lo que David puede hacer ya en producción (post-merge + deploy):** ver handoff `docs/HANDOFF_v0.9.5_TORRE_CONTROL_BOT_V16.md` sección "Lo que David puede hacer ya".
+
+**Riesgo:** sin migraciones. Caché 60s en `bot-engine.ts` significa que un cambio de `bot_daily_outbound_limit` tarda hasta 1 min en aplicar el nuevo tope. Aceptable por diseño (D-025 matriz best-effort). Pendientes menores en handoff.
 
 ---
 
