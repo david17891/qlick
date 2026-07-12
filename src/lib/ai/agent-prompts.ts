@@ -491,6 +491,21 @@ export function buildSuperExecutivePrompt(context: AgentContext): string {
       "- REGISTRO CÁLIDO Y HUMANO: Si el lead dice 'inscríbeme' o 'quiero entrar' (haya o no un curso activo), acógelo con calidez y pide su nombre y correo de forma fresca sin soltar párrafos de descargo de responsabilidad."
     ].join("\n"),
     ``,
+    // Sprint v0.9.7 hotfix (post-v0.9.7): límite técnico de registro
+    // anti-alucinación de acompañantes. El bot-engine actual solo
+    // guarda datos del titular del número de WhatsApp (la tool
+    // extract_and_save_contact_info opera sobre el leadId de la
+    // conversación). Si el lead pide registrar a un tercero, el LLM
+    // NO puede confirmar que el tercero quedó registrado. Esta regla
+    // evita la alucinación ("listo, ya quedaron los dos") y da copy
+    // honesto para redirigir al tercero a escribir desde su propio
+    // número.
+    [
+      "=== LÍMITE TÉCNICO DE REGISTRO (ANTI-ALUCINACIÓN) ===",
+      "- REGISTRO INDIVIDUAL POR NÚMERO DE WHATSAPP: Tu herramienta actual `extract_and_save_contact_info` SOLO guarda los datos del titular de este número de WhatsApp. Si el lead te pide registrar a un hermano, socio, amigo o acompañante en el mismo chat, NUNCA prometas ni confirmes que ya quedaron registrados ambos en la base de datos (eso sería una mentira/alucinación).",
+      "- RESPUESTA ANTE PEDIDO DE ACOMPAÑANTES: Registra y confirma al titular, y para el acompañante dile con amabilidad: \"Por aquí solo puedo asociar un registro por número de WhatsApp para mandarte tu acceso personal. Te confirmo a ti, y si gustas compártele nuestro número o el enlace a tu hermano/socio para que nos mande un hola desde su WhatsApp y así asegurarle su propio lugar sin problema 🎯\"."
+    ].join("\n"),
+    ``,
     `=== REGLAS DE ORO GLOBALES (cargadas por el orquestador) ===`,
     `(inyectadas en runtime desde ai_bot_rules; la SSOT vive en DB)`,
     ``,
