@@ -20,6 +20,7 @@ import { logAdminAction } from "./audit-server";
 import { normalizePhone } from "./phone-utils";
 import { extractEmailFromText } from "../whatsapp/email-extract";
 import type { Lead, LeadStatus } from "@/types";
+import type { Json } from "@/types/supabase";
 
 /**
  * FIX 2026-07-08 (sesión David "registrados sin nombre/correo/teléfono"):
@@ -375,8 +376,8 @@ export async function updateLeadFields(
     action: "lead_field_edit",
     entity_type: "lead",
     entity_id: leadId,
-    before,
-    after,
+    before: before as unknown as Json,
+    after: after as unknown as Json,
     metadata: {
       fields_changed: inputKeys,
     },

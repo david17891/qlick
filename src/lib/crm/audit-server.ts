@@ -21,18 +21,22 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
 import type { AdminAuditLogInsert } from "./crm-rows";
+import type { Json } from "@/types/supabase";
 
 /**
  * Input extendido: además de los campos de AdminAuditLogInsert (que ya
- * tenía actor_email + action + entity_type + entity_id + metadata),
- * acepta `before` y `after` para diff view.
+ * tenía actor_email + action + entity_type + entity_id + metadata +
+ * before + after post-regen de typegen), acepta overrides opcionales.
  *
  * Compatible con callers viejos: omitir `before`/`after` no rompe nada
  * (quedan null en la DB).
  */
-export type LogAdminActionInput = AdminAuditLogInsert & {
-  before?: Record<string, unknown> | null;
-  after?: Record<string, unknown> | null;
+export type LogAdminActionInput = Omit<
+  AdminAuditLogInsert,
+  "before" | "after"
+> & {
+  before?: Json | null;
+  after?: Json | null;
 };
 
 /**
@@ -43,8 +47,10 @@ export async function logAdminAction(input: LogAdminActionInput): Promise<void> 
   if (!checkSupabaseConfig().configured) return;
   try {
     const supabase = createSupabaseAdminClient();
-    // Cast: `before`/`after` existen en la DB (post-migration) pero el
-    // typegen pre-existente no las conoce. Regenerar types para tipado fuerte.
+    // Cast a never sigue siendo necesario: AdminAuditLogInsert usa Json
+    // para before/after/metadata, pero el cliente tipado del SDK trata
+    // estos campos como never cuando vienen del typegen hand-authored.
+    // El cast es seguro porque los valores en runtime respetan el shape.
     const payload = {
       actor_email: input.actor_email.trim().toLowerCase(),
       action: input.action,

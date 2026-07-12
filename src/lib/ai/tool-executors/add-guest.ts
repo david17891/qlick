@@ -29,7 +29,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/types/supabase";
+import type { Database, Json } from "@/types/supabase";
 
 /* ------------------------------------------------------------------ */
 /* Inputs / Outputs                                                   */
@@ -252,16 +252,22 @@ export async function executeAddEventGuest(
     };
   }
 
-  const rowAsUnknown = row as unknown as { guests: GuestRecord[] | null };
-  const existingGuests: GuestRecord[] = Array.isArray(rowAsUnknown.guests)
-    ? rowAsUnknown.guests
+  // El typegen declara `guests: Json` (genérico). Lo casteamos a
+  // GuestRecord[] localmente porque el executor es quien normaliza la
+  // forma del array (id/name/email/added_at). El runtime valida con
+  // Array.isArray antes del cast. `as unknown as` es necesario porque
+  // el typegen estricto de Supabase v14.5 trata Json y GuestRecord[] como
+  // tipos disjuntos.
+  const existingGuests: GuestRecord[] = Array.isArray(row.guests)
+    ? (row.guests as unknown as GuestRecord[])
     : [];
 
   const updatedGuests = upsertGuestInArray(existingGuests, newGuest);
 
   const { error: updateError } = await ctx.supabase
     .from("event_attendees")
-    .update({ guests: updatedGuests } as never)
+    // Mismo motivo que arriba: GuestRecord[] → Json requiere cast through unknown.
+    .update({ guests: updatedGuests as unknown as Json })
     .eq("id", input.parent_lead_id);
 
   if (updateError) {

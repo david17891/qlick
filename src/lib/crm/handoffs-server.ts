@@ -22,6 +22,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Json } from "@/types/supabase";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { logAdminAction } from "./audit-server";
@@ -335,8 +336,8 @@ export async function updateHandoffStatus(
       to: input.newStatus,
       lead_phone: prev.lead_phone,
     },
-    before: { status: prev.status } as Record<string, unknown>,
-    after: { status: input.newStatus } as Record<string, unknown>,
+    before: { status: prev.status } as unknown as Json,
+    after: { status: input.newStatus } as unknown as Json,
   });
 
   return { ok: true, note: `Handoff marcado como ${input.newStatus}.`, handoff: next };

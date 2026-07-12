@@ -13,6 +13,7 @@ import type {
   EventConfirmation,
   EventConfirmationSource,
 } from "@/types/events";
+import type { Json } from "@/types/supabase";
 import {
   mapEventConfirmationRowToEventConfirmation,
   type EventConfirmationRow,
@@ -626,8 +627,8 @@ export async function updateConfirmationFields(
     action: "event_confirmation_edit",
     entity_type: "event_confirmation",
     entity_id: confirmationId,
-    before,
-    after,
+    before: before as unknown as Json,
+    after: after as unknown as Json,
     metadata: {
       eventId: prevRow.event_id,
       fields_changed: inputKeys,
