@@ -61,7 +61,8 @@ import type {
   AIAgentProvider,
   AgentContext,
   AgentResult,
-  AgentTask
+  AgentTask,
+  AgentUsage
 } from "./agent-provider";
 import type { AgentToolDefinition } from "./agent-tools";
 import type { ActiveEventContext } from "./event-context-loader";
@@ -79,7 +80,7 @@ import {
 } from "../admin/system-settings-server";
 // FIX 2026-07-12 (Sprint v16 PR #2.1, M5): helper de UPSERT en
 // bot_usage_daily (acumulador diario de tokens + costo DeepSeek).
-import { recordDeepseekUsage } from "./deepseek-cost";
+import { calculateDeepseekCostUsdCents, recordDeepseekUsage } from "./deepseek-cost";
 
 // ---------------------------------------------------------------------------
 // Configuracion
@@ -708,11 +709,36 @@ async function runWithToolLoop(
  *   path 2C (tool_loop activo), un fallo debe convertirse en respuesta
  *   humana (ok:true con fallback) para no colgar al lead.
  */
+/**
+ * Sprint v0.9.6 (Simulador): extrae la telemetría de uso del LLM desde
+ * un `CallDeepSeekRawResult`. Devuelve `undefined` si el raw no trae
+ * tokens (modelo mock, error de upstream que no llegó al JSON, etc.).
+ *
+ * `costCents` se calcula con `calculateDeepseekCostUsdCents` (mismo cálculo
+ * que usa `recordDeepseekUsage` para `bot_usage_daily`).
+ */
+function buildAgentUsage(raw: CallDeepSeekRawResult): AgentUsage | undefined {
+  if (raw.promptTokens == null && raw.completionTokens == null) {
+    return undefined;
+  }
+  const prompt = Math.max(0, Math.floor(raw.promptTokens ?? 0));
+  const completion = Math.max(0, Math.floor(raw.completionTokens ?? 0));
+  const total = raw.totalTokens ?? prompt + completion;
+  // El resolved model puede no estar si hubo error de parseo. Default
+  // defensivo a "deepseek-chat" (mismo default que recordDeepseekUsage).
+  const model = raw.resolvedModel === "deepseek-reasoner"
+    ? "deepseek-reasoner"
+    : "deepseek-chat";
+  const costCents = calculateDeepseekCostUsdCents(model, prompt, completion);
+  return { promptTokens: prompt, completionTokens: completion, totalTokens: total, costCents, model };
+}
+
 function wrapRawAsAgentResult(
   raw: CallDeepSeekRawResult,
   task: AgentTask,
   usedToolLoop: boolean
 ): AgentResult {
+  const usage = buildAgentUsage(raw);
   if (raw.ok) {
     return {
       ok: true,
@@ -722,7 +748,8 @@ function wrapRawAsAgentResult(
       confidence: 0.85,
       needsReview: usedToolLoop && task === "suggest_reply" ? false : (task === "suggest_reply"),
       demo: false,
-      note: `[${usedToolLoop ? "2C" : "1C"}] ${raw.note}`
+      note: `[${usedToolLoop ? "2C" : "1C"}] ${raw.note}`,
+      ...(usage ? { usage } : {})
     };
   }
 
@@ -738,7 +765,8 @@ function wrapRawAsAgentResult(
       confidence: 0,
       needsReview: true,
       demo: false,
-      note: `${raw.note} Devolviendo respuesta fallback.`
+      note: `${raw.note} Devolviendo respuesta fallback.`,
+      ...(usage ? { usage } : {})
     };
   }
 
@@ -752,7 +780,8 @@ function wrapRawAsAgentResult(
     content: "",
     needsReview: true,
     demo: false,
-    note: `${raw.note} Devolviendo respuesta fallback.`
+    note: `${raw.note} Devolviendo respuesta fallback.`,
+    ...(usage ? { usage } : {})
   };
 }
 
@@ -781,6 +810,13 @@ export async function pickSystemPromptForMode(
   context: AgentContext,
   supabase?: unknown
 ): Promise<string> {
+  // Sprint v0.9.6 (Simulador): si el caller pasó un system prompt
+  // precomputado, lo respetamos sin tocar DB ni resolver modo. Esto
+  // permite que el simulador tenga control total del prompt sin
+  // contaminar el flujo del provider real.
+  if (context.systemPromptOverride) {
+    return context.systemPromptOverride;
+  }
   let mode: string | null = "socratic_autopilot_v2"; // default
   // FIX 2026-07-11: `readSystemSetting` solo lee de la DB (su signature
   // es `(key: string)`). El `supabase` se ignora — la función crea su

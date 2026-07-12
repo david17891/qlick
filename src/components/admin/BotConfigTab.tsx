@@ -2,20 +2,20 @@
 /**
  * BotConfigTab — Torre de Control del Bot de WhatsApp (sprint v15 PR #1).
  *
- * Single-file Client Component. Renderiza:
- *  1. Banner: "Las Reglas de Oro se inyectarán al bot en la release PR #2".
- *  2. Selector de Modos (3 tarjetas: Socrático v2 / Socrático sin Herramientas / Súper Ejecutivo 🔒).
- *  3. Toggles de 6 Bloques de Contexto (lectura; mutations server en PR #2).
- *  4. Tabla CRUD de Reglas de Oro (CRUD via server actions).
- *  5. 4 Tarjetas de Métricas (consume /api/admin/bot/stats).
- *  6. Acordeón "Detalles Técnicos y Cadena de Resolución".
+ * Single-file Client Component. Renderiza 2 sub-pestañas:
+ *  1. ⚙️ Configuración & Reglas (sprint v15-v16): el contenido histórico
+ *     (selector de modos, bloques, reglas, métricas, radar, controles).
+ *  2. 🧪 Laboratorio (Simulador) (sprint v0.9.6): sub-componente
+ *     `BotSimulatorTab` que renderiza un chat sandbox + telemetría.
  *
  * PR #1: el modo `super_executive` se renderiza como 🔒 Próximamente (no activable).
- * PR #2 habilitará el modo y el System Prompt correspondiente.
+ * PR #2 habilitó el modo y el System Prompt correspondiente.
+ * Sprint v0.9.6 agregó la sub-pestaña del Laboratorio.
  */
 
 import { useState, useTransition, useEffect, useCallback } from "react";
 import { Card, CardBody, CardHeader, Button, Badge, Input } from "@/components/ui";
+import { BotSimulatorTab } from "@/components/admin/BotSimulatorTab";
 import {
   createBotRuleAction,
   updateBotRuleAction,
@@ -151,6 +151,10 @@ export function BotConfigTab() {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [acordeonAbierto, setAcordeonAbierto] = useState(false);
+  // Sprint v0.9.6 (Laboratorio IA): sub-pestañas dentro de BotConfigTab.
+  // Default "config" para que既存体験 no cambie. La pestaña "simulator"
+  // monta `BotSimulatorTab` (split view + telemetría).
+  const [subtab, setSubtab] = useState<"config" | "simulator">("config");
 
   // Reglas: el form de nueva regla se gestiona vía server actions.
   // La lista de reglas se carga vía server action en PR #1 y se refresca
@@ -377,6 +381,44 @@ export function BotConfigTab() {
 
   return (
     <div className="space-y-6">
+      {/* Sprint v0.9.6: sub-navegación Configuración / Laboratorio. */}
+      <div
+        role="tablist"
+        aria-label="Secciones de la Torre de Control"
+        className="flex gap-2 border-b border-brand-100 pb-2"
+      >
+        <button
+          role="tab"
+          aria-selected={subtab === "config"}
+          onClick={() => setSubtab("config")}
+          className={
+            "px-4 py-2 rounded-t-lg text-sm font-semibold transition " +
+            (subtab === "config"
+              ? "bg-brand-500 text-white"
+              : "bg-brand-50 text-ink-soft hover:bg-brand-100")
+          }
+        >
+          ⚙️ Configuración & Reglas
+        </button>
+        <button
+          role="tab"
+          aria-selected={subtab === "simulator"}
+          onClick={() => setSubtab("simulator")}
+          className={
+            "px-4 py-2 rounded-t-lg text-sm font-semibold transition " +
+            (subtab === "simulator"
+              ? "bg-emerald-600 text-white"
+              : "bg-emerald-50 text-ink-soft hover:bg-emerald-100")
+          }
+        >
+          🧪 Laboratorio (Simulador)
+        </button>
+      </div>
+
+      {subtab === "simulator" ? (
+        <BotSimulatorTab currentMode={mode} />
+      ) : (
+        <>
       {/* 1. Selector de Modos */}
       <Card>
         <CardHeader>
@@ -936,6 +978,8 @@ export function BotConfigTab() {
         <div className="fixed bottom-4 right-4 max-w-sm bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">
           {error}
         </div>
+      )}
+        </>
       )}
     </div>
   );

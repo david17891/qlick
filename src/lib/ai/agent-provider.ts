@@ -127,6 +127,21 @@ export interface AgentContext {
    * "pago aprobado") — D-016 sigue vigente para TODO el flujo.
    */
   isFreeEvent?: boolean;
+  /**
+   * Sprint v0.9.6 (Laboratorio IA / Simulador): override explícito del
+   * system prompt. Si está presente, `pickSystemPromptForMode` lo devuelve
+   * sin más (no lee `bot_global_mode` de DB, no resuelve modo, no construye
+   * `buildSystemPrompt` ni `buildSuperExecutivePrompt`).
+   *
+   * Caso de uso: el simulador en `src/lib/ai/simulator.ts` calcula el
+   * prompt localmente con el `modeOverride` recibido del cliente y lo pasa
+   * por acá para que el provider no toque DB durante una simulación.
+   *
+   * El flujo real del webhook NUNCA setea este campo (siempre es undefined).
+   * Es 100% backward compatible: si está ausente, el provider resuelve el
+   * prompt por su cuenta como siempre.
+   */
+  systemPromptOverride?: string;
 }
 
 export type AgentTask =
@@ -137,6 +152,25 @@ export type AgentTask =
   | "detect_payment_pending"
   | "recommend_course"
   | "escalate_to_human";
+
+/**
+ * Sprint v0.9.6 (Simulador): telemetría de uso del LLM. Se popula desde
+ * `wrapRawAsAgentResult` con los tokens devueltos por DeepSeek en
+ * `data.usage`. Si el provider no devolvió tokens (modelo mock, error
+ * de upstream), el campo queda `undefined`.
+ *
+ * `costCents` se calcula con `calculateDeepseekCostUsdCents(model, ...)`
+ * (mismo cálculo que `recordDeepseekUsage`) para que la UI del simulador
+ * muestre el costo real por turno. NO se persiste en `bot_usage_daily`
+ * durante una simulación (esos son tokens "reales" del flujo de producción).
+ */
+export interface AgentUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  costCents: number;
+  model: string;
+}
 
 export interface AgentResult {
   ok: boolean;
@@ -154,6 +188,12 @@ export interface AgentResult {
   /** Demo: true si no se llamó a un LLM real. */
   demo?: boolean;
   note: string;
+  /**
+   * Sprint v0.9.6 (Simulador): telemetría de tokens + costo. Solo se
+   * popula para providers que devuelven `data.usage` (deepseek hoy).
+   * Mock y stubs lo dejan `undefined`.
+   */
+  usage?: AgentUsage;
 }
 
 export interface AIAgentProvider {
