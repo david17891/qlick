@@ -1,26 +1,27 @@
 /**
- * Agent Tools Registry — Sub-sprint 2A (Sprint 2 Bot v2).
+ * Agent Tools Registry — Sub-sprint 2A (Sprint 2 Bot v2) + Sprint v0.9.8.
  *
  * Define el schema de las tools que el LLM puede invocar durante
  * `suggest_reply` (DeepSeek es OpenAI-compatible y soporta function-calling
- * con `tools` en el payload). Por decisión arquitectónica de David
- * (mejora #2 del Sprint 2), hay UNA sola tool consolidada para
- * captura de contacto:
+ * con `tools` en el payload).
  *
- *   - extract_and_save_contact_info(name?, email?)
+ * **Sprint 2 (David, mejora #2):** UNA sola tool consolidada para
+ * captura de contacto del titular:
+ *   - `extract_and_save_contact_info(name?, email?)`
  *
- * Esa tool es atómica: valida, persiste, y devuelve ack en una sola
- * operación. NO se exponen tools separadas (validate_name, validate_email,
- * save_lead_name, etc.) porque:
+ * **Sprint v0.9.8:** Se agrega una segunda tool para acompañantes:
+ *   - `add_event_guest(parent_lead_id, guest_name, guest_email?)`
  *
+ * Esta segunda tool persiste un acompañante del titular en
+ * `event_attendees.guests` (JSONB). Es atómica y complementaria a la
+ * primera: la tool de captura registra al titular; esta registra a
+ * quien el titular quiera sumar (socio, hermano, amigo).
+ *
+ * Decisión de diseño: ambas tools son atómicas y minimalistas. NO se
+ * exponen tools "validate_*" o "save_*" separadas porque:
  *   - el LLM se confunde con multi-tool chains en un solo turno,
  *   - gastamos tokens decidiendo el orden de invocación,
  *   - 4 round-trips al backend se comen el budget de latencia (<2.5s E2E).
- *
- * Si en el futuro se necesitan más tools (ej. `escalate_to_human`,
- * `opt_out_lead`), se exponen en OTROS sprints con decisión explicita;
- * acá solo vive la capture tool hasta que el Sprint 2C la conecte al
- * deepseek-provider.
  *
  * Ver:
  *   - docs/SPRINT_2_BOT_V2_DESIGN.md §2 (mejora #2)
@@ -112,26 +113,96 @@ const EXTRACT_AND_SAVE_CONTACT_INFO_TOOL: AgentToolDefinition = {
 };
 
 /* ------------------------------------------------------------------ */
+/* Tool #2 (Sprint v0.9.8) — add_event_guest                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Tool para registrar un ACOMPAÑANTE del titular (socio, hermano, amigo)
+ * en `event_attendees.guests` (JSONB).
+ *
+ * El LLM llama esta tool cuando el titular dice algo como "quiero
+ * registrar también a mi socio Carlos". La tool agrega un objeto al
+ * array JSONB de guests de la fila del titular en event_attendees.
+ *
+ * Sprint v0.9.7 hotfix ya advertía al LLM que NO podía confirmar
+ * acompañantes (porque no existía persistencia). Sprint v0.9.8 cierra
+ * ese gap: la tool SÍ existe y el LLM SÍ puede registrar al
+ * acompañante, devolviendo un ack honesto al titular.
+ *
+ * Reglas declaradas en la description (el LLM las lee):
+ *   - `parent_lead_id` es el UUID del TITULAR (no del guest). El
+ *     executor lo vincula al evento activo del lead.
+ *   - `guest_name` es OBLIGATORIO (mín. 2 palabras).
+ *   - `guest_email` es OPCIONAL.
+ *   - Idempotente: si el LLM llama 2 veces con el mismo (lead, name),
+ *     el executor hace upsert (no duplica el guest en el array).
+ */
+const ADD_EVENT_GUEST_TOOL: AgentToolDefinition = {
+  type: "function",
+  function: {
+    name: "add_event_guest",
+    description:
+      "Registra un ACOMPAÑANTE del titular (socio, hermano, amigo) en el " +
+      "mismo evento. Úsala SOLO cuando el titular te pida explícitamente " +
+      "registrar a otra persona en el mismo chat (ej. 'quiero inscribir a " +
+      "mi socio Carlos también'). Llama una vez por acompañante. " +
+      "`parent_lead_id` es el UUID del TITULAR (no del guest). " +
+      "`guest_name` es obligatorio (mínimo 2 palabras). `guest_email` " +
+      "es opcional pero recomendado para mandarle el acceso al acompañante. " +
+      "NO llames esta tool si el titular solo está hablando de su propio " +
+      "registro — para eso está extract_and_save_contact_info. " +
+      "Tras la confirmación cálida, NO inventes datos: el ack del " +
+      "executor indica si se guardó OK o si hubo error.",
+    parameters: {
+      type: "object",
+      properties: {
+        parent_lead_id: {
+          type: "string",
+          description:
+            "UUID del lead TITULAR del chat (no del guest). " +
+            "El executor vincula al acompañante al mismo evento que el titular."
+        },
+        guest_name: {
+          type: "string",
+          description:
+            "Nombre completo del acompañante. Mínimo 2 palabras con letras. " +
+            "Sin emojis, sin placeholders."
+        },
+        guest_email: {
+          type: "string",
+          description:
+            "Email del acompañante (opcional). Si no lo tienes, " +
+            "pasa null o un string vacío. El ejecutor validará formato."
+        }
+      },
+      required: ["parent_lead_id", "guest_name"],
+      additionalProperties: false
+    }
+  }
+};
+
+/* ------------------------------------------------------------------ */
 /* API pública                                                        */
 /* ------------------------------------------------------------------ */
 
 /**
  * Devuelve la lista COMPLETA de tools expuestas al LLM.
  *
- * Por decisión arquitectónica (Sprint 2 mejora #2), retorna UNA sola
- * tool consolidada. Si en sprints futuros se agregan más, este es el
- * ÚNICO punto a modificar — los callers (deepseek-provider, tests)
- * siguen funcionando porque iteran sobre el array.
+ * Sprint 2: retornaba 1 sola tool. Sprint v0.9.8: retorna 2 tools
+ * (captura del titular + acompañantes).
  *
- * IMPORTANTE — invariante del Sprint 2:
- *   - `getAgentTools().length === 1`
- *   - la única tool debe llamarse `extract_and_save_contact_info`
+ * Si en sprints futuros se agregan más, este es el ÚNICO punto a
+ * modificar — los callers (deepseek-provider, tests) siguen
+ * funcionando porque iteran sobre el array.
  *
- * Si alguien rompe la invariante, el test
- * `tests/whatsapp-bot-v2-tool-atomic.test.mjs` lo cacha.
+ * IMPORTANTE — invariante del Sprint v0.9.8:
+ *   - `getAgentTools().length === 2`
+ *   - las tools son `extract_and_save_contact_info` + `add_event_guest`
+ *
+ * Si alguien rompe la invariante, el test correspondiente lo cacha.
  */
 export function getAgentTools(): AgentToolDefinition[] {
-  return [EXTRACT_AND_SAVE_CONTACT_INFO_TOOL];
+  return [EXTRACT_AND_SAVE_CONTACT_INFO_TOOL, ADD_EVENT_GUEST_TOOL];
 }
 
 /**
@@ -144,8 +215,13 @@ export function getAgentToolByName(name: string): AgentToolDefinition | null {
 }
 
 /**
- * Nombre canonical de la tool consolidada. Exportado para que el deepseek
+ * Nombre canonical de la tool de captura. Exportado para que el deepseek
  * provider pueda referenciarlo sin hardcodear strings en varias partes.
  */
 export const TOOL_EXTRACT_AND_SAVE_CONTACT_INFO =
   "extract_and_save_contact_info" as const;
+
+/**
+ * Sprint v0.9.8: nombre canonical de la tool de acompañantes.
+ */
+export const TOOL_ADD_EVENT_GUEST = "add_event_guest" as const;

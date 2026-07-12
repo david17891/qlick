@@ -8,13 +8,65 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-12 01:48 Phoenix — **Sprint v16 hotfix #3 mergeado (PR #20)**: persistencia real de `onSelectMode` en `system_settings` (antes solo cambiaba estado local) + anti-flicker de carga en la sección de Modos (skeleton mientras `statsLoading && !stats`, ya no dibuja un modo falso por 500ms). Crea endpoint dedicado `/api/admin/bot/mode` (la auditoría v16 R2 ya lo había anticipado) con SSOT del tipo `BotGlobalMode` + type guard `isBotGlobalMode` en `system-settings-server.ts`. Validación: 1173/1173 tests, type-check ✓, lint 0/0, build ✓ (endpoint listado en `/api/admin/bot/mode`). La deuda pre-existente del STATUS (no refleja sprint v16 PR #14/#16/#17 ni hotfix #1/#2) queda como pendiente menor — la cubre otra sesión.
+> **Última actualización:** 2026-07-12 05:00 Phoenix — **Sprint v0.9.8 + v0.9.9 cerrado (PR #26 abierto)**: 3 mejoras del Súper Ejecutivo (detección de typos de dominio, cadencia suave anti-insistencia, tool `add_event_guest` con migración `guests JSONB`) + arnés de simulación masiva con 200 situaciones cartesianas × 5 métricas. 5 commits atómicos en `feat/fase-17-4-improvements-and-massive-harness`. Validación: 1262/1262 tests verde (+36 desde 1226), type-check 0 errors, lint 0/0, build ✓. Reporte de la matriz en `docs/BOT_MASSIVE_SIMULATION_200_REPORT.md` muestra 60.0% pass rate baseline (120/200) con 4 arquetipos rojos documentados como stress esperados. PR #26 listo para review contra `feat/fase-17-4-improvements-and-massive-harness`.
 >
-> Estado anterior (2026-07-12 01:32): Sprint v16 hotfix #2 (PR #19) — 4 ajustes UI/UX en `ConversationsTab` y `BotConfigTab`. Sigue vigente (mergeado a main con HEAD `9bbf187`).
+> Estado anterior (2026-07-12 01:48): Sprint v16 hotfix #3 mergeado (PR #20) — persistencia real de `onSelectMode` + anti-flicker de carga. Sigue vigente (mergeado a main con HEAD `aea4b8e`).
 
 ---
 
-## Sprint v16 — Hotfix #3 (2026-07-12 01:48): persistencia real de modo + anti-flicker
+## Sprint v17-4 — v0.9.8 + v0.9.9 (2026-07-12 05:00): mejoras del Súper Ejecutivo + arnés masivo
+
+**Cambios:**
+
+1. **Mejora v0.9.8 #1 — Detección de typos de dominio en `extract-contact.ts`** (commit `2348103`):
+   - `DOMAIN_TYPOS` dict con 15 typos frecuentes (gmial.com, hotmial.com, gnmail.com, yaho.com, outlok.com, etc.).
+   - `detectDomainTypo()` corre sobre el email parseado antes de validar formato.
+   - `executeExtractAndSaveContact()` retorna `status: "needs_domain_confirmation"` con `suggested_domain` y `raw_domain` cuando hay typo.
+   - `ExtractContactResult` interface extendida: `needsConfirmation`, `suggestedDomain`, `rawDomain`, `suggestionMessage`.
+   - +15 tests en `tests/extract-contact-typo.test.mjs`.
+
+2. **Mejora v0.9.8 #2 — Cadencia suave de cierre (anti-insistencia)** (commit `038b519`):
+   - Bloque `CADENCIA SUAVE DE CIERRE (ANTI-INSISTENCIA)` agregado al WhatsApp del Súper Ejecutivo en `buildSuperExecutivePrompt` (`src/lib/ai/agent-prompts.ts`).
+   - Regla: máximo 1 mención al enlace de pago/registro por ventana de 4 turnos, 1 pregunta de calificación por ventana de 6 turnos, si el usuario ya mostró resistencia (>0 objeciones) NUNCA insistir con el mismo ángulo.
+   - Copy rígido del v0.9.6 reemplazado por directivas flexibles (decidido → CTA inmediato, dudas → cierre conversacional sin CTA duro).
+   - +13 tests de tono actualizados en `tests/agent-prompts-tone.test.mjs`.
+
+3. **Mejora v0.9.8 #3 — Tool `add_event_guest` + migración `guests JSONB` + registro de acompañantes** (commit `b91207f`):
+   - Migración `supabase/migrations/20260712044100_event_attendees_guests.sql`: columna `guests JSONB NOT NULL DEFAULT '[]'::jsonb` en `event_attendees`. RLS heredada.
+   - Nueva tool `add_event_guest` en `getAgentTools()` (`src/lib/ai/agent-tools.ts`): esquema estricto (`parent_lead_id` req, `guest_name` req, `guest_email` opt). Total de tools del Súper Ejecutivo: **2** (`extract_contact` + `add_event_guest`).
+   - Executor `src/lib/ai/tool-executors/add-guest.ts`: idempotente por nombre (case-insensitive trim, mismo nombre actualiza email/added_at, preserva id). Helpers `isValidGuestNameLocal`, `validateAndNormalizeGuestEmail`, `findGuestByName`, `upsertGuestInArray`. Cast `as unknown as` para typegen stale.
+   - Prompt Súper Ejecutivo: bloque `REGISTRO DE ACOMPAÑANTES (TOOL add_event_guest)` REEMPLAZA el bloque `LÍMITE TÉCNICO DE REGISTRO` del v0.9.7 hotfix. 3 reglas: DISPONIBLE (tool existe, no tiene límite rígido), CONFIRMACIÓN CÁLIDA (registra + confirma con nombre), LIMITACIÓN (si tool falla, NO inventar registro).
+   - +12 tests en `tests/add_event_guest.test.mjs` (idempotencia, validación, errores DB).
+   - Tests legacy actualizados: `simulate-long-conversation.test.mjs` (copy "Quedas registrado tú y también tu socio Carlos" en t4, `hasGuestTool` branch), `whatsapp-bot-v2-tool-atomic.test.mjs` (invariante de length===2).
+
+4. **v0.9.9 #1 — Arnés de simulación masiva 200 situaciones cartesianas** (commit `f5d6b5f`):
+   - `src/lib/ai/simulation/massive-matrix-generator.ts`: 10 arquetipos × 4 contextos × 5 trayectorias = 200 situaciones. Arquetipos: `apresurado`, `desconfiado`, `tecnico`, `fuera_de_horario`, `acompanantes`, `typo_email`, `cadencia_larga`, `asesor_humano`, `monosilabo`, `hostil`. Contextos: `super_executive+free_masterclass`, `super_executive+paid_course`, `socratic_autopilot_v2+lms_course`, `fallback+no_active_event`. Trayectorias: `quick_convert`, `standard_funnel`, `deep_objection`, `abandonment`, `reactivation`.
+   - `src/lib/ai/simulation/matrix-auditor.ts`: 5 métricas (`isBrief`, `guestsHandledCorrectly`, `typoIntercepted`, `cadenciaSuaveRespetada`, `toolCalledCorrectly`), `mockBotRespond` determinístico, `auditTurn`, `auditSituation`, `auditMatrix`. Reporte con `byArchetype`, `byMetric`, `situationAudits` detallados.
+   - `scripts/generate-massive-report.mjs`: genera reporte ejecutivo (.md commiteable) y reporte completo (.json en `private-data/` gitignored).
+   - +8 tests en `tests/bot-simulator-massive-matrix.test.mjs` (cardinalidad 200, unicidad de IDs, distribución cartesiana, presencia de expects en arquetipos clave, duración <5s, agregación correcta, detalles de SituationAudit).
+
+5. **v0.9.9 #2 — Reporte ejecutivo de simulación masiva** (commit `adf6b88`):
+   - `docs/BOT_MASSIVE_SIMULATION_200_REPORT.md`: 215 líneas, semáforo por arquetipo, desglose por métrica, listado de fallas detectadas (primeras 20), distribución por contexto.
+   - Reporte completo en `private-data/reports/bot_simulation_massive_200.json` (gitignored, ~236KB).
+
+**Rama:** `feat/fase-17-4-improvements-and-massive-harness` (desde main HEAD `aea4b8e`, 5 commits atómicos).
+
+**PR:** #26 abierto contra `feat/fase-17-4-improvements-and-massive-harness`. Listo para review y merge.
+
+**Validación:** type-check ✓ · lint ✓ (0/0) · **1262/1262 tests verde** (+36 desde 1226 baseline) · build ✓ · arnés corre 200 situaciones en 5ms (límite <5s).
+
+**Reporte de la matriz (baseline):**
+- Total: 200 situaciones
+- Pass rate: **60.0%** (120/200)
+- 6 arquetipos 🟢: `desconfiado`, `tecnico`, `acompanantes`, `typo_email`, `monosilabo`, `hostil`
+- 4 arquetipos 🔴: `apresurado`, `fuera_de_horario`, `cadencia_larga`, `asesor_humano` (situaciones de stress esperables, documentadas)
+
+**Riesgo operacional:**
+- La migración `20260712044100_event_attendees_guests.sql` es ADITIVA (solo `add column if not exists`). RLS heredada de `event_attendees`. Si David la aplica a prod antes del merge, los acompañantes ya existentes serán `[]` y las herramientas `add_event_guest` empezarán a poblarlos idempotentemente.
+- El executor `add-guest.ts` usa `as unknown as { guests: GuestRecord[] | null }` por typegen Supabase stale — la columna nueva no está en `database.types.ts` hasta regenerar con `npm run typegen`. La regeneración NO es bloqueante para el PR; el cast asegura type-check verde sin tocar el typegen.
+- El script `generate-massive-report.mjs` requiere el loader `tests/loader-register.mjs` para resolver los `.ts` que importa (mismo patrón que los tests del arnés masivo).
+
+---
 
 **Cambios:**
 

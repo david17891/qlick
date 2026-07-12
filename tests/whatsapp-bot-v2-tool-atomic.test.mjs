@@ -127,24 +127,36 @@ function makeCtx(overrides = {}) {
 }
 
 /* ------------------------------------------------------------------ */
-/* CASO 1 — getAgentTools retorna UNA sola tool                       */
+/* CASO 1 — getAgentTools retorna 2 tools (Sprint v0.9.8)             */
 /* ------------------------------------------------------------------ */
 
-test("getAgentTools: retorna UNA sola tool (invariante Sprint 2)", () => {
+test("getAgentTools: retorna 2 tools (invariante Sprint v0.9.8: titular + acompañantes)", () => {
+  // FIX 2026-07-12 (Sprint v0.9.8): el invariante cambia de
+  // length === 1 a length === 2. La segunda tool es add_event_guest
+  // para registrar acompañantes del titular.
   const tools = getAgentTools();
-  assert.equal(tools.length, 1, "Sprint 2 expone solo UNA tool consolidada");
-  assert.equal(tools[0].type, "function");
-  assert.equal(tools[0].function.name, TOOL_EXTRACT_AND_SAVE_CONTACT_INFO);
+  assert.equal(
+    tools.length,
+    2,
+    "Sprint v0.9.8 expone 2 tools: extract_and_save_contact_info (titular) + add_event_guest (acompañantes)"
+  );
+  const names = tools.map((t) => t.function.name);
+  assert.ok(names.includes("extract_and_save_contact_info"));
+  assert.ok(names.includes("add_event_guest"));
 });
 
-test("getAgentTools: la tool consolidada se llama 'extract_and_save_contact_info'", () => {
+test("getAgentTools: la tool de captura del titular se llama 'extract_and_save_contact_info'", () => {
   const tools = getAgentTools();
-  assert.equal(tools[0].function.name, "extract_and_save_contact_info");
+  const captureTool = tools.find(
+    (t) => t.function.name === "extract_and_save_contact_info"
+  );
+  assert.ok(captureTool, "la tool de captura existe");
 });
 
 test("getAgentTools: NO se exponen validate_name, validate_email, save_lead_* separados", () => {
   // Regla dura del diseño: NO pueden existir estas tools separadas,
-  // porque la decisión arquitectónica de David es UNA sola.
+  // porque la decisión arquitectónica de David es consolidar.
+  // Sigue vigente en Sprint v0.9.8.
   const tools = getAgentTools();
   const names = tools.map((t) => t.function.name);
   assert.ok(!names.includes("validate_name"), "validate_name NO debe existir");
