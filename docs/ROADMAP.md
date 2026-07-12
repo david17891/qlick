@@ -1,12 +1,24 @@
 # Qlick LMS — Roadmap
 
 > Fuente de verdad del plan del LMS. Cualquier desvío se conversa y se actualiza acá.
-> Última revisión: 2026-07-11 19:30 Phoenix — **Sprint CI verde + secrets config** cerrado (3 GitHub Secrets + fine-grained PAT scope "Secrets"). Smoke workflow verde por primera vez en run `29176681182`. Sin cambios de código — solo infra. Estado anterior (11:50): Sprint cierre-eventos-virtuales + Audit voseo cerrado en `main`. Validación 1144/1144 tests.
+> Última revisión: 2026-07-12 05:00 Phoenix — **Sprint v0.9.8 + v0.9.9 (mejoras del Súper Ejecutivo + arnés masivo)** cerrado en `feat/fase-17-4-improvements-and-massive-harness` con PR #26. 5 commits atómicos. 1262/1262 tests verde (+36 desde 1226). Estado anterior (2026-07-11 19:30): Sprint CI verde + secrets config cerrado.
 
 ---
 
 ## Estado actual
 
+- [x] **v0.9.8 + v0.9.9 — Mejoras del Súper Ejecutivo + Arnés masivo** — sprint cerrado el 2026-07-12 05:00 Phoenix en `feat/fase-17-4-improvements-and-massive-harness` con PR #26. 5 commits atómicos.
+  - **Qué incluye (3 mejoras del Súper Ejecutivo):**
+    - **Detección de typos de dominio** en `extract-contact.ts`: dict de 15 typos frecuentes, `detectDomainTypo()`, `executeExtractAndSaveContact()` retorna `needs_domain_confirmation` con `suggested_domain` cuando hay typo (commit `2348103`).
+    - **Cadencia suave de cierre (anti-insistencia)** en prompt WhatsApp del Súper Ejecutivo: máximo 1 mención al enlace/4 turns, 1 pregunta de calificación/6 turns, no insistir con el mismo ángulo si ya hubo >0 objeciones (commit `038b519`).
+    - **Tool `add_event_guest` + migración `guests JSONB` + registro de acompañantes**: columna `guests JSONB NOT NULL DEFAULT '[]'` en `event_attendees`, executor idempotente por nombre, prompt reemplazado del bloque `LÍMITE TÉCNICO DE REGISTRO` a `REGISTRO DE ACOMPAÑANTES` (commit `b91207f`).
+  - **Qué incluye (arnés de simulación masiva v0.9.9):**
+    - 10 arquetipos × 4 contextos × 5 trayectorias = 200 situaciones cartesianas (`massive-matrix-generator.ts`).
+    - 5 métricas de calidad: `isBrief`, `guestsHandledCorrectly`, `typoIntercepted`, `cadenciaSuaveRespetada`, `toolCalledCorrectly` (`matrix-auditor.ts`).
+    - Reporte ejecutivo en `docs/BOT_MASSIVE_SIMULATION_200_REPORT.md` (60.0% pass rate baseline, 5ms arnés, 4 arquetipos rojos documentados como stress).
+  - **Status vivo:** `docs/STATUS.md` (snapshot 2026-07-12 05:00).
+  - **Validación:** 1262/1262 tests verde (+36 desde 1226), type-check ✓, lint 0/0, build ✓.
+  - **PR:** #26 abierto contra `feat/fase-17-4-improvements-and-massive-harness`.
 - [x] **v0.9.4 — Sprint CI verde + GitHub Secrets config (operacional)** — sprint cerrado el 2026-07-11 19:30 Phoenix. NO incluye cambios de código, solo infra.
   - **Qué incluye:**
     - **3 GitHub Secrets** configurados en `david17891/qlick` (encriptados en reposo): `SUPABASE_URL`, `SUPABASE_PROJECT_REF` (extraído del subdominio, público), `SUPABASE_SECRET_KEY` (de `.env.local`, formato `sb_secret_xxx` válido).
