@@ -21,9 +21,10 @@ import { listPaymentProviders } from "@/lib/payments";
 import { formatMXN, formatDate, initials, formatDuration } from "@/lib/utils";
 import { CRMView } from "@/components/crm";
 import { BotConfigTab } from "@/components/admin/BotConfigTab";
+import { ConversationsTab } from "@/components/admin/ConversationsTab";
 import Link from "next/link";
 
-type Tab = "resumen" | "cursos" | "alumnos" | "inscripciones" | "pagos" | "crm" | "bot" | "futuro";
+type Tab = "resumen" | "cursos" | "alumnos" | "inscripciones" | "pagos" | "crm" | "conversations" | "bot" | "futuro";
 
 const statusTone: Record<PaymentStatus, "success" | "warning" | "danger" | "neutral" | "info"> = {
   approved: "success",
@@ -166,6 +167,8 @@ export function AdminView(
     { id: "inscripciones", label: "Inscripciones", icon: "📝" },
     { id: "pagos", label: "Pagos", icon: "💳" },
     { id: "crm", label: "CRM", icon: "🧲" },
+    // Sprint v16 (PR #1.7): pestaña de Nivel 1 para el buzón de conversaciones.
+    { id: "conversations", label: "Conversaciones", icon: "💬" },
     { id: "bot", label: "Configuración Bot", icon: "🤖" },
     { id: "futuro", label: "Próximas integraciones", icon: "🚀" }
   ];
@@ -523,6 +526,11 @@ export function AdminView(
 
       {/* ----------------------- CRM ----------------------- */}
       {tab === "crm" && <CRMView initialLeadId={initialLeadId} />}
+
+      {/* Sprint v16 (PR #1.7): 💬 Conversaciones elevado a pestaña
+          principal de Nivel 1. Reemplaza al subcomponente ConversationsView
+          que vivía anidado dentro de CRMView (eliminado en PR #1.7). */}
+      {tab === "conversations" && <ConversationsTab />}
 
       {/* ----------------------- CONFIGURACIÓN BOT (sprint v15) ----------------------- */}
       {tab === "bot" && <BotConfigTab />}

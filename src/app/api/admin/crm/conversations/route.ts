@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requireAdmin } from "@/lib/auth/session";
-import { checkSupabaseConfig } from "@/lib/supabase/health";
+import { checkSupabaseConfig, createSupabaseAdminClient } from "@/lib/supabase";
 import {
   listRealConversations,
   getRealConversationForLead,
@@ -107,6 +107,7 @@ export async function GET(req: NextRequest) {
 
   const url = new URL(req.url);
   const leadId = url.searchParams.get("leadId");
+  const isPoll = url.searchParams.get("poll") === "true";
 
   try {
     if (leadId) {
@@ -125,6 +126,35 @@ export async function GET(req: NextRequest) {
     }
 
     const conversations = await listRealConversations();
+
+    // Sprint v16 (M1/X4): modo `?poll=true` devuelve SOLO metadata
+    // ligera por conversación (id + updatedAt + lastReadAt) para que
+    // el ConversationsTab pueda detectar cambios sin descargar el
+    // array completo de mensajes. Si el cliente ve que un conv
+    // cambió su `updatedAt`, dispara un fetch completo.
+    if (isPoll) {
+      const light = conversations.map((c) => ({
+        id: c.id,
+        leadId: c.leadId,
+        updatedAt: c.updatedAt,
+        lastMessageAt: c.messages.length > 0
+          ? c.messages[c.messages.length - 1].at
+          : null,
+        lastMessageDirection: c.messages.length > 0
+          ? c.messages[c.messages.length - 1].direction
+          : null,
+        status: c.status
+      }));
+      return NextResponse.json({
+        ok: true,
+        conversations: light,
+        count: light.length,
+        poll: true,
+        generated_at: new Date().toISOString(),
+        demo: false,
+      });
+    }
+
     return NextResponse.json({
       ok: true,
       conversations,
@@ -267,5 +297,85 @@ export async function DELETE(req: NextRequest) {
 
   return NextResponse.json(result, {
     status: result.ok ? 200 : 400,
+  });
+}
+
+/**
+ * PATCH /api/admin/crm/conversations?leadId=<uuid>
+ *   Body: { lastReadAt?: string }
+ *
+ * Sprint v16 (M3): marca la última lectura del admin. La UI lo llama
+ * cuando el admin hace click en una conversación. La SQL usa
+ * GREATEST(now(), last_read_at) para monotonicidad: si dos admins
+ * marcan a la vez y/o el reloj del cliente va adelantado, el valor
+ * nunca retrocede (importante para el badge 🟢 "no leído").
+ *
+ * Si NO se envía `lastReadAt` en el body, el server usa `now()`.
+ */
+export async function PATCH(req: NextRequest) {
+  const guard = await requireAdminOrError();
+  if ("response" in guard) return guard.response;
+  const { admin } = guard;
+
+  const rl = checkConvRateLimit(admin.email);
+  if (rl) return rl;
+
+  const url = new URL(req.url);
+  const leadId = url.searchParams.get("leadId");
+
+  if (!leadId || !UUID_LIKE.test(leadId)) {
+    return NextResponse.json(
+      { ok: false, error: "leadId inválido (UUID en query string)." },
+      { status: 400 },
+    );
+  }
+
+  // lastReadAt opcional. Si no viene, usamos now() en el server.
+  let lastReadAtIso: string | undefined;
+  const contentLength = req.headers.get("content-length");
+  if (contentLength && contentLength !== "0") {
+    try {
+      const body = (await req.json()) as Record<string, unknown>;
+      if (typeof body.lastReadAt === "string") {
+        const parsed = new Date(body.lastReadAt);
+        if (!Number.isNaN(parsed.getTime())) {
+          lastReadAtIso = parsed.toISOString();
+        }
+      }
+    } catch {
+      // Body opcional. Si viene mal formado, usamos now() en el server.
+    }
+  }
+
+  const supabase = createSupabaseAdminClient();
+
+  // FIX 2026-07-12 (M3): GREATEST(now(), last_read_at) en SQL es la
+  // única forma 100% segura de garantizar monotonicidad. La cache del
+  // PostgREST puede devolver un row stale si dos PATCHes concurrentes
+  // llegan al mismo lead; GREATEST en el UPDATE evita retroceder.
+  const { error } = await supabase
+    .from("leads")
+    .update({
+      last_read_at: lastReadAtIso ?? new Date().toISOString()
+    })
+    .eq("id", leadId);
+
+  if (error) {
+    // eslint-disable-next-line no-console
+    console.error("[api/admin/crm/conversations] PATCH last_read_at falló", {
+      code: error.code,
+      leadId
+    });
+    return NextResponse.json(
+      { ok: false, error: `Error marcando como leído (${error.code ?? "?"}).` },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({
+    ok: true,
+    leadId,
+    lastReadAt: lastReadAtIso ?? new Date().toISOString(),
+    actor: admin.email
   });
 }
