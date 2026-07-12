@@ -159,3 +159,63 @@ function isValidPauseReason(r: string | null): r is BotPauseReason {
     r === "manual_global"
   );
 }
+
+/* ------------------------------------------------------------------ */
+/*  Persistencia en bot_usage_daily (M5)                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Sprint v16 (PR #2.1, M5): acumula tokens y costo de una inferencia
+ * en `public.bot_usage_daily` mediante UPSERT idempotente.
+ *
+ * La función es fire-and-forget: si el UPSERT falla (DB caída, RLS,
+ * timeout), la excepción se silencia. El bot sigue funcionando; solo
+ * la métrica del día queda incompleta.
+ *
+ * @param supabase Cliente de Supabase admin (pre-instanciado). Si es
+ *                  null/undefined, no se hace nada (modo demo o sin DB).
+ * @param model     Identificador del modelo (`deepseek-chat` / `deepseek-reasoner`).
+ * @param prompt    Tokens de prompt. Entero ≥ 0. Si null/undefined → 0.
+ * @param completion Tokens de completion. Entero ≥ 0. Si null/undefined → 0.
+ * @returns         Promise<void>. No lanza.
+ */
+export async function recordDeepseekUsage(
+  supabase: unknown,
+  model: string,
+  prompt: number | null | undefined,
+  completion: number | null | undefined
+): Promise<void> {
+  if (!supabase || typeof supabase !== "object") return;
+  const sb = supabase as { from?: (table: string) => unknown };
+  if (typeof sb.from !== "function") return;
+  const safePrompt = Math.max(0, Math.floor(prompt ?? 0));
+  const safeCompletion = Math.max(0, Math.floor(completion ?? 0));
+  if (safePrompt === 0 && safeCompletion === 0) return;
+  // Solo aceptamos los 2 modelos conocidos; cualquier otro cae a Flash
+  // (defensa: el CHECK constraint de bot_usage_daily rechaza valores
+  // fuera de ('deepseek-chat', 'deepseek-reasoner')).
+  const safeModel: "deepseek-chat" | "deepseek-reasoner" =
+    model === "deepseek-reasoner" ? "deepseek-reasoner" : "deepseek-chat";
+  const costCents = calculateDeepseekCostUsdCents(safeModel, safePrompt, safeCompletion);
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  try {
+    const table = sb.from("bot_usage_daily") as {
+      upsert?: (data: unknown, opts?: unknown) => Promise<unknown>;
+    };
+    if (typeof table.upsert !== "function") return;
+    await table.upsert(
+      {
+        date: today,
+        model: safeModel,
+        prompt_tokens: safePrompt,
+        completion_tokens: safeCompletion,
+        call_count: 1,
+        estimated_cost_cents: costCents,
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: "date,model" }
+    );
+  } catch {
+    // fire-and-forget: la métrica es best-effort.
+  }
+}

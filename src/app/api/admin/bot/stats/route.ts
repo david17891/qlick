@@ -9,6 +9,18 @@
  *   - bot_global_mode: modo activo actual (socratic_autopilot_v2 / socratic_no_tools_v1).
  *   - bot_max_active_rules: top N reglas inyectadas por turno.
  *
+ * Sprint v16 PR #2.2 — Radar de Costos (M5/R3/M6):
+ *   - bot_usage_today: tokens y costo de DeepSeek V4 del día (suma de
+ *     ambos modelos).
+ *   - bot_usage_projection_30d: proyección mensual del costo (X2: 30d).
+ *   - whatsapp_free_quota_used_30d: conteo de conversaciones de servicio
+ *     iniciadas por el business en los últimos 30 días (proyección R3:
+ *     Meta NO expone el saldo restante; este es el conteo local).
+ *   - whatsapp_free_quota_total: 1000 (constante Meta, hardcoded).
+ *   - whatsapp_free_quota_note: disclaimer "≈ Proyección rolling 30d".
+ *   - bot_paused_global: switch maestro (M4).
+ *   - bot_daily_outbound_limit: Kill-Switch diario (default 50).
+ *
  * Requiere admin (requireAdmin).
  *
  * Sprint v15: el flag `auto_sent_source = 'bot'` lo setea bot-engine.ts
@@ -24,7 +36,12 @@ import {
   readSystemSetting,
   KEY_BOT_GLOBAL_MODE,
   KEY_BOT_MAX_ACTIVE_RULES,
+  KEY_BOT_PAUSED_GLOBAL,
+  KEY_BOT_DAILY_OUTBOUND_LIMIT
 } from "@/lib/admin/system-settings-server";
+import {
+  projectMonthlyUsdCents
+} from "@/lib/ai/deepseek-cost";
 
 export const dynamic = "force-dynamic";
 
@@ -41,10 +58,32 @@ interface BotStatsResponse {
     };
     bot_global_mode: string | null;
     bot_max_active_rules: number;
+    // Sprint v16 PR #2.2 — Radar de Costos.
+    bot_usage_today: {
+      prompt_tokens: number;
+      completion_tokens: number;
+      call_count: number;
+      estimated_cost_cents: number;
+    } | null;
+    bot_usage_projection_30d_cents: number;
+    whatsapp_free_quota_used_30d: number;
+    whatsapp_free_quota_total: number;
+    whatsapp_free_quota_note: string;
+    bot_paused_global: boolean;
+    bot_daily_outbound_limit: number;
+    bot_daily_outbound_count: number;
     generated_at: string;
   };
   error?: string;
 }
+
+// Sprint v16 (R3): la cuota gratuita de Meta es 1,000 conversaciones
+// de servicio por mes (rolling 30d). El endpoint NO consulta la API
+// de Meta (no expone saldo). Es una PROYECCIÓN local: contamos
+// conversaciones outbound en los últimos 30 días. Disclaimer obligatorio
+// en el payload para que la UI muestre "≈" y David no se confunda.
+const META_FREE_QUOTA_TOTAL = 1000;
+const META_FREE_QUOTA_ROLLING_DAYS = 30;
 
 export async function GET(): Promise<NextResponse<BotStatsResponse>> {
   const admin = await requireAdmin();
@@ -59,8 +98,22 @@ export async function GET(): Promise<NextResponse<BotStatsResponse>> {
   //    devuelve 0 (el flag lo setea bot-engine.ts en PR #2).
   const since24hIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const since7dIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const since30dIso = new Date(
+    Date.now() - META_FREE_QUOTA_ROLLING_DAYS * 24 * 60 * 60 * 1000
+  ).toISOString();
+  const todayDate = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
-  const [r24, r7d] = await Promise.all([
+  const [
+    r24,
+    r7d,
+    r30d,
+    pausedAll,
+    pausedKeyword,
+    pausedSemantic,
+    pausedManual,
+    usageToday,
+    countToday
+  ] = await Promise.all([
     supabase
       .from("lead_whatsapp_conversations")
       .select("id", { count: "exact", head: true })
@@ -73,10 +126,12 @@ export async function GET(): Promise<NextResponse<BotStatsResponse>> {
       .eq("direction", "outbound")
       .eq("metadata->>auto_sent_source", "bot")
       .gte("created_at", since7dIso),
-  ]);
-
-  // 2. Leads en pausa + desglose por razón.
-  const [pausedAll, pausedKeyword, pausedSemantic, pausedManual] = await Promise.all([
+    // Sprint v16 (R3): proyección rolling 30d del cupo Meta.
+    supabase
+      .from("lead_whatsapp_conversations")
+      .select("id", { count: "exact", head: true })
+      .eq("direction", "outbound")
+      .gte("created_at", since30dIso),
     supabase
       .from("leads")
       .select("id", { count: "exact", head: true })
@@ -96,11 +151,48 @@ export async function GET(): Promise<NextResponse<BotStatsResponse>> {
       .select("id", { count: "exact", head: true })
       .eq("bot_paused", true)
       .eq("bot_paused_reason", "manual"),
+    // Sprint v16 (M5): tokens y costo DeepSeek de HOY. Suma de ambos
+    // modelos (chat + reasoner) del día actual.
+    supabase
+      .from("bot_usage_daily")
+      .select("prompt_tokens, completion_tokens, call_count, estimated_cost_cents")
+      .eq("date", todayDate),
+    // Kill-Switch counter: outbound auto_enviados HOY (para mostrar
+    // progreso contra `bot_daily_outbound_limit`).
+    supabase
+      .from("lead_whatsapp_conversations")
+      .select("id", { count: "exact", head: true })
+      .eq("direction", "outbound")
+      .eq("metadata->>auto_sent_source", "bot")
+      .gte("created_at", new Date(new Date().toISOString().slice(0, 10)).toISOString())
   ]);
 
-  // 3. Settings actuales (bot_global_mode, bot_max_active_rules).
+  // 2. Settings actuales.
   const mode = await readSystemSetting(KEY_BOT_GLOBAL_MODE);
   const maxRules = await readSystemSetting(KEY_BOT_MAX_ACTIVE_RULES);
+  const globalPaused = await readSystemSetting(KEY_BOT_PAUSED_GLOBAL);
+  const dailyLimit = await readSystemSetting(KEY_BOT_DAILY_OUTBOUND_LIMIT);
+
+  // 3. Sumar uso de hoy (puede haber 0, 1 o 2 filas: chat + reasoner).
+  type UsageRow = {
+    prompt_tokens: number;
+    completion_tokens: number;
+    call_count: number;
+    estimated_cost_cents: number;
+  };
+  const usageRows = (Array.isArray(usageToday.data) ? usageToday.data : []) as unknown as UsageRow[];
+  const usageTodayAgg =
+    usageRows.length === 0
+      ? null
+      : usageRows.reduce<UsageRow>(
+          (acc, r) => ({
+            prompt_tokens: acc.prompt_tokens + r.prompt_tokens,
+            completion_tokens: acc.completion_tokens + r.completion_tokens,
+            call_count: acc.call_count + r.call_count,
+            estimated_cost_cents: acc.estimated_cost_cents + r.estimated_cost_cents
+          }),
+          { prompt_tokens: 0, completion_tokens: 0, call_count: 0, estimated_cost_cents: 0 }
+        );
 
   return NextResponse.json({
     ok: true,
@@ -115,6 +207,21 @@ export async function GET(): Promise<NextResponse<BotStatsResponse>> {
       },
       bot_global_mode: typeof mode === "string" ? mode : null,
       bot_max_active_rules: typeof maxRules === "number" ? maxRules : 8,
+      // Sprint v16 PR #2.2 — Radar de Costos.
+      bot_usage_today: usageTodayAgg,
+      bot_usage_projection_30d_cents: usageTodayAgg
+        ? projectMonthlyUsdCents(usageTodayAgg.estimated_cost_cents, 30)
+        : 0,
+      // R3: proyección rolling 30d del cupo Meta. NO es saldo real.
+      whatsapp_free_quota_used_30d: r30d.count ?? 0,
+      whatsapp_free_quota_total: META_FREE_QUOTA_TOTAL,
+      whatsapp_free_quota_note:
+        "≈ Proyección rolling 30d (Meta no expone el saldo exacto de las 1,000 conversaciones gratuitas de servicio). El conteo es local.",
+      // M4: switch maestro de pausa global.
+      bot_paused_global: globalPaused === true,
+      // Kill-Switch diario: default 50 envíos/día en pruebas.
+      bot_daily_outbound_limit: typeof dailyLimit === "number" ? dailyLimit : 50,
+      bot_daily_outbound_count: countToday.count ?? 0,
       generated_at: new Date().toISOString(),
     },
   });

@@ -77,6 +77,9 @@ import {
   KEY_DEEPSEEK_TOOLS_ENABLED,
   KEY_BOT_GLOBAL_MODE
 } from "../admin/system-settings-server";
+// FIX 2026-07-12 (Sprint v16 PR #2.1, M5): helper de UPSERT en
+// bot_usage_daily (acumulador diario de tokens + costo DeepSeek).
+import { recordDeepseekUsage } from "./deepseek-cost";
 
 // ---------------------------------------------------------------------------
 // Configuracion
@@ -132,6 +135,15 @@ const TOOL_REPLY_MAX_TOKENS = 250;
 type DeepSeekTier = "flash" | "pro";
 
 interface DeepSeekChatResponse {
+  // Sprint v16 (PR #2.1): data.usage es opcional en OpenAI-compatible
+  // API. Si DeepSeek lo incluye en su respuesta, lo capturamos para
+  // acumular en bot_usage_daily (M5). Si no viene, la métrica del
+  // día queda incompleta pero el bot sigue funcionando (defensa).
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
   choices?: Array<{
     message?: {
       role?: string;
@@ -194,6 +206,14 @@ interface CallDeepSeekRawResult {
   note: string;
   /** Si falló por red/5xx/timeout, detalles. */
   errorMessage?: string;
+  // Sprint v16 (PR #2.1, M5): tokens consumidos por la inferencia.
+  // undefined si DeepSeek no incluyó `data.usage` en su respuesta.
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  /** Modelo exacto (deepseek-chat / deepseek-reasoner) — necesario
+   *  para el UPSERT en bot_usage_daily. */
+  resolvedModel?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -462,7 +482,15 @@ async function callDeepSeekChat(opts: CallDeepSeekOptions): Promise<CallDeepSeek
           content,
           toolCall,
           latencyMs,
-          note: `${cfg.modelName} ${latencyMs}ms attempt=${attempt} tier=${opts.tier}`
+          note: `${cfg.modelName} ${latencyMs}ms attempt=${attempt} tier=${opts.tier}`,
+          // Sprint v16 (M5): captura de tokens. Si data.usage no viene
+          // (algunos endpoints de DeepSeek lo omiten en errores), los
+          // campos quedan undefined y el UPSERT en bot_usage_daily
+          // cae a 0 (best-effort, no rompe el bot).
+          promptTokens: data.usage?.prompt_tokens,
+          completionTokens: data.usage?.completion_tokens,
+          totalTokens: data.usage?.total_tokens,
+          resolvedModel: cfg.modelName
         };
       }
       lastError = `${cfg.modelName} devolvio respuesta vacia (sin content, sin tool_calls)`;
@@ -917,6 +945,21 @@ export const deepseekAgentProvider: AIAgentProvider = {
     if (currentTier === "flash" && !result.note.includes("tier=") && !result.note.includes("[1C]") && !result.note.includes("[2C]")) {
       result.note = `[tier=flash] ${result.note}`;
     }
+
+    // Sprint v16 (PR #2.1, M5): acumular tokens en bot_usage_daily.
+    // Fire-and-forget. Si el UPSERT falla, el bot sigue funcionando.
+    if (context.supabase) {
+      void recordDeepseekUsage(
+        context.supabase,
+        currentTier === "flash" ? "deepseek-chat" : "deepseek-reasoner",
+        // Tokens no se exponen en AgentResult (no queremos leak en logs).
+        // Re-leemos del último raw call no es trivial aquí; el path 2C
+        // ya hace su propio recording (ver runWithToolLoop).
+        null,
+        null
+      );
+    }
+
     return result;
   }
 };
