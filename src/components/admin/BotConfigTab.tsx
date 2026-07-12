@@ -15,7 +15,7 @@
  */
 
 import { useState, useTransition, useEffect, useCallback } from "react";
-import { Card, CardBody, CardHeader, Button, Badge } from "@/components/ui";
+import { Card, CardBody, CardHeader, Button, Badge, Input } from "@/components/ui";
 import {
   createBotRuleAction,
   updateBotRuleAction,
@@ -100,6 +100,20 @@ interface BotStats {
   };
   bot_global_mode: string | null;
   bot_max_active_rules: number;
+  // Sprint v16 PR #2.2 — Radar de Costos.
+  bot_usage_today: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    call_count: number;
+    estimated_cost_cents: number;
+  } | null;
+  bot_usage_projection_30d_cents: number;
+  whatsapp_free_quota_used_30d: number;
+  whatsapp_free_quota_total: number;
+  whatsapp_free_quota_note: string;
+  bot_paused_global: boolean;
+  bot_daily_outbound_limit: number;
+  bot_daily_outbound_count: number;
   generated_at: string;
 }
 
@@ -115,6 +129,8 @@ export function BotConfigTab() {
   const [stats, setStats] = useState<BotStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
   const [showNewRuleModal, setShowNewRuleModal] = useState(false);
+  // Sprint v16 PR #2.3: state de los controles de pausa global + kill-switch.
+  const [togglingGlobalPause, setTogglingGlobalPause] = useState(false);
   const [newRule, setNewRule] = useState<{
     instruction: string;
     priority: number;
@@ -145,6 +161,60 @@ export function BotConfigTab() {
       })
       .finally(() => setRulesLoading(false));
   }, []);
+
+  // Sprint v16 PR #2.3: handler para toggle del switch maestro global (M4).
+  // FIX 2026-07-12: re-fetch inline (no llamar refreshStats por forward
+  // reference). El componente se re-renderiza cuando setStats() corre.
+  const handleToggleGlobalPause = useCallback(async () => {
+    setTogglingGlobalPause(true);
+    try {
+      const res = await fetch("/api/admin/bot/global-pause", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ botPausedGlobal: !(stats?.bot_paused_global === true) })
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(j.error ?? `HTTP ${res.status}`);
+      }
+      // Refetch manual del stats para reflejar el nuevo estado.
+      const r2 = await fetch("/api/admin/bot/stats", { cache: "no-store" });
+      const j2 = (await r2.json()) as { ok: boolean; data?: BotStats; error?: string };
+      if (j2.ok && j2.data) setStats(j2.data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setTogglingGlobalPause(false);
+    }
+  }, [stats]);
+
+  // Sprint v16 PR #2.3: handler para cambiar el límite diario.
+  // FIX 2026-07-12: el endpoint actual de /api/admin/bot/stats es
+  // solo GET. El cambio de `bot_daily_outbound_limit` se hace
+  // directamente contra system_settings (sin endpoint dedicado
+  // todavía — se puede agregar en sprint v17 si la UI lo necesita).
+  const handleChangeDailyLimit = useCallback(
+    async (newLimit: number) => {
+      try {
+        const res = await fetch("/api/admin/system-setting", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ key: "bot_daily_outbound_limit", value: newLimit })
+        });
+        if (!res.ok) {
+          const j = (await res.json().catch(() => ({}))) as { error?: string };
+          throw new Error(j.error ?? `HTTP ${res.status}`);
+        }
+        // Refetch inline.
+        const r2 = await fetch("/api/admin/bot/stats", { cache: "no-store" });
+        const j2 = (await r2.json()) as { ok: boolean; data?: BotStats; error?: string };
+        if (j2.ok && j2.data) setStats(j2.data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    []
+  );
 
   const refreshStats = useCallback(async () => {
     setStatsLoading(true);
@@ -439,17 +509,176 @@ export function BotConfigTab() {
                 titulo="Razones de Escalación"
                 valor={
                   stats.pause_reasons.keyword_escalation +
-                  stats.pause_reasons.ai_semantic_escalation +
-                  stats.pause_reasons.manual
-                }
-                subtitulo={
-                  <span className="text-xs text-ink-muted">
-                    kw: {stats.pause_reasons.keyword_escalation} · sem:{" "}
-                    {stats.pause_reasons.ai_semantic_escalation} · man:{" "}
-                    {stats.pause_reasons.manual}
-                  </span>
-                }
-              />
+                   stats.pause_reasons.ai_semantic_escalation +
+                   stats.pause_reasons.manual
+                 }
+                 subtitulo={
+                   <span className="text-xs text-ink-muted">
+                     kw: {stats.pause_reasons.keyword_escalation} · sem:{" "}
+                     {stats.pause_reasons.ai_semantic_escalation} · man:{" "}
+                     {stats.pause_reasons.manual}
+                   </span>
+                 }
+               />
+             </div>
+           ) : (
+             <p className="text-sm text-ink-muted">Sin datos disponibles.</p>
+           )}
+        </CardBody>
+      </Card>
+
+      {/* Sprint v16 PR #2.3 — 💸 Radar de Costos y Presupuestos (En Vivo) */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-ink">
+              💸 Radar de Costos y Presupuestos (En Vivo)
+            </h2>
+            <Button variant="ghost" size="sm" onClick={refreshStats} disabled={statsLoading}>
+              🔄 Refrescar
+            </Button>
+          </div>
+        </CardHeader>
+        <CardBody>
+          {statsLoading && !stats ? (
+            <p className="text-sm text-ink-muted">Cargando costos…</p>
+          ) : stats ? (
+            <div className="space-y-4">
+              {/* Bloque 1: DeepSeek V4 (tokens + costo) */}
+              <div className="grid gap-3 md:grid-cols-3">
+                <TarjetaMetrica
+                  icono="🧠"
+                  titulo="Tokens DeepSeek Hoy"
+                  valor={
+                    stats.bot_usage_today
+                      ? (stats.bot_usage_today.prompt_tokens + stats.bot_usage_today.completion_tokens).toLocaleString("es-MX")
+                      : 0
+                  }
+                  subtitulo={
+                    <span className="text-xs text-ink-muted">
+                      {stats.bot_usage_today?.call_count ?? 0} llamada{(stats.bot_usage_today?.call_count ?? 0) === 1 ? "" : "s"} (prompt + completion)
+                    </span>
+                  }
+                />
+                <TarjetaMetrica
+                  icono="💵"
+                  titulo="Costo IA (Hoy)"
+                  valor={
+                    stats.bot_usage_today
+                      ? `$${(stats.bot_usage_today.estimated_cost_cents / 100).toFixed(2)} USD`
+                      : "$0.00 USD"
+                  }
+                  subtitulo={
+                    <span className="text-xs text-ink-muted">
+                      Proyección 30d: ${(stats.bot_usage_projection_30d_cents / 100).toFixed(2)} USD
+                    </span>
+                  }
+                />
+                <TarjetaMetrica
+                  icono="📨"
+                  titulo="Outbound Hoy (Kill-Switch)"
+                  valor={`${stats.bot_daily_outbound_count} / ${stats.bot_daily_outbound_limit}`}
+                  subtitulo={
+                    <span className="text-xs text-ink-muted">
+                      {stats.bot_daily_outbound_count >= stats.bot_daily_outbound_limit
+                        ? "🚨 Bloqueado (límite alcanzado)"
+                        : `${stats.bot_daily_outbound_limit - stats.bot_daily_outbound_count} disponibles hoy`}
+                    </span>
+                  }
+                />
+              </div>
+
+              {/* Bloque 2: Cupo Meta (R3: disclaimer rolling 30d) */}
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                <p className="text-sm font-semibold text-ink mb-1">
+                  📊 Cupo Gratuito Meta (Mensual)
+                </p>
+                <p className="text-xs text-ink-muted mb-2 italic">
+                  {stats.whatsapp_free_quota_note}
+                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-lg font-bold text-ink">
+                    ≈ {stats.whatsapp_free_quota_used_30d} / {stats.whatsapp_free_quota_total}
+                  </p>
+                  <Badge
+                    tone={
+                      stats.whatsapp_free_quota_used_30d / stats.whatsapp_free_quota_total > 0.8
+                        ? "warning"
+                        : "info"
+                    }
+                  >
+                    {Math.round(
+                      (stats.whatsapp_free_quota_used_30d / stats.whatsapp_free_quota_total) * 100
+                    )}
+                    % usado
+                  </Badge>
+                </div>
+                {/* Barra de progreso simple */}
+                <div className="mt-2 w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                  <div
+                    className={
+                      "h-full transition-all " +
+                      (stats.whatsapp_free_quota_used_30d / stats.whatsapp_free_quota_total > 0.8
+                        ? "bg-amber-500"
+                        : "bg-emerald-500")
+                    }
+                    style={{
+                      width:
+                        Math.min(
+                          100,
+                          (stats.whatsapp_free_quota_used_30d / stats.whatsapp_free_quota_total) * 100
+                        ) + "%"
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Bloque 3: Controles del Kill-Switch y pausa global (inline). */}
+              <div className="rounded-lg border border-slate-200 p-4 space-y-3">
+                <p className="text-sm font-semibold text-ink">⚙️ Controles Operativos</p>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {/* Botón maestro de pausa global (M4). */}
+                  <div className="rounded border border-slate-200 p-3 space-y-1">
+                    <p className="text-xs font-semibold text-ink">⏸️ Pausar Bot para Todos</p>
+                    <p className="text-[10px] text-ink-muted">
+                      Precedencia sobre per-lead. Útil como safety net.
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={stats.bot_paused_global ? "danger" : "outline"}
+                      disabled={togglingGlobalPause}
+                      onClick={() => void handleToggleGlobalPause()}
+                      aria-pressed={stats.bot_paused_global}
+                      className="mt-1 w-full"
+                    >
+                      {stats.bot_paused_global
+                        ? "▶️ Reanudar para Todos"
+                        : "⏸️ Pausar para Todos"}
+                    </Button>
+                  </div>
+                  {/* Kill-Switch: límite diario de outbound. */}
+                  <div className="rounded border border-slate-200 p-3 space-y-1">
+                    <p className="text-xs font-semibold text-ink">
+                      🚦 Tope Diario ({stats.bot_daily_outbound_count}/{stats.bot_daily_outbound_limit})
+                    </p>
+                    <p className="text-[10px] text-ink-muted">
+                      Protege de cobros sorpresivos. Default 50/día en pruebas.
+                    </p>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={10000}
+                      defaultValue={stats.bot_daily_outbound_limit}
+                      onBlur={(e) => {
+                        const n = Number(e.target.value);
+                        if (Number.isFinite(n) && n >= 0) void handleChangeDailyLimit(n);
+                      }}
+                      className="mt-1 w-full"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
           ) : (
             <p className="text-sm text-ink-muted">Sin datos disponibles.</p>
@@ -559,7 +788,9 @@ function ModeTarjeta(props: {
 function TarjetaMetrica(props: {
   icono: string;
   titulo: string;
-  valor: number;
+  // Sprint v16 PR #2.3: aceptar string | number (las nuevas tarjetas
+  // muestran "$0.14 USD" y "X / Y", no solo counts).
+  valor: string | number;
   subtitulo?: React.ReactNode;
 }) {
   return (

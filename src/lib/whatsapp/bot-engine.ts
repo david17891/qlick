@@ -60,6 +60,11 @@ import {
 } from "../ai";
 import { sendHumanHandoff } from "./human-handoff";
 import { mustEscalateToHuman, stripEscalateFlag } from "../ai/guardrails";
+// FIX 2026-07-12 (Sprint v16 PR #2.4, M4): helpers puros de matriz de
+// pausa y helpers de system_settings para leer los switches clave
+// (bot_paused_global, bot_daily_outbound_limit).
+import { resolveEffectivePause } from "../ai/deepseek-cost";
+import { readSystemSetting, KEY_BOT_PAUSED_GLOBAL, KEY_BOT_DAILY_OUTBOUND_LIMIT } from "../admin/system-settings-server";
 // FIX 2026-07-11 (Sprint v15 PR #2.5b): clasificador del tipo de oferta
 // para el prompt Súper Ejecutivo. Se calcula con prioridad price>descripción>unknown.
 import { classifyEventType } from "../ai/event-context-loader";
@@ -4121,6 +4126,73 @@ export async function processInboundMessage(
   // OPT_OUT_RE antes de escalar. Si el lead escribe "quiero darme de baja
   // por privacidad" NO matchea OPT_OUT_RE (texto antes) y SI escala a
   // humano, que es lo correcto.
+  //
+  // Sprint v16 PR #2.4 (M4 + Kill-Switch diario): ANTES del intent
+  // detection, verificamos 2 switches globales:
+  //   1. `bot_paused_global` (system_settings): si true, el bot NO
+  //      responde a nadie, sin importar intent. Es el master switch.
+  //   2. `bot_daily_outbound_limit` (system_settings): si el conteo de
+  //      outbound auto_enviados hoy >= límite, el bot NO envía más
+  //      plantillas proactivas (las inbound se siguen loggeando para
+  //      auditoría, pero sin respuesta outbound del bot).
+  // Ambos checks son best-effort (si Supabase falla, el bot sigue con
+  // comportamiento normal — no rompemos el bot por un check de costo).
+  if (supabase) {
+    try {
+      const [globalPausedRaw, dailyLimitRaw] = await Promise.all([
+        readSystemSetting(KEY_BOT_PAUSED_GLOBAL),
+        readSystemSetting(KEY_BOT_DAILY_OUTBOUND_LIMIT)
+      ]);
+      const globalPaused = globalPausedRaw === true;
+      const dailyLimit = typeof dailyLimitRaw === "number" ? dailyLimitRaw : 50;
+      if (globalPaused) {
+        debugLog("[whatsapp/bot] bot_paused_global=true, abort", {
+          leadId: lead.id
+        });
+        return {
+          ok: true,
+          intent: "question",
+          leadId: lead.id,
+          responseKind: "none",
+          demo: false,
+          note: "Bot pausado globalmente (system_settings.bot_paused_global=true). Sin respuesta outbound. D-025 matriz."
+        };
+      }
+      // FIX 2026-07-12: Kill-Switch diario. Cuenta outbound auto_enviados
+      // (metadata->>auto_sent_source = 'bot') desde las 00:00 hora local.
+      const dayStart = new Date();
+      dayStart.setHours(0, 0, 0, 0);
+      const dayStartIso = dayStart.toISOString();
+      const { count: outboundToday } = await supabase
+        .from("lead_whatsapp_conversations")
+        .select("id", { count: "exact", head: true })
+        .eq("direction", "outbound")
+        .eq("metadata->>auto_sent_source", "bot")
+        .gte("created_at", dayStartIso);
+      if ((outboundToday ?? 0) >= dailyLimit) {
+        debugLog("[whatsapp/bot] daily limit reached, abort", {
+          leadId: lead.id,
+          outboundToday: outboundToday ?? 0,
+          dailyLimit
+        });
+        return {
+          ok: true,
+          intent: "question",
+          leadId: lead.id,
+          responseKind: "none",
+          demo: false,
+          note: `Kill-Switch diario activado: ${outboundToday ?? 0}/${dailyLimit} outbound hoy. Sin respuesta.`
+        };
+      }
+    } catch (err) {
+      // best-effort: si el check falla, el bot sigue con comportamiento
+      // normal. Loggeamos para debug.
+      debugLog("[whatsapp/bot] M4 check failed, continuing", {
+        error: err instanceof Error ? err.message : String(err)
+      });
+    }
+  }
+
   if (body && !OPT_OUT_RE.test(body)) {
     const escalation = mustEscalateToHuman(body);
     if (escalation.escalate) {
