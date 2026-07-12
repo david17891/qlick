@@ -3427,3 +3427,44 @@ pm run typegen en esta rama � agregar a docs/OPEN_ITEMS.md como nota para spri
   - Sin migraciones (no toca schema). El endpoint vive en `/api/admin/bot/mode` y la SSOT del tipo en `system-settings-server.ts`. La KEY canónica (`KEY_BOT_GLOBAL_MODE = "bot_global_mode"`) ya existía.
   - El estado `modeSaving` deshabilita los 3 botones durante el POST (~50-200ms típico en Vercel region iad1 → Supabase US West). UX aceptable; si David reporta lentitud perceptible, se puede mover el POST a `startTransition` y mostrar un spinner inline.
   - Pendiente menor: la sección "Cargando configuración..." se muestra incluso cuando `stats === null` por error de DB. Considerar agregar un estado de error específico (botón "Reintentar") en sprint v17 si David lo nota en uso real.
+
+---
+
+## 2026-07-12 02:30 — Sprint v0.9.6 Bot Simulator (Laboratorio IA) — implementación
+
+- **Pregunta:** David pidió el sprint v0.9.6 / v17 — un "Laboratorio de Pruebas & Simulador IA de WhatsApp" en `/admin?tab=bot` con pantalla dividida (chat sandbox + telemetría), que ejecute el motor conversacional del bot (clasificación + prompt + LLM) SIN enviar a Meta Cloud API, sin consumir cupo de WhatsApp, y sin alterar el contador `bot_daily_outbound_count` ni las métricas reales del CRM. Las 5 condiciones de stop son: (1) 7/7 tests de aislamiento, (2) suite global invicta (>1173), (3) type-check 0 errors, (4) lint 0/0 + build con endpoint listado, (5) PR abierto + docs.
+
+- **Decisión:**
+  1. **Opción B** para el aislamiento del motor (no tocar `processInboundMessage`): nuevo entry point `simulateConversationTurn` en `src/lib/ai/simulator.ts` (~250 líneas, server-only) que bypasea `pickSystemPromptForMode` via un campo aditivo `systemPromptOverride?: string` en `AgentContext` y construye el prompt localmente con `buildSystemPrompt` / `buildSuperExecutivePrompt`. Cero imports prohibidos.
+  2. **Persistencia del historial 100% en memoria del cliente** (`useState` en `BotSimulatorTab.tsx`). El endpoint recibe el historial completo en cada POST. Cero impacto en BD, cero INSERT en `lead_whatsapp_conversations`.
+  3. **Override de modo** bypasea la lectura de `bot_global_mode` en DB. El campo `systemPromptOverride` agregado a `AgentContext` es aditivo (4 líneas en `pickSystemPromptForMode`); los callers existentes no se enteran.
+  4. **Lecturas permitidas (best-effort)**: `readSystemSetting` para el modo (solo si no hay override), `loadActiveEventContext`, `getActiveBotRules` (sin `incrementRuleUsage`), `loadLeadProfile`. Ninguna escritura.
+  5. **Endpoint dedicado `/api/admin/bot/simulate`** (90 líneas) con auth admin + validación manual de payload (sin Zod porque no es dep del repo). Schema extraído a `src/lib/ai/simulator-schema.ts` para que los tests lo importen directo sin HTTP.
+  6. **UI pantalla dividida** en `src/components/admin/BotSimulatorTab.tsx` (~430 líneas) con: chat sandbox (burbujas in/out, Enter, limpiar), controles superiores (Lead Ficticio/CRM, Modo BD/Override, Ignorar pausa per-lead), Rayos X del Cerebro (modo, costo USD, tokens, intent, tools, reglas inyectadas colapsables, evento activo).
+  7. **Sub-pestañas en BotConfigTab**: ⚙️ Configuración & Reglas (default, contenido histórico sin cambios) | 🧪 Laboratorio (Simulador). Default "config" para no romper la既存体験 de los admins.
+
+- **Razón:**
+  - **Opción A (flag `isSimulation` en metadata)** descartada: `provider.send` aparece 12+ veces en `bot-engine.ts`, `recordDeepseekUsage` y `persistConversation` están dispersos, un solo branch que olvide el check filtra una llamada a Meta. La opción A es una bomba de tiempo; la opción B es estructural: la función simulada NO tiene acceso al provider ni a Supabase, así que es matemáticamente imposible que filtre.
+  - **Override de modo via `systemPromptOverride`**: el simulador resuelve el modo localmente y construye el prompt con la función pura (`buildSystemPrompt` / `buildSuperExecutivePrompt`) correspondiente, bypaseando `pickSystemPromptForMode` que lee DB. Esto evita el "drift de caché 30s" del override y garantiza que el cambio de modo en UI se ve inmediato en la simulación.
+  - **`AgentUsage` agregado a `AgentResult`**: cambio aditivo (campo opcional). El provider `wrapRawAsAgentResult` popula `usage` desde `raw.promptTokens`/`completionTokens`/`resolvedModel` con el costo calculado por `calculateDeepseekCostUsdCents`. Los callers existentes (bot-engine) lo ignoran; el simulador lo lee para la telemetría de UI.
+  - **Tests con flag global `__simTestState`**: Node 22 `mock.module` no permite re-mockear módulos ya mockeados en el mismo proceso. Workaround: mockear una sola vez en `before()` y cambiar comportamiento entre tests vía un objeto de estado global. Patrón más limpio que re-mockear.
+  - **Tests HTTP del route con `next/server`**: `node --experimental-strip-types` no resuelve `next/server` correctamente. Solución: la validación de payload se cubre con tests del schema extraído (S1.1-S1.8) y los tests de integración end-to-end del simulador (T4-T7) cubren el comportamiento. Los 3 tests HTTP originales (S3.1-S3.3 con POST 401/501/200) se migraron a tests estáticos del route (S2.3-S2.4) que verifican la presencia de `requireAdmin`/`checkSupabaseConfig` y los status codes explícitos.
+
+- **Impacto:**
+  - **1198/1198 tests verde** (+25 desde 1173 baseline). Los 13 tests de aislamiento + 8 del schema + 4 de estructura del route pasan limpios. Ningún test del repo se rompió.
+  - **2 commits atómicos** listos: backend (simulator.ts + simulator-schema.ts + route.ts + cambios aditivos a agent-provider.ts y deepseek-provider.ts) y frontend (BotSimulatorTab.tsx + sub-pestañas en BotConfigTab.tsx).
+  - **`/api/admin/bot/simulate` listado en build manifest** con `ƒ` (server-rendered on demand), mismo patrón que `/api/admin/bot/mode` y `/api/admin/bot/global-pause`.
+  - **Capacidades operativas** que David puede usar en producción (post-merge):
+    - Cambiar de modo del bot en vivo (Socrático v1, Socrático v2, Súper Ejecutivo) con override de UI sin redeploy.
+    - Probar el comportamiento del bot con leads ficticios o reales del CRM (UUID) sin gastar cupo Meta.
+    - Ver el system prompt exacto, el modo activo, la intención clasificada, las tools ejecutadas, las reglas de oro inyectadas en cada turno, y el costo USD por turno + acumulado de sesión.
+    - Monitorear el kill-switch diario y la pausa per-lead sin afectar el bot real.
+
+- **Trigger:** David dio el `/goal` con scope detallado y 5 condiciones de stop. El sprint v0.9.6 cierra la última pieza del "control operativo del bot" que el admin venía pidiendo desde v0.9.0.
+
+- **Riesgo operacional:**
+  - **Override de modo UI vs DB**: el simulador usa el override de UI sin tocar `bot_global_mode` en DB. El toggle de modo en la Torre de Control (sprint v16 hotfix #3) sí persiste en DB. Hay 2 paths paralelos. Riesgo bajo pero documentado.
+  - **`AgentUsage` en AgentResult**: cambio aditivo opcional. Ningún caller existente rompe. Si en el futuro se quiere ignorar explícitamente en el flujo del bot real (no consumir memoria innecesaria), se puede filtrar con un wrapper, pero no es necesario hoy.
+  - **BotEngineProvider en el provider de IA**: el simulador pasa el contexto SIN `supabase` al `deepseekAgentProvider.run`. Esto significa que el path 2C (tool loop) que internamente invoca `executeExtractAndSaveContact` tampoco tiene supabase → la tool corre en modo demo (no persiste). Es el comportamiento correcto para el simulador (no queremos que las tools persistan datos).
+  - **Costo del LLM en simulación**: cada turno simulado cuesta tokens reales de DeepSeek. 100 simulaciones = 100 turnos de DeepSeek. La UI muestra el costo acumulado en tiempo real. David puede ver el contador.
+  - **Sin migraciones**: el sprint v0.9.6 NO toca schema. Todo es lógica + endpoint + UI. Cero riesgo de drift entre repo y DB.
