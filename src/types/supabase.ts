@@ -1430,6 +1430,8 @@ export type Database = {
       }
       leads: {
         Row: {
+          // Sprint v16 (R2/R3): sello de archivado del buzón.
+          archived_conversations_at: string | null
           bot_paused: boolean
           bot_paused_at: string | null
           bot_paused_by_email: string | null
@@ -1441,6 +1443,8 @@ export type Database = {
           estimated_value_mxn: number | null
           id: string
           intent: Database["public"]["Enums"]["lead_intent"]
+          // Sprint v16 (M3): última lectura del admin (monotonic GREATEST).
+          last_read_at: string | null
           last_contacted_at: string | null
           message: string | null
           name: string
@@ -1459,6 +1463,7 @@ export type Database = {
           whatsapp_status: string
         }
         Insert: {
+          archived_conversations_at?: string | null
           bot_paused?: boolean
           bot_paused_at?: string | null
           bot_paused_by_email?: string | null
@@ -1470,6 +1475,7 @@ export type Database = {
           estimated_value_mxn?: number | null
           id?: string
           intent?: Database["public"]["Enums"]["lead_intent"]
+          last_read_at?: string | null
           last_contacted_at?: string | null
           message?: string | null
           name: string
@@ -1488,6 +1494,7 @@ export type Database = {
           whatsapp_status?: string
         }
         Update: {
+          archived_conversations_at?: string | null
           bot_paused?: boolean
           bot_paused_at?: string | null
           bot_paused_by_email?: string | null
@@ -1499,6 +1506,7 @@ export type Database = {
           estimated_value_mxn?: number | null
           id?: string
           intent?: Database["public"]["Enums"]["lead_intent"]
+          last_read_at?: string | null
           last_contacted_at?: string | null
           message?: string | null
           name?: string
@@ -1515,6 +1523,37 @@ export type Database = {
           tags?: string[] | null
           updated_at?: string
           whatsapp_status?: string
+        }
+        Relationships: []
+      }
+      // Sprint v16 (M5): acumulador diario de tokens DeepSeek.
+      bot_usage_daily: {
+        Row: {
+          call_count: number
+          completion_tokens: number
+          date: string
+          estimated_cost_cents: number
+          model: string
+          prompt_tokens: number
+          updated_at: string
+        }
+        Insert: {
+          call_count?: number
+          completion_tokens?: number
+          date: string
+          estimated_cost_cents?: number
+          model: string
+          prompt_tokens?: number
+          updated_at?: string
+        }
+        Update: {
+          call_count?: number
+          completion_tokens?: number
+          date?: string
+          estimated_cost_cents?: number
+          model?: string
+          prompt_tokens?: number
+          updated_at?: string
         }
         Relationships: []
       }
@@ -1865,6 +1904,11 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      // Sprint v16 (R2): RPC transaccional de soft-delete de conversación.
+      soft_delete_conversation_tx: {
+        Args: { p_lead_id: string; p_actor_email: string; p_reason?: string }
+        Returns: { deleted_count: number; archived_at: string }[]
+      }
       generate_event_short_code: { Args: never; Returns: string }
       get_active_bot_overrides: {
         Args: { p_bot_name: string }
@@ -1896,7 +1940,7 @@ export type Database = {
       }
     }
     Enums: {
-      bot_pause_reason: "keyword_escalation" | "ai_semantic_escalation" | "manual"
+      bot_pause_reason: "keyword_escalation" | "ai_semantic_escalation" | "manual" | "manual_global"
       crm_task_status: "pending" | "completed" | "cancelled"
       event_attendee_source:
         | "check_in"
@@ -2093,7 +2137,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      bot_pause_reason: ["keyword_escalation", "ai_semantic_escalation", "manual"],
+      bot_pause_reason: ["keyword_escalation", "ai_semantic_escalation", "manual", "manual_global"],
       crm_task_status: ["pending", "completed", "cancelled"],
       event_attendee_source: [
         "check_in",

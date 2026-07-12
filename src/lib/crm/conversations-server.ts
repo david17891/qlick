@@ -89,6 +89,10 @@ interface LeadInteractionRow {
 interface LeadLiteRow {
   id: string;
   name: string;
+  // Sprint v16 (R3/M3): sello de archivado + última lectura del admin.
+  // El primero filtra fantasmas; el segundo alimenta el badge 🟢.
+  archived_conversations_at?: string | null;
+  last_read_at?: string | null;
   phone: string | null;
 }
 
@@ -103,8 +107,12 @@ interface LeadLiteRow {
  * - `waiting_reply`: el último mensaje es del lead (inbound) → contestar.
  * - `resolved`: sin actividad reciente (>7 días).
  * - `escalated`: si metadata.flagged === true (futuro, hoy no se setea).
+ *
+ * Sprint v16 (R1): exportada para tests. Antes era private; el cambio
+ * de orden ASC requirió que `listRealConversations` lea el último
+ * mensaje en `conv.messages[conv.messages.length - 1]` (no [0]).
  */
-function inferStatus(lastDir: "inbound" | "outbound" | "system" | null, lastAt: string | null): ConversationStatus {
+export function inferStatus(lastDir: "inbound" | "outbound" | "system" | null, lastAt: string | null): ConversationStatus {
   if (!lastAt || !lastDir) return "open";
   const ageDays = (Date.now() - new Date(lastAt).getTime()) / (1000 * 60 * 60 * 24);
   if (ageDays > 7) return "resolved";
@@ -165,9 +173,12 @@ export async function listRealConversations(): Promise<Conversation[]> {
 
   // 1. Leads con teléfono (necesarios para construir el id estable y
   //    agrupar mensajes pre-lead por phone).
+  //    Sprint v16 (R3): también leemos `archived_conversations_at` y
+  //    `last_read_at` para (a) filtrar fantasmas post-archivado y
+  //    (b) alimentar el indicador 🟢 "no leído" en la UI.
   const { data: leadsLite, error: leadsErr } = await supabase
     .from("leads")
-    .select("id, name, phone")
+    .select("id, name, phone, archived_conversations_at, last_read_at")
     .not("phone", "is", null);
 
   if (leadsErr) {
@@ -178,6 +189,9 @@ export async function listRealConversations(): Promise<Conversation[]> {
     return [];
   }
 
+  // FIX 2026-07-12: LeadLiteRow ahora incluye archived_conversations_at
+  // para que el filtro de fantasmas (R3) lo pueda consultar sin un
+  // segundo round-trip a la DB.
   const leadsById = new Map<string, LeadLiteRow>(
     ((leadsLite ?? []) as unknown as LeadLiteRow[]).map((l) => [
       l.id,
@@ -238,6 +252,21 @@ export async function listRealConversations(): Promise<Conversation[]> {
       );
       leadId = match?.id ?? null;
     }
+
+    // Sprint v16 (R3): filtrar mensajes anteriores al sello de
+    // archivado del lead. Sin esto, los fantasmas reaparecen al F5
+    // aunque el admin los haya "eliminado". Regla:
+    //   - archived_conversations_at IS NULL → todos los mensajes pasan.
+    //   - archived_conversations_at IS NOT NULL → solo created_at > sello.
+    // Se aplica antes del push al array de messages para que el status
+    // inferido y la lista exterior reflejen solo lo post-archivado.
+    if (leadId) {
+      const archivedAt = leadsById.get(leadId)?.archived_conversations_at;
+      if (archivedAt && new Date(row.created_at).getTime() <= new Date(archivedAt).getTime()) {
+        continue; // Skip fantasma.
+      }
+    }
+
     const key = leadId ?? `phone:${row.phone_normalized}`;
     const conv =
       conversationsByLeadId.get(key) ??
@@ -259,6 +288,11 @@ export async function listRealConversations(): Promise<Conversation[]> {
   // 4b. Después interactions (suman al historial si el lead existe).
   for (const row of ((interactionRows ?? []) as unknown) as LeadInteractionRow[]) {
     if (!row.lead_id) continue;
+    // Sprint v16 (R3): mismo filtro de fantasmas que WhatsApp.
+    const archivedAt = leadsById.get(row.lead_id)?.archived_conversations_at;
+    if (archivedAt && new Date(row.created_at).getTime() <= new Date(archivedAt).getTime()) {
+      continue;
+    }
     const conv =
       conversationsByLeadId.get(row.lead_id) ??
       ({
@@ -276,14 +310,23 @@ export async function listRealConversations(): Promise<Conversation[]> {
     conversationsByLeadId.set(row.lead_id, conv);
   }
 
-  // 5. Ordenar mensajes DESC dentro de cada conversación, asignar status
-  //    inferido, y devolver lista ordenada por updatedAt DESC.
+  // 5. Ordenar mensajes ASC dentro de cada conversación (Sprint v16),
+  //    asignar status inferido al ÚLTIMO mensaje (no al primero como
+  //    antes del fix R1), y devolver lista ordenada por updatedAt DESC.
+  //
+  //    Antes: DESC con `conv.messages[0]` como "último". Bug R1: al
+  //    invertir a ASC sin tocar el lector del status, el status inferido
+  //    quedaba apuntando al mensaje MÁS VIEJO en lugar del más reciente.
+  //
+  //    Ahora: ASC con `conv.messages[conv.messages.length - 1]` como
+  //    "último" (cola del array). El listado exterior sigue siendo
+  //    updatedAt DESC (la conversación más reciente primero).
   const result: Conversation[] = [];
   for (const conv of conversationsByLeadId.values()) {
     conv.messages.sort(
-      (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime(),
+      (a, b) => new Date(a.at).getTime() - new Date(b.at).getTime(),
     );
-    const lastMsg = conv.messages[0];
+    const lastMsg = conv.messages[conv.messages.length - 1];
     conv.status = inferStatus(lastMsg?.direction ?? null, lastMsg?.at ?? null);
     // Si la conversación no tiene leadId (caso phone fallback), no la
     // devolvemos — no podemos mostrarla en el CRM sin un lead.
@@ -473,8 +516,16 @@ export async function appendConversationMessage(
 }
 
 /**
- * Soft-delete de TODA la conversación de un lead (todos los
- * mensajes de `lead_whatsapp_conversations` con ese `lead_id`).
+ * Soft-delete de TODA la conversación de un lead (mensajes de WhatsApp
+ * + interacciones internas + sello de archivado), todo en UNA SOLA
+ * transacción atómica vía la RPC `soft_delete_conversation_tx(uuid, text, text)`.
+ *
+ * Sprint v16 (R2): antes hacía 3 UPDATEs secuenciales en este file
+ * (lead_whatsapp_conversations → lead_interactions → leads). Si el
+ * segundo UPDATE fallaba (red intermitente, RLS, etc.), el primero
+ * ya había commiteado y quedaban fantasmas. La RPC los ejecuta dentro
+ * de un BEGIN/EXCEPTION de Postgres, garantizando atomicidad: o se
+ * borran los 3, o no se borra ninguno.
  *
  * Preserva los rows (compliance LGPD) — solo marca `deleted_at`,
  * `deleted_by_email`, `delete_reason`. El listado y la UI los
@@ -482,10 +533,9 @@ export async function appendConversationMessage(
  *
  * Si después se inserta un nuevo mensaje manualmente, ese nuevo
  * mensaje entra con `deleted_at = NULL` (es un row nuevo), por
- * lo que "reabre" la conversación naturalmente.
- *
- * Idempotente: llamar 2 veces seguidas deja el row en el mismo
- * estado (segunda llamada afecta `affected=0`).
+ * lo que "reabre" la conversación naturalmente. La marca
+ * `leads.archived_conversations_at` se usa en `listRealConversations`
+ * para no mostrar fantasmas previos.
  *
  * @server
  */
@@ -504,31 +554,34 @@ export async function softDeleteConversation(
   }
 
   const supabase = createSupabaseAdminClient();
-  const now = new Date().toISOString();
 
-  const { data: updatedRows, error: updErr } = await supabase
-    .from("lead_whatsapp_conversations")
-    .update({
-      deleted_at: now,
-      deleted_by_email: actorEmail,
-      delete_reason: reason ?? null,
-    })
-    .eq("lead_id", leadId)
-    .is("deleted_at", null)
-    .select("id");
-
-  if (updErr) {
-    // eslint-disable-next-line no-console
-    console.error("[conversations-server] soft-delete falló", {
-      code: updErr.code,
-      message: updErr.message,
+  // FIX 2026-07-12 (R2): una sola TX cubre los 3 UPDATEs (wasap +
+  // interactions + leads.archived_conversations_at). Si cualquiera
+  // falla, Postgres rollback automático. Ver migration
+  // 20260712100000_conversations_v16.sql.
+  const { data: rpcRows, error: rpcErr } = await supabase
+    .rpc("soft_delete_conversation_tx", {
+      p_lead_id: leadId,
+      p_actor_email: actorEmail,
+      // El typegen marca `p_reason?: string` pero la RPC Postgres
+      // acepta NULL. Cast explícito para evitar el `null` en runtime
+      // cuando no se pasa reason (camino común desde la UI).
+      p_reason: reason ?? (null as unknown as string)
     });
-    return { ok: false, leadId, deletedCount: 0, note: `Error de Supabase (${updErr.code ?? "?"}).` };
+
+  if (rpcErr) {
+    // eslint-disable-next-line no-console
+    console.error("[conversations-server] soft-delete RPC falló", {
+      code: rpcErr.code,
+      message: rpcErr.message,
+    });
+    return { ok: false, leadId, deletedCount: 0, note: `Error de Supabase (${rpcErr.code ?? "?"}).` };
   }
 
-  const deletedCount = (updatedRows ?? []).length;
+  const firstRow = Array.isArray(rpcRows) && rpcRows.length > 0 ? rpcRows[0] : null;
+  const deletedCount = typeof firstRow?.deleted_count === "number" ? firstRow.deleted_count : 0;
 
-  // Audit log (best-effort).
+  // Audit log (best-effort, fuera de la TX).
   try {
     await logAdminAction({
       actor_email: actorEmail,
@@ -538,6 +591,7 @@ export async function softDeleteConversation(
       metadata: {
         deleted_count: deletedCount,
         reason: reason ?? null,
+        method: "soft_delete_conversation_tx" // Sprint v16 marker.
       },
     });
   } catch (e) {

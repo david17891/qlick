@@ -51,6 +51,14 @@ export const KEY_DEEPSEEK_TOOLS_ENABLED = "deepseek_tools_enabled" as const;
 export const KEY_BOT_GLOBAL_MODE = "bot_global_mode" as const;
 export const KEY_BOT_MAX_ACTIVE_RULES = "bot_max_active_rules" as const;
 export const KEY_BOT_CONTEXT_BLOCKS_CONFIG = "bot_context_blocks_config" as const;
+// Sprint v16 (M4): switch maestro "Pausar Bot para Todos". Si true, ningún
+// lead responde (precedencia sobre `leads.bot_paused`). El bot-engine
+// consulta esta key antes de generar respuesta y aborta si está activa.
+export const KEY_BOT_PAUSED_GLOBAL = "bot_paused_global" as const;
+// Sprint v16 (PR #2): Kill-Switch diario de envíos proactivos del bot.
+// Default 50 envíos/día en pruebas. Si se supera, el bot-engine
+// bloquea plantillas fuera de ventana y alerta en la UI.
+export const KEY_BOT_DAILY_OUTBOUND_LIMIT = "bot_daily_outbound_limit" as const;
 
 /** Tipo de la fila de system_settings (jsonb value). */
 type SettingValue = unknown;

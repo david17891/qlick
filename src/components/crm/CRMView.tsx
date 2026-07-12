@@ -74,7 +74,12 @@ const SECTIONS: { id: Section; label: string; icon: string }[] = [
   { id: "resumen", label: "Resumen", icon: "📊" },
   { id: "pipeline", label: "Pipeline", icon: "🧩" },
   { id: "leads", label: "Leads", icon: "👤" },
-  { id: "conversaciones", label: "Conversaciones", icon: "💬" },
+  // Sprint v16 (PR #1.7): "Conversaciones" salió de CRM y se elevó a
+  // pestaña de Nivel 1 en /admin?tab=conversations. El handler onClick
+  // del Sidebar redirige (ver más abajo). El render del ConversationsView
+  // antiguo sigue existiendo como fallback (marcado DEPRECATED) hasta
+  // que se confirme que la nueva tab cubre todos los casos de uso.
+  { id: "conversaciones", label: "Conversaciones (Nivel 1)", icon: "💬" },
   { id: "calendario", label: "Calendario", icon: "📅" },
   { id: "agente", label: "Agente IA", icon: "🤖" },
   { id: "whatsapp", label: "WhatsApp", icon: "💚" }
@@ -518,26 +523,33 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
         />
       )}
 
-      {/* D. Conversaciones */}
+      {/* D. Conversaciones (Sprint v16) */}
       {section === "conversaciones" && (
-        <ConversationsView
-          conversations={conversations}
-          leads={leads}
-          owners={owners}
-          onSelectLead={setSelectedLead}
-          onDeleteConversation={handleDeleteConversation}
-          onMessageSent={() => setConversationsRev((r) => r + 1)}
-          // FIX 2026-07-08: cuando David pausa/reanuda el bot desde
-          // ConversationsView, actualizamos la lista de leads in-place
-          // para que al cambiar de conversación y volver, el switch
-          // muestre el estado real (DB). Sin esto, el lead viejo en
-          // la lista tiene bot_paused=false y el switch miente.
-          onLeadChanged={(updated) =>
-            setLeads((prev) =>
-              prev.map((l) => (l.id === updated.id ? { ...l, ...updated } : l)),
-            )
-          }
-        />
+        // PR #1.7: el subcomponente ConversationsView quedó obsoleto.
+        // En su lugar, mostramos un redirect a la nueva pestaña de
+        // Nivel 1 (`/admin?tab=conversations`). El componente sigue
+        // exportado más abajo (marcado DEPRECATED) por si alguna URL
+        // externa todavía lo referencia.
+        <Card className="p-6 space-y-3">
+          <h2 className="text-xl font-bold text-ink">💬 Conversaciones se movió</h2>
+          <p className="text-ink-muted text-sm">
+            El buzón de conversaciones 1 a 1 se elevó a una pestaña de
+            Nivel 1 en el panel admin. Funcionalidad equivalente (orden
+            cronológico natural, auto-refresco, soft-delete transaccional,
+            switches de pausa) ahora vive ahí.
+          </p>
+          <Button
+            type="button"
+            variant="primary"
+            onClick={() => {
+              if (typeof window !== "undefined") {
+                window.location.href = "/admin?tab=conversations";
+              }
+            }}
+          >
+            Abrir 💬 Conversaciones
+          </Button>
+        </Card>
       )}
 
       {/* E. Calendario */}
