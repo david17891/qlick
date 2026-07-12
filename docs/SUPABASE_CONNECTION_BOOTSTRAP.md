@@ -1,10 +1,9 @@
 # Supabase Connection Bootstrap — Qlick Marketing Integral
 
-**Fecha:** 2026-06-23
-**Rama:** `feature/supabase-connection-bootstrap`
-**Base:** `main` @ `d3fc093` (tag `v0.2.0-qlick-lms-crm-demo`)
-**Estado:** capa de conexión lista. **Sin proyecto Supabase creado todavía.**
-**Sin datos reales.** Toda la app sigue operando con los mocks.
+**Fecha original:** 2026-06-23
+**Última actualización:** 2026-07-11 — **camino canónico de DDL es Management API** (no pooler, no host directo). Ver §4 actualizada y `docs/AGENT_SUPABASE_PROTOCOL.md` §11.
+**Rama:** `feature/supabase-connection-bootstrap` (bootstrap inicial) + estado actual en `main` con proyecto Supabase `ugpejblymtbwtsoiykyj` operativo.
+**Estado actual:** proyecto Supabase creado, conectado, con migrations aplicadas. Bot, CRM, eventos, auth y Supabase reales. Los mocks siguen disponibles como fallback demo (ver §7 de `AGENT_SUPABASE_PROTOCOL.md`).
 
 ---
 
@@ -28,18 +27,18 @@ posterior. Se añade:
 
 ## 2. Qué NO implementa todavía
 
-| ❌ No hecho | Por qué |
+| ❌ No hecho al 2026-06-23 | Estado actual (2026-07-11) |
 | ---------- | ------- |
-| Reemplazar mocks del LMS | Pendiente de Fase 1 (Supabase Real Foundation). |
-| Reemplazar mocks del CRM | Idem. El CRM sigue devolviendo `demo: true`. |
-| Crear proyecto Supabase | Requiere confirmación explícita (posible costo). |
-| Crear schema/tablas reales | Las migraciones quedan vacías (placeholders). |
-| Ejecutar migraciones | Pendiente de aprobación + proyecto existente. |
-| Auth real | `NEXT_PUBLIC_AUTH_MODE` sigue en `mock`. |
-| RLS activo | Se documenta, pero no hay tablas todavía. |
-| Subir claves | Solo `.env.example` con valores vacíos. |
+| Reemplazar mocks del LMS | ✅ Real con `lms-payments-expert` (v0.9.0+). |
+| Reemplazar mocks del CRM | ✅ Real con persistencia + LVR/SLA/Heat + agente IA (v0.9.0+). |
+| Crear proyecto Supabase | ✅ Creado: `ugpejblymtbwtsoiykyj` (región `us-east-1`, plan Free). |
+| Crear schema/tablas reales | ✅ ~24 tablas operativas (ver `docs/STATUS.md` §"🗄️ Database"). |
+| Ejecutar migraciones | ✅ Vía Management API (`scripts/apply-migration-management.mjs`). Pooler y host directo están rotos. |
+| Auth real | ✅ Supabase Auth con magic link + allowlist (D-018). |
+| RLS activo | ✅ Service role en handlers admin; publishable key respeta RLS. |
+| Subir claves | Solo `.env.example` con valores vacíos. **Cambió:** `.env.local` tiene `SUPABASE_PROJECT_REF` y `SUPABASE_ACCESS_TOKEN` para que Mavis pueda correr DDL. |
 | Service role en cliente | Prohibido (ver §6). |
-| Cambios grandes de UI | Solo un panel interno de diagnóstico (`/admin/system/supabase`). |
+| Cambios grandes de UI | Sprint 7 cerrado con 4 críticas + 7 medias + 1 baja resueltas. |
 
 Esta capa **no toca** `src/lib/data/*`, `src/lib/crm/*`, ni componentes
 existentes. Es aditiva.
@@ -82,21 +81,19 @@ Hasta el paso 6, el modo demo permanece activo.
 
 ---
 
-## 4. MCP vs CLI vs Dashboard vs código
+## 4. Cinco vías para operar Supabase (Management API es la canónica para DDL desde Mavis)
 
-Son **cuatro vías distintas** de operar Supabase. Esta fase usa solo
-**configuración de código**; las otras tres se documentan en
-`docs/SUPABASE_MCP_RUNBOOK.md`.
+Son **cinco vías distintas** de operar Supabase. La fase bootstrap usó **configuración de código**; el camino canónico para que Mavis ejecute DDL/migrations desde sesión es **Management API**.
 
-| Vía | Qué es | Cuándo se usa | Costo |
-| --- | ------ | ------------- | ----- |
-| **MCP** | Model Context Protocol server (`supabase-mcp`). Permite al agente listar proyectos, generar types, leer advisors. | Cuando hay un proyecto y se quiere automatizar desde el agente. | El del proyecto subyacente. |
-| **CLI** (`supabase`) | Herramienta local para migraciones, push de schema, login. | Desarrollo local con DB local o remoto. | Gratis. |
-| **Dashboard** | UI web de Supabase (table editor, SQL editor, auth, advisors). | Inspección visual, operaciones puntuales. | Según plan. |
-| **Código** (`@supabase/supabase-js`, `@supabase/ssr`) | Clientes en Next.js que leen/escriben la DB. | **Lo único que añade esta fase.** | El de las queries del runtime. |
+| Vía | Qué es | Cuándo se usa | Estado Qlick (2026-07-11) |
+| --- | ------ | ------------- | ------------------------- |
+| **Management API** | `POST https://api.supabase.com/v1/projects/{ref}/database/query` con `SUPABASE_ACCESS_TOKEN`. Ejecuta SQL real (DDL+DML) en un solo batch. | **Camino canónico para DDL desde Mavis.** Ver `docs/AGENT_SUPABASE_PROTOCOL.md` §11. | ✅ Operativo. `scripts/apply-migration-management.mjs` lo usa. |
+| **MCP** | Model Context Protocol server (`supabase-mcp`). Permite al agente listar proyectos, generar types, leer advisors. | Si se quiere automatizar más allá de DDL (ej. inspeccionar schema desde el agente). | ⏸️ No usado. Preferimos Management API (más simple). |
+| **CLI** (`supabase`) | Herramienta local para migraciones, push de schema, login. | Desarrollo local con DB local. | ⚠️ `npx supabase db push` da 401 con token actual. No funciona en Qlick. |
+| **Dashboard** | UI web de Supabase (table editor, SQL editor, auth, advisors). | Inspección visual, fallback final. | ✅ Operativo. SQL Editor es el **último recurso** cuando Management API falla. |
+| **Código** (`@supabase/supabase-js`, `@supabase/ssr`) | Clientes en Next.js que leen/escriben la DB. | Runtime de la app. | ✅ Operativo. `SUPABASE_SECRET_KEY` + `SUPABASE_PROJECT_REF`. |
 
-> Esta mini fase **no requiere** MCP, CLI ni Dashboard: el código compila sin
-> proyecto. Se deja documentado el día que se necesiten.
+> El camino `pg` + pooler (`scripts/exec-sql.mjs`) **ya no funciona** en Qlick (pooler DNS intermitente, password drift). NO usar. Usar siempre Management API.
 
 ---
 
@@ -122,8 +119,10 @@ Definidas en `.env.example` (valores vacíos). Resumen:
 | -------- | :-----: | ------------ | --------- |
 | `NEXT_PUBLIC_SUPABASE_URL` | ✅ | cliente + server + admin | URL del proyecto. |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | ✅ | cliente + server | Clave publishable (anon/publishable). Respeta RLS. |
-| `SUPABASE_SECRET_KEY` | ❌ | admin (server-only) | Clave secreta/service role. **Solo servidor.** |
-| `SUPABASE_PROJECT_REF` | ❌ | runbooks MCP/CLI | Ref del proyecto (para CLI/MCP). |
+| `SUPABASE_SECRET_KEY` | ❌ | admin (server-only) | Clave secreta/service role. **Solo servidor.** Bypassa RLS. |
+| `SUPABASE_PROJECT_REF` | ❌ | scripts + Management API + CLI | Ref del proyecto (`ugpejblymtbwtsoiykyj`). **Público**, pero `vercel env pull` lo deja `""` — validar manualmente. |
+| `SUPABASE_ACCESS_TOKEN` | ❌ | **Management API** | Token personal de David con scope sobre el proyecto. 44 chars, prefix `sbp_`. Creado en `https://supabase.com/dashboard/account/tokens`. **NO** committeable. |
+| `SUPABASE_DB_PASSWORD` | ❌ | LEGACY (pooler/host directo) | Drift contra el real de Supabase. NO usar para DDL desde Mavis. Mantener solo si se necesita restaurar la conexión directa. |
 | `NEXT_PUBLIC_APP_URL` | ✅ | redirects de auth | URL canónica de la app. |
 
 ### Notas de nomenclatura
@@ -146,17 +145,35 @@ Definidas en `.env.example` (valores vacíos). Resumen:
 
 ---
 
-## 7. Flujo recomendado para agentes
+## 7. Flujo recomendado para agentes (camino canónico: Management API)
 
-Ver `docs/AGENT_SUPABASE_PROTOCOL.md` (resumen):
+Ver `docs/AGENT_SUPABASE_PROTOCOL.md` (resumen) — **§11 es la sección crítica** que cualquier MAVIS debe leer antes de intentar correr SQL:
 
 1. **Nunca** crear recursos cloud con costo sin aprobación explícita.
 2. **Nunca** ejecutar DDL destructivo sin aprobación.
 3. Trabajar con **migraciones versionadas** (`supabase/migrations/`).
 4. Ejecutar **advisors** después de cualquier DDL.
-5. **Documentar** cada acción MCP/CLI en el commit o doc.
+5. **Documentar** cada acción Management API/CLI en el commit o doc.
 6. **Mantener fallback demo** hasta que la migración real esté validada.
-7. Si no hay MCP/credenciales → dejar **instrucciones manuales** (no improvisar).
+7. Si Management API falla (token 401, endpoint no disponible) → fallback a SQL Editor del dashboard. **NO improvisar** con pooler o host directo (están rotos). El tiempo "30 seg vs 30 min" de la memory legacy aplica solo aquí.
+
+### Validar el setup antes de cualquier DDL
+
+Cualquier MAVIS que arranque con el workspace debe correr esta validación ANTES de tocar SQL:
+
+```bash
+# 1. .env.local debe tener SUPABASE_PROJECT_REF y SUPABASE_ACCESS_TOKEN poblados:
+Select-String -Path .env.local -Pattern "^SUPABASE_(PROJECT_REF|ACCESS_TOKEN)"
+
+# 2. El token debe responder 200 a GET /v1/projects/{ref}:
+node -e "fetch('https://api.supabase.com/v1/projects/'+process.env.SUPABASE_PROJECT_REF,{headers:{Authorization:'Bearer '+process.env.SUPABASE_ACCESS_TOKEN}}).then(r=>console.log('tokenStatus='+r.status))"
+
+# 3. SELECT 1 read-only debe funcionar:
+node --env-file=.env.local scripts/apply-migration-management.mjs scratch/test-supabase-conn.sql --dry-run
+# (crear scratch/test-supabase-conn.sql con: SELECT 1 AS ok, current_database() AS db;)
+```
+
+Si alguno falla, consultar `docs/AGENT_SUPABASE_PROTOCOL.md` §11 §"Triggers runtime" antes de improvisar.
 
 ---
 

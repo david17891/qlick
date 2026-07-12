@@ -20,9 +20,10 @@ import { getAllPayments, sumRevenue } from "@/lib/data/payments";
 import { listPaymentProviders } from "@/lib/payments";
 import { formatMXN, formatDate, initials, formatDuration } from "@/lib/utils";
 import { CRMView } from "@/components/crm";
+import { BotConfigTab } from "@/components/admin/BotConfigTab";
 import Link from "next/link";
 
-type Tab = "resumen" | "cursos" | "alumnos" | "inscripciones" | "pagos" | "crm" | "futuro";
+type Tab = "resumen" | "cursos" | "alumnos" | "inscripciones" | "pagos" | "crm" | "bot" | "futuro";
 
 const statusTone: Record<PaymentStatus, "success" | "warning" | "danger" | "neutral" | "info"> = {
   approved: "success",
@@ -73,6 +74,7 @@ export function AdminView(
       t === "inscripciones" ||
       t === "pagos" ||
       t === "crm" ||
+      t === "bot" ||
       t === "futuro"
     ) {
       return t;
@@ -164,6 +166,7 @@ export function AdminView(
     { id: "inscripciones", label: "Inscripciones", icon: "📝" },
     { id: "pagos", label: "Pagos", icon: "💳" },
     { id: "crm", label: "CRM", icon: "🧲" },
+    { id: "bot", label: "Configuración Bot", icon: "🤖" },
     { id: "futuro", label: "Próximas integraciones", icon: "🚀" }
   ];
 
@@ -228,35 +231,10 @@ export function AdminView(
         >
           🎟️ Eventos →
         </Link>
-        {/* FIX 2026-07-10 (Sprint 2.1): botón de acceso rápido al toggle del
-            Motor IA Socrático v2. Posicionado justo después de "Eventos" para
-            que David lo encuentre navegando desde el dashboard principal. */}
-        <Link
-          href="/admin/system/bot-v2"
-          className="px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap text-ink-soft hover:bg-brand-50 border border-brand-200 inline-flex items-center gap-2"
-          aria-label="Abrir toggle del Motor IA Socrático v2"
-        >
-          <span>🧠 Bot v2</span>
-          {botV2Enabled === true && (
-            <span
-              data-testid="bot-v2-state-badge"
-              className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700"
-              title="Motor IA Socrático v2 activo (tool-calling ON)"
-            >
-              ON
-            </span>
-          )}
-          {botV2Enabled === false && (
-            <span
-              data-testid="bot-v2-state-badge"
-              className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600"
-              title="Motor IA Socrático v2 apagado (tool-calling OFF)"
-            >
-              OFF
-            </span>
-          )}
-          <span aria-hidden="true">→</span>
-        </Link>
+        {/* FIX 2026-07-11 (Sprint v15 PR #1): el botón legacy "🧠 Bot v2 →"
+            se eliminó. Ahora el toggle del bot vive dentro de la pestaña
+            "🤖 Configuración Bot" (tab id "bot") que renderiza <BotConfigTab />.
+            El badge ON/OFF se muestra en el header del BotConfigTab. */}
       </div>
 
       {/* ----------------------- RESUMEN ----------------------- */}
@@ -545,6 +523,9 @@ export function AdminView(
 
       {/* ----------------------- CRM ----------------------- */}
       {tab === "crm" && <CRMView initialLeadId={initialLeadId} />}
+
+      {/* ----------------------- CONFIGURACIÓN BOT (sprint v15) ----------------------- */}
+      {tab === "bot" && <BotConfigTab />}
 
       {/* ----------------------- PRÓXIMAS INTEGRACIONES ----------------------- */}
       {tab === "futuro" && (

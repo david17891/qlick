@@ -1876,9 +1876,18 @@ function ConversationsView({
             </Badge>
             {/* FIX 2026-07-08: badge visible + switch per-lead del bot,
                 accesible desde la vista inline de conversaciones (no
-                solo desde el drawer). */}
+                solo desde el drawer). Sprint v15 PR #1: el color del badge
+                refleja la razón de la pausa (keyword / semantic / manual). */}
             {lead && botPaused && (
-              <Badge tone="warning">🤖 bot en pausa</Badge>
+              lead.botPausedReason === "keyword_escalation" ? (
+                <Badge tone="danger" title="Pausa por palabra clave">🚨 Pausa (Palabra Clave)</Badge>
+              ) : lead.botPausedReason === "ai_semantic_escalation" ? (
+                <Badge tone="warning" title="Pausa por inferencia IA">🤖 Pausa (Inferencia IA)</Badge>
+              ) : lead.botPausedReason === "manual" ? (
+                <Badge tone="info" title="Pausa manual">⏸️ Pausa (Manual)</Badge>
+              ) : (
+                <Badge tone="warning" title="Bot pausado">🤖 bot en pausa</Badge>
+              )
             )}
             {lead && (
               <div className="flex items-center gap-1.5">

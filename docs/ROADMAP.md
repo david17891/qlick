@@ -207,9 +207,10 @@ Las 3 fases siguientes se completaron durante el sprint 2026-06-27 → 2026-07-0
 ## Lecciones aprendidas (para futuras sesiones)
 
 - **Auditar el repo antes de aceptar un plan de agente**: el plan inicial de un agente genérico (producido por LLM) no chequea el repo. Antes de aceptar una propuesta, hacer `ls src/lib/`, `grep -r "Payment"` y similares. En la sesión del 2026-06-26 descubrimos que `src/lib/payments/` ya existía y duplicamos trabajo hasta que hicimos una auditoría.
-- **Supabase SQL Editor NO maneja DO blocks con ALTER adentro**: los DO blocks simples corren, pero los que contienen `ALTER TABLE` no aplican los cambios. Usar siempre `ALTER TABLE` directo con `IF EXISTS` / `IF NOT EXISTS`. Esta es una limitación del SQL Editor de Supabase, no de Postgres puro.
+- **Supabase SQL Editor NO maneja DO blocks con ALTER adentro**: los DO blocks simples corren, pero los que contienen `ALTER TABLE` no aplican los cambios. Usar siempre `ALTER TABLE` directo con `IF EXISTS` / `IF NOT EXISTS`. Esta es una limitación del SQL Editor de Supabase, no de Postgres puro. **El camino canónico para DDL desde Mavis (Management API vía `scripts/apply-migration-management.mjs`) NO tiene esta limitación** — ejecuta DDL y DML en un solo batch sin copy/paste.
 - **Multi-agente: abstener por ahora**. Acordado con David: features de tamaño medio se hacen secuenciales en una sesión, documentadas en este roadmap. Para planes multi-agente, dividir en sub-tareas <8 archivos cada una o aceptar partial-state + post-mortem manual.
 - **Admin no puede testear el flujo de pagos**: por diseño, una cuenta admin no es student. Para E2E de pagos, crear una cuenta NO-admin o sacarla temporalmente del allowlist.
+- **Mavis NO ejecuta SQL con `pg` + pooler ni host directo. Camino canónico: Management API.** Validado 2026-07-11 que `POST https://api.supabase.com/v1/projects/{ref}/database/query` con `SUPABASE_ACCESS_TOKEN` ejecuta DDL/DML end-to-end. Pooler DNS intermitente + `SUPABASE_DB_PASSWORD` drift hacen que `scripts/exec-sql.mjs` no funcione. Cualquier MAVIS nuevo debe leer `docs/AGENT_SUPABASE_PROTOCOL.md` §11 antes de intentar correr SQL.
 
 ---
 

@@ -241,7 +241,9 @@ Ver `docs/HANDOFF_v0.8.0_FUNCIONAL.md` para el detalle completo del wizard Whats
 
 ## 🗄️ Database (Supabase `ugpejblymtbwtsoiykyj`)
 
-24 tablas en `public`. Sin cambios de schema en v0.9.0 (todo es a nivel de `src/lib` + presentación).
+**Camino de DDL desde Mavis: Management API** (`scripts/apply-migration-management.mjs`). Pooler (`pg` + 6543) y host directo (`db.{ref}.supabase.co:5432`) están rotos (ENOTFOUND/28P01). Ver `docs/AGENT_SUPABASE_PROTOCOL.md` §11 para el flujo canónico.
+
+~24 tablas en `public`. Sin cambios de schema en v0.9.0 (todo es a nivel de `src/lib` + presentación).
 
 Tablas que el CRM Inteligente v2.0 lee intensivamente:
 - `leads` — score, qualification, consent_to_contact, last_contacted_at, last_interaction_at

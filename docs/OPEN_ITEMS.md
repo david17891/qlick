@@ -47,6 +47,30 @@
 
 **Resumen:** 12 gaps cerrados (G-1, G-2, G-3, G-4, G-6, G-7, G-8, G-9, G-10, G-11, G-13, G-14, G-15). 4 pendientes (2 críticos: ninguno; 2 altos: G-5, G-12; 2 medios/bajos: G-16, G-17). Sesión 2026-07-04 ~16:30.
 
+### 0.6. Sesión 2026-07-11 — Desbloqueo de Supabase via Management API ✅
+
+**Síntoma:** Mavis no podía ejecutar SQL contra la DB de Qlick. `scripts/exec-sql.mjs` con pooler daba `ENOTFOUND` (DNS del pooler caído). Host directo con `SUPABASE_DB_PASSWORD` daba `28P01 password authentication failed`. 3+ regeneraciones de David no propagaron a vault ni a Windows env.
+
+**Causa raíz:** `vercel env pull` desencripta vars plain pero NO sensitive. `SUPABASE_PROJECT_REF` (que NO es sensitive) había quedado `""` en `.env.local` línea 19. Sin el project ref, ningún script podía construir la URL de Management API. `SUPABASE_ACCESS_TOKEN` SÍ estaba vigente y respondía 200 a `GET /v1/projects/{ref}`.
+
+**Fix aplicado:**
+1. Poblar `SUPABASE_PROJECT_REF="ugpejblymtbwtsoiykyj"` en `.env.local` (público, no es secreto).
+2. Poblar `SUPABASE_ACCESS_TOKEN="sbp_ae059089..."` en `.env.local` (mismo valor que ya estaba en `$env:User` y en `~/.mavis/api-box.env`).
+3. Crear `scripts/apply-migration-management.mjs` que usa `POST https://api.supabase.com/v1/projects/{ref}/database/query` con el access token.
+
+**Validación end-to-end (2026-07-11):**
+- `SELECT 1 AS ok, current_database() AS db` → `[{ok:1, db:"postgres"}]`.
+- `CREATE TYPE _test_apply_mgmt AS ENUM('a','b','c')` + `SELECT typname` + `DROP TYPE` → OK, sin errores, sin residuo.
+
+**Camino canónico ahora:** cualquier MAVIS que arranque con el workspace y vea `SUPABASE_PROJECT_REF` + `SUPABASE_ACCESS_TOKEN` en `.env.local` puede correr SQL via Management API. NO usar `exec-sql.mjs` (roto) ni host directo (drift). SQL Editor del dashboard es el fallback final.
+
+**Documentación actualizada:**
+- `docs/AGENT_SUPABASE_PROTOCOL.md` §11 (camino canónico).
+- `docs/SUPABASE_CONNECTION_BOOTSTRAP.md` (cinco vías, Management API es la canónica).
+- `~/.mavis/agents/mavis/memory/qlick-funnel.md` (sección drift ahora RESUELTO).
+- `~/.mavis/agents/mavis/memory/MEMORY.md` (bullet cross-project nuevo).
+- `~/.mavis/agents/mavis/memory/archive/qlick-supabase-2026-07-11.md` (entradas removidas archivadas).
+
 ### 0.5. Auditoría 2026-07-08 (pasada de revisión + reparación)
 
 **Sesión:** 2026-07-08 22:30. **Método:** lectura directa de código + grep por patrones peligrosos + `npm audit` + RLS coverage + git state. **Output:** `docs/AUDIT_REPORT_2026-07-08.md` con 6 secciones y todos los detalles. **Score:** 0 críticos, 1 HIGH no aplicado, 5 MEDIUM, 6 LOW.

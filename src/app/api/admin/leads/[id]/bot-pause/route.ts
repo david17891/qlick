@@ -123,17 +123,22 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     });
   }
 
-  // Update. Si activamos (true), seteamos timestamp + email del admin.
-  // Si desactivamos (false), limpiamos timestamp pero dejamos el email
+  // Update. Si activamos (true), seteamos timestamp + email del admin + reason='manual'.
+  // Si desactivamos (false), limpiamos timestamp + reason pero dejamos el email
   // para histórico (en DB queda claro quién fue el último en tocar).
+  // Sprint v15: la razón 'manual' es para pausas iniciadas por el operador desde CRM.
+  // Las pausas automáticas (regex/LLM) usan 'keyword_escalation' y 'ai_semantic_escalation'
+  // respectivamente y son seteadas en src/lib/whatsapp/bot-engine.ts (PR #2).
   const patch: Record<string, unknown> = {
     bot_paused: body.botPaused,
   };
   if (body.botPaused) {
     patch.bot_paused_at = new Date().toISOString();
     patch.bot_paused_by_email = admin.email ?? "unknown";
+    patch.bot_paused_reason = "manual";
   } else {
     patch.bot_paused_at = null;
+    patch.bot_paused_reason = null;
     // No limpiamos bot_paused_by_email — queda como "último que pausó".
   }
 

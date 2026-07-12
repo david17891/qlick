@@ -45,6 +45,7 @@ import {
 import type { LeadEventContext } from "@/lib/crm";
 import { formatDate, formatMXN } from "@/lib/utils";
 import { WhatsAppButton } from "@/components/contact/WhatsAppButton";
+import { AIBotFeedbackSection } from "@/components/crm/AIBotFeedbackSection";
 
 /**
  * Drawer (panel lateral) con el detalle completo de un lead.
@@ -686,11 +687,27 @@ export function LeadDetailDrawer({
               )}
               {/* FIX 2026-07-08: badge visible del estado del bot
                   per-lead. Cuando está pausado, el bot NO responde
-                  automáticamente este contacto. */}
+                  automáticamente este contacto. Sprint v15 PR #1: el badge
+                  muestra la razón de la pausa (keyword / semantic / manual)
+                  con color distinto. */}
               {realMode && currentLead.botPaused === true && (
-                <Badge tone="warning" title={`Bot pausado${currentLead.botPausedAt ? ` · ${new Date(currentLead.botPausedAt).toLocaleString("es-MX")}` : ""}`}>
-                  🤖 bot en pausa
-                </Badge>
+                currentLead.botPausedReason === "keyword_escalation" ? (
+                  <Badge tone="danger" title={`Pausa por palabra clave${currentLead.botPausedAt ? ` · ${new Date(currentLead.botPausedAt).toLocaleString("es-MX")}` : ""}`}>
+                    🚨 Pausa (Palabra Clave)
+                  </Badge>
+                ) : currentLead.botPausedReason === "ai_semantic_escalation" ? (
+                  <Badge tone="warning" title={`Pausa por inferencia IA${currentLead.botPausedAt ? ` · ${new Date(currentLead.botPausedAt).toLocaleString("es-MX")}` : ""}`}>
+                    🤖 Pausa (Inferencia IA)
+                  </Badge>
+                ) : currentLead.botPausedReason === "manual" ? (
+                  <Badge tone="info" title={`Pausa manual${currentLead.botPausedAt ? ` · ${new Date(currentLead.botPausedAt).toLocaleString("es-MX")}` : ""}`}>
+                    ⏸️ Pausa (Manual)
+                  </Badge>
+                ) : (
+                  <Badge tone="warning" title={`Bot pausado${currentLead.botPausedAt ? ` · ${new Date(currentLead.botPausedAt).toLocaleString("es-MX")}` : ""}`}>
+                    🤖 bot en pausa
+                  </Badge>
+                )
               )}
             </div>
             <h2 className="text-xl font-bold text-ink truncate">{currentLead.name}</h2>
@@ -1563,6 +1580,22 @@ export function LeadDetailDrawer({
               </div>
             )}
           </Section>
+
+          {/* SPRINT v15 PR #1: feedback para el agente IA. Solo en modo real
+              (en demo no hay reglas persistidas). Se monta debajo del
+              historial de chat porque el contexto es "lo que acaba de pasar
+              con este lead" → el operador educa al bot justo después de leer. */}
+          {realMode && (
+            <Section title="Educar al agente IA (Torre de Control)">
+              <AIBotFeedbackSection
+                eventScope={
+                  (eventContext ?? fetchedEventContext)?.eventSlug ??
+                  (eventContext ?? fetchedEventContext)?.eventId ??
+                  undefined
+                }
+              />
+            </Section>
+          )}
 
           {/* Sugerencias IA */}
           <Section title="Sugerencias del agente IA (demo)">

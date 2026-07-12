@@ -44,6 +44,48 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_bot_rules: {
+        Row: {
+          created_at: string
+          created_by: string
+          expires_at: string | null
+          id: string
+          instruction: string
+          is_active: boolean
+          metadata: Json
+          priority: number
+          scope: string
+          updated_at: string
+          usage_count: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string
+          expires_at?: string | null
+          id?: string
+          instruction: string
+          is_active?: boolean
+          metadata?: Json
+          priority?: number
+          scope?: string
+          updated_at?: string
+          usage_count?: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          expires_at?: string | null
+          id?: string
+          instruction?: string
+          is_active?: boolean
+          metadata?: Json
+          priority?: number
+          scope?: string
+          updated_at?: string
+          usage_count?: number
+        }
+        Relationships: []
+      }
       bot_context_overrides: {
         Row: {
           bot_name: string
@@ -1391,6 +1433,7 @@ export type Database = {
           bot_paused: boolean
           bot_paused_at: string | null
           bot_paused_by_email: string | null
+          bot_paused_reason: Database["public"]["Enums"]["bot_pause_reason"] | null
           consent_to_contact: boolean
           course_of_interest: string | null
           created_at: string
@@ -1419,6 +1462,7 @@ export type Database = {
           bot_paused?: boolean
           bot_paused_at?: string | null
           bot_paused_by_email?: string | null
+          bot_paused_reason?: Database["public"]["Enums"]["bot_pause_reason"] | null
           consent_to_contact?: boolean
           course_of_interest?: string | null
           created_at?: string
@@ -1447,6 +1491,7 @@ export type Database = {
           bot_paused?: boolean
           bot_paused_at?: string | null
           bot_paused_by_email?: string | null
+          bot_paused_reason?: Database["public"]["Enums"]["bot_pause_reason"] | null
           consent_to_contact?: boolean
           course_of_interest?: string | null
           created_at?: string
@@ -1851,6 +1896,7 @@ export type Database = {
       }
     }
     Enums: {
+      bot_pause_reason: "keyword_escalation" | "ai_semantic_escalation" | "manual"
       crm_task_status: "pending" | "completed" | "cancelled"
       event_attendee_source:
         | "check_in"
@@ -2047,6 +2093,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      bot_pause_reason: ["keyword_escalation", "ai_semantic_escalation", "manual"],
       crm_task_status: ["pending", "completed", "cancelled"],
       event_attendee_source: [
         "check_in",

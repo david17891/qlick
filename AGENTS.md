@@ -21,6 +21,8 @@ Plataforma LMS de cursos de marketing de Qlick Marketing Digital — Next.js
 - Audit voseo MX:       `npm run audit:voseo`          # detecta conjugaciones rioplatenses en templates/UI
 - Audit links:          `npm run audit:links`
 - Check Supabase env:   `npm run check:supabase`
+- Apply migration:       `node --env-file=.env.local scripts/apply-migration-management.mjs archivo.sql`  # camino canónico de DDL desde Mavis (Management API, ver docs/AGENT_SUPABASE_PROTOCOL.md §11)
+- Apply migration (preview): mismo comando + `--dry-run`
 - Seed demo data:       `npm run seed:demo` (idempotent; `seed:demo:reset`, `seed:demo:cleanup`)
 - Seed LMS courses:     `npm run seed:courses`         # 4 cursos + 12 módulos + 36 lecciones
 

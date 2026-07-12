@@ -730,16 +730,19 @@ export function EventDrawer({
             </Field>
           )}
 
-          {/* ────── Reglas del bot (Fase 7b) ────── */}
-          <fieldset className="border-t border-brand-100 pt-4 mt-2 space-y-3">
-            <legend className="text-xs font-bold uppercase tracking-wider text-brand-600 px-2">
-              🤖 Reglas del bot
-            </legend>
-            <p className="text-xs text-ink-muted px-1">
+          {/* ────── Reglas del bot (Fase 7b) — sprint v15: acordeón colapsado ────── */}
+          <details className="border-t border-brand-100 pt-4 mt-2 space-y-3">
+            <summary className="text-xs font-bold uppercase tracking-wider text-brand-600 px-2 cursor-pointer list-none">
+              🛠️ Reglas Locales Específicas de este Evento (Opcional — Complementan
+              la Torre de Control y están sujetas a las Reglas de Oro Globales)
+            </summary>
+            <p className="text-xs text-ink-muted px-1 pt-2">
               Personalidad y reglas que el bot sigue al responder preguntas
               sobre este evento. La <strong>description</strong> de arriba
-              ya es el contexto principal; estas reglas afinan el tono y los
-              límites.
+              ya es el contexto principal; estas reglas locales son un
+              <strong>complemento</strong> a las Reglas de Oro Globales que
+              administras desde la Torre de Control. Las Reglas de Oro
+              Globales prevalecen sobre estas locales si hay contradicción.
             </p>
             {/* Banner si el evento aún no tiene reglas: ahorra confusión
                 cuando el admin abre un evento viejo que nunca las tuvo. */}
@@ -787,7 +790,7 @@ export function EventDrawer({
                 disabled={saving}
               />
             </Field>
-          </fieldset>
+          </details>
         </div>
 
         <footer className="border-t border-brand-100 px-6 py-4 flex flex-col gap-3 bg-brand-50/30">

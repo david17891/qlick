@@ -335,8 +335,8 @@ export async function updateHandoffStatus(
       to: input.newStatus,
       lead_phone: prev.lead_phone,
     },
-    before: { status: prev.status } as unknown as Record<string, unknown>,
-    after: { status: input.newStatus } as unknown as Record<string, unknown>,
+    before: { status: prev.status } as Record<string, unknown>,
+    after: { status: input.newStatus } as Record<string, unknown>,
   });
 
   return { ok: true, note: `Handoff marcado como ${input.newStatus}.`, handoff: next };

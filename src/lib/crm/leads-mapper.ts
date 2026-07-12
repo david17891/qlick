@@ -106,6 +106,10 @@ export function mapLeadRowToLead(row: LeadRow): Lead {
     botPausedByEmail:
       (row as unknown as { bot_paused_by_email?: string | null })
         .bot_paused_by_email ?? null,
+    // Sprint v15 PR #1: razón de la pausa (keyword_escalation / ai_semantic_escalation / manual).
+    botPausedReason:
+      ((row as unknown as { bot_paused_reason?: string | null })
+        .bot_paused_reason ?? null) as Lead["botPausedReason"],
     // `message` no se expone en el tipo Lead (privacidad); queda en la DB.
     createdAt: row.created_at,
     updatedAt: row.updated_at,

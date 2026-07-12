@@ -43,6 +43,15 @@ const CACHE_KEY = "__qlickSystemSettingsCache";
 /** Llave canónica del flag dinámico principal. */
 export const KEY_DEEPSEEK_TOOLS_ENABLED = "deepseek_tools_enabled" as const;
 
+/**
+ * Llaves canónicas del sprint Torre de Control v15 (PR #1).
+ * `bot_global_mode` es la SSOT del modo del bot. Los otros dos son config
+ * de comportamiento del agente.
+ */
+export const KEY_BOT_GLOBAL_MODE = "bot_global_mode" as const;
+export const KEY_BOT_MAX_ACTIVE_RULES = "bot_max_active_rules" as const;
+export const KEY_BOT_CONTEXT_BLOCKS_CONFIG = "bot_context_blocks_config" as const;
+
 /** Tipo de la fila de system_settings (jsonb value). */
 type SettingValue = unknown;
 

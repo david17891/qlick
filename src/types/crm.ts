@@ -12,6 +12,10 @@
  * pensado para funcionar en modo demo (mock) y migrar después.
  */
 
+import type { Database } from "@/types/supabase";
+
+type BotPauseReason = Database["public"]["Enums"]["bot_pause_reason"];
+
 /* ------------------------------------------------------------------ */
 /* Catálogos base (uniones literales)                                  */
 /* ------------------------------------------------------------------ */
@@ -172,6 +176,11 @@ export interface Lead {
   botPausedAt?: string | null;
   /** Email del admin que pausó (audit). */
   botPausedByEmail?: string | null;
+  /**
+   * Sprint v15 PR #1: razón de la pausa (keyword_escalation / ai_semantic_escalation / manual).
+   * `null` cuando bot_paused = false. Migration: 20260711140000_bot_control_tower_v15.sql.
+   */
+  botPausedReason?: BotPauseReason | null;
 }
 
 /* ------------------------------------------------------------------ */

@@ -3216,3 +3216,76 @@ Type: deploy-relevant
 
 - **Coordinacion con otro agente:** Sesion paralela mvs_84fdd5764db0416195a07ed2f351c8cf (rama feat/event-reminders-whatsapp) hizo cross-branch accidental, sus archivos terminaron en mi working tree. Resolvimos via chat: yo no commitee sus archivos (event-reminders.ts, email/reminder.ts, templates/reminder.ts, vercel.json, tests/cron-event-reminders.test.mjs), los deje como modified para que los recupere al checkout de su rama. Mi commit cc03c0f se hizo por error en su rama (working tree estaba ahi) ‚Äî movido a feat/certificados-concept-c via reset --hard ea4f096 + cherry-pick 8454577.
 >>>>>>> feat/certificados-concept-c
+
+
+## 2026-07-11 ~20:38 ‚Äî Desbloqueo de Supabase via Management API (cambio de camino can√≥nico)
+
+- **Pregunta:** Mavis no pod√≠a ejecutar SQL contra la DB de Qlick. `scripts/exec-sql.mjs` con pooler daba `ENOTFOUND` (DNS del pooler ca√≠do, conocido). Host directo con `SUPABASE_DB_PASSWORD` daba `28P01 password authentication failed for user "postgres"`. 3+ regeneraciones de David no propagaron a `~/.mavis/api-box.env` ni a `$env:User`. La memory de Qlick ten√≠a la regla "SQL Editor > pelearse con auth drift" como fallback, lo que significaba que David ten√≠a que pegar SQL en el dashboard manualmente para cada migration. Esto bloque√≥ sprints previos (evento-reminders, cert-sprint, etc.) ‚Äî David aplic√≥ 5+ migrations a mano durante 2026-07-05/08/11.
+
+- **Decisi√≥n:** Validar que la Management API de Supabase funciona como camino alternativo. Diagn√≥stico con `node -e "fetch(...)" inline`:
+  1. `GET https://api.supabase.com/v1/projects/ugpejblymtbwtsoiykyj` con `SUPABASE_ACCESS_TOKEN` ‚Üí `200` (token vigente, contra la memory de "401 contra Management API" que era stale).
+  2. `POST /v1/projects/ugpejblymtbwtsoiykyj/database/query` con body `{"query":"SELECT 1"}` ‚Üí `201 [{ok:1, db:"postgres"}]` (endpoint ejecuta SQL real).
+  3. `POST` con `{"query":"CREATE TYPE _test AS ENUM('a','b','c'); SELECT typname; DROP TYPE _test;"}` ‚Üí `201`, sin errores, sin residuo en la DB (DDL funciona end-to-end).
+  
+  Causa ra√≠z del drift: `vercel env pull` desencripta vars plain pero NO sensitive, y `SUPABASE_PROJECT_REF` (que NO es sensitive) hab√≠a quedado `""` en `.env.local` l√≠nea 19. Sin el project ref, ning√∫n script pod√≠a construir la URL de Management API. El `SUPABASE_ACCESS_TOKEN` actual S√ç funcionaba desde hace meses, pero la memory no lo hab√≠a revalidado y recomendaba el camino equivocado.
+
+  Fix aplicado:
+  1. Poblar `SUPABASE_PROJECT_REF="ugpejblymtbwtsoiykyj"` en `.env.local` (p√∫blico, no es secreto).
+  2. Poblar `SUPABASE_ACCESS_TOKEN="sbp_ae059089..."` en `.env.local` (mismo valor que ya estaba en `$env:User` y en `~/.mavis/api-box.env`).
+  3. Crear `scripts/apply-migration-management.mjs` que usa Management API para DDL/DML.
+
+- **Raz√≥n:** El pooler de Supabase tiene DNS intermitente (memoria 2026-07-05). El `SUPABASE_DB_PASSWORD` tiende a drift contra el real de Supabase (memoria 2026-07-05, 3+ regeneraciones no resolvieron). La Management API con `SUPABASE_ACCESS_TOKEN` es el mismo token que la Management API web ‚Äî un solo token para SQL y para automatizar la DB. M√°s simple, m√°s r√°pido, sin copy/paste en el dashboard.
+
+- **Impacto:** Cualquier MAVIS que arranque con el workspace puede ahora correr SQL contra la DB de Qlick directamente con `node --env-file=.env.local scripts/apply-migration-management.mjs archivo.sql`. David ya no tiene que pegar SQL en el dashboard para cada migration. Aplica tambi√©n a cualquier proyecto con Supabase (memory cross-project). Documentaci√≥n actualizada: `docs/AGENT_SUPABASE_PROTOCOL.md` ¬ß11, `docs/SUPABASE_CONNECTION_BOOTSTRAP.md`, `memory/qlick-funnel.md`, `memory/MEMORY.md`, `memory/archive/qlick-supabase-2026-07-11.md`.
+
+- **Trigger:** David pidi√≥ "como quiero que puedas implementar todo, necesitamos resolver un problema que hemos tratado y no hemos logrado, no hemos podido lograr que tu uses bien supabase, y yo tengo que correr los sql". La sesi√≥n previa hab√≠a intentado 3+ regeneraciones sin √©xito. Este intento fue diferente: en vez de seguir la memory ("Pooler ‚Üí host directo ‚Üí SQL Editor"), prob√© Management API con `node -e` inline antes de declarar "no funciona". Resultado: 5 minutos de diagn√≥stico, no m√°s SQL pegado a mano.
+
+- **Riesgo operacional:** El `SUPABASE_ACCESS_TOKEN` ahora est√° en `.env.local` (estaba en `$env:User` y en el vault). Si la sesi√≥n Mavis se ve comprometida, el atacante tiene SQL completo v√≠a Management API. Para revocar: borrar la l√≠nea de `SUPABASE_ACCESS_TOKEN` en `.env.local` + regenerar el token en `https://supabase.com/dashboard/account/tokens` + sincronizar las 3 ubicaciones (`.env.local`, `$env:User`, vault).
+
+- **Pendiente:** Validar la migration del sprint v15 (Torre de Control AI) con el nuevo camino. Si funciona end-to-end con la migration grande (CREATE TYPE + CREATE TABLE + ALTER TABLE + CREATE INDEX + INSERTs), el sprint se puede implementar sin que David pegue SQL a mano.
+
+
+## 2026-07-11 ~23:50 ó Sprint v15 PR #1 cerrado (Torre de Control Bot + MÈtricas)
+
+- **Pregunta:** David aprobÛ el plan v15 final con segmentaciÛn 2 PRs y dio luz verde: "Adelante". El sprint es la Torre de Control AI & Agente Comercial S˙per Ejecutivo: el operador del CRM ahora ve 3 modos del bot (Socr·tico v2 / Socr·tico sin Herramientas / S˙per Ejecutivo ??), edita 6 bloques de contexto, crea/edita/apaga reglas de oro del agente, y observa 4 mÈtricas (mensajes 24h/7d, leads pausados, razones de pausa, modo global). El camino DDL ya estaba desbloqueado (entrada anterior 20:38) ó solo faltaba ejecutar.
+
+- **DecisiÛn:** Implementar PR #1 de manera surgical, dejando TODO el "cerebro" (system prompt, guardrails, event-context-loader, stripEscalateFlag) para PR #2. PR #1 entrega ˙nicamente:
+  1. **DDL** (supabase/migrations/20260711140000_bot_control_tower_v15.sql): CREATE TYPE ot_pause_reason + CREATE TABLE i_bot_rules + ALTER TABLE leads ADD COLUMN ot_paused_reason + CHECK constraint + INSERTs de 2 modos. Aplicada via scripts/apply-migration-management.mjs (Management API) en ~30s.
+  2. **Typegen**: el regen autom·tico genera Json & Record<string, unknown> (intersecciÛn) que rompe 6 lÌneas en cÛdigo viejo con Record<string, unknown> casts. DecisiÛn: restaurar typegen viejo (66KB) y agregar manualmente solo i_bot_rules (Row/Insert/Update) + ot_pause_reason enum + leads.bot_paused_reason. Costo: 1 sesiÛn de typegen manual; beneficio: cero s never en cÛdigo nuevo y cero falsos positivos en cÛdigo viejo.
+  3. **Server lib** (src/lib/ai/ai-bot-rules-server.ts): CRUD con cachÈ 30s + validaciÛn alidateRuleMetadata (discount_percent?valid_until) + isRuleActiveAt.
+  4. **Server actions** (src/lib/ai/ai-bot-rules-actions.ts): createBotRuleAction/updateBotRuleAction/deleteBotRuleAction/	oggleBotRuleAction/etchActiveRulesAction, todas con equireAdmin() excepto fetch.
+  5. **UI Admin** (src/components/admin/BotConfigTab.tsx, ~600 lÌneas, Client Component): banner PR #1, 3 tarjetas de modo (la tercera ??), 6 toggles de bloques, tabla CRUD con modal de nueva regla, 4 tarjetas mÈtricas consumiendo /api/admin/bot/stats, acordeÛn "Detalles TÈcnicos".
+  6. **UI CRM** (src/components/crm/LeadDetailDrawer.tsx + src/components/crm/CRMView.tsx): badges de pausa coloreados seg˙n razÛn (?? keyword / ?? semantic / ?? manual) y nuevo <AIBotFeedbackSection /> montado debajo del historial de chat en modo real.
+  7. **API mÈtricas** (src/app/api/admin/bot/stats/route.ts): 	otal_bot_messages_24h/7d, paused_leads_count, pause_reasons agrupado, ot_global_mode, ot_max_active_rules. Protegido con equireAdmin().
+  8. **Legacy** (src/app/admin/system/bot-v2/page.tsx): redirect 307 a /admin?tab=bot para que URLs viejas sigan funcionando.
+  9. **EventDrawer** (src/components/events/EventDrawer.tsx): <fieldset> ? <details> colapsado, copy veraz "Reglas Locales EspecÌficas de este Evento (Opcionales ó Complementan la Torre de Control y est·n sujetas a las Reglas de Oro Globales)".
+
+- **RazÛn:** Mantener el principio "1 PR = 1 cambio lÛgico" del AGENTS.md. El sprint completo es muy grande para 1 PR (mezcla DDL, typegen, server libs, UI admin, UI CRM, API, legacy, eventos) y revierte el riesgo: si PR #1 rompe algo, PR #2 puede arreglarse sobre el tronco. El modo super_executive se renderiza ?? sin activable (cumple I-FINAL-7 del checklist FINAL: no se puede activar un modo cuyo uildSuperExecutivePrompt a˙n no existe).
+
+- **Impacto:** David puede ahora:
+  1. Entrar a /admin?tab=bot y ver la Torre de Control.
+  2. Cambiar entre los 2 modos sembrados sin reiniciar nada.
+  3. Crear hasta ot_max_active_rules (default 20) reglas de oro con scope global o event:<slug>.
+  4. Monitorear mensajes auto-enviados por el bot y leads pausados en las 4 tarjetas.
+  5. Ver badges coloreados en CRM cuando un lead est· pausado (con razÛn) ó clave para entender por quÈ el bot no responde.
+  6. Educar al agente desde el drawer del lead con <AIBotFeedbackSection /> (inserta regla con scope=event:<slug> o scope=global).
+
+  ValidaciÛn: type-check verde ∑ lint verde ∑ 1144/1144 tests verde ∑ build verde ∑ audit:links verde ∑ check:supabase verde ∑ audit:migrations "ninguna tabla pendiente, ninguna columna pendiente". 78 tests m·s que el target original 1066/1066 (suite creciÛ org·nicamente entre sprints).
+
+- **Trigger:** David dijo "Adelante" despuÈs de revisar el plan v15 final (10 rondas de revisiÛn contra el plan original). La causa inmediata fue desbloquear el camino SQL (entrada anterior 20:38) ó sin Management API este PR no se podÌa ejecutar sin que David pegara SQL a mano. DecisiÛn arquitectÛnica: "PR #1 solo siembra lo que el operador puede tocar HOY. Lo dem·s, PR #2." Aplica a futuros sprints: nunca sembrar un modo cuyo prompt no existe (revierte el bug del sprint D-007 donde el operador podÌa activar super_executive y el bot respondÌa con el prompt socr·tico viejo).
+
+- **Riesgo operacional:** El typegen restaurado a mano puede drift si se corre 
+pm run typegen en esta rama ó agregar a docs/OPEN_ITEMS.md como nota para sprints futuros: "si necesitas regen, hazlo en rama separada y cherry-pick solo las lÌneas nuevas de ai_bot_rules + bot_pause_reason". src/types/supabase.ts es la SSOT del schema ó el patch manual es fr·gil. Plan: en PR #2, mover el patch a un script scripts/patch-supabase-typegen.mjs idempotente.
+
+- **Pendiente PR #2** (cerebro del agente):
+  1. Extender AgentContext con eventOfferType, eventRules, isFreeEvent (en src/lib/ai/agent-provider.ts).
+  2. Exportar EventOfferType desde el mismo archivo (evitar imports circulares).
+  3. Implementar classifyEventType(evt) en src/lib/ai/event-context-loader.ts con prioridad price > 0 ? paid, price === 0 && contains "masterclass" ? ree_masterclass, else unknown (defensivo).
+  4. Implementar stripEscalateFlag(reply) en src/lib/ai/guardrails.ts que limpia [[ESCALATE_HUMAN]] del output antes de enviar.
+  5. Actualizar alidateAgentReply para excluir "gratis" de FORBIDDEN_PHRASES si context.isFreeEvent === true (no se rompe retrocompat: default es false).
+  6. Crear uildSuperExecutivePrompt() en src/lib/ai/agent-prompts.ts con cl·usula "JERARQUÕA DE REGLAS: LA REGLA DE ORO GLOBAL PREVALECE" + 3 ramas (free_masterclass / paid_workshop / b2b_service) + unknown defensivo.
+  7. Modificar src/lib/ai/deepseek-provider.ts para dispatchear entre uildSystemPrompt / uildSuperExecutivePrompt; si ot_global_mode === 'socratic_no_tools_v1', forzar 	ools_enabled = false.
+  8. Modificar src/lib/whatsapp/bot-engine.ts para extraer ctiveEvent.event_rules.rules, consolidar isFreeEvent, ejecutar 3 capas de escalaciÛn (regex ? LLM flag ? guardrail), stripEscalateFlag post-AgentResult, metadata.auto_sent_source: 'bot'.
+  9. Crear 	ests/ai-bot-control-tower.test.mjs con casos: primacÌa global, complemento local, isFreeEvent permite "gratis", classifyEventType con price>0, stripEscalateFlag limpia.
+  10. Siembra en PR #2 de ot_global_mode = 'super_executive' en system_settings (vÌa migration incremental o action de admin).
+  11. ADR D-025 retroactivo: agregar entrada a docs/DECISIONS.md + actualizar docs/AI_AGENT_GUARDRAILS.md con matriz de auto-envÌo.
