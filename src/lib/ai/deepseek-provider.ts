@@ -99,10 +99,21 @@ const DEFAULT_TEMPERATURE_PRO = 0.3;
 const DEFAULT_MAX_TOKENS = 500;
 const DEFAULT_MAX_TOKENS_PRO = 1200;
 
-/** Tareas que SIEMPRE inician con Pro (outbound sensible, baja tolerancia a error). */
-const PRO_PRIORITY_TASKS: ReadonlySet<AgentTask> = new Set<AgentTask>([
-  "suggest_reply"
-]);
+/**
+ * Sprint v0.9.7 (Switch Flash/Pro): PRO_PRIORITY_TASKS queda VACÍO.
+ *
+ * Antes (sprint v15 PR #2.5a), `suggest_reply` iniciaba siempre con Pro
+ * (deepseek-reasoner) por la baja tolerancia a error del outbound.
+ * En la práctica eso significaba ~6s de latencia y costo 4x mayor en
+ * cada respuesta del bot, aunque Flash (deepseek-chat) cubría el 95%
+ * de los casos con <1.5s.
+ *
+ * Ahora el default es Flash. La escalación a Pro sigue automática
+ * (vía `chooseTier` con flashOutcome) si Flash falla o devuelve
+ * confianza < threshold. El admin o el simulador pueden forzar Pro
+ * con `context.tierOverride = "pro"` (ver `AgentContext.tierOverride`).
+ */
+const PRO_PRIORITY_TASKS: ReadonlySet<AgentTask> = new Set<AgentTask>();
 
 /* ------------------------------------------------------------------ */
 /* Tool loop — constantes duras del Sprint 2 sub-sprint 2C            */
@@ -259,8 +270,21 @@ function readTierConfig(tier: DeepSeekTier): TierConfig {
  */
 function chooseTier(
   task: AgentTask,
-  flashOutcome?: AgentResult | undefined
+  flashOutcome?: AgentResult | undefined,
+  context?: AgentContext
 ): DeepSeekTier {
+  // Sprint v0.9.7 (Switch Flash/Pro): override explícito del tier
+  // por el caller (admin via system_settings, o simulador via request).
+  // Si está presente, se respeta ESTRICTAMENTE: ni siquiera la heurística
+  // de escalación flash→pro se aplica. El caller sabe lo que hace.
+  if (context?.tierOverride === "flash") return "flash";
+  if (context?.tierOverride === "pro") return "pro";
+
+  // Compatibilidad con el contrato anterior: tareas marcadas como
+  // "PRO_PRIORITY_TASKS" inician con Pro. Hoy el Set está vacío
+  // (sprint v0.9.7), pero dejamos la rama por si en el futuro se
+  // decide forzar Pro en alguna task específica (ej. escalación a
+  // humano con cálculo de urgencia).
   if (PRO_PRIORITY_TASKS.has(task)) {
     return "pro";
   }
@@ -907,7 +931,9 @@ export const deepseekAgentProvider: AIAgentProvider = {
     }
 
     // ── Path Sprint 1 (compatibilidad total) ──
-    const initialTier = chooseTier(task);
+    // Sprint v0.9.7: pasamos `context` para que chooseTier respete
+    // `context.tierOverride` (override explícito del admin o del simulador).
+    const initialTier = chooseTier(task, undefined, context);
     const isFirstMessage =
       typeof context.isFirstMessage === "boolean"
         ? context.isFirstMessage
@@ -937,7 +963,10 @@ export const deepseekAgentProvider: AIAgentProvider = {
         ...result,
         task
       };
-      const nextTier = chooseTier(task, fakeFlashOutcome);
+      // Sprint v0.9.7: pasamos `context` para que la escalación
+      // también respete `tierOverride`. Si el override es "flash",
+      // NO escala aunque Flash falle (caller sabe lo que hace).
+      const nextTier = chooseTier(task, fakeFlashOutcome, context);
       if (nextTier === "pro" && result.provider === "deepseek") {
         const escalatedRaw = await callDeepSeekChat({
           tier: "pro",
@@ -1004,12 +1033,18 @@ export const deepseekAgentProvider: AIAgentProvider = {
 // Helpers exportados (para tests y para debug)
 // ---------------------------------------------------------------------------
 
-/** Visible para tests: dado un task (y opcionalmente un flashOutcome previo), que tier elegimos? */
+/**
+ * Visible para tests: dado un task (y opcionalmente un flashOutcome previo
+ * o un context con tierOverride), qué tier elegimos?
+ *
+ * Sprint v0.9.7: agrega `context?` opcional para testear el override.
+ */
 export function _chooseTierForTest(
   task: AgentTask,
-  flashOutcome?: AgentResult
+  flashOutcome?: AgentResult,
+  context?: AgentContext
 ): DeepSeekTier {
-  return chooseTier(task, flashOutcome);
+  return chooseTier(task, flashOutcome, context);
 }
 
 /** Visible para tests: leer la config de un tier sin hacer fetch. */

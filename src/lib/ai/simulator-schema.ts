@@ -142,7 +142,13 @@ export function parseSimulateRequest(raw: unknown):
       leadContext,
       ignoreLeadPause: body.ignoreLeadPause === true,
       includeEventContext: body.includeEventContext !== false,
-      includeInjectedRules: body.includeInjectedRules !== false
+      includeInjectedRules: body.includeInjectedRules !== false,
+      // Sprint v0.9.7: tierOverride opcional. Default null (Flash con
+      // escalación automática).
+      tierOverride:
+        body.tierOverride === "flash" || body.tierOverride === "pro"
+          ? body.tierOverride
+          : null
     }
   };
 }

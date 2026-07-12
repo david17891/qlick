@@ -178,7 +178,11 @@ afterEach(() => {
  * 1. suggest_reply arranca directo en Pro
  * ───────────────────────────────────────────────────────────── */
 
-test("switch LLM: suggest_reply prioriza Pro y NO llama a Flash primero", async () => {
+test("switch LLM: suggest_reply ahora prioriza Flash (sprint v0.9.7)", async () => {
+  // FIX 2026-07-12 (sprint v0.9.7 Switch Flash/Pro): `suggest_reply`
+  // ya NO inicia con Pro automáticamente. PRO_PRIORITY_TASKS quedó
+  // VACÍO para reducir latencia de ~6s a <1.5s y ahorrar 4x costo.
+  // Default ahora es Flash con escalación automática a Pro.
   fetchMock.mockResponse(200, {
     choices: [
       { message: { role: "assistant", content: "Te cuento sobre el curso..." } }
@@ -193,14 +197,14 @@ test("switch LLM: suggest_reply prioriza Pro y NO llama a Flash primero", async 
     }
   );
 
-  assert.equal(result.ok, true, "Pro responde OK");
-  assert.equal(fetchMock.callCount(), 1, "Solo 1 llamada (a Pro, no Flash)");
+  assert.equal(result.ok, true, "Flash responde OK");
+  assert.equal(fetchMock.callCount(), 1, "Solo 1 llamada (a Flash, no Pro)");
   assert.equal(
     fetchMock.lastCallModel(),
-    "deepseek-reasoner",
-    "Modelo llamado: Pro"
+    "deepseek-chat",
+    "Modelo llamado: Flash (deepseek-chat)"
   );
-  assert.match(result.note, /tier=pro/, "note marca tier=pro");
+  assert.match(result.note, /tier=flash/, "note marca tier=flash");
 });
 
 /* ─────────────────────────────────────────────────────────────
@@ -321,9 +325,12 @@ test("switch LLM: Flash + Pro fallan → fallback textual", async () => {
  * 6. _chooseTierForTest refleja la logica de decision
  * ───────────────────────────────────────────────────────────── */
 
-test("_chooseTierForTest: suggest_reply siempre arranca en Pro", () => {
+test("_chooseTierForTest: suggest_reply ahora arranca en Flash (sprint v0.9.7)", () => {
+  // FIX 2026-07-12 (sprint v0.9.7 Switch Flash/Pro): PRO_PRIORITY_TASKS
+  // quedó vacío. suggest_reply ya NO fuerza Pro por default.
+  // Default: Flash con escalación Pro automática si Flash falla.
   const tier = _chooseTierForTest("suggest_reply");
-  assert.equal(tier, "pro");
+  assert.equal(tier, "flash");
 });
 
 test("_chooseTierForTest: classify_intent sin flashOutcome arranca en Flash", () => {

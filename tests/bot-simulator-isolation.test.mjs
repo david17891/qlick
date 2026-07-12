@@ -302,3 +302,67 @@ test("T7: el simulador corta el flow cuando el lead tiene bot_paused=true", asyn
   globalThis.__simTestState.leadPaused = false;
   globalThis.__simTestState.throwIfProviderCalled = false;
 });
+
+/* ================================================================== */
+/*  T8-T10. Tests del switch de tier Flash/Pro (Sprint v0.9.7)        */
+/* ================================================================== */
+
+test("T8: tierOverride='flash' se propaga al AgentContext.tierOverride", async () => {
+  globalThis.__simTestState.leadPaused = false;
+  globalThis.__simTestState.throwIfProviderCalled = false;
+  const { simulateConversationTurn } = await import(SIMULATOR_URL);
+  await simulateConversationTurn({
+    message: "Hola",
+    history: [],
+    modeOverride: "socratic_autopilot_v2",
+    tierOverride: "flash",
+    includeEventContext: false,
+    includeInjectedRules: false,
+    leadContext: null
+  });
+  assert.equal(
+    globalThis.__simTestState.lastContext?.tierOverride,
+    "flash",
+    "tierOverride='flash' debe propagarse al AgentContext"
+  );
+});
+
+test("T9: tierOverride='pro' se propaga al AgentContext.tierOverride", async () => {
+  globalThis.__simTestState.leadPaused = false;
+  globalThis.__simTestState.throwIfProviderCalled = false;
+  const { simulateConversationTurn } = await import(SIMULATOR_URL);
+  await simulateConversationTurn({
+    message: "Hola",
+    history: [],
+    modeOverride: "super_executive",
+    tierOverride: "pro",
+    includeEventContext: false,
+    includeInjectedRules: false,
+    leadContext: null
+  });
+  assert.equal(
+    globalThis.__simTestState.lastContext?.tierOverride,
+    "pro",
+    "tierOverride='pro' debe propagarse al AgentContext"
+  );
+});
+
+test("T10: tierOverride ausente o null NO se propaga (provider decide por default)", async () => {
+  globalThis.__simTestState.leadPaused = false;
+  globalThis.__simTestState.throwIfProviderCalled = false;
+  const { simulateConversationTurn } = await import(SIMULATOR_URL);
+  await simulateConversationTurn({
+    message: "Hola",
+    history: [],
+    modeOverride: "socratic_autopilot_v2",
+    // tierOverride ausente: el provider decide Flash + escalación Pro.
+    includeEventContext: false,
+    includeInjectedRules: false,
+    leadContext: null
+  });
+  assert.equal(
+    globalThis.__simTestState.lastContext?.tierOverride,
+    undefined,
+    "tierOverride ausente debe dejar el campo undefined en el context"
+  );
+});

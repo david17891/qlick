@@ -106,6 +106,44 @@ test("S1.8: history > 50 mensajes es rechazado", async () => {
   if (!r.ok) assert.ok(r.error.includes("50"));
 });
 
+test("S1.9 (Sprint v0.9.7): tierOverride='flash' es aceptado", async () => {
+  const { parseSimulateRequest } = await import(SCHEMA_URL);
+  const r = parseSimulateRequest({
+    message: "hola",
+    tierOverride: "flash"
+  });
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.equal(r.value.tierOverride, "flash");
+  }
+});
+
+test("S1.10 (Sprint v0.9.7): tierOverride='pro' es aceptado", async () => {
+  const { parseSimulateRequest } = await import(SCHEMA_URL);
+  const r = parseSimulateRequest({
+    message: "hola",
+    tierOverride: "pro"
+  });
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.equal(r.value.tierOverride, "pro");
+  }
+});
+
+test("S1.11 (Sprint v0.9.7): tierOverride='ultra' (fuera del enum) se normaliza a null", async () => {
+  const { parseSimulateRequest } = await import(SCHEMA_URL);
+  const r = parseSimulateRequest({
+    message: "hola",
+    tierOverride: "ultra"
+  });
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    // Cualquier valor fuera del enum se trata como null (no error)
+    // para que el cliente no se rompa con valores legacy.
+    assert.equal(r.value.tierOverride, null);
+  }
+});
+
 /* ================================================================== */
 /*  S2. Estructura del route.ts                                         */
 /* ================================================================== */

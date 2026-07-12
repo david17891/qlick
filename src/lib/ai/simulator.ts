@@ -90,6 +90,15 @@ export interface SimulateRequest {
   includeEventContext?: boolean;
   /** Si true, carga las reglas de oro activas. Default true. */
   includeInjectedRules?: boolean;
+  /**
+   * Sprint v0.9.7 (Switch Flash/Pro): override del tier del modelo.
+   * `null` o ausente = default Flash con escalación automática.
+   * `"flash"` = fuerza deepseek-chat (rápido).
+   * `"pro"` = fuerza deepseek-reasoner (lento pero más preciso).
+   * El simulador propaga este valor al `AgentContext.tierOverride`
+   * que el provider deepseek respeta estrictamente.
+   */
+  tierOverride?: "flash" | "pro" | null;
 }
 
 export interface InjectedRule {
@@ -341,6 +350,13 @@ export async function simulateConversationTurn(
     ...(leadProfile ? { leadProfile } : {}),
     // Override del system prompt (clave del aislamiento de modo).
     systemPromptOverride: systemPrompt,
+    // Sprint v0.9.7 (Switch Flash/Pro): propagamos el override del tier
+    // al provider. Si está ausente o null, el provider usa Flash con
+    // escalación automática a Pro. Si es "flash" o "pro", se respeta
+    // ESTRICTAMENTE (incluso en la escalación flash→pro).
+    ...(req.tierOverride === "flash" || req.tierOverride === "pro"
+      ? { tierOverride: req.tierOverride }
+      : {}),
     // NO pasamos supabase. Esto evita que el provider grabe en
     // `bot_usage_daily` y que las tools intenten persistir en Supabase.
     // (El path 2C con tools tiene su propio flujo; ver nota abajo.)

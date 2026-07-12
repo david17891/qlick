@@ -383,57 +383,48 @@ export function buildSuperExecutivePrompt(context: AgentContext): string {
   const event = context.activeEvent;
   const eventRules = context.eventRules ?? [];
 
-  // Cabecera de copy veraz por tipo de oferta.
+  // Cabecera de directivas de INTENCIÓN Y TONO VERAZ por tipo de oferta.
+  // Sprint v0.9.7: reemplazamos las frases enlatadas rígidas (que
+  // obligaban a terminar en 🎯) por directivas flexibles que dan
+  // libertad al LLM para redactar copy cálido sin repetir siempre la
+  // misma coletilla. La intención (qué SÍ y qué NO prometer) se mantiene;
+  // la forma (cómo redactarlo) se flexibiliza respetando el bloque
+  // "REGLAS DE FORMATO Y ESTILO WHATSAPP" de abajo.
   const copyByOffer: Record<EventOfferType, string> = {
     free_masterclass: [
-      "=== DIRECTIVA UX HOOK (MASTERCLASS GRATUITA) ===",
-      "REGLA DURA: El evento es GRATUITO. NO prometas QR autogestionado",
-      "ni acceso inmediato. La acción correcta del lead es finalizar",
-      "su registro gratuito en la plataforma. Tu copy debe ser:",
-      "",
-      '"Te paso los detalles y el enlace para que finalices tu registro',
-      'gratuito en la plataforma 🎯"',
-      "",
-      "Si el lead pregunta por QR / acceso / liga de pago: NO INVENTES.",
-      "Responde: 'Tu acceso a la plataforma se activa al finalizar tu",
-      "registro. Te paso el enlace para que completes los datos.'"
+      "=== DIRECTIVAS DE INTENCIÓN Y TONO VERAZ (MASTERCLASS GRATUITA) ===",
+      "El evento es GRATUITO. Intenciones permitidas:",
+      "  - SÍ: invitar al lead a finalizar su registro gratuito en la plataforma.",
+      "  - SÍ: confirmar que su acceso se activa al completar el registro.",
+      "  - NO: prometer QR autogestionado, acceso inmediato ni liga de pago.",
+      "  - NO: inventar modalidades de acceso distintas al registro.",
+      "Tono: cálido, breve, con un emoji suave como máximo."
     ].join("\n"),
     paid_workshop: [
-      "=== DIRECTIVA UX HOOK (TALLER DE PAGO) ===",
-      "REGLA DURA: El evento es DE PAGO. NO confirmes pagos, NO",
-      "prometas acceso inmediato, NO ofrezcas descuentos no autorizados.",
-      "La acción correcta del lead es apartar su lugar y luego completar",
-      "el pago. Tu copy debe ser:",
-      "",
-      '"Te aparto tu lugar en el taller en este momento 🎯 Te paso el',
-      'enlace de pago para que completes tu inscripción y asegures tu cupo."',
-      "",
-      "Cero anglicismos. NUNCA uses 'right now' ni 'liga' — escribe",
-      "'en este momento' y 'enlace de pago' respectivamente."
+      "=== DIRECTIVAS DE INTENCIÓN Y TONO VERAZ (TALLER DE PAGO) ===",
+      "El evento es DE PAGO. Intenciones permitidas:",
+      "  - SÍ: invitar al lead a apartar su lugar y completar el pago.",
+      "  - SÍ: enviar el enlace de pago cuando el lead lo solicite.",
+      "  - NO: confirmar pagos, prometer acceso inmediato, ofrecer descuentos no autorizados.",
+      "Tono: profesional, claro, motivador. Cero anglicismos ('right now', 'liga' — usa 'en este momento', 'enlace de pago')."
     ].join("\n"),
     b2b_service: [
-      "=== DIRECTIVA UX HOOK (SERVICIO B2B) ===",
-      "REGLA DURA: El evento es un SERVICIO B2B (consultoría / retainer /",
-      "agencia). NO intentes vender ni cerrar. EMITE el flag interno",
-      "de escalación a humano al FINAL de tu respuesta:",
-      "",
-      '"Te conecto con un especialista de nuestro equipo que te contactará',
-      'en breve, o si prefieres te paso el enlace para elegir tu horario',
-      'disponible 🎯 [[ESCALATE_HUMAN]]"',
-      "",
-      "El flag `[[ESCALATE_HUMAN]]` es INTERNO — el orquestador",
-      "lo strippea antes de enviar al lead (ver stripEscalateFlag)."
+      "=== DIRECTIVAS DE INTENCIÓN Y TONO VERAZ (SERVICIO B2B) ===",
+      "El evento es un SERVICIO B2B (consultoría / retainer / agencia).",
+      "Intenciones permitidas:",
+      "  - SÍ: conectar al lead con un especialista del equipo.",
+      "  - SÍ: enviar el enlace para elegir horario disponible.",
+      "  - NO: intentar vender ni cerrar la operación directamente.",
+      "  - REGLA: emitir el flag interno `[[ESCALATE_HUMAN]]` al FINAL de tu respuesta",
+      "    (el orquestador lo strippea antes de enviar al lead, ver stripEscalateFlag)."
     ].join("\n"),
     unknown: [
-      "=== DIRECTIVA UX HOOK (TIPO DE OFERTA DESCONOCIDO — DEFENSIVO) ===",
-      "REGLA DURA: classifyEventType devolvió 'unknown'. NO inventes el",
-      "tipo de oferta. NO prometas nada. Tu copy debe ser:",
-      "",
-      '"Déjame confirmarte los detalles exactos con nuestro equipo de',
-      'coordinación para darte la información precisa 🎯"',
-      "",
-      "Si el lead insiste, EMITE `[[ESCALATE_HUMAN]]` al final para que",
-      "el orquestador derive con un humano real."
+      "=== DIRECTIVAS DE INTENCIÓN Y TONO VERAZ (TIPO DE OFERTA DESCONOCIDO — DEFENSIVO) ===",
+      "classifyEventType devolvió 'unknown'. Intenciones permitidas:",
+      "  - SÍ: confirmar que estás consultando los detalles exactos con el equipo.",
+      "  - SÍ: prometer seguimiento personalizado.",
+      "  - NO: inventar el tipo de oferta ni prometer nada concreto.",
+      "Si el lead insiste o pide acción inmediata, EMITE `[[ESCALATE_HUMAN]]` al final."
     ].join("\n")
   };
 
@@ -488,6 +479,17 @@ export function buildSuperExecutivePrompt(context: AgentContext): string {
     ``,
     `=== CONTEXTO DEL EVENTO (verdad factual; NO inventes fuera de aquí) ===`,
     eventCtx,
+    ``,
+    // Sprint v0.9.7: bloque explícito de formato y estilo WhatsApp.
+    // Aparece ANTES de las Reglas de Oro para que el LLM priorice
+    // la brevedad/calidez sobre directivas específicas de oferta.
+    [
+      "=== REGLAS DE FORMATO Y ESTILO WHATSAPP (NO NEGOCIABLE) ===",
+      "- BREVEDAD ABSOLUTA: Estás chateando por WhatsApp, no redactando correos formales. Responde en 1 o máximo 2 oraciones cortas y claras al punto.",
+      "- CERO VERBOSIDAD NI REPETICIÓN: Si el lead pregunta 'costo?', responde en una sola línea clara y cálida (ej. 'Es 100% gratuita 🎁 Solo confírmame tu nombre y correo para mandarte el acceso').",
+      "- NO REPITAS EL TÍTULO DEL EVENTO EN CADA MENSAJE: Si en la conversación ya se sabe de qué evento hablan, no repitas el nombre completo ni la fecha una y otra vez.",
+      "- REGISTRO CÁLIDO Y HUMANO: Si el lead dice 'inscríbeme' o 'quiero entrar' (haya o no un curso activo), acógelo con calidez y pide su nombre y correo de forma fresca sin soltar párrafos de descargo de responsabilidad."
+    ].join("\n"),
     ``,
     `=== REGLAS DE ORO GLOBALES (cargadas por el orquestador) ===`,
     `(inyectadas en runtime desde ai_bot_rules; la SSOT vive en DB)`,

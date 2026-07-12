@@ -104,6 +104,12 @@ export function BotSimulatorTab({ currentMode }: BotSimulatorTabProps) {
   const [useRealLead, setUseRealLead] = useState(false);
   const [realLeadId, setRealLeadId] = useState<string>("");
   const [ignoreLeadPause, setIgnoreLeadPause] = useState(false);
+  // Sprint v0.9.7 (Switch Flash/Pro): default = default BD (Flash con
+  // escalación automática). "flash" fuerza deepseek-chat. "pro" fuerza
+  // deepseek-reasoner. El simulador propaga este valor al AgentContext.
+  const [tierChoice, setTierChoice] = useState<"default" | "flash" | "pro">(
+    "default"
+  );
 
   // Acumulador de telemetría (necesario para los "Rayos X").
   const [rulesOpen, setRulesOpen] = useState(false);
@@ -145,7 +151,10 @@ export function BotSimulatorTab({ currentMode }: BotSimulatorTabProps) {
         leadContext: useRealLead && realLeadId.trim() !== ""
           ? { leadId: realLeadId.trim() }
           : null,
-        ignoreLeadPause
+        ignoreLeadPause,
+        // Sprint v0.9.7 (Switch Flash/Pro): "default" → null (provider
+        // decide). "flash" / "pro" → override explícito.
+        tierOverride: tierChoice === "default" ? null : tierChoice
       };
 
       try {
@@ -183,7 +192,7 @@ export function BotSimulatorTab({ currentMode }: BotSimulatorTabProps) {
         setSending(false);
       }
     },
-    [history, modeChoice, useRealLead, realLeadId, ignoreLeadPause, sending]
+    [history, modeChoice, useRealLead, realLeadId, ignoreLeadPause, tierChoice, sending]
   );
 
   const clearHistory = useCallback(() => {
@@ -214,8 +223,8 @@ export function BotSimulatorTab({ currentMode }: BotSimulatorTabProps) {
       {/* Controles superiores */}
       <Card>
         <CardBody className="space-y-3">
-          <div className="grid gap-3 md:grid-cols-3">
-            {/* Selector de Lead */}
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+            {/* Selector de Motor IA (Sprint v0.9.7 Switch Flash/Pro) */}
             <div className="space-y-1">
               <label className="text-xs font-semibold text-ink-muted">👤 Lead</label>
               <select
@@ -260,6 +269,30 @@ export function BotSimulatorTab({ currentMode }: BotSimulatorTabProps) {
                   ⚠️ Override: el simulador usará este modo aunque la DB diga otro. No se persiste.
                 </p>
               )}
+            </div>
+
+            {/* Selector de Motor IA (Sprint v0.9.7 Switch Flash/Pro) */}
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-ink-muted">⚡ Motor IA</label>
+              <select
+                className="w-full p-2 border border-brand-200 rounded-md text-sm"
+                value={tierChoice}
+                onChange={(e) =>
+                  setTierChoice(e.target.value as "default" | "flash" | "pro")
+                }
+                disabled={sending}
+              >
+                <option value="default">📡 Default BD (Flash + escalación Pro)</option>
+                <option value="flash">⚡ Flash (rápido · deepseek-chat)</option>
+                <option value="pro">🧠 Pro (deep reasoning · deepseek-reasoner)</option>
+              </select>
+              <p className="text-[10px] text-ink-muted italic">
+                {tierChoice === "default"
+                  ? "Flash por defecto; escala a Pro si falla o la confianza es < 70%."
+                  : tierChoice === "flash"
+                    ? "Fuerza Flash (<1.5s, 4x más barato). Útil para tests de latencia."
+                    : "Fuerza Pro (~6s, baja tolerancia a error). Útil para prompts complejos."}
+              </p>
             </div>
 
             {/* Toggle pausa */}
