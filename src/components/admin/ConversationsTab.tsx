@@ -596,18 +596,23 @@ export function ConversationsTab() {
               {conversations.map((c) => {
                 const lastMsg = c.messages[c.messages.length - 1];
                 const isSelected = c.leadId === selectedLeadId;
-                // FIX 2026-07-12 (hotfix UI #2): el badge 🟢 "Nuevo" se
-                // muestra si el último mensaje es inbound Y su timestamp
-                // es estrictamente mayor al lastReadAt del admin. Si el
-                // admin nunca abrió el chat, lastReadAt es null y el
-                // badge se muestra (correcto). Al hacer clic, el
-                // optimistic update de selectLead setea lastReadAt = now,
-                // haciendo que el badge desaparezca al instante.
-                const isUnread =
-                  !!lastMsg &&
-                  lastMsg.direction === "inbound" &&
-                  (!c.lastReadAt ||
-                    new Date(lastMsg.at).getTime() > new Date(c.lastReadAt).getTime());
+                // FIX 2026-07-12 (hotfix UI #2, revisado hotfix #2 final):
+                // el badge 🟢 "Nuevo" se muestra si EXISTE CUALQUIER
+                // mensaje entrante (inbound) del lead posterior a su
+                // última lectura humana. Antes revisaba solo el último
+                // mensaje; si el bot respondía de inmediato con
+                // outbound, el badge desaparecía aunque el humano
+                // nunca hubiera abierto la conversación. Ahora
+                // revisamos toda la lista, así el badge persiste
+                // hasta que el admin abra el chat. Al hacer clic, el
+                // optimistic update de selectLead setea lastReadAt =
+                // now, haciendo que el badge desaparezca al instante.
+                const isUnread = c.messages.some(
+                  (m) =>
+                    m.direction === "inbound" &&
+                    (!c.lastReadAt ||
+                      new Date(m.at).getTime() > new Date(c.lastReadAt).getTime())
+                );
                 return (
                   <li
                     key={c.id}
