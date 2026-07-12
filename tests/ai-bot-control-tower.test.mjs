@@ -189,11 +189,21 @@ test("buildSuperExecutivePrompt: free_masterclass usa copy 'registro gratuito'",
     /MASTERCLASS GRATUITA/i,
     "Debe inyectar la rama MASTERCLASS GRATUITA"
   );
-  // FIX 2026-07-11: \s+ para tolerar saltos de línea entre palabras.
+  // FIX 2026-07-12 (sprint v0.9.7): la coletilla rígida "finalices tu
+  // registro gratuito en la plataforma 🎯" fue reemplazada por
+  // directivas de intención flexibles ("SÍ: invitar al lead a
+  // finalizar su registro gratuito en la plataforma"). Verificamos
+  // que la NUEVA forma esté presente Y la antigua NO (defensa contra
+  // regresión a la coletilla rígida).
   assert.match(
     prompt,
-    /finalices\s+tu\s+registro\s+gratuito/i,
-    "Debe incluir el copy veraz de la masterclass"
+    /finalizar\s+su\s+registro\s+gratuito/i,
+    "Debe incluir la intención 'finalizar su registro gratuito' en la nueva directiva"
+  );
+  assert.doesNotMatch(
+    prompt,
+    /Te paso los detalles y el enlace para que finalices tu registro/i,
+    "No debe contener la coletilla rígida 'Te paso los detalles y el enlace para que finalices tu registro'"
   );
 });
 

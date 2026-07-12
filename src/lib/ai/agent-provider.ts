@@ -128,7 +128,7 @@ export interface AgentContext {
    */
   isFreeEvent?: boolean;
   /**
-   * Sprint v0.9.6 (Laboratorio IA / Simulador): override explícito del
+   * Sprint v0.9.6 (Simulador): override explícito del
    * system prompt. Si está presente, `pickSystemPromptForMode` lo devuelve
    * sin más (no lee `bot_global_mode` de DB, no resuelve modo, no construye
    * `buildSystemPrompt` ni `buildSuperExecutivePrompt`).
@@ -142,6 +142,24 @@ export interface AgentContext {
    * prompt por su cuenta como siempre.
    */
   systemPromptOverride?: string;
+  /**
+   * Sprint v0.9.7 (Switch Flash/Pro): override explícito del tier del
+   * modelo DeepSeek. Si está presente (`"flash"` o `"pro"`), el provider
+   * respeta ese tier como máxima prioridad en `chooseTier`, ignorando el
+   * set `PRO_PRIORITY_TASKS` y la heurística flash→pro automática.
+   *
+   * Caso de uso:
+   *   - El simulador en `src/lib/ai/simulator.ts` propaga el `tierOverride`
+   *     del request del cliente (selector "⚡ Motor IA" en la UI).
+   *   - El flujo real del webhook puede setearlo cuando el admin
+   *     activa un override temporal (futuro PR de "force_flash" /
+   *     "force_pro" en system_settings).
+   *
+   * Backward compatible: si está ausente, el provider decide el tier con
+   * la heurística actual (default Flash para `suggest_reply`, escalado
+   * flash→pro si Flash falla o tiene confianza baja).
+   */
+  tierOverride?: "flash" | "pro";
 }
 
 export type AgentTask =
