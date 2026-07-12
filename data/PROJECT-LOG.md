@@ -3368,3 +3368,28 @@ pm run typegen en esta rama � agregar a docs/OPEN_ITEMS.md como nota para spri
   - El allowlist de R2 deja `bot_global_mode` y `deepseek_tools_enabled` inaccesibles desde `/api/admin/system-setting`. Si en el futuro hay que exponerlas, hay que hacerlo explícitamente en `WRITABLE_KEYS` con su validador de tipo (defensa en profundidad, no se "olvida" la validación).
   - R4 rolling 24h cambia la semántica del campo `bot_daily_outbound_count`. La UI de `BotConfigTab` sigue diciendo "Tope Diario (X/Y)" — el copy debe actualizarse en sprint v17 para decir "Tope 24h (X/Y)" o agregar un tooltip. Pendiente menor.
   - Sin migraciones (cambios de lógica + endpoint + cache; no tocan schema).
+
+---
+
+## 2026-07-12 01:32 — Hotfix #2 sprint v16 (PR #19 mergeado)
+
+- **Pregunta:** durante pruebas en vivo del sprint v16 (después de merge de PR #14/#16/#17/#18) David identificó 4 fricciones UI/UX que el code review no había detectado. ¿Se parchan antes de v17 o se documentan?
+
+- **Decisión:** parcharlos en un PR #19 dedicado (`feat/fase-16-5-hotfix-ui-2`). Cierre de sprint v16 con 5 PRs mergeados limpios.
+
+- **Razón:**
+  - Hotfixes vienen de uso real, no de code review estático. Esperar a v17 acumula deuda visible para el admin.
+  - Los 4 son puramente UI/UX (sin cambios de schema, API ni comportamiento del bot). Riesgo bajo.
+
+- **Impacto:**
+  - **#1 isUnread robusto (`ConversationsTab`):** el badge 🟢 "Nuevo" ahora revisa TODA la lista de mensajes, no solo el último. Si el bot respondía outbound de inmediato, el badge desaparecía aunque el admin nunca hubiera abierto el chat. Ahora persiste hasta que el admin abra. El optimistic update de `selectLead` (setea `lastReadAt = now`) sigue haciendo que el badge desaparezca al instante al abrir.
+  - **#2 Guía Rápida Reglas de Oro (`BotConfigTab`):** reemplaza el banner ámbar del sprint v15 PR #1 (ya mergeado; decía "las inyecciones al prompt se activan en PR #2") por un `<details open>` arriba de la tabla. Explica en lenguaje llano: Prioridad 1-100 (gana la más alta), Alcance (global, `curso_<slug>`, `evento_<slug>`), Descuentos (`discount_percent` + `valid_until`), y tres ejemplos claros (factura 24h, regla por curso, "gracias → humano").
+  - **#3 ModeTarjeta distinción activo/inactivo (`BotConfigTab`):** antes el contraste era sutil. Ahora el modo activo lleva `border-emerald-500 bg-emerald-50 ring-2 ring-emerald-500/40 shadow-md` + Badge "🟢 MODO ACTUALMENTE EN OPERACIÓN" (success, font-bold). El inactivo lleva Badge "⚪ Clic para Activar" (neutral). `aria-pressed` se mantiene para accesibilidad.
+  - **#4 Atajo "⚡ Subir a 500" en Tope Diario (`BotConfigTab`):** botón outline al lado del Input del Tope Diario. Llama directo a `handleChangeDailyLimit(500)`. El guard A1 de PR #18 ya es no-op si el valor no cambió, así que es seguro darle click si el actual ya es 500. Útil en sesiones de prueba intensivas.
+  - Validación: `npm run type-check` ✅, `npm run lint` ✅ (0 warnings, 0 errors), `npm test` ✅ (1173/1173), `npm run build` ✅.
+  - CI PR #19: Tests+Type-check+Lint 53s ✅, Vercel deploy ✅, Smoke E2E skipping.
+  - PR #19 mergeado a main con `--merge --delete-branch`. Main HEAD: `9bbf187`.
+
+- **Trigger:** David hizo pruebas reales en vivo del sprint v16 y detectó las 4 fricciones; las mandó explícitamente como "Hotfix #2 del Sprint v16" con 4 ajustes exactos.
+
+- **Riesgo operacional:** ninguno. Solo UI/UX. Sin cambios al comportamiento del bot, sin migraciones, sin cambios de API.
