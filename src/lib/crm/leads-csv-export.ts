@@ -3,7 +3,9 @@
  *
  * Por qué streaming (Fase 1 - peer review):
  *   - Vercel Hobby tiene 1024 MB RAM y 10s timeout.
- *   - `getLeads()` actual hace `SELECT *` sin paginación.
+ *   - `getLeads()` en leads-server.ts ahora pagina (AUDIT-001, fix 2026-07-12),
+ *     pero para la exportación por streaming seguimos con `.range(offset, ...)`
+ *     aquí directamente para no acoplar la exportación al pageSize del wrapper.
  *   - 20k leads × ~2 KB/row JSON ≈ 40 MB → memory limit exceeded.
  *   - Solución: `ReadableStream` + `Transfer-Encoding: chunked` +
  *     `.range(offset, offset + PAGE - 1)` en bucle de 1,000 filas.

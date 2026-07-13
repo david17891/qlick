@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getLeads } from "@/lib/crm/leads-server";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { requireAdmin } from "@/lib/auth/session";
@@ -18,7 +18,7 @@ import { requireAdmin } from "@/lib/auth/session";
  */
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   // Bloqueo defensivo: si no hay Supabase configurado, no hay datos reales.
   if (!checkSupabaseConfig().configured) {
     return NextResponse.json(
@@ -42,8 +42,24 @@ export async function GET() {
   }
 
   try {
-    const leads = await getLeads();
-    return NextResponse.json({ ok: true, leads, demo: false });
+    // AUDIT-001: paginación con ?page=N&pageSize=M (default page=0, pageSize=50).
+    // Antes hacía `SELECT *` sin límite (table scan completo al escalar).
+    const page = Number(req.nextUrl.searchParams.get("page") ?? "0");
+    const pageSize = Number(
+      req.nextUrl.searchParams.get("pageSize") ?? "50",
+    );
+    const { leads, total, page: p, pageSize: ps } = await getLeads({
+      page: Number.isFinite(page) ? page : 0,
+      pageSize: Number.isFinite(pageSize) ? pageSize : 50,
+    });
+    return NextResponse.json({
+      ok: true,
+      leads,
+      total,
+      page: p,
+      pageSize: ps,
+      demo: false,
+    });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("[api/admin/leads] error", err);
