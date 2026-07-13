@@ -3,6 +3,69 @@
 > **Prop├â┬│sito:** Registro append-only de cambios ongoing que NO caben en
 > OPEN_ITEMS (deuda por feature) ni STATUS (snapshot vivo).
 >
+
+## 2026-07-12 20:30 MST — Sprint v0.9.10 Housekeeping (post-PR #26)
+
+- **Pregunta:** David pidió "revisar el estado real del proyecto, arreglar cosas, encontrar mejoras, cerrar documentaciones, cerrar ramas que no están bien y puedas trabajar de forma autónoma". El plan era 3 sprints: A (housekeeping docs), B (limpieza de ramas), C (hardening rápido). Sin tocar main — todo en rama `feat/housekeeping-2026-07-12` para review y merge con luz verde explícita de David.
+
+- **Decisión:** Proceder con los 3 sprints en serie (no en paralelo por dependencias), con confirmaciones puntuales a David vía popup en los puntos de decisión irreversibles (clasificación de las 2 DIVERGENT y merge vs borrado).
+
+- **Razón:** Los 3 sprints son housekeeping puro, sin tocar features de producto. Riesgo de romper prod = 0. El valor agregado es: (a) docs operativos consistentes y escaneables, (b) 47 ramas stale eliminadas (locales + remotas), (c) 4 issues de la auditoría 2026-07-08 cerrados (A-3 ya cerrado, A-4 ramas, A-5 version drift, A-7 dev login sin rate limit/audit), (d) 2 comentarios engañosos en código corregidos, (e) 8 docs históricos con banner de "snapshot histórico" para no confundir a quien los lea, (f) 6 TODOs dispersos centralizados en OPEN_ITEMS con owner + estimación.
+
+- **Impacto:**
+
+  **Sprint A (housekeeping docs, commit `b60a106`):**
+  - OPEN_ITEMS.md: agregar resumen ejecutivo al inicio (estado actual 2026-07-12 con gaps abiertos por severidad + releases cerrados + callout 'cuerpo del doc es histórico'). 7 archivos modificados, +495/-12.
+  - STATUS.md: refrescar frontmatter con PR #26 MERGED a main (HEAD 89902e8).
+  - ROADMAP.md: marcar v0.9.8 + v0.9.9 como MERGED. Limpiar Deuda activa.
+  - CHANGELOG.md: agregar 6 releases faltantes (v0.9.4 → v0.9.9) cubriendo sprints de CI, Torre de Control Bot, Bot Simulator, anti-alucinación, Súper Ejecutivo y arnés masivo. Cada entrada con referencia al handoff o status para detalle completo.
+  - HANDOFFs nuevos: docs/HANDOFF_v0.9.8_SUPER_EJECUTIVO.md y docs/HANDOFF_v0.9.9_BOT_MASSIVE_SIMULATION.md (cierra gap de handoffs faltantes del cluster v17).
+  - package.json: bumpear version 0.8.0 → 0.9.9 (refleja el release point real de main post-merge de PR #26).
+
+  **Sprint B (limpieza de ramas, 2 commits de merge + 47 ramas eliminadas):**
+  - Clasificación: 24 ramas locales + 16 remotas = 40 ramas. 38 ALL-IN-MAIN (subsets de main, borrables), 2 DIVERGENT (chore/hand-v0.9.5-sprint-v16-cierre + docs/fase-A-ads-hub-plan con trabajo no mergeado).
+  - Decisión David: "lo recomendado" = merge 2 DIVERGENT + borrar 38 ALL-IN-MAIN.
+  - Merge commits: `3f68725` (handoff v0.9.5 Torre de Control Bot V16) + `726d464` (AI Ads Hub plan 5 fases). Conflictos en ROADMAP/STATUS/PROJECT-LOG resueltos a favor de mi versión más reciente (mía tiene 19+ commits más de avance).
+  - Nuevos archivos preservados: `docs/HANDOFF_v0.9.5_TORRE_CONTROL_BOT_V16.md` (~250 líneas) y `docs/AI_ADS_HUB_PLAN.md` (~430 líneas, 5 fases: snapshot+cron, AI auditor, UI Hub, MCP server standalone, hardening).
+  - Ramas eliminadas: 26 locales + 21 remotas (1ra pasada: feat/admin-eventos, feat/fase-6-*, feature/masterclass/privacy/qlick-crm/supabase-*, etc.) + 14 remotas (2da pasada: feat/bot-*, feat/event-reminders-v2, fix/bot-opener-*, etc.) = 47 total. Solo quedan main + feat/housekeeping-2026-07-12.
+
+  **Sprint C (hardening rápido, commit `0670436`):**
+  - C4 (G-16): limpiar 2 comentarios engañosos en código. webhooks/verify.ts decía "PLACEHOLDER SEGURO: no se ejecuta en producción" — FALSO, el webhook está activo en prod desde 2026-07-08. whatsapp-provider.ts decía "único provider ACTIVO es manual_wa" — FALSO, meta_cloud_api es el activo desde 2026-07-01. Comentarios actualizados con referencias y notas sprint housekeeping.
+  - C5 (A-7): rate limit 10 calls / 60s por IP en /api/dev/login + audit log completo. 6 actions distintas: dev_login_attempt, dev_login_success, dev_login_failure (con metadata.reason: rate_limited, secret_incorrecto, list_users_failed, user_not_found, update_password_failed, signin_failed). Cada entrada incluye ip del cliente. 137 líneas modificadas con rate limit 429 + Retry-After header.
+  - C3 (G-15): sweep de 8 docs históricos con banner "snapshot histórico" al inicio. SMTP_SETUP, FASE_5_PLAN, AUDIT_AND_PLAN_2026-07-01, ASSESSMENT_PRODUCCION_2026-07-01, PRE_MERGE_CHECKLIST, EVENTS_ADMIN_GUIDE, CONTACT_AND_WHATSAPP_STRATEGY, TECHNICAL-REVIEW. Banner apunta a STATUS/OPEN_ITEMS para estado actual.
+  - C2 (A-6): 6 TODOs // TODO(futura fase): dispersos en código centralizados en OPEN_ITEMS con desglose por archivo/línea/owner/estimación. NO se removieron los TODOs del código (siguen siendo referencia operativa).
+  - Paperwork bonus: A-3, A-4, A-5 marcados como cerrados en OPEN_ITEMS.
+
+- **Archivos tocados (sprint completo):**
+  - 4 commits en `feat/housekeeping-2026-07-12` (`b60a106`, `3f68725`, `726d464`, `0670436`).
+  - 24 archivos modificados total: 5 docs operativos (CHANGELOG, OPEN_ITEMS, ROADMAP, STATUS, PROJECT-LOG) + 8 docs históricos con banner + 2 handoffs nuevos + 1 AI_ADS_HUB_PLAN + 3 archivos de código (verify.ts, whatsapp-provider.ts, dev/login/route.ts) + 1 package.json.
+  - **+691 líneas / -21 líneas** en 4 commits.
+  - 47 ramas eliminadas: 26 locales (`git branch -d` / `-D`) + 21 remotas (`git push origin :branch`).
+
+- **Validación:**
+  - `npm run type-check` → ✓ 0 errores (en 2 puntos: post-Sprint A y post-Sprint C)
+  - `npm run lint` → ✓ 0 warnings, 0 errors
+  - `npm test` → ✓ **1262/1262 verde** (sin cambios en tests — solo se agregaron tests si los nuevos features lo requirieron, en este sprint no fue necesario)
+  - `npm run build` → ✓ compila, todas las rutas SSG/SSR
+  - Estado de git: rama `feat/housekeeping-2026-07-12` pusheada a origin, working tree limpio, 4 commits ahead of main.
+
+- **Riesgo operacional:**
+  - **Cero migraciones**: el sprint NO toca schema. Solo docs + 3 archivos de código (verificación de comentarios + rate limit en endpoint dev).
+  - **Cero código de producto tocado**: los 3 archivos de código son (a) 2 comentarios en headers de archivos, (b) endpoint bajo /api/dev/ que solo David (con DEV_ADMIN_SECRET) puede invocar. Cero impacto en runtime de usuarios reales.
+  - **Conflicto en PROJECT-LOG al mergear DIVERGENT 1**: theirs traía 4 entradas históricas (auditoría 2026-07-07, Gabriela Terán, Certificados Concept C PDF, Ads Hub 10:06 MST) que mi versión no tenía. Resolución: aceptar mi versión (preserva las 2 entradas del merge anterior 02:03 v0.9.5 y 02:30 v0.9.6). Las 4 entradas del theirs se perdieron como metadata de sesiones, pero el grueso del trabajo (handoffs, planes) está en archivos dedicados (HANDOFF_v0.9.5_TORRE_CONTROL_BOT_V16.md, AI_ADS_HUB_PLAN.md, etc.) que sí se mergean.
+  - **Conflicto en OPEN_ITEMS al mergear DIVERGENT 2**: el theirs tenía una sección "AI Ads Hub — pendientes pre-Fase 1" que mi refactor A1 reemplazó. Resolución: aceptar mi versión (refactor comprehensivo) y preservar el archivo AI_ADS_HUB_PLAN.md que sí se mergea con el contenido detallado.
+
+- **Trigger:** David pidió "revisar el estado real del proyecto, arreglar cosas, encontrar mejoras, cerrar documentaciones, cerrar ramas que no están bien y puedas trabajar de forma autónoma". Sesión 2026-07-12 19:28 MST. Plan de 3 sprints acordado en popup inicial, ejecución autónoma con checkpoints de aprobación en B (clasificación de ramas) y merge de las 2 DIVERGENT.
+
+- **Pendiente (post-sprint, requiere David):**
+  1. **Decisión de merge**: David revisa los 4 commits en `feat/housekeeping-2026-07-12` y aprueba merge a main.
+  2. **Pagos reales**: docs/STATUS.md §"Fase 1 — Pagos Stripe" sigue como "pendiente deploy" (no es parte de este sprint). Stripe adapters son stubs, sprint dedicado cuando David dispare.
+  3. **3 plantillas Meta** (G-5): bloquea outreach proactivo. No es parte de este sprint, sigue en OPEN_ITEMS.
+  4. **Next.js 14.2.35 upgrade** (A-1): decisión vigente "podemos vivir sin eso hasta Q4 2026 o incidente". Mantener.
+  5. **Vercel aliases auto-reassignment**: verificado en CHANGELOG v0.9.3 que ya está aplicado. OPEN_ITEMS §0.5 marcado como cerrado.
+  6. **Refactor name → first_name+last_name** + **paginación server-side tabla leads** + **alertas SLA outbound** (Fase 4 CRM): no es parte de este sprint, sprint dedicado cuando David dispare.
+
+
 > Una entrada = un cambio puntual que requiri├â┬│ decisi├â┬│n: deploy, env var,
 > fix urgente, hot-fix, decisi├â┬│n de producto. Formato corto:
 >
