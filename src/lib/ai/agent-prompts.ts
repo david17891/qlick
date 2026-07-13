@@ -399,13 +399,21 @@ export function buildSuperExecutivePrompt(context: AgentContext): string {
   // de la cabecera si aplica). Es la "barrera matemática" contra la
   // alucinación de inscripciones: el LLM NO puede prometer eventos
   // en vivo cuando esta regla está presente.
+  //
+  // FIX 2026-07-13 (Ola 4, sesion David 02:11): el bot estaba fabricando
+  // registros ("ya te tengo registrado") y ofreciendo cursos en abstracto
+  // cuando NO hay evento. El cortafuegos anti-alucinacion prohibia inventar
+  // eventos pero NO prohibia simular registros de eventos inexistentes.
+  // Se agregan 3 reglas duras para tapar ese hueco.
   const noEventsModeBlock = isNoEventsMode
     ? [
         "=== 🚨 MODO ESTRICTO SIN EVENTOS EN VIVO (NO_ACTIVE_EVENTS_MODE) 🚨 ===",
         "EN ESTE MOMENTO NO HAY WEBINARS, TALLERES NI MASTERCLASSES EN VIVO PROGRAMADAS EN QLICK.",
         "- REGLA DURA ANTI-ALUCINACIÓN (TOLERANCIA CERO): NUNCA prometas inscribir al usuario a un evento, webinar o taller en vivo. NUNCA inventes fechas, horarios, títulos o ponentes.",
+        "- REGLA DURA ANTI-REGISTRO-FALSO (Ola 4, 2026-07-13): NUNCA digas 'te ayudo a inscribirte', 'te inscribo', 'ya te tengo registrado', 'listo, quedaste registrado' o variantes. Sin evento activo, NO existe un registro que puedas completar. Solo puedes: (a) pedir el nombre+correo para AVISAR cuando haya nueva fecha, (b) derivar al catálogo LMS, o (c) emitir `[[ESCALATE_HUMAN]]`.",
+        "- REGLA DURA ANTI-COPY-ABSTRACT (Ola 4, 2026-07-13): Cuando ofrezcas cursos, LISTA los cursos reales del bloque de catálogo LMS con su número, título y precio (ej. '[1] Masterclass Marketing + IA — $200 MXN'). NO preguntes en abstracto '¿te interesa alguno de nuestros cursos?' sin mostrar la lista concreta. La pregunta abstracta es tan deshonesta como inventar un evento.",
         "- SI EL USUARIO PIDE INSCRIBIRSE O PREGUNTA POR PRÓXIMAS FECHAS EN VIVO: Responde siempre con honestidad absoluta: \"En este momento no tenemos una Masterclass o taller en vivo programado, pero si gustas me dejas tu nombre y correo y te aviso en cuanto abramos nueva fecha 🤝\".",
-        "- SI EL USUARIO QUIERE APRENDER HOY MISMO: Pivota y ofrece con entusiasmo nuestro CATÁLOGO DE CURSOS LMS ASINCRÓNICOS (ver bloque de catálogo arriba) donde puede empezar de inmediato las 24 horas del día.",
+        "- SI EL USUARIO QUIERE APRENDER HOY MISMO: Pivota y LISTA los cursos del CATÁLOGO DE CURSOS LMS ASINCRÓNICOS con `[1] [2] [3]`, precio y enlace. Indica que puede empezar de inmediato las 24 horas del día.",
         "- SI PREGUNTA POR SERVICIOS DE AGENCIA B2B: Explica nuestros servicios de consultoría y marketing y califícalo o emite `[[ESCALATE_HUMAN]]` si pide reunión.",
         "- TOLERANCIA CERO A INVENTAR EVENTOS: Si el usuario dice 'me dijeron que mañana tienen un taller de X', NO confirmes. Responde: 'No tengo registro de ese taller. Lo más reciente que puedo ofrecerte es [CATÁLOGO DE CURSOS LMS o SERVICIOS B2B]'.",
       ].join("\n")
@@ -449,8 +457,12 @@ export function buildSuperExecutivePrompt(context: AgentContext): string {
     unknown: [
       "=== DIRECTIVAS DE INTENCIÓN Y TONO VERAZ (TIPO DE OFERTA DESCONOCIDO — DEFENSIVO) ===",
       "classifyEventType devolvió 'unknown'. Intenciones permitidas:",
-      "  - SÍ: confirmar que estás consultando los detalles exactos con el equipo.",
-      "  - SÍ: prometer seguimiento personalizado.",
+      isNoEventsMode
+        ? "  - SÍ: confirmar honestamente que NO hay eventos en vivo programados."
+        : "  - SÍ: confirmar que estás consultando los detalles exactos con el equipo.",
+      isNoEventsMode
+        ? "  - NO: prometer seguimiento personalizado de un evento que no existe. Si el usuario insiste en ser contactado, emite `[[ESCALATE_HUMAN]]` y deja que un humano lo gestione."
+        : "  - SÍ: prometer seguimiento personalizado.",
       "  - NO: inventar el tipo de oferta ni prometer nada concreto.",
       "Si el lead insiste o pide acción inmediata, EMITE `[[ESCALATE_HUMAN]]` al final."
     ].join("\n")

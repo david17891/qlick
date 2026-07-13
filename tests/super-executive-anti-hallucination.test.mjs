@@ -242,3 +242,79 @@ test("regresión: con eventsListBlock multi-evento el modo NO se activa", () => 
     "El catálogo de eventos debe estar presente",
   );
 });
+
+/* ─────────────────────────────────────────────────────────────
+ * Ola 4 (2026-07-13 02:11): Anti-Registro-Falso + Listar Cursos Real
+ * ───────────────────────────────────────────────────────────── */
+
+test("Ola 4: NO_ACTIVE_EVENTS_MODE incluye regla dura anti-registro-falso", () => {
+  const prompt = buildSuperExecutivePrompt(makeNoEventsContext());
+  assert.ok(
+    prompt.includes("AN TI-REGISTRO-FALSO") || prompt.includes("ANTI-REGISTRO-FALSO"),
+    "Regla dura anti-registro-falso debe estar presente",
+  );
+  // Frases prohibidas que el bot NO debe usar nunca en modo sin eventos.
+  assert.ok(
+    prompt.includes("ya te tengo registrado") ||
+      prompt.includes("quedaste registrado"),
+    "La frase prohibida 'ya te tengo registrado' debe estar listada",
+  );
+  assert.ok(
+    prompt.includes("te ayudo a inscribirte") ||
+      prompt.includes("te inscribo"),
+    "La frase prohibida 'te ayudo a inscribirte/te inscribo' debe estar listada",
+  );
+});
+
+test("Ola 4: NO_ACTIVE_EVENTS_MODE obliga a listar cursos reales con [1] [2] [3] en lugar de pregunta abstracta", () => {
+  const prompt = buildSuperExecutivePrompt(makeNoEventsContext());
+  assert.ok(
+    prompt.includes("ANTI-COPY-ABSTRACT") || prompt.includes("anti-copy-abstract"),
+    "Regla anti-copy-abstract presente",
+  );
+  // La regla debe mencionar el formato concreto [1] [2] [3] como forma
+  // honesta de ofrecer cursos, en contraposición a la pregunta abstracta.
+  assert.ok(
+    prompt.includes("[1]") && prompt.includes("[2]") && prompt.includes("[3]"),
+    "El formato de lista [1] [2] [3] debe estar prescrito",
+  );
+  // La pregunta abstracta debe estar explícitamente prohibida.
+  assert.ok(
+    prompt.includes("te interesa alguno de nuestros cursos") ||
+      prompt.includes("pregunta abstracta"),
+    "La pregunta abstracta debe estar explícitamente prohibida",
+  );
+});
+
+test("Ola 4: rama 'unknown' de copyByOffer NO promete seguimiento genérico en modo no_events", () => {
+  // En modo no_events, la rama unknown debe inhibir "SÍ: prometer
+  // seguimiento personalizado" como directiva permitida, porque el evento
+  // no existe. En su lugar debe aparecer como directiva "NO:" o redirigir
+  // a `[[ESCALATE_HUMAN]]`.
+  const promptNoEvents = buildSuperExecutivePrompt(makeNoEventsContext());
+  // Extraemos el bloque DIRECTIVAS (entre el header de copy y el siguiente ===).
+  const block = promptNoEvents.match(
+    /DIRECTIVAS DE INTENCIÓN Y TONO VERAZ \(TIPO DE OFERTA DESCONOCIDO[\s\S]*?(?=\n=|$)/
+  );
+  assert.ok(block, "Debe existir el bloque DIRECTIVAS en modo no_events");
+  // En modo no_events NO debe aparecer "SÍ: prometer seguimiento personalizado"
+  // como directiva permitida.
+  assert.ok(
+    !block[0].includes("SÍ: prometer seguimiento personalizado"),
+    "En modo no_events 'SÍ: prometer seguimiento personalizado' NO debe estar como directiva permitida"
+  );
+  // En modo no_events la versión prohibitiva o la derivación a humano SÍ debe estar.
+  assert.ok(
+    block[0].includes("NO: prometer seguimiento") ||
+      block[0].includes("ESCALATE_HUMAN"),
+    "Debe estar la versión prohibitiva o la derivación a ESCALATE_HUMAN"
+  );
+});
+
+test("Ola 4 (regresión): reglas anti-registro-falso NO aparecen cuando hay evento real", () => {
+  const prompt = buildSuperExecutivePrompt(makeActiveEventContext());
+  assert.ok(
+    !prompt.includes("AN TI-REGISTRO-FALSO") && !prompt.includes("ANTI-REGISTRO-FALSO"),
+    "Las reglas anti-registro-falso SOLO aplican en modo no_events, no en evento real",
+  );
+});

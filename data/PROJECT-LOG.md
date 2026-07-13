@@ -3760,3 +3760,36 @@ pm run typegen en esta rama � agregar a docs/OPEN_ITEMS.md como nota para spri
   - Reversibilidad: 100% (5 JSON files + script de restore documentado en RESTORE.md).
 
 - **Trigger:** David señaló la imagen del admin UI con cards de ruido y pidió limpieza. El criterio "slug ~ '^(sim|audit)-funnel-'" es el más limpio y reversible. El backup completo permite restaurar si la decisión se revierte.
+
+## 2026-07-13 ~02:15 Phoenix — Sprint Ola 4: Anti-Registro-Falso + Listar Cursos Real
+
+- **Pregunta:** David señaló que el bot, en el simulador admin con `events=0` y `courses=6` publicados, respondió "Ya te tengo registrado con tu correo david@gmail.com" cuando NO hay evento al que registrar al lead. El cortafuegos anti-alucinación del PR #30 prohibía inventar eventos, pero NO prohibía simular registros de eventos inexistentes ni ofrecer cursos en abstracto (pregunta deshonesta). El bug NO es del LLM ni de Supabase, es del prompt: la rama `unknown` de `copyByOffer` permitía "prometer seguimiento personalizado" y el LLM lo traducía a "ya quedaste registrado".
+
+- **Decisión:** Cerrar el hueco con 2 fixes puntuales en `src/lib/ai/agent-prompts.ts` + 4 tests de regresión en `tests/super-executive-anti-hallucination.test.mjs`.
+
+- **Razón:** El comportamiento observado (registro falso + oferta abstracta) compromete la confianza del lead: si la IA "ya te registró" sin haberlo hecho, cuando el lead busque su acceso no existirá y la marca pierde credibilidad. El fix es chico (3 reglas duras + 1 condición) y elimina la ambigüedad del LLM.
+
+- **Impacto:**
+
+  **Fix 1 — `NO_ACTIVE_EVENTS_MODE` con 3 reglas duras (Ola 4):**
+  - Agregada REGLA DURA ANTI-REGISTRO-FALSO al bloque estricto: lista explícitamente frases prohibidas ("te ayudo a inscribirte", "ya te tengo registrado", "listo quedaste registrado") y las 3 acciones válidas en su lugar (pedir correo para avisar, derivar al catálogo, escalar humano).
+  - Agregada REGLA DURA ANTI-COPY-ABSTRACT: obliga a listar cursos con `[1] [2] [3]` + título + precio en lugar de preguntar "¿te interesa alguno?" en abstracto.
+  - Ajustada la rama `SI EL USUARIO QUIERE APRENDER HOY MISMO` para que diga "LISTA los cursos del CATÁLOGO con [1] [2] [3], precio y enlace" en vez de solo "pivota y ofrece".
+
+  **Fix 2 — `copyByOffer.rama unknown` condicional:**
+  - En modo `no_events`, la directiva permitida cambia de "SÍ: prometer seguimiento personalizado" a "SÍ: confirmar honestamente que NO hay eventos en vivo programados".
+  - La versión prohibitiva ("NO: prometer seguimiento personalizado de un evento que no existe") solo aparece en modo `no_events`; en modo con evento real se preserva el copy original.
+
+  **Tests — 4 nuevos (Ola 4):**
+  - `Ola 4: NO_ACTIVE_EVENTS_MODE incluye regla dura anti-registro-falso` — verifica que las 3 frases prohibidas estén listadas.
+  - `Ola 4: NO_ACTIVE_EVENTS_MODE obliga a listar cursos reales con [1] [2] [3]` — verifica el formato de lista y la prohibición de pregunta abstracta.
+  - `Ola 4: rama 'unknown' de copyByOffer NO promete seguimiento genérico en modo no_events` — verifica el copy defensivo condicional.
+  - `Ola 4 (regresión): reglas anti-registro-falso NO aparecen cuando hay evento real` — verifica que no se rompa el flow normal.
+
+  **Suite total: 1274/1274 verde** (1262 base + 8 PR #30 + 4 Ola 4).
+  **Build + type-check + lint: limpios.**
+
+  **Script de diagnóstico operativo:**
+  - `scripts/audit-bot-rules.mjs` (nuevo) — consulta vía Management API el estado real de `ai_bot_rules` (total/activas), `events` futuros y `courses` publicados. Útil para auditar el estado del bot en producción sin tocar código. Reutilizable.
+
+- **Trigger:** Imagen del simulador admin que mostraba al bot prometiendo inscripción y registro de un evento inexistente. David fue claro: "el comportamiento esperado es, si no tengo cursos que dar, soy honesto".
