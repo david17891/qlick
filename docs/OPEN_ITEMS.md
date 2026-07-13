@@ -29,7 +29,7 @@
 
 | Gap | Síntoma | Acción |
 |---|---|---|
-| **G-5** | 3 plantillas Meta NO creadas en Business Manager (`conf_bienvenida`, `conf_info_evento`, `conf_confirmacion_registro`). Bloquea outreach proactivo + cron Fase 2. | **David en Meta UI** + 24-48h approval. |
+| **G-5** | 3 plantillas Meta NO creadas en Business Manager (`conf_bienvenida`, `conf_info_evento`, `conf_confirmacion_registro`). Bloquea outreach proactivo + cron Fase 2. | ⏸ **PAUSADA** por decisión de David (2026-07-12 ~21:47 Phoenix): "las plantillas las vamos a dejar pausadas por el hecho de que cuestan más". El bot sigue usando texto libre (funciona en ventana 24h). Si David revierte la decisión: **David en Meta UI** + 24-48h approval. |
 | **G-6** | 5 migrations Fase 7a no verificadas aplicadas en Supabase (`20260630164900_bot_manual_context.sql`, `20260701120000_lead_profile.sql`, `20260701160000_handoff_requests.sql`, `20260701170000_lead_event_attended_status.sql`, `20260701180000_event_reminder_log.sql`). | **David corre** `npx supabase migration list` o SQL Editor → `SELECT table_name FROM information_schema.tables WHERE table_schema='public';` |
 
 #### 🟠 Altos (algunos son decisión de David, no míos)
