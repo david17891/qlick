@@ -338,36 +338,56 @@ export async function POST(
         confirmation_id: string | null;
         name: string | null;
       };
-      // Solo UPDATE si checked_in_at es NULL (idempotencia).
-      if (!target.checked_in_at) {
-        // FIX 2026-07-06: resolver nombre valido y persistirlo.
-        const resolvedName = await resolveValidName(
-          found.row.attendee_name,
-          target.name,
-          phone,
-        );
-        const updatePayload: Record<string, unknown> = {
-          checked_in_at: nowIso,
-          checked_in_by: PUBLIC_ACTOR.email,
-          ...(confirmationId && !target.confirmation_id
-            ? { confirmation_id: confirmationId }
-            : {}),
-          // Si el nombre del attendee era placeholder y encontramos uno
-          // real, lo actualizamos junto con el check-in.
-          ...(resolvedName && isPlaceholderName(target.name)
-            ? { name: resolvedName }
-            : {}),
-        };
-        const { error: updErr } = await supabase
-          .from("event_attendees")
-          .update(updatePayload as never)
-          .eq("id", target.id);
-        if (updErr) {
-          errorLog("[api/check-in] UPDATE event_attendees falló", {
-            code: updErr.code,
-            attendeeId: target.id,
-          });
-        }
+      // FIX 2026-07-12 (C-5 de OPEN_ITEMS): UPDATE atómico con
+      // `WHERE checked_in_at IS NULL` para cerrar la race condition.
+      // Antes era read-then-write (SELECT + if-not-checked-then-UPDATE)
+      // — si dos requests llegaban en <500ms, ambos pasaban el check
+      // y ambos ejecutaban UPDATE, sobrescribiendo `checked_in_by` con
+      // el último actor. Ahora el WHERE es la condición de carrera:
+      // solo el primer UPDATE que matchea `checked_in_at IS NULL` aplica;
+      // los siguientes ven 0 rows afectados y devuelven alreadyCheckedIn.
+      const resolvedName = await resolveValidName(
+        found.row.attendee_name,
+        target.name,
+        phone,
+      );
+      const updatePayload: Record<string, unknown> = {
+        checked_in_at: nowIso,
+        checked_in_by: PUBLIC_ACTOR.email,
+        ...(confirmationId && !target.confirmation_id
+          ? { confirmation_id: confirmationId }
+          : {}),
+        // Si el nombre del attendee era placeholder y encontramos uno
+        // real, lo actualizamos junto con el check-in.
+        ...(resolvedName && isPlaceholderName(target.name)
+          ? { name: resolvedName }
+          : {}),
+      };
+      const { data: updated, error: updErr } = await supabase
+        .from("event_attendees")
+        .update(updatePayload as never)
+        .eq("id", target.id)
+        .is("checked_in_at", null)
+        .select("id, checked_in_at")
+        .maybeSingle();
+      if (updErr) {
+        errorLog("[api/check-in] UPDATE event_attendees atómico falló", {
+          code: updErr.code,
+          attendeeId: target.id,
+        });
+      } else if (!updated) {
+        // Otro request ganó la carrera. Devolvemos alreadyCheckedIn
+        // con los datos del SELECT previo (target.checked_in_at tiene
+        // el valor del row ganador, no el nuestro).
+        return NextResponse.json({
+          ok: true,
+          alreadyCheckedIn: true,
+          attendee: {
+            name: target.name ?? found.row.attendee_name,
+            event_title: found.event.title,
+          },
+          checkedInAt: target.checked_in_at,
+        });
       }
     } else {
       // Walk-in: no existe attendee previo. Crear al vuelo con

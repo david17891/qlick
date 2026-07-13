@@ -243,20 +243,36 @@ export async function POST(req: Request) {
         checked_in_at: string | null;
         confirmation_id: string | null;
       };
-      if (!target.checked_in_at) {
-        // Update idempotente: solo escribimos check-in si no estaba.
-        // Si falta confirmation_id, lo backfileamos.
-        const updatePayload = {
-          checked_in_at: nowIso,
-          checked_in_by: staffActorEmail,
-          ...(confirmationId && !target.confirmation_id
-            ? { confirmation_id: confirmationId }
-            : {}),
-        };
-        await supabase
-          .from("event_attendees")
-          .update(updatePayload as never)
-          .eq("id", target.id);
+      // FIX 2026-07-12 (C-5 de OPEN_ITEMS): UPDATE atómico con
+      // `WHERE checked_in_at IS NULL` (mismo patrón que el endpoint
+      // público). Cierra la race condition del read-then-write.
+      const updatePayload = {
+        checked_in_at: nowIso,
+        checked_in_by: staffActorEmail,
+        ...(confirmationId && !target.confirmation_id
+          ? { confirmation_id: confirmationId }
+          : {}),
+      };
+      const { data: updated, error: updErr } = await supabase
+        .from("event_attendees")
+        .update(updatePayload as never)
+        .eq("id", target.id)
+        .is("checked_in_at", null)
+        .select("id, checked_in_at")
+        .maybeSingle();
+      if (updErr) {
+        debugLog("[api/staff/check-in] UPDATE atómico falló", {
+          code: updErr.code,
+          attendeeId: target.id,
+        });
+      } else if (!updated) {
+        // Otro request ganó la carrera. Salimos del if y el caller
+        // continúa con el flujo normal (que el handler usa para
+        // devolver alreadyCheckedIn al staff). El checked_in_at del
+        // SELECT previo tiene el timestamp del ganador.
+        debugLog("[api/staff/check-in] race: otro request ya marcó checked_in", {
+          attendeeId: target.id,
+        });
       }
     } else {
       // Walk-in: crear attendee al vuelo con confirmation_id matcheado

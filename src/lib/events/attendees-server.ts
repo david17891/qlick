@@ -134,15 +134,38 @@ export async function createAttendee(
     };
   }
 
-  const phoneNormalized =
-    input.phoneNormalized ??
-    (input.email ? null : null); // no inferimos phone desde acá
+  // FIX 2026-07-12 (C-4 de OPEN_ITEMS): rechazar attendees sin identificador.
+  // El bug original era: un asistente sin email que clickea 5 veces el QR
+  // del gate virtual producía 5 rows en `event_attendees` porque el UNIQUE
+  // (event_id, email) trata NULLs como distintos. Ahora exigimos al menos
+  // uno de los dos: email O phone. Esto previene el caso y permite que la
+  // migration que agrega UNIQUE (event_id, phone_normalized) sea safe
+  // (los call sites ya no pasan null en este path).
+  const phoneNormalized = input.phoneNormalized ?? null;
+  const hasIdentifier = !!(input.email?.trim() || phoneNormalized);
+  if (!hasIdentifier) {
+    return {
+      ok: false,
+      created: false,
+      persisted: false,
+      demo: false,
+      note:
+        "Attendee requiere al menos email o phone_normalized para deduplicar.",
+    };
+  }
 
   const supabase = createSupabaseAdminClient();
-  // UPSERT con ignore: si ya existe (UNIQUE por event_id + email), no inserta.
-  // Migration 20260707090000: checked_in_at ahora es nullable. Si el caller
-  // pasa checkedInAt explicito (gate virtual = null, check-in = Date.now()),
-  // lo respetamos. Si no, dejamos null (no se asume nada).
+  // UPSERT con ignore: si ya existe (UNIQUE por event_id + phone_normalized),
+  // no inserta. Migration 20260707090000: checked_in_at ahora es nullable.
+  // Si el caller pasa checkedInAt explicito (gate virtual = null,
+  // check-in = Date.now()), lo respetamos. Si no, dejamos null.
+  //
+  // FIX 2026-07-12 (C-4): cambiamos `onConflict` de "event_id,email" a
+  // "event_id,phone_normalized" porque `phone_normalized` es NOT NULL
+  // (ver migration 20260712220000) y deduplica correctamente. La validación
+  // arriba garantiza que el caller siempre pase phone O email — si pasa
+  // ambos, el phone es el dedup key más estable (el email puede cambiar,
+  // el phone no).
   const { data, error } = await supabase
     .from("event_attendees")
     .upsert(
@@ -157,7 +180,7 @@ export async function createAttendee(
         checked_in_at: input.checkedInAt ?? null,
         checked_in_by: input.checkedInBy ?? null,
       },
-      { onConflict: "event_id,email", ignoreDuplicates: true },
+      { onConflict: "event_id,phone_normalized", ignoreDuplicates: true },
     )
     .select("*")
     .maybeSingle();
