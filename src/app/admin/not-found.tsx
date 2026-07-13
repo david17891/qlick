@@ -1,6 +1,6 @@
-// 404 branded para /admin/* (cubre /admin/dashboard, /admin/bot,
-// /admin/eventos, /admin/handoffs, etc.).
+// 404 branded para /admin/* (cubre /admin/eventos, /admin/system, etc.).
 // AUDIT-010: SUPER_AUDIT_REMEDIATION_PROTOCOL.md Ola 2.
+// (Cleanup 2026-07-13: /admin/handoffs y /admin/bot-v2 eliminados.)
 
 import Link from "next/link";
 
@@ -25,10 +25,10 @@ export default function AdminNotFound() {
           Ir al panel de eventos
         </Link>
         <Link
-          href="/admin/handoffs"
+          href="/admin/system"
           className="inline-flex items-center justify-center px-6 py-3 border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition"
         >
-          Ver handoffs
+          Ir al sistema
         </Link>
       </div>
     </div>

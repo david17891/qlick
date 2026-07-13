@@ -1,247 +1,153 @@
-# URLs Canónicas de Qlick — Taxonomía Oficial
+# URLs Canónicas de Qlick — Estado Actual
 
-> **Fecha:** 2026-07-13 · **Branch:** main @ `788f96f` · **Status:** propuesta para revisión
-> **Autor:** Mavis (sesión súper-auditoría + remediación)
-> **Trigger:** súper-auditoría reveló que 4 URLs "core" del protocolo (`/admin/dashboard`, `/lms`, `/crm`, `/admin/bot`) no existen físicamente. La taxonomía canónica resuelve el smell de raíz.
+> **Fecha:** 2026-07-13 · **Branch:** main · **Status:** snapshot del estado real (NO propuesta)
+> **Autor:** Mavis (sprint de súper-auditoría + remediación + cleanup)
+> **Principio rector (David 2026-07-13 00:51):** "Lo importante y más usado se mantiene. Lo pendiente como cursos se pospone."
 
 ---
 
-## 📊 Inventario Actual (estado: 2026-07-13)
+## 🚦 Estado por área (2026-07-13)
 
-### A. Público / Marketing (no requiere auth)
-| URL | Tipo | Comentario |
-|---|---|---|
-| `/` | landing | (asumida, no listada) |
-| `/acerca` | estática | Acerca de Qlick |
-| `/beneficios` | estática | Landing de beneficios |
-| `/contacto` | lead form | Form de contacto |
-| `/cursos` | catálogo | Catálogo de cursos (público) |
-| `/cursos/[slug]` | detalle | Detalle de curso |
-| `/eventos` | catálogo | Catálogo de eventos (público) |
-| `/eventos/[slug]` | detalle | Detalle de evento + registro |
-| `/faq` | estática | Preguntas frecuentes |
-| `/filosofia` | estática | Filosofía de la marca |
-| `/privacidad` | estática | LFPDPPP aviso de privacidad |
+### ✅ **ACTIVO** — Rutas en uso real, mantener tal cual
 
-### B. LMS del Alumno (requiere auth)
-| URL | Tipo | Comentario |
-|---|---|---|
-| `/dashboard` | panel | **Panel del alumno** (mi panel, mis cursos, próximas lecciones) |
-| `/aprender/[courseSlug]` | curso | **LMS** — vista del curso adquirido |
-| `/aprender/[courseSlug]/[lessonSlug]` | lección | **Lección específica** (video, contenido) |
-| `/inscripcion/[courseSlug]` | funnel | Inscripción gratuita a curso |
-| `/pagar/[courseSlug]` | checkout | **Checkout Stripe** para curso paid |
-| `/pagar/[courseSlug]/exito` | post-pago | Confirmación post-pago |
-| `/cert/[folio]` | certificado | **Certificado descargable** del alumno |
-
-### C. Eventos (mixto público + auth)
-| URL | Tipo | Comentario |
-|---|---|---|
-| `/check-in/[token]` | público (token) | Check-in por QR del asistente |
-| `/encuesta/[token]` | público (token) | Encuesta post-evento |
-| `/staff` | staff (auth) | Dashboard del staff del evento |
-| `/staff/scan/[eventId]` | staff (auth) | Scanner QR del staff |
-
-### D. Admin (requiere admin auth)
-| URL | Tipo | Comentario |
-|---|---|---|
-| `/admin/login` | auth | Login admin (Google OAuth) |
-| `/admin/eventos` | gestión | **Gestión de eventos** (catálogo admin) |
-| `/admin/eventos/[id]` | detalle | Detalle admin del evento (config, métricas) |
-| `/admin/eventos/[id]/import` | import | Importador Excel de asistentes |
-| `/admin/handoffs` | CRM kanban | **Handoffs del bot** (kanban de leads) |
-| `/admin/system` | sistema | Hub de sistema (estado de DB, env, etc.) |
-| `/admin/system/audit-log` | auditoría | Log de auditoría |
-| `/admin/system/bot-v2` | bot UI | **UI de la Torre de Control** del bot |
-| `/admin/system/supabase` | debug | Status de Supabase |
-
-### E. Auth (público, sin admin)
-| URL | Tipo | Comentario |
-|---|---|---|
-| `/login` | público | Login del alumno (Google OAuth + magic link) |
-| `/logout` | público | Logout |
-| `/auth/callback` | callback | OAuth callback genérico |
-| `/auth/callback-student` | callback | OAuth callback específico del alumno |
-| `/dev/login` | dev only | Bypass dev (gated por `DEV_ADMIN_SECRET`) |
-
-### F. API (server-side, agrupadas por dominio)
-| Path | Comentario |
+#### A. Público / Marketing
+| URL | Comentario |
 |---|---|
-| `/api/admin/bot/*` | global-pause, mode, simulate, stats |
-| `/api/admin/crm/*` | ai-suggestions, conversations, overview, tasks |
-| `/api/admin/emails/recent` | listar emails recientes enviados |
-| `/api/admin/events/*` | clone, confirmations, import, prefill-rules, send-qr-pass, send-survey-offers, status, survey-config, trigger-reminder |
-| `/api/admin/leads/*` | bulk, export, [id], bot-pause, event-context, interactions, notes, tasks |
-| `/api/admin/staff/tokens` | gestión de tokens de staff |
-| `/api/admin/system-setting` | actualizar setting del sistema |
-| `/api/check-in/[token]` | check-in por token (público) |
-| `/api/cron/*` | cleanup-qr-tokens, event-reminders, survey-reminders |
-| `/api/dev/*` | admin-session, check-schema, login, simulate-webhook (solo dev) |
-| `/api/event-gate/[token]/click` | gate virtual "SÍ, VOY" |
-| `/api/event-qr/[token]` | QR de evento |
-| `/api/events/[id]` | GET evento |
-| `/api/events/[id]/certificate/[attendeeId]` | generar/enviar cert |
-| `/api/payments/create-checkout` | Stripe checkout session |
-| `/api/qr/[courseSlug]` | generar QR de curso |
-| `/api/staff/*` | check-in, register-walk-in, scan |
-| `/api/submit-survey` | POST encuesta |
-| `/api/webhooks/*` | conekta, mercadopago, stripe |
-| `/api/whatsapp/webhook` | WhatsApp inbound |
+| `/` | Landing principal |
+| `/acerca` | Acerca de Qlick |
+| `/beneficios` | Landing de beneficios |
+| `/contacto` | Form de contacto (lead) |
+| `/cursos` | **Catálogo público de cursos** (marketing) |
+| `/cursos/[slug]` | Detalle público de curso |
+| `/eventos` | **Catálogo público de eventos** |
+| `/eventos/[slug]` | Detalle público de evento + registro |
+| `/faq` | Preguntas frecuentes |
+| `/filosofia` | Filosofía de marca |
+| `/privacidad` | LFPDPPP aviso de privacidad |
+
+#### B. Eventos (mixto público + auth staff)
+| URL | Comentario |
+|---|---|
+| `/check-in/[token]` | Check-in por QR (público, vía token) |
+| `/encuesta/[token]` | Encuesta post-evento (público, vía token) |
+| `/staff` | Dashboard del staff (auth staff) |
+| `/staff/scan/[eventId]` | Scanner QR del staff |
+
+#### D. Admin (en uso)
+| URL | Comentario |
+|---|---|
+| `/admin/login` | Login admin (Google OAuth) |
+| `/admin/eventos` | **Gestión administrativa de eventos** (catálogo admin) |
+| `/admin/eventos/[id]` | Detalle admin de un evento |
+| `/admin/eventos/[id]/import` | Importador Excel de asistentes |
+| `/admin/system` | Hub de sistema (status, debug) |
+| `/admin/system/audit-log` | Log de auditoría |
+| `/admin/system/supabase` | Status de Supabase (debug) |
+
+#### E. Auth
+| URL | Comentario |
+|---|---|
+| `/login` | Login del alumno (Google OAuth + magic link) |
+| `/logout` | Logout |
+| `/auth/callback` | OAuth callback genérico |
+| `/auth/callback-student` | OAuth callback del alumno |
+| `/dev/login` | Dev bypass (gated por `DEV_ADMIN_SECRET`) |
+
+#### F. API (en uso)
+- `/api/admin/*` — bot, crm, emails, events, leads, staff, system-setting
+- `/api/check-in/[token]`, `/api/event-gate/[token]/click`, `/api/event-qr/[token]`
+- `/api/cron/*` — cleanup-qr-tokens, event-reminders, survey-reminders
+- `/api/dev/*` — admin-session, check-schema, login, simulate-webhook
+- `/api/events/*`, `/api/payments/create-checkout`, `/api/qr/[courseSlug]`
+- `/api/staff/*`, `/api/submit-survey`, `/api/webhooks/*` (conekta, mercadopago, stripe)
+- `/api/whatsapp/webhook`
 
 ---
 
-## 🚨 Gaps Detectados (URLs mencionadas en docs/protocolos pero NO existen)
+### 🟡 **POSPUESTO** — Rutas construidas pero no usadas (diseño de LMS pendiente)
 
-| URL del protocolo/propuesta | Existe como | Decisión propuesta |
+David confirmó 2026-07-13 00:51 que **"toda la parte de los cursos todavía no está bien diseñada e implementada, podemos irlo posponiendo"**. Las siguientes rutas existen en el filesystem pero NO están en uso real (0 `lesson_progress` rows en prod, sin alumnos reales):
+
+| URL | Estado | Decisión |
 |---|---|---|
-| `/admin/dashboard` | NO | **CREAR** (`/admin/dashboard/page.tsx` que renderice overview admin con KPIs y accesos rápidos a /admin/eventos, /admin/handoffs, /admin/system) |
-| `/admin/bot` | NO (está en `/admin/system/bot-v2`) | **MANTENER** `/admin/system/bot-v2` como oficial. Marcar `/admin/bot` como DEPRECATED en docs. |
-| `/lms` | NO (está en `/aprender`) | **DECIDIR**: `/aprender` es la URL oficial. Crear `/lms` como alias que redirige a `/cursos` (marketing) o a `/dashboard` (LMS del alumno). |
-| `/crm` | NO (está en `/admin/handoffs` + API) | **CREAR** `/admin/crm` que reúna overview (de `/api/admin/crm/overview`), kanban (de `/admin/handoffs`), leads, conversations, tasks. Migrar gradualmente. |
+| `/dashboard` | Construida | **Posponer** (LMS del alumno, sin uso) |
+| `/aprender` | Construida | **Posponer** (LMS del alumno) |
+| `/aprender/[courseSlug]` | Construida | **Posponer** |
+| `/aprender/[courseSlug]/[lessonSlug]` | Construida | **Posponer** |
+| `/inscripcion/[courseSlug]` | Construida | **Posponer** (funnel de inscripción) |
+| `/pagar/[courseSlug]` | Construida | **Posponer** (checkout, sin cursos reales) |
+| `/pagar/[courseSlug]/exito` | Construida | **Posponer** |
+| `/cert/[folio]` | Construida | **Posponer** (cert sin alumnos) |
+
+**Por qué posponer:**
+- Sin uso real (0 `lesson_progress`, 0 alumnos activos).
+- El diseño del LMS no está cerrado (David todavía no ha decidido cursos ni contenido).
+- Invertir tiempo en estos endpoints sin producto listo es scope creep.
+- Cuando David defina el catálogo de cursos, reactiva este bloque.
+
+**Acciones inmediatas:** NINGUNA. Las rutas se mantienen en el filesystem (costo de borrarlas ahora = re-implementar cuando se reactive). Si David decide reactivar este bloque, NO se necesita reescribir código, solo conectar el LMS a cursos reales.
 
 ---
 
-## ⚠️ Inconsistencias Detectadas
+### 🟡 **POSPUESTO** — Rutas de la API del LMS
 
-| Tipo | Detalle | Fix |
+Mismo principio. Las siguientes APIs del LMS están implementadas pero sin uso real:
+
+| Endpoint | Estado |
+|---|---|
+| `/api/qr/[courseSlug]` | Construido, sin uso |
+| `/api/payments/create-checkout` | Construido, sin cursos reales |
+| `/api/events/[id]/certificate/[attendeeId]` | Construido, sin certificados emitidos |
+
+**Decisión:** MANTENER en código. NO son deprecated. Se reactivan cuando el LMS tenga cursos reales.
+
+---
+
+## 🗑️ **ELIMINADAS** (cleanup 2026-07-13)
+
+Por instrucción de David ("los que no se usan y no tienen idea, probablemente también es mejor quitarlos"):
+
+| URL | Archivos eliminados | Razón |
 |---|---|---|
-| **Singular vs plural** | Página: `/admin/eventos/[id]` (con "s"). API: `/api/admin/events/[id]` (sin "s"). | **DECIDIR** entre `evento` o `event`. Recomendación: `event` (sin "s") para consistencia con API. Cambiar `/admin/eventos/*` a `/admin/events/*`. |
-| **Inconsistencia dashboard** | `/dashboard` (alumno) y NO existe `/admin/dashboard` | **CREAR** `/admin/dashboard` con redirección o layout diferenciado. |
-| **LMS vs aprender** | "LMS" en docs y código, pero URL es `/aprender` | **DECIDIR**: `aprender` es el término oficial. Actualizar docs. |
+| `/admin/handoffs/*` | 4 archivos (page, HandoffsClient, loading, _actions) | "No tenía idea de la existencia de handoffs" |
+| `/admin/system/bot-v2/*` | 3 archivos (page, _actions, BotV2Toggle) | "Ahora está implementado directamente en la pantalla de admin" + ya marcado LEGACY en el código |
+
+**Total:** 7 archivos eliminados. **3 referencias** actualizadas (en `admin/not-found.tsx`, `admin/loading.tsx`, `admin/eventos/not-found.tsx`).
+
+**Commit:** `chore(cleanup): elimina /admin/handoffs y /admin/system/bot-v2 (David no los reconocía)` en branch `chore/cleanup-unused-routes-2026-07-12`.
 
 ---
 
-## 🎯 Taxonomía Canónica Propuesta
+## 🚫 **NO crear** (decisión vigente)
 
-### Principios
-1. **URL en singular para recursos** (event, course, lead) — consistente con REST.
-2. **Prefijo `/admin` para todo lo del admin** — sin `/admin/system` (usar `/admin/*` directo).
-3. **LMS del alumno = `/aprender`** (no `/lms`). El término "LMS" se usa internamente en código (`src/lib/lms/`).
-4. **CRM = `/admin/crm`** (no `/admin/handoffs` + API). El "handoffs" es solo una vista del CRM (kanban).
-5. **Dashboard del alumno = `/dashboard`**, **Dashboard admin = `/admin/dashboard`**.
+URLs mencionadas en protocolos o docs que **NO se van a crear**:
 
-### Estructura Final
+| URL | Razón |
+|---|---|
+| `/admin/dashboard` | No existe. David no la pidió. Se queda sin existir. |
+| `/admin/crm` | No existe. CRM fragmentado entre `/admin/handoffs` (legacy, eliminado) y APIs. Se queda sin existir hasta que David defina si quiere unificar. |
+| `/admin/bot` | No existe. La funcionalidad está en `/admin/system` directamente. No se crea. |
+| `/lms` | No existe. El LMS está en `/aprender` (que a su vez está pospuesto). No se crea. |
 
-```
-/                                     → Landing Qlick (marketing)
-
-# Público (sin auth)
-├── /acerca
-├── /beneficios
-├── /contacto
-├── /cursos                       (catálogo)
-│   └── /cursos/[slug]
-├── /eventos                      (catálogo)
-│   └── /eventos/[slug]
-├── /faq
-├── /filosofia
-└── /privacidad
-
-# LMS del alumno (auth)
-├── /dashboard                    (panel: mis cursos, próximas lecciones)
-├── /aprender                     (redirect → /dashboard)
-│   ├── /aprender/[courseSlug]
-│   │   └── /aprender/[courseSlug]/[lessonSlug]
-├── /inscripcion                  (redirect → /inscripcion/[courseSlug])
-│   └── /inscripcion/[courseSlug]
-├── /pagar                        (redirect → /pagar/[courseSlug])
-│   └── /pagar/[courseSlug]
-│       └── /pagar/[courseSlug]/exito
-└── /cert
-    └── /cert/[folio]
-
-# Eventos (mixto)
-├── /check-in                     (redirect → /check-in/[token])
-│   └── /check-in/[token]         (público, QR del asistente)
-├── /encuesta                     (redirect → /encuesta/[token])
-│   └── /encuesta/[token]         (público, post-evento)
-└── /staff                        (auth, dashboard del staff)
-    └── /staff/scan/[eventId]     (auth, scanner QR)
-
-# Admin (auth admin)
-├── /admin/dashboard              (overview admin con KPIs y accesos rápidos) ← CREAR
-├── /admin/login                  (Google OAuth admin)
-├── /admin/event                  (catálogo eventos)                    ← RENOMBRAR de /admin/eventos
-│   ├── /admin/event/[id]
-│   └── /admin/event/[id]/import
-├── /admin/crm                    (CRM unificado)                      ← CREAR
-│   ├── /admin/crm/overview       (métricas)
-│   ├── /admin/crm/leads          (lista + filtros + bulk actions)
-│   ├── /admin/crm/leads/[id]
-│   ├── /admin/crm/conversations  (WhatsApp)
-│   ├── /admin/crm/tasks          (tareas del CRM)
-│   └── /admin/crm/notes          (notas por lead)
-│   /admin/handoffs               (kanban del bot) → integrar en /admin/crm
-│   /admin/bot                    (alias a /admin/crm + tab bot)         ← CREAR
-├── /admin/system
-│   ├── /admin/system/audit-log
-│   ├── /admin/system/bot         (Torre de Control)                  ← RENOMBRAR de bot-v2
-│   └── /admin/system/supabase    (debug)
-└── /admin/staff                  (gestión de staff por evento)         ← MOVER de /staff (separar público de admin)
-    └── /admin/staff/tokens
-
-# Auth
-├── /login
-├── /logout
-├── /auth/callback
-├── /auth/callback-student
-└── /dev/login                    (solo dev)
-```
+**Decisión:** Los protocolos pueden mencionar URLs que no existen. Se documenta el estado real, no se ajusta el código al protocolo.
 
 ---
 
-## 📋 Plan de Implementación (sprint dedicado, NO esta noche)
+## 📊 Resumen
 
-### Sprint 1 (1-2 horas): Crear las URLs que faltan
-1. **`/admin/dashboard`** (NEW) — overview admin con KPIs y accesos a /admin/event, /admin/crm, /admin/system.
-2. **`/lms`** (alias) — redirige a `/cursos` (marketing) o `/dashboard` (LMS). Decidir A/B.
-3. **`/admin/crm`** (NEW, mínimo viable) — overview de CRM con links a /admin/handoffs y al API de overview.
-
-### Sprint 2 (2-3 horas): Renombrar y unificar
-1. **`/admin/eventos/*` → `/admin/event/*`** (sin "s"). Mantener `/admin/eventos/*` como redirect temporal.
-2. **`/admin/system/bot-v2` → `/admin/system/bot`** (sin "-v2"). Mantener bot-v2 como redirect.
-3. **`/admin/handoffs` → `/admin/crm/handoffs`** (mover dentro del CRM). Mantener /admin/handoffs como redirect.
-4. **`/admin/system/bot` → link también desde `/admin/bot`** (alias de la Torre de Control).
-
-### Sprint 3 (3-4 horas): Decisión sobre `/staff` y `/admin/staff`
-- `/staff` (público del staff del evento) vs `/admin/staff` (admin que gestiona tokens de staff).
-- Recomendación: separar claramente. `/staff/*` es la zona del staff del evento (auth staff role). `/admin/staff/*` es la zona admin (auth admin role).
-- Actualizar middleware para diferenciar.
-
-### Sprint 4 (1 hora): Actualizar docs
-- `docs/URLS_CANONICAS.md` (este doc) queda como source of truth.
-- Actualizar `AGENTS.md` con la taxonomía canónica.
-- Actualizar `docs/ROADMAP.md` y `docs/STATUS.md` con las nuevas URLs.
-
----
-
-## 🛑 Decisiones Pendientes para David
-
-1. **`/lms`**: ¿Marketing (catálogo) o LMS (después de pagar)?
-   - A) `/lms` = `/cursos` (marketing). `/aprender` = LMS post-compra.
-   - B) `/lms` = `/aprender` (LMS post-compra). `/cursos` = marketing.
-
-2. **`/admin/dashboard`**: ¿Crear o usar `/admin/system`?
-   - A) Crear `/admin/dashboard` con overview admin. Dejar `/admin/system` para debug.
-   - B) Renombrar `/admin/system` a `/admin/dashboard` (más user-friendly). Debug se mueve a `/admin/system/legacy` o algo similar.
-
-3. **`/admin/crm`**: ¿Crear wrapper o usar `/admin/handoffs`?
-   - A) Crear `/admin/crm` que reúna overview, leads, conversations, tasks, handoffs.
-   - B) Dejar `/admin/handoffs` como "CRM" y seguir con la fragmentación.
-
-4. **`/admin/eventos` (con "s") → `/admin/event` (sin "s")**:
-   - A) Sí, unificar a singular.
-   - B) No, mantener plural (más natural en español).
-
-5. **Prioridad de los sprints 1-4**:
-   - A) Hacer todos antes del próximo evento grande.
-   - B) Solo Sprint 1 (URLs mínimas) ahora. El resto en Q4 2026.
+| Categoría | Cantidad |
+|---|---|
+| **Rutas activas (público + admin + eventos + auth + API)** | ~80 |
+| **Rutas pospuestas (LMS / cursos)** | 8 |
+| **Rutas APIs pospuestas (LMS)** | 3 |
+| **Rutas eliminadas (cleanup 2026-07-13)** | 2 (con 7 archivos) |
+| **Rutas que NO se crearán** | 4 |
 
 ---
 
 ## 📚 Cross-refs
 
-- `docs/AUDIT_GAPS_PROD_2026-07-12.md` — audit comprehensivo que identificó el smell de URLs.
-- `docs/SUPER_AUDIT_REPORT_2026.md` — súper-auditoría que lo confirmó (AUDIT-004+010 usaron rutas alternativas).
-- `.harness/docs/SUPER_AUDIT_REMEDIATION_PROTOCOL.md` — protocolo ejecutado.
 - `docs/OPEN_ITEMS.md` — gaps abiertos.
+- `docs/SUPER_AUDIT_REPORT_2026.md` — súper-auditoría con 10 hallazgos [RESOLVED].
+- `docs/AUDIT_GAPS_PROD_2026-07-12.md` — audit comprehensivo previo.
+- Sprint commit: ver git log.
