@@ -3630,3 +3630,40 @@ pm run typegen en esta rama � agregar a docs/OPEN_ITEMS.md como nota para spri
   - **BotEngineProvider en el provider de IA**: el simulador pasa el contexto SIN `supabase` al `deepseekAgentProvider.run`. Esto significa que el path 2C (tool loop) que internamente invoca `executeExtractAndSaveContact` tampoco tiene supabase → la tool corre en modo demo (no persiste). Es el comportamiento correcto para el simulador (no queremos que las tools persistan datos).
   - **Costo del LLM en simulación**: cada turno simulado cuesta tokens reales de DeepSeek. 100 simulaciones = 100 turnos de DeepSeek. La UI muestra el costo acumulado en tiempo real. David puede ver el contador.
   - **Sin migraciones**: el sprint v0.9.6 NO toca schema. Todo es lógica + endpoint + UI. Cero riesgo de drift entre repo y DB.
+
+
+## 2026-07-12 ~22:50 Phoenix — Limpieza admin_audit_log
+
+- **Pregunta:** David pidió "veo que hay muchos eventos de creados de auditoría, me gustaría hacer limpieza de eso dejando solamente el evento real". El admin UI mostraba 144 entries en `admin_audit_log`, de las cuales 126 (87.5%) eran de bots de simulación/test.
+
+- **Decisión:** Borrar las 126 entries cuyo `actor_email` NO representa una acción real humana o de sistema legítimo. Criterio:
+  - **BORRAR (126):** `sim-funnel-bot@qlick` (55), `perf-test@qlick` (50), `wizard-bot@qlick` (12), `audit-script@qlick` (9).
+  - **MANTENER (18):** `admin@qlick` (7), `system@qlick` (6), `david17891@gmail.com` (5).
+
+- **Razón:**
+  - Las 4 actor_emails de bots son de pruebas automatizadas del funnel simulator, perf tests, wizard tests, y audit scripts. No representan acciones reales.
+  - Las 18 restantes cubren TODAS las acciones reales (admin UI humano, sistema automatizado legítimo, David).
+  - El cleanup es 100% reversible con el backup JSON.
+  - Riesgo: ~0. Las actor_emails de bots no se usan en producción, solo en simulaciones/tests.
+
+- **Impacto:**
+  - **Backup completo** de las 126 entries a `private-data/audit-log-cleanup-2026-07-12/backup.json` (con todos los campos: id, actor_email, action, entity_type, entity_id, metadata, before, after, created_at).
+  - **DELETE ejecutado** via Management API (`POST /v1/projects/{ref}/database/query` con `Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}`). Status 201.
+  - **Verificación post-delete**: SELECT count(*) GROUP BY actor_email devuelve exactamente 18 (7+6+5), coincide con el esperado.
+  - **Documentación de reversión** en `private-data/audit-log-cleanup-2026-07-12/RESTORE.md` con 3 opciones (restore completo, restore selectivo, reconstruir desde Vercel logs).
+
+- **Archivos tocados:**
+  - **NUEVO** `private-data/audit-log-cleanup-2026-07-12/cleanup.mjs` (script de operación, no en repo).
+  - **NUEVO** `private-data/audit-log-cleanup-2026-07-12/backup.json` (126 entries borradas, con reversión).
+  - **NUEVO** `private-data/audit-log-cleanup-2026-07-12/RESTORE.md` (instrucciones de rollback).
+  - **MODIFICADO** `data/PROJECT-LOG.md` (esta entrada).
+  - Los 3 archivos de `private-data/` están fuera del repo (`.gitignore` ya filtra `private-data/`).
+
+- **Validación:**
+  - Pre-delete inventory: 144 entries, distribución correcta por actor_email.
+  - DELETE status: 201 (Management API success).
+  - Post-delete inventory: 18 entries, coincide con esperado.
+  - No se tocó código de producto, no se tocó schema, no se requieren migrations.
+  - Reversibilidad: 100% (backup completo + script de restore documentado).
+
+- **Trigger:** David pidió limpieza explícita del audit log preservando solo eventos reales. El criterio "actor_email NO real" es el más limpio y reversible. El backup completo permite restaurar si la decisión se revierte.
