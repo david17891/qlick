@@ -1,3 +1,6 @@
+> **📌 Snapshot histórico (sprint housekeeping 2026-07-12):** Este doc es un snapshot del estado del proyecto a la fecha de su creación (ver frontmatter o el commit al inicio del doc). El proyecto ha evolucionado — para el estado actual, ver [docs/STATUS.md](STATUS.md) y [docs/OPEN_ITEMS.md](OPEN_ITEMS.md) (resumen ejecutivo al inicio). Las menciones a Resend o qlick.marketing son del contexto histórico; el email transaccional actual usa **Brevo** (
+oreply@qlick.digital).
+
 # Assessment: Producción Real — Qlick Marketing
 
 > **Fecha:** 2026-07-01 ~20:25

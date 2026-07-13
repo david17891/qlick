@@ -4,11 +4,14 @@
  * Mismo principio que `PaymentProvider` / `VideoProvider` / `ContactProvider`
  * (ver D-005 y D-013): la UI y el CRM no se acoplan a un proveedor concreto.
  *
- * Hoy el único proveedor ACTIVO es `manual_wa` (click-to-chat wa.me): no envía
- * mensajes automatizados, solo construye enlaces para abrir el chat.
+ * Sprint housekeeping 2026-07-12 (G-16): el comentario anterior decía
+ * "Hoy el único proveedor ACTIVO es `manual_wa`". ESTO ES INCORRECTO.
+ * El provider activo en producción desde 2026-07-01 es `meta_cloud_api`
+ * (Meta WhatsApp Business Cloud API). `manual_wa` (click-to-chat wa.me) es
+ * el fallback histórico. Ver `src/lib/whatsapp/index.ts:46` (`getActiveWhatsAppProvider`).
  *
- * Los proveedores `meta_cloud_api` y `bsp` son STUBS documentados. No realizan
- * llamadas a APIs externas. Se activan en fases futuras.
+ * Los providers `bsp` y `openrouter` son STUBS documentados (ver TODOs en
+ * `bsp-provider.ts:52` y `openrouter-provider.ts:52`).
  *
  * Ver docs/WHATSAPP_OFFICIAL_INTEGRATION_PLAN.md.
  */

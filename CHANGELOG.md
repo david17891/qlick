@@ -8,6 +8,169 @@
 
 ---
 
+## [v0.9.9] — Arnés de simulación masiva 200 situaciones cartesianas — 2026-07-12
+
+**Branch:** `feat/fase-17-4-improvements-and-massive-harness` → **mergeado a `main` (PR #26, HEAD `89902e8`)**.
+**Handoff:** `docs/HANDOFF_v0.9.9_BOT_MASSIVE_SIMULATION.md` (creado en sprint housekeeping 2026-07-12).
+**Reporte ejecutivo:** `docs/BOT_MASSIVE_SIMULATION_200_REPORT.md` (215 líneas, semáforo por arquetipo, 60.0% pass rate baseline).
+**Tests:** 1262/1262 verde · type-check ✓ · lint 0/0 · build ✓.
+
+Este release cierra el cluster de sprints v17 con un **arnés de simulación masiva** que valida 200 situaciones cartesianas (10 arquetipos × 4 contextos × 5 trayectorias) contra 5 métricas de calidad (`isBrief`, `guestsHandledCorrectly`, `typoIntercepted`, `cadenciaSuaveRespetada`, `toolCalledCorrectly`).
+
+### Added
+
+- **`src/lib/ai/simulation/massive-matrix-generator.ts`** — generador cartesiano determinista. Arquetipos: `apresurado`, `desconfiado`, `tecnico`, `fuera_de_horario`, `acompanantes`, `typo_email`, `cadencia_larga`, `asesor_humano`, `monosilabo`, `hostil`. Contextos: `super_executive+free_masterclass`, `super_executive+paid_course`, `socratic_autopilot_v2+lms_course`, `fallback+no_active_event`. Trayectorias: `quick_convert`, `standard_funnel`, `deep_objection`, `abandonment`, `reactivation`.
+- **`src/lib/ai/simulation/matrix-auditor.ts`** — 5 métricas + `mockBotRespond` determinístico + `auditTurn` + `auditSituation` + `auditMatrix` con agregación por arquetipo/contexto/trayectoria.
+- **`scripts/generate-massive-report.mjs`** — genera reporte ejecutivo (`.md` commiteable) + reporte completo (`.json` en `private-data/` gitignored, ~236KB).
+- **8 tests** en `tests/bot-simulator-massive-matrix.test.mjs` (cardinalidad 200, unicidad de IDs, distribución cartesiana, duración <5s, agregación correcta).
+
+### Baseline (punto de partida, no objetivo cerrado)
+
+- 60.0% pass rate (120/200).
+- 6 arquetipos 🟢: `desconfiado`, `tecnico`, `acompanantes`, `typo_email`, `monosilabo`, `hostil`.
+- 4 arquetipos 🔴: `apresurado`, `fuera_de_horario`, `cadencia_larga`, `asesor_humano` (situaciones de stress esperables, documentadas como siguiente sprint).
+
+---
+
+## [v0.9.8] — 3 mejoras del Súper Ejecutivo (typos de dominio, cadencia suave, tool `add_event_guest`) — 2026-07-12
+
+**Branch:** `feat/fase-17-4-improvements-and-massive-harness` → **mergeado a `main` (PR #26, HEAD `89902e8`)**.
+**Handoff:** `docs/HANDOFF_v0.9.8_SUPER_EJECUTIVO.md` (creado en sprint housekeeping 2026-07-12).
+**Tests:** 1226/1226 → 1262/1262 (+36 nuevos) · type-check ✓ · lint 0/0 · build ✓.
+
+### Added
+
+- **Mejora #1 — Detección de typos de dominio en `extract-contact.ts`** (commit `2348103`):
+  - `DOMAIN_TYPOS` dict con 15 typos frecuentes (`gmial.com`, `hotmial.com`, `gnmail.com`, `yaho.com`, `outlok.com`, etc.).
+  - `detectDomainTypo()` corre sobre el email parseado antes de validar formato.
+  - `executeExtractAndSaveContact()` retorna `status: "needs_domain_confirmation"` con `suggested_domain` + `raw_domain` cuando hay typo.
+  - +15 tests en `tests/extract-contact-typo.test.mjs`.
+- **Mejora #2 — Cadencia suave de cierre (anti-insistencia)** (commit `038b519`):
+  - Bloque `CADENCIA SUAVE DE CIERRE (ANTI-INSISTENCIA)` agregado al prompt del Súper Ejecutivo (`buildSuperExecutivePrompt` en `src/lib/ai/agent-prompts.ts`).
+  - Regla: máximo 1 mención al enlace de pago/registro por ventana de 4 turnos, 1 pregunta de calificación por ventana de 6 turnos, si el usuario ya mostró resistencia (>0 objeciones) NUNCA insistir con el mismo ángulo.
+  - Copy rígido del v0.9.6 reemplazado por directivas flexibles (decidido → CTA inmediato, dudas → cierre conversacional sin CTA duro).
+  - +13 tests de tono actualizados en `tests/agent-prompts-tone.test.mjs`.
+- **Mejora #3 — Tool `add_event_guest` + migración `guests JSONB` + registro de acompañantes** (commit `b91207f`):
+  - Migration `supabase/migrations/20260712044100_event_attendees_guests.sql`: columna `guests JSONB NOT NULL DEFAULT '[]'::jsonb` en `event_attendees`. RLS heredada.
+  - Nueva tool `add_event_guest` en `getAgentTools()` (`src/lib/ai/agent-tools.ts`): esquema estricto (`parent_lead_id` req, `guest_name` req, `guest_email` opt). Total de tools del Súper Ejecutivo: **2** (`extract_contact` + `add_event_guest`).
+  - Executor `src/lib/ai/tool-executors/add-guest.ts`: idempotente por nombre (case-insensitive trim, mismo nombre actualiza email/added_at, preserva id).
+  - Prompt Súper Ejecutivo: bloque `REGISTRO DE ACOMPAÑANTES (TOOL add_event_guest)` REEMPLAZA el bloque `LÍMITE TÉCNICO DE REGISTRO` del v0.9.7 hotfix. 3 reglas: DISPONIBLE (tool existe), CONFIRMACIÓN CÁLIDA (registra + confirma con nombre), LIMITACIÓN (si tool falla, NO inventar).
+  - +12 tests en `tests/add_event_guest.test.mjs` (idempotencia, validación, errores DB).
+  - Migration adicional `20260712044200_enable_pg_trgm.sql` (habilita `pg_trgm` requerida para GIN con `gin_trgm_ops`).
+  - Typegen regenerado (`event_attendees.guests: Json` + `admin_audit_log.before/after: Json` ahora visibles).
+
+### Typegen refresh
+
+- 4 call sites limpiados de `as unknown as` global; queda 1 cast local en lectura de `Json` → `GuestRecord[]` (necesario por typegen).
+- 3 errores pre-existentes destapados por typegen estricto en `handoffs-server.ts`, `leads-admin-server.ts`, `confirmations-server.ts` → corregidos con `as unknown as Json`.
+
+### Riesgo operacional documentado
+
+- La migración `guests` es ADITIVA (solo `add column if not exists`). Si se aplicó a prod antes del merge, los acompañantes existentes serán `[]` y la tool empezará a poblarlos idempotentemente.
+
+---
+
+## [v0.9.7] — Anti-alucinación de acompañantes + switch Flash/Pro + directivas de tono — 2026-07-12
+
+**Branch:** `feat/fase-17-2-ai-flash-and-tone` + `fix/v17-3-anti-alucinacion-acompanantes` → **mergeado a `main` (PR #25, HEAD `aea4b8e`)**.
+**Handoff:** no dedicado (sprint corto end-to-end); detalle en `data/PROJECT-LOG.md` 2026-07-12.
+**Tests:** 1173/1173 → 1226/1226 (+53) · type-check ✓ · lint 0/0 · build ✓.
+
+### Fixed
+
+- **Anti-alucinación de acompañantes** (commit `067e15b`, hotfix v0.9.7):
+  - El bot alucinaba confirmaciones de acompañantes que el lead no había mencionado. Fix: endurecer el bloque `LÍMITE TÉCNICO DE REGISTRO` en el prompt Súper Ejecutivo para que NUNCA afirme "registré a tu acompañante X" sin haber llamado `add_event_guest` (que no existía aún — llegaba en v0.9.8).
+- **Switch Flash/Pro con heurística de escalado** (commit `17e51ad`):
+  - Default: DeepSeek V4-Flash (rápido + barato). Escalado a V4-Pro para mensajes largos (>500 chars) o intents complejos (precio, objeción, registro).
+  - Configurable vía `system_settings.bot_llm_escalation_threshold`.
+
+### Added
+
+- **Directivas de tono WhatsApp** en `agent-prompts.ts`: brevedad, no emojis forzados, NO usar nombres propios sin consentimiento, NO asumir relaciones personales.
+
+### Internal
+
+- Backfill de tests: 53 tests nuevos distribuidos entre `whatsapp-bot-tone.test.mjs` y `agent-prompts-flash-pro.test.mjs`.
+
+---
+
+## [v0.9.6] — Bot Simulator v0.9.6 (mejoras del simulador de conversaciones) — 2026-07-10
+
+**Branch:** `feat/bot-v2` + `feat/bot-v2-admin-toggle` → mergeado a `main` (pre-sprint v17).
+**Handoff:** `docs/HANDOFF_v0.9.6_BOT_SIMULATOR.md`.
+**Tests:** 1096/1096 → 1144/1144 (+48) · type-check ✓ · lint 0/0 · build ✓.
+
+### Added
+
+- **Bot Simulator v0.9.6** (`scratch/bot-simulator-v2/`): permite a David probar conversaciones del bot sin gastar tokens DeepSeek, con arquetipos predefinidos y assertions sobre el comportamiento esperado.
+- **Arquetipos R1 (FIX #3 stripGreeting<3 + anti-injection + tool loop)** (commit `15cad95`): tests de regresión para el safety-net de openers cortos.
+- **Sub-sprint 2d integración bot-engine + E2E acceptance** (commit `ab1c072`): cierre del sprint 2 del bot v2.
+
+### Internal
+
+- 48 tests nuevos en `tests/bot-simulator-v2/` y `tests/whatsapp-bot-tool-loop.test.mjs`.
+
+---
+
+## [v0.9.5] — Torre de Control del Bot v16 (hotfix #3: persistencia de modo + anti-flicker) — 2026-07-10
+
+**Branch:** `chore/hand-v0.9.5-sprint-v16-cierre` (cierre paperwork) + `feat/fase-16-6-hotfix-ui-3` (código).
+**Handoff:** `docs/HANDOFF_v0.9.5_BOT_SIMULATOR.md` (cierre paperwork del sprint v16).
+**Tests:** 1144/1144 verde · type-check ✓ · lint 0/0 · build ✓.
+
+Este sprint cierra el cluster **v16** (Torre de Control del Bot) con un hotfix UI que arregla dos bugs detectados por David en producción.
+
+### Fixed
+
+- **Hotfix #3 — persistencia real de `onSelectMode`** (commits en `feat/fase-16-6-hotfix-ui-3`):
+  - Antes: `onSelectMode` solo cambiaba el estado local del componente `BotConfigTab.tsx`. El cambio NO se persistía en `system_settings.bot_global_mode`. Al recargar la pestaña, el modo volvía al default.
+  - Ahora: optimistic update + POST a `/api/admin/bot/mode` + refetch de `/api/admin/bot/stats` para reconciliar.
+  - Si el POST falla → rollback del modo local + `setError` con el mensaje.
+- **Anti-flicker de carga** en la sección "Modo Global del Bot":
+  - Antes: `useState<BotMode>("socratic_autopilot_v2")` inicializaba con Socrático v2 por defecto. Cuando `fetchStats()` terminaba (~500ms después), saltaba a `stats.bot_global_mode`. La UI dibujaba un modo falso por medio segundo.
+  - Ahora: mientras `statsLoading && !stats`, muestra 3 placeholders animados con `animate-pulse` + el mensaje *"Cargando configuración activa desde base de datos…"*.
+
+### Added
+
+- **Endpoint dedicado `/api/admin/bot/mode`** (`src/app/api/admin/bot/mode/route.ts`):
+  - `GET` → `{ ok, mode: BotMode | null }` leyendo `system_settings.bot_global_mode`.
+  - `POST` con body `{ mode: "socratic_autopilot_v2" | "socratic_no_tools_v1" | "super_executive" }` → UPSERT en system_settings. Idempotente. Valida contra set cerrado de 3 valores; cualquier otro string → 400.
+  - `requireAdmin` + `checkSupabaseConfig` (mismo guard que el resto del admin).
+- **SSOT `BotGlobalMode` + type guard `isBotGlobalMode`** en `src/lib/admin/system-settings-server.ts` (32 líneas nuevas).
+
+### Internal
+
+- **PR #20** (`feat/fase-16-6-hotfix-ui-3`) mergeado a main con HEAD `aea4b8e`. Branch de paperwork `chore/hand-v0.9.5-sprint-v16-cierre` agregada con handoff v0.9.5 + cierre formal.
+
+---
+
+## [v0.9.4] — Sprint CI smoke E2E + GitHub Secrets config (operacional, infra-only) — 2026-07-11
+
+**Branch:** (no branch de feature; 0 commits de código en este sprint).
+**Traza:** `data/PROJECT-LOG.md` entrada `2026-07-11 ~19:30`.
+**Tests:** 1144/1144 verde (sin cambios) · smoke E2E `npm run smoke:audit` y `npm run smoke:scenarios` ✓ en CI.
+
+Este sprint **no incluye cambios de código** — solo infra. Cierra el loop "el CI no corría el smoke E2E contra DB real, así que las migrations no aplicadas a prod pasaban el type-check y el lint pero rompían en runtime".
+
+### Added (operacional)
+
+- **3 GitHub Secrets** configurados en `david17891/qlick` (encriptados en reposo): `SUPABASE_URL`, `SUPABASE_PROJECT_REF` (público, extraído del subdominio), `SUPABASE_SECRET_KEY` (formato `sb_secret_xxx`, válido).
+- **Fine-grained PAT actualizado**: scope "Secrets: Read and write" agregado al existente `github_pat_11AJ3BMCA0...` sin regenerar el token.
+- **Smoke workflow verde** por primera vez en run `29176681182` (1m18s) — los 3 pushes consecutivos a `main` que fallaban (`654e6b6`, `433ad62`, `e7fd2bb`) ahora pasan.
+
+### Cierre del incidente del commit `e7fd2bb`
+
+- Migrations `event_survey_tokens` (`20260703180000`) y `admin_audit_log.before/after` (`20260629000000`) aplicadas a prod vía SQL Editor + `NOTIFY pgrst` ejecutado.
+- El botón "📨 Enviar link de encuesta" del admin ya funciona sin PGRST205.
+- Script nuevo `scripts/audit-migrations-applied.mjs` queda como gate pre-merge.
+
+### Lección operativa
+
+- Fine-grained PAT scopes son granulares — `Actions: R+W` ≠ `Secrets: R+W`. Para escribir GitHub Secrets se necesita scope explícito. Polling manual desde sesión root es mejor que cron para CI <2 min (race condition entre tick programado y delete).
+- `gh secret set` con pipe (`$value | gh secret set NAME`) NO loguea el valor en argv ni en transcript de PowerShell.
+
+---
+
 ## [v0.9.3] — Sprint Cierre-Eventos-Virtuales (link con encuesta + UPSERT attendee + promote lead + audit voseo) — 2026-07-11
 
 **Branch:** `main` (HEAD actual)

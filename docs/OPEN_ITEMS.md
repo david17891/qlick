@@ -19,6 +19,133 @@
 
 ---
 
+## 📊 Estado actual (snapshot 2026-07-12 — sprint housekeeping v0.9.9)
+
+> **TL;DR:** main está verde con 1262/1262 tests, PR #26 (v0.9.8 + v0.9.9) mergeado. Quedan 4 gaps críticos/altos (3 son de David: Meta templates, Vercel env var, migrations en prod) y ~20 gaps de severidad media/baja para sprints futuros. El cuerpo del doc (líneas 22-2097) es **archivo histórico** — no leer de arriba a abajo, este resumen es el source of truth del estado actual.
+
+### 🟢 Abiertos (ordenados por severidad)
+
+#### 🔴 Críticos
+
+| Gap | Síntoma | Acción |
+|---|---|---|
+| **G-5** | 3 plantillas Meta NO creadas en Business Manager (`conf_bienvenida`, `conf_info_evento`, `conf_confirmacion_registro`). Bloquea outreach proactivo + cron Fase 2. | **David en Meta UI** + 24-48h approval. |
+| **G-6** | 5 migrations Fase 7a no verificadas aplicadas en Supabase (`20260630164900_bot_manual_context.sql`, `20260701120000_lead_profile.sql`, `20260701160000_handoff_requests.sql`, `20260701170000_lead_event_attended_status.sql`, `20260701180000_event_reminder_log.sql`). | **David corre** `npx supabase migration list` o SQL Editor → `SELECT table_name FROM information_schema.tables WHERE table_schema='public';` |
+
+#### 🟠 Altos (algunos son decisión de David, no míos)
+
+| Gap | Síntoma | Acción |
+|---|---|---|
+| **A-1** | Next.js 14.2.35 → 15/16 upgrade (12+ CVEs HIGH). Decisión vigente 2026-07-08: "podemos vivir sin eso" hasta Q4 2026 o incidente. | Mantener decisión. Revisar en Q4 2026. |
+| **G-7** | `NEXT_PUBLIC_APP_URL` en Vercel env vars — drift documentado entre `qlick-three.vercel.app` y `qlick.digital`. | **David verifica** con `vercel env ls production`. |
+| **G-12** | `findLeadByPhone` timeout intermitente (5s peor caso). | Considerar timeout explícito 3s + retry; investigar región Supabase ↔ Vercel. |
+| **C-4** | UPSERT `event_attendees` con email NULL no deduplica attendees (UNIQUE trata NULLs como distintos). | Cambiar dedup key a `(event_id, phone_normalized)` o UNIQUE `NULLS NOT DISTINCT`. ~30 min. |
+| **C-5** | Race condition en check-in (SELECT+UPDATE sin lock, doble escaneo sobrescribe `checked_in_by`). | UPDATE atómico con `WHERE checked_in_at IS NULL`. ~20 min. |
+| **C-6** | Check-in endpoints hacen 5-7 queries seriales (~900ms). Con 200 personas escaneando QR en 5 min, cola llega a 5+ min. | Paralelizar con `Promise.all` + audit log fire-and-forget. ~1h. |
+
+#### 🟡 Medios (deuda + post-evento)
+
+| Gap | Síntoma | Acción |
+|---|---|---|
+| **A-2** | Typegen Supabase desincronizado. Casts `as never` / `as unknown as Json` residuales. | Regenerar con `npx supabase gen types typescript --linked` y limpiar casts. **Parcialmente hecho en PR #26** (v0.9.8 typegen fresh para `event_attendees.guests` y `admin_audit_log.before/after`). Faltan otras tablas. |
+| **A-6** | 6 TODOs `// TODO(futura fase):` / `// TODO(Fase 2):` dispersos en código (stubs de providers). NO se implementan en sprint de housekeeping. Owner: sprint dedicado cuando David dispare cada feature. Detalle: | Ver desglose abajo. NO implementar. |
+| **A-3** | ~~`/api/dev/simulate-webhook` sin protección `DEV_ADMIN_SECRET`.~~ | ✅ **CERRADO** (v0.9.3, CHANGELOG). El endpoint ahora acepta header `x-dev-admin-secret` cuando `process.env.DEV_ADMIN_SECRET` está seteado Y matchea, además de la sesión de estudiante. OPEN_ITEMS desactualizado (sprint housekeeping 2026-07-12). | — |
+| **A-4** | ~~10+ stale remote branches sin local.~~ | ✅ **CERRADO** (sprint housekeeping 2026-07-12, rama `feat/housekeeping-2026-07-12`). 47 ramas eliminadas: 26 locales + 21 remotas en primera pasada. Solo quedan `main` + la rama de housekeeping. | — |
+| **A-5** | ~~`package.json` drift: `"version": "0.8.0"` pero release real era v0.9.9.~~ | ✅ **CERRADO** (sprint housekeeping 2026-07-12). Bumpeado a `"version": "0.9.9"`. | — |
+| **A-7** | `/api/dev/login` activo con `DEV_ADMIN_SECRET` como única barrera, sin rate limit ni audit log. | Agregar rate limit + audit log entry. ~20 min. |
+| **G-15** | Sweep comprehensivo de 9 docs históricos que mencionan `Resend` o `qlick.marketing` (HANDOFF_v0.7.1, SMTP_SETUP, FASE_5_PLAN, AUDIT_AND_PLAN, ASSESSMENT_PRODUCCION, PRE_MERGE_CHECKLIST, EVENTS_ADMIN_GUIDE, CONTACT_STRATEGY, TECHNICAL-REVIEW). | Agregar nota al inicio de cada doc explicando que es snapshot histórico válido. NO reescribir (regla del audit). |
+| **G-16** | 3 comentarios engañosos en código: `webhooks/handler.ts:1-13` dice "PLACEHOLDER SEGURO" pero persiste, `whatsapp-provider.ts:7-13` dice "manual_wa único activo" cuando `meta_cloud_api` está activo, `agent-provider.ts:7-9` dice "modo sugerencia" cuando responde auto. | Limpiar 3 comentarios para reflejar el estado real. |
+| **G-17** | App fantasma Meta `2202427980234937` ("WA DevX Webhook Events 1P App") no se puede borrar (es 1P first-party). | No hacer. Workaround funciona (Meta prioriza Qlick_wb). |
+| **D** | Tests de integración contra DB real (los 3 bugs post-2026-07-07 no son detectables por `npm test` que mockea Supabase). | Setup CI matrix con `services: supabase:postgres:14` + fixtures. ~medio día + 2-3h tests. |
+| **E** | `as any` huérfanos post-typegen-refresh (32 ocurrencias, ~10 legítimos + ~7 legacy, resto compensan typegen stale). | Pasada selectiva removiendo innecesarios. ~2-3h en chunks. |
+| **F** | RLS `deny all` implícito en 10 tablas sin policy explícita (`crm_notes`, `crm_tasks`, `lead_interactions`, `admin_audit_log`, `bot_context_overrides`, `event_reminder_log`, `event_email_log`, `event_survey_tokens`, `event_staff_links`, `event_qr_tokens`, `lead_whatsapp_conversations`, `lead_consent_log`, `lead_whatsapp_log`). | Agregar policies admin-only + deny-all explícito para inbound-only. ~1h. |
+| **G** | Backend surface de `partial?: boolean` / `warning?: string` en `markWhatsAppStatus` y server action, pero UI (`PipelineLeadsPromovidosBoard.tsx`) ignora los campos. | Modificar UI para mostrar toast amarillo cuando `state.partial === true`. ~10 min. |
+| **H-1** | Gate virtual hace 4 queries seriales antes del 302 (~700-900ms). | `Promise.all(lookup token + lookup event)` + fire-and-forget attendee/audit. |
+| **H-2** | Rate limit in-memory (`Map` en `src/lib/api/rate-limit.ts:33`) no distribuido en Vercel. | Migrar a Upstash Redis (free tier cubre). ~2h. |
+| **H-3** | `source` se pierde en roundtrip físico+virtual (cuando asistente hace check-in físico Y luego abre stream, `source='zoom_export'` queda aunque presencialmente también asistió). | Cambiar UPSERT para incluir `source` en `update:` de `onConflict`, o agregar `attendance_channels text[]`. |
+| **N-4** | `bot-engine.ts` pesa 1930 líneas — refactor en `intents/welcome.ts`, `intents/register.ts`, etc. | Deuda, scope > 1 día. |
+| **N-5** | Rate limit en endpoints públicos `/api/check-in/[token]` y `/api/event-qr/[token]`. | Mitigación via middleware. |
+| **N-6** | Assert `NEXT_PUBLIC_APP_URL` al startup (hoy fallback a `localhost:3000` si no está seteado). | Fix en `next.config.mjs` o `src/lib/env.ts`. |
+| **N-7** | `summary` se actualiza solo si `intent !== "question"` (backwards en `bot-engine.ts:1594`). | Fix de 1 línea. |
+| **G-13** | Mark `whatsapp_status`/`last_contacted_at` como "pendiente de verificar" — TODO defensivo en código. | SQL Editor para verificar schema. |
+
+#### ⚪ Bloqueados (esperando input externo / decisión de socios)
+
+| Gap | Bloquea |
+|---|---|
+| **Decisión proveedor de pagos** | Roadmap item 5 + cualquier flujo de inscripción paid. Recomiendo MercadoPago para MX + Stripe como backup USD. |
+| **Contenido real de cursos** | Videos placeholders de YouTube. Decisión con socios. |
+| **Plantilla email transaccional** | Default Supabase Auth vs custom branded. |
+| **Monitoring errores runtime** | Sentry vs nada. |
+
+### ✅ Cerrados en sprints recientes (2026-06 → 2026-07-12)
+
+**Releases mergeados a main (HEAD `89902e8`):**
+
+- [x] **v0.9.9** — Arnés de simulación masiva 200 situaciones (PR #26, 2026-07-12)
+- [x] **v0.9.8** — 3 mejoras Súper Ejecutivo: typos de dominio + cadencia suave + tool `add_event_guest` (PR #26, 2026-07-12)
+- [x] **v0.9.7** — Anti-alucinación acompañantes + flash/tone (PR #25, 2026-07-12)
+- [x] **v0.9.6** — Bot Simulator (handoff v0.9.5/v0.9.6)
+- [x] **v0.9.5** — Torre de Control Bot v16 (handoff v0.9.5)
+- [x] **v0.9.4** — CI smoke E2E + 3 GitHub Secrets (2026-07-11)
+- [x] **v0.9.3** — Cierre-Eventos-Virtuales + UPSERT attendee + audit voseo completo (2026-07-11)
+- [x] **v0.9.2** — Cert Email batch (2026-07-08, merge 2026-07-11)
+- [x] **v0.9.1** — Certificados Concept C (2026-07-08)
+- [x] **v0.9.0** — CRM Inteligente v2.0 (Fases 1+2+3, 2026-07-06)
+
+**Gaps cerrados en cluster v0.9.x:**
+
+- [x] **G-1** RESEND→BREVO (`human-handoff.ts:74` ahora usa `BREVO_API_KEY`)
+- [x] **G-2** `WHATSAPP_WEBHOOK_SECRET` validado en prod (HMAC activo)
+- [x] **G-3** Bot repite saludo (3 capas de defensa + safety-net)
+- [x] **G-4** `/encuesta/[token]` + `/api/submit-survey` operativos
+- [x] **G-8** Renombramiento `resend_message_id` → `brevo_message_id`
+- [x] **G-9** Carga de cursos hardcoded (botón "Ver cursos" → "Ver eventos")
+- [x] **G-10** `/admin/handoffs` UI completa con filtros + audit log
+- [x] **G-11** Discrepancia 24 vs 27 tablas refrescada
+- [x] **A-3** `simulate-webhook` ahora acepta `x-dev-admin-secret` (CHANGELOG v0.9.3)
+- [x] **Vercel aliases** agregados en `vercel.json` (CHANGELOG v0.9.3)
+- [x] **H-10** `linkLeadToEventRecord` valida `recordType` contra enum
+- [x] **H-11** `leads.tags` GIN index pospuesto (ya no crítico con `lead_event_links`)
+- [x] **B-2** Calendario CRM pinta 3 cards (appts + overdue tasks + upcoming tasks)
+- [x] **B-3** Contadores globales en cards de eventos (Map<eventId, count>)
+- [x] **B-4** Navbar "Mi panel" contextual por rol
+- [x] **B-5** Cover image overflow cerrado por construcción (gradiente en lugar de `<img>`)
+- [x] **B-6** `runEventImport` chunks paralelos con `Promise.allSettled` (~2x speedup)
+- [x] **C-1** `LessonVideoProvider` `"external"` — 1 línea
+- [x] **C-3** `surveyUnmatchedCount` con JOIN por `event_id`
+- [x] **P0-1..P0-4** + **P1-1..P1-4** auditoría 2026-07-02
+- [x] **M-1** OPT_OUT_RE regex endurecido
+- [x] **M-2** TEMPLATES dead code documentado
+- [x] **M-3** `loadConversationWindow` 1 sola query con relación embebida
+- [x] **M-4** `firstName` fallback a `""` (no "Hola hola")
+- [x] **A-1** `findLeadByPhone` index `phone_normalized` UNIQUE (<100ms)
+- [x] **A-2** `createLeadFromWhatsApp` maneja 23505
+- [x] **A-3** `simulate-webhook` ahora acepta `x-dev-admin-secret`
+
+### 📚 Histórico
+
+El cuerpo del doc (líneas debajo) preserva la trazabilidad completa de cada gap con: SHA del commit de cierre, sesión que lo cerró, archivo afectado, decisión arquitectónica asociada. **No leer de arriba a abajo** — usar el resumen de estado actual al inicio como source of truth y bajar al cuerpo solo cuando se necesita evidencia de cierre o contexto de un gap específico.
+
+---
+
+### A-6 · Desglose de los 6 TODOs `// TODO(futura fase):` en código
+
+(verificado sprint housekeeping 2026-07-12; no se implementan en este sprint, son referencia para sprints dedicados cuando David dispare cada feature)
+
+| Archivo | Línea | TODO | Owner / Trigger | Estimación |
+|---|---|---|---|---|
+| `src/lib/whatsapp/providers/bsp-provider.ts` | 52 | `// TODO(futura fase): llamada real a la API del BSP elegido` (360dialog, YCloud, Twilio, Wati). | Sprint dedicado cuando David elija BSP. Depende de G-5 (Meta templates aprobadas). | ~1 día por BSP elegido. |
+| `src/lib/payments/mercadopago-provider.ts` | 42 | `// TODO(Fase 2): crear Preference con SDK oficial mercadopago`. | Sprint dedicado cuando David elija MercadoPago como proveedor de pagos. | ~2-3 días. |
+| `src/lib/payments/conekta-provider.ts` | 43 | `// TODO(Fase 2): crear Order con Conekta`. | Sprint dedicado cuando David elija Conekta. | ~2-3 días. |
+| `src/lib/contact/resend-contact-provider.ts` | 33 | `// TODO(futura fase): enviar email real con Resend SDK`. | Sprint dedicado cuando David active Resend (nota: ya se migró a Brevo en otros paths, este contact-provider sigue siendo stub de Resend). | ~1 día. |
+| `src/lib/contact/crm-contact-provider.ts` | 34 | `// TODO(futura fase): crear contacto + deal en el CRM`. | Sprint dedicado cuando David integre HubSpot/Zoho/Pipedrive. | ~2-3 días. |
+| `src/lib/ai/openrouter-provider.ts` | 52 | `// TODO(futura fase): setup completo OpenRouter (fetch a api/v1/chat/completions)`. | Sprint dedicado cuando David quiera multi-modelo IA. Hoy solo DeepSeek activo. | ~1 día. |
+
+**Regla:** NO eliminar los `// TODO(futura fase):` del código hasta que el sprint dedicado los implemente. Son la única referencia operativa de qué falta en cada provider stub.
+
+---
+
 ## 0. Auditoría profunda 2026-07-02 (pre-6 jul)
 
 **Sesión:** 2026-07-02 ~02:45. **Método:** 3 sub-agents en paralelo (bot / funnel / infra) + lectura directa de docs + memoria. **Output:** 17 gaps priorizados.
