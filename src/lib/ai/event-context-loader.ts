@@ -617,3 +617,101 @@ export function classifyEventType(evt: {
   // Default defensivo.
   return "unknown";
 }
+
+/* ------------------------------------------------------------------ */
+/*  Catálogo de Cursos LMS Asincrónicos (Academia 24/7)                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Cache en memoria del catálogo de cursos, con TTL de 5 minutos.
+ * Mismo patrón que `loadActiveEventContext` para no martillar Supabase
+ * en cada mensaje entrante del bot.
+ */
+let coursesCatalogCache: { value: string; expiresAt: number } | null = null;
+const COURSES_CATALOG_TTL_MS = 5 * 60 * 1000; // 5 min
+
+/**
+ * FIX 2026-07-13 (súper-auditoría + plan anti-alucinación, Ola 1):
+ * Carga el catálogo de cursos LMS publicados para inyectarlo en el
+ * system prompt del Súper Ejecutivo.
+ *
+ * Por qué existe: cuando no hay eventos en vivo (source = "no_events"),
+ * el Súper Ejecutivo quedaba sin producto real que ofrecer y alucinaba
+ * inscripciones falsas. Con este catálogo, el bot siempre tiene
+ * cursos grabados del LMS que puede vender con verdad 100% factual.
+ *
+ * - Query: `select('title, slug, price, summary')` sobre `courses`
+ *   filtrado por `status = 'published'`.
+ * - Formato: bloque canónico con encabezado y enlaces absolutos.
+ * - Si falla la query o no hay cursos: devuelve `""` (vacío).
+ * - Cache 5 min en memoria (mismo TTL que el catálogo de eventos).
+ */
+export async function loadCoursesCatalogBlock(): Promise<string> {
+  // 1) Cache hit.
+  if (coursesCatalogCache && coursesCatalogCache.expiresAt > Date.now()) {
+    return coursesCatalogCache.value;
+  }
+
+  // 2) Si no hay Supabase configurado (modo demo), devolver vacío.
+  let supabase: SupabaseAdmin | null = null;
+  try {
+    const { checkSupabaseConfig } = await import("../supabase/health");
+    const { createSupabaseAdminClient } = await import("../supabase/admin");
+    if (checkSupabaseConfig().configured) {
+      supabase = createSupabaseAdminClient();
+    }
+  } catch {
+    supabase = null;
+  }
+  if (!supabase) {
+    coursesCatalogCache = { value: "", expiresAt: Date.now() + COURSES_CATALOG_TTL_MS };
+    return "";
+  }
+
+  // 3) Query a Supabase.
+  try {
+    const { data, error } = await supabase
+      .from("courses")
+      .select("title, slug, subtitle, description, price_mxn")
+      .eq("status", "published")
+      .order("title", { ascending: true });
+
+    if (error || !data || data.length === 0) {
+      coursesCatalogCache = { value: "", expiresAt: Date.now() + COURSES_CATALOG_TTL_MS };
+      return "";
+    }
+
+    // 4) Formatear el bloque canónico.
+    const lines: string[] = [
+      "=== CATÁLOGO DE CURSOS LMS ASINCRÓNICOS (ACADEMIA 24/7) ===",
+      `Hay ${data.length} curso${data.length === 1 ? "" : "s"} grabado${data.length === 1 ? "" : "s"} disponible${data.length === 1 ? "" : "s"} para acceso inmediato en nuestra plataforma:`,
+      "",
+    ];
+    data.forEach((row, idx) => {
+      const priceLabel =
+        typeof row.price_mxn === "number" || typeof row.price_mxn === "string"
+          ? `$${row.price_mxn} MXN`
+          : "Gratis";
+      lines.push(`[${idx + 1}] ${row.title} — ${priceLabel}`);
+      const shortText = row.subtitle ?? row.description ?? "";
+      if (shortText) {
+        const shortSummary =
+          shortText.length > 140 ? shortText.slice(0, 137) + "..." : shortText;
+        lines.push(`    Resumen: ${shortSummary}`);
+      }
+      lines.push(`    Enlace: https://www.qlick.digital/cursos/${row.slug}`);
+      lines.push("");
+    });
+    lines.push("=========================================================");
+
+    const block = lines.join("\n");
+    coursesCatalogCache = { value: block, expiresAt: Date.now() + COURSES_CATALOG_TTL_MS };
+    return block;
+  } catch {
+    // En modo defensivo, cualquier excepción devuelve vacío para que
+    // el bot no rompa con un error 500. El sistema sigue funcionando
+    // sin catálogo; el LLM simplemente no tendrá cursos que ofrecer.
+    coursesCatalogCache = { value: "", expiresAt: Date.now() + COURSES_CATALOG_TTL_MS };
+    return "";
+  }
+}
