@@ -3714,3 +3714,49 @@ pm run typegen en esta rama � agregar a docs/OPEN_ITEMS.md como nota para spri
   - **Fire-and-forget del audit log**: si Supabase está degradado justo al insertar el audit log, perdemos esa entrada específica. Pero event_attendees (Q3) ya quedó registrada, que es la fuente de verdad. La cobertura del audit log baja marginalmente para `event_gate_click`, pero el admin UI puede reconstruir desde event_attendees si necesita 100% precisión.
   - **JOIN con events via FK**: si alguien borra la FK en el futuro, el JOIN devuelve `events: null` y nuestro defense-in-depth (redirect a /eventos) lo maneja. No hay crash silencioso.
   - **No medible sin tráfico**: la latencia mejorada es teórica (~150-300ms menos en el path feliz). El siguiente evento con tráfico real podrá medirlo. Si no se observa mejora, no es bug — solo significa que Supabase-Vercel ya tenía latency menor al estimado.
+
+
+## 2026-07-12 ~23:00 Phoenix — Limpieza eventos simulación/audit
+
+- **Pregunta:** David mostró el admin UI de eventos con 3 cards visibles de "Masterclass Funnels 2026" y "Audit Masterclass 2026" (slugs `sim-funnel-*` y `audit-funnel-*`). Dijo "y todas estas auditorías que son puro ruido". Investigación reveló 44 eventos totales de simulación/audit, contra 1 evento real ("Marketing + IA para Emprendedores").
+
+- **Decisión:** Borrar los 44 eventos de simulación/audit. Criterio: `slug ~ '^(sim|audit)-funnel-'` (regex estricto, no matchea el slug real `marketing-ia-para-emprendedores`). El CASCADE de las FKs borra automáticamente las 264 filas en cascada.
+
+- **Razón:**
+  - El admin UI de `/admin/eventos` mostraba los 44 eventos mezclados con el real. David tenía que scrollear entre cards de ruido para encontrar el evento real.
+  - Los 44 eventos tienen título genérico ("Masterclass Funnels 2026" o "Audit Masterclass 2026"), fechas 2026-07-13 (futuro), location "CDMX", y sin confirmados reales.
+  - El evento real (`marketing-ia-para-emprendedores`) fue creado el 2026-07-07 y es el único con título específico de Qlick.
+  - Riesgo: ~0. La regex es estricta. El backup completo permite reversión 100%.
+
+- **Impacto:**
+  - **44 eventos borrados** via `DELETE FROM events WHERE slug ~ '^(sim|audit)-funnel-'`. CASCADE propagó a:
+    - 66 event_attendees
+    - 22 event_confirmations
+    - 110 event_surveys
+    - 66 lead_event_links
+    - **TOTAL: 308 filas borradas**
+  - **FKs ON DELETE CASCADE** confirmadas pre-delete en 11 de las 13 FKs que referencian `events.id`. Las 2 restantes son `SET NULL` (no afectan, no había rows en esas tablas para los eventos a borrar).
+  - **1 evento real preservado**: `marketing-ia-para-emprendedores` ("Marketing + IA para Emprendedores", virtual, published, starts_at 2026-07-11).
+  - **Verificación post-delete**: SELECT count(*) FROM events = 1 (esperado 1). Counts de las 4 tablas dependientes en cascada coinciden con (pre-count − cascada-count).
+  - **Documentación de reversión** en `private-data/events-cleanup-2026-07-12/RESTORE.md` con script Node de restore inverso (orden: events → event_confirmations → event_attendees → event_surveys → lead_event_links, con `ON CONFLICT (id) DO NOTHING` para idempotencia).
+
+- **Archivos tocados:**
+  - **NUEVO** `private-data/events-cleanup-2026-07-12/cleanup.mjs` (script de operación).
+  - **NUEVO** `private-data/events-cleanup-2026-07-12/events.json` (44 eventos borrados, con id/slug/title/format/status/starts_at/ends_at/created_at).
+  - **NUEVO** `private-data/events-cleanup-2026-07-12/event_attendees.json` (66 rows).
+  - **NUEVO** `private-data/events-cleanup-2026-07-12/event_confirmations.json` (22 rows).
+  - **NUEVO** `private-data/events-cleanup-2026-07-12/event_surveys.json` (110 rows).
+  - **NUEVO** `private-data/events-cleanup-2026-07-12/lead_event_links.json` (66 rows).
+  - **NUEVO** `private-data/events-cleanup-2026-07-12/RESTORE.md` (instrucciones de rollback con script Node).
+  - **MODIFICADO** `data/PROJECT-LOG.md` (esta entrada).
+  - Los 7 archivos de `private-data/` están fuera del repo (`.gitignore` ya filtra `private-data/`).
+
+- **Validación:**
+  - Pre-delete count: 45 eventos, distribución confirmada (44 sim/audit + 1 real).
+  - FKs verificadas pre-delete: 11 CASCADE, 2 SET NULL (sin rows en juego).
+  - DELETE status: 201 (Management API success).
+  - Post-delete count: 1 evento (coincide con esperado), counts de cascada consistentes.
+  - Real-event preserved: `marketing-ia-para-emprendedores` sigue accesible.
+  - Reversibilidad: 100% (5 JSON files + script de restore documentado en RESTORE.md).
+
+- **Trigger:** David señaló la imagen del admin UI con cards de ruido y pidió limpieza. El criterio "slug ~ '^(sim|audit)-funnel-'" es el más limpio y reversible. El backup completo permite restaurar si la decisión se revierte.
