@@ -3667,3 +3667,50 @@ pm run typegen en esta rama � agregar a docs/OPEN_ITEMS.md como nota para spri
   - Reversibilidad: 100% (backup completo + script de restore documentado).
 
 - **Trigger:** David pidió limpieza explícita del audit log preservando solo eventos reales. El criterio "actor_email NO real" es el más limpio y reversible. El backup completo permite restaurar si la decisión se revierte.
+
+
+## 2026-07-12 ~23:00 Phoenix — Sprint H-1 (cierra H-1)
+
+- **Pregunta:** David eligió opción A de mi menú: "Limpieza audit log + H-1 (gate 4→2 queries)". H-1 era el último gap de performance del audit comprehensivo 2026-07-12 con autonomía plena (refactor puro, sin tocar schema).
+
+- **Decisión:** Cerrar H-1 con un solo sprint. Refactor quirúrgico del route `/api/event-gate/[token]/click` que colapsa 4 queries secuenciales en 2 bloqueantes + 1 fire-and-forget.
+
+- **Razón:**
+  - H-1 es el path crítico del gate virtual ("SÍ, VOY") que el asistente clickea al unirse al evento streaming. Latencia actual ~700-900ms por las 4 queries seriales (Q1 SELECT event_qr_tokens, Q2 SELECT events, Q3 UPSERT event_attendees, Q4 INSERT admin_audit_log).
+  - El refactor NO toca schema, NO cambia comportamiento observable, solo reorganiza queries.
+  - Riesgo: bajo. El JOIN PostgREST sobre la FK `event_qr_tokens.event_id → events.id` está garantizado por la FK existente.
+  - Riesgo: bajo. El fire-and-forget del audit log no afecta al asistente (event_attendees es la fuente de verdad de la asistencia, no el audit log).
+
+- **Impacto:**
+  - **Q1+Q2 combinadas** en una sola query con JOIN:
+    - ANTES: 2 SELECT round-trips a Supabase.
+    - DESPUÉS: 1 SELECT con `select("..., events:event_id (id, slug, format, streaming_url)")`.
+    - Latencia: -1 round-trip a Supabase (~100-200ms ahorrado).
+  - **Q4 fire-and-forget**:
+    - ANTES: `await logAdminAction(...)` bloquea el redirect al streaming.
+    - DESPUÉS: `logAdminAction(...).catch(err => console.error(...))` — no bloquea.
+    - Latencia: -audit log insert latency (~50-100ms ahorrado en el path feliz).
+  - **Q3 (createAttendee) sigue bloqueante**: es la fuente de verdad. Si falla, NO redirigimos al streaming (sería incorrecto contar asistencia que no quedó registrada).
+  - **Total queries bloqueantes en path feliz**: 2 (JOIN + UPSERT). **Total queries totales**: 3 (la tercera fire-and-forget).
+  - **Cast de tipos** actualizado: `row.events: { id, slug, format, streaming_url } | null` en el type cast. Defense-in-depth: si el JOIN devuelve null (token huérfano por delete concurrente), redirige a /eventos.
+  - **Comportamiento observable idéntico**: mismas validaciones (token format, supabase config, virtual/hybrid format, streaming_url presente), mismo redirect 302 al streaming_url, mismo audit log entry.
+
+- **Archivos tocados:**
+  - `src/app/api/event-gate/[token]/click/route.ts` (refactor, +33/-23 líneas).
+  - `docs/OPEN_ITEMS.md` (H-1 marcado como cerrado en línea de gaps abiertos + cluster v0.9.x).
+  - `data/PROJECT-LOG.md` (esta entrada).
+
+- **Validación:**
+  - `npm run type-check` → ✓ 0 errores
+  - `npm run lint` → ✓ 0 warnings, 0 errors
+  - `npm test` → ✓ **1262/1262 verde** (sin cambios en tests — el refactor es backward-compat)
+  - `npm run build` → ✓ compila, ruta `/api/event-gate/[token]/click` listada en manifest (ƒ Dynamic)
+  - Schema verificado pre-refactor: FK `event_qr_tokens.event_id → events.id` existe (`event_qr_tokens_event_id_fkey`).
+  - **Branch + merge**: `feat/h1-gate-parallel-2026-07-12` → merge --no-ff a main con commit `a25554a`. Push a origin OK. Vercel auto-deploy disparado.
+
+- **Trigger:** David eligió opción A de mi menú post-audit comprehensivo. H-1 es el último gap de performance cerrable con autonomía plena (A-1, H-2, H-3-B requieren decisiones externas).
+
+- **Riesgo operacional:**
+  - **Fire-and-forget del audit log**: si Supabase está degradado justo al insertar el audit log, perdemos esa entrada específica. Pero event_attendees (Q3) ya quedó registrada, que es la fuente de verdad. La cobertura del audit log baja marginalmente para `event_gate_click`, pero el admin UI puede reconstruir desde event_attendees si necesita 100% precisión.
+  - **JOIN con events via FK**: si alguien borra la FK en el futuro, el JOIN devuelve `events: null` y nuestro defense-in-depth (redirect a /eventos) lo maneja. No hay crash silencioso.
+  - **No medible sin tráfico**: la latencia mejorada es teórica (~150-300ms menos en el path feliz). El siguiente evento con tráfico real podrá medirlo. Si no se observa mejora, no es bug — solo significa que Supabase-Vercel ya tenía latency menor al estimado.

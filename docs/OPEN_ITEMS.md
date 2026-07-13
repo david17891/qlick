@@ -60,7 +60,6 @@
 | **E** | `as any` huérfanos post-typegen-refresh (32 ocurrencias, ~10 legítimos + ~7 legacy, resto compensan typegen stale). | Pasada selectiva removiendo innecesarios. ~2-3h en chunks. |
 | **F** | RLS `deny all` implícito en 10 tablas sin policy explícita (`crm_notes`, `crm_tasks`, `lead_interactions`, `admin_audit_log`, `bot_context_overrides`, `event_reminder_log`, `event_email_log`, `event_survey_tokens`, `event_staff_links`, `event_qr_tokens`, `lead_whatsapp_conversations`, `lead_consent_log`, `lead_whatsapp_log`). | Agregar policies admin-only + deny-all explícito para inbound-only. ~1h. |
 | **G** | Backend surface de `partial?: boolean` / `warning?: string` en `markWhatsAppStatus` y server action, pero UI (`PipelineLeadsPromovidosBoard.tsx`) ignora los campos. | Modificar UI para mostrar toast amarillo cuando `state.partial === true`. ~10 min. |
-| **H-1** | Gate virtual hace 4 queries seriales antes del 302 (~700-900ms). | `Promise.all(lookup token + lookup event)` + fire-and-forget attendee/audit. |
 | **H-2** | Rate limit in-memory (`Map` en `src/lib/api/rate-limit.ts:33`) no distribuido en Vercel. | Migrar a Upstash Redis (free tier cubre). ~2h. |
 | **H-3** | `source` se pierde en roundtrip físico+virtual (cuando asistente hace check-in físico Y luego abre stream, `source='zoom_export'` queda aunque presencialmente también asistió). | Cambiar UPSERT para incluir `source` en `update:` de `onConflict`, o agregar `attendance_channels text[]`. |
 | **N-4** | `bot-engine.ts` pesa 1930 líneas — refactor en `intents/welcome.ts`, `intents/register.ts`, etc. | Deuda, scope > 1 día. |
@@ -80,7 +79,7 @@
 
 ### ✅ Cerrados en sprints recientes (2026-06 → 2026-07-12)
 
-**Releases mergeados a main (HEAD `89902e8`):**
+**Releases mergeados a main (HEAD `a25554a`):**
 
 - [x] **v0.9.9** — Arnés de simulación masiva 200 situaciones (PR #26, 2026-07-12)
 - [x] **v0.9.8** — 3 mejoras Súper Ejecutivo: typos de dominio + cadencia suave + tool `add_event_guest` (PR #26, 2026-07-12)
@@ -122,6 +121,7 @@
 - [x] **A-1** `findLeadByPhone` index `phone_normalized` UNIQUE (<100ms)
 - [x] **A-2** `createLeadFromWhatsApp` maneja 23505
 - [x] **A-3** `simulate-webhook` ahora acepta `x-dev-admin-secret`
+- [x] **H-1** Gate virtual 4→2 queries bloqueantes con JOIN PostgREST (Q1+Q2) + fire-and-forget audit (Q4) (sprint H-1-2026-07-12)
 
 ### 📚 Histórico
 
