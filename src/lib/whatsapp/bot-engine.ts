@@ -79,7 +79,7 @@ let outboundCountCache: OutboundCountCache | null = null;
 const OUTBOUND_COUNT_CACHE_TTL_MS = 60_000;
 // FIX 2026-07-11 (Sprint v15 PR #2.5b): clasificador del tipo de oferta
 // para el prompt Súper Ejecutivo. Se calcula con prioridad price>descripción>unknown.
-import { classifyEventType } from "../ai/event-context-loader";
+import { classifyEventType, loadCoursesCatalogBlock } from "../ai/event-context-loader";
 import { stripGreetingIfHasHistory, isAckOnly } from "./safety-net";
 import { extractEmailFromText } from "./email-extract";
 import { getAIAgentProfile } from "../crm/agent-utils";
@@ -3746,6 +3746,11 @@ case "interactive_event_inscribir": {
           lastIncomingMessage: lastIncomingMessageWithReminder,
           activeEvent,
           eventsListBlock,
+          // FIX 2026-07-13 (súper-auditoría + plan anti-alucinación, Ola 1):
+          // Catálogo de cursos LMS asincrónicos. Se inyecta en el system
+          // prompt para que el Súper Ejecutivo tenga un producto real
+          // cuando no hay eventos en vivo. Cache 5 min en memoria.
+          coursesCatalogBlock: await loadCoursesCatalogBlock().catch(() => ""),
           conversationWindow,
           // Memoria larga persistente entre sesiones (lead_profile.summary).
           leadProfile: args.leadProfile ?? undefined,

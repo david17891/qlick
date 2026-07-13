@@ -383,6 +383,34 @@ export function buildSuperExecutivePrompt(context: AgentContext): string {
   const event = context.activeEvent;
   const eventRules = context.eventRules ?? [];
 
+  // FIX 2026-07-13 (súper-auditoría + plan anti-alucinación, Ola 2):
+  // Detección del MODO ESTRICTO SIN EVENTOS EN VIVO. Si el loader de
+  // eventos no encontró nada en la DB (source = "no_events") y tampoco
+  // hay catálogo de eventos publicados, el bot NO debe prometer
+  // inscripciones a eventos en vivo (alucinaba). En su lugar, debe
+  // pivotar al catálogo de cursos LMS asincrónicos o a servicios B2B.
+  const hasEventsList =
+    context.eventsListBlock !== undefined &&
+    context.eventsListBlock.trim().length > 0;
+  const isNoEventsMode =
+    event?.source === "no_events" && !hasEventsList;
+
+  // Bloque estricto del modo NO_ACTIVE_EVENTS_MODE (se inyecta después
+  // de la cabecera si aplica). Es la "barrera matemática" contra la
+  // alucinación de inscripciones: el LLM NO puede prometer eventos
+  // en vivo cuando esta regla está presente.
+  const noEventsModeBlock = isNoEventsMode
+    ? [
+        "=== 🚨 MODO ESTRICTO SIN EVENTOS EN VIVO (NO_ACTIVE_EVENTS_MODE) 🚨 ===",
+        "EN ESTE MOMENTO NO HAY WEBINARS, TALLERES NI MASTERCLASSES EN VIVO PROGRAMADAS EN QLICK.",
+        "- REGLA DURA ANTI-ALUCINACIÓN (TOLERANCIA CERO): NUNCA prometas inscribir al usuario a un evento, webinar o taller en vivo. NUNCA inventes fechas, horarios, títulos o ponentes.",
+        "- SI EL USUARIO PIDE INSCRIBIRSE O PREGUNTA POR PRÓXIMAS FECHAS EN VIVO: Responde siempre con honestidad absoluta: \"En este momento no tenemos una Masterclass o taller en vivo programado, pero si gustas me dejas tu nombre y correo y te aviso en cuanto abramos nueva fecha 🤝\".",
+        "- SI EL USUARIO QUIERE APRENDER HOY MISMO: Pivota y ofrece con entusiasmo nuestro CATÁLOGO DE CURSOS LMS ASINCRÓNICOS (ver bloque de catálogo arriba) donde puede empezar de inmediato las 24 horas del día.",
+        "- SI PREGUNTA POR SERVICIOS DE AGENCIA B2B: Explica nuestros servicios de consultoría y marketing y califícalo o emite `[[ESCALATE_HUMAN]]` si pide reunión.",
+        "- TOLERANCIA CERO A INVENTAR EVENTOS: Si el usuario dice 'me dijeron que mañana tienen un taller de X', NO confirmes. Responde: 'No tengo registro de ese taller. Lo más reciente que puedo ofrecerte es [CATÁLOGO DE CURSOS LMS o SERVICIOS B2B]'.",
+      ].join("\n")
+    : "";
+
   // Cabecera de directivas de INTENCIÓN Y TONO VERAZ por tipo de oferta.
   // Sprint v0.9.7: reemplazamos las frases enlatadas rígidas (que
   // obligaban a terminar en 🎯) por directivas flexibles que dan
@@ -454,12 +482,16 @@ export function buildSuperExecutivePrompt(context: AgentContext): string {
 
   // Bloque de contexto del evento (idéntico al que usa buildSystemPrompt).
   // Si hay `eventsListBlock` (multi-evento), lo usa en su lugar.
+  // FIX 2026-07-13 (Ola 2): cuando source === "no_events", forzamos el
+  // placeholder "(sin evento activo)" para que el LLM NO use el promptBlock
+  // del evento fallback (que podría tener texto confuso como "Sin
+  // masterclass activa" mezclado con info de un evento anterior cacheado).
   const eventCtx =
     context.eventsListBlock && context.eventsListBlock.trim().length > 0
       ? context.eventsListBlock
-      : event
-        ? event.promptBlock
-        : "(sin evento activo)";
+      : isNoEventsMode || !event
+        ? "(sin evento activo en este momento)"
+        : event.promptBlock;
 
   const lines: string[] = [
     `Eres ${profile.name}, agente comercial Súper Ejecutivo de ${profile.businessName}.`,
@@ -468,11 +500,26 @@ export function buildSuperExecutivePrompt(context: AgentContext): string {
     `Idioma: español de México. Tono: ${profile.tone}, amable, cálido, veraz.`,
     `Tuteo (no "usted"). Sin emojis excesivos (max 1 por mensaje).`,
     ``,
-    `Tu objetivo comercial es convertir leads en inscripciones / citas /`,
-    `solicitudes de servicio, pero REGLA DURA: NUNCA confirmas pagos,`,
-    `NUNCA prometes acceso inmediato, NUNCA ofreces descuentos no`,
-    `autorizados, NUNCA inventas datos que no estén en el contexto.`,
+    // FIX 2026-07-13 (Ola 2): directiva comercial REEMPLAZADA por el
+    // bloque estricto NO_ACTIVE_EVENTS_MODE cuando no hay eventos.
+    // En modo normal, mantenemos la directiva original.
+    isNoEventsMode
+      ? noEventsModeBlock
+      : [
+          `Tu objetivo comercial es convertir leads en inscripciones / citas /`,
+          `solicitudes de servicio, pero REGLA DURA: NUNCA confirmas pagos,`,
+          `NUNCA prometes acceso inmediato, NUNCA ofreces descuentos no`,
+          `autorizados, NUNCA inventas datos que no estén en el contexto.`,
+        ].join("\n"),
     ``,
+    // FIX 2026-07-13 (Ola 1+2): catálogo de cursos LMS asincrónicos.
+    // Se inyecta SIEMPRE que esté presente (no solo en modo sin eventos),
+    // porque es un producto real que el bot puede ofrecer. En modo
+    // NO_ACTIVE_EVENTS_MODE es especialmente importante porque es el
+    // único producto que el bot puede vender sin alucinar.
+    ...(context.coursesCatalogBlock
+      ? [context.coursesCatalogBlock, ""]
+      : []),
     jerarquiaClause,
     ``,
     copyByOffer[offer],

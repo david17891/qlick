@@ -72,6 +72,15 @@ export interface AgentContext {
    * 1 evento, el system prompt lo usa en vez de `activeEvent.promptBlock`.
    */
   eventsListBlock?: string;
+  /**
+   * FIX 2026-07-13 (súper-auditoría + plan anti-alucinación, Ola 1):
+   * Bloque del catálogo de cursos LMS asincrónicos (Academia 24/7).
+   * Se inyecta en el system prompt para que el Súper Ejecutivo tenga
+   * un producto real que ofrecer cuando NO hay eventos en vivo
+   * (source = "no_events"). Sin esto, el bot alucinaba inscripciones
+   * falsas. Generado por `loadCoursesCatalogBlock()` con cache de 5 min.
+   */
+  coursesCatalogBlock?: string;
   /** Ventana de últimos N mensajes del lead (memoria corta del bot). */
   conversationWindow?: import("./conversation-window").ConversationWindow;
   /** Perfil persistente del lead (memoria larga entre sesiones). */

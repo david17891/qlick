@@ -46,7 +46,7 @@ import { classifyIntentHeuristic } from "./guardrails";
 import { buildSystemPrompt, buildSuperExecutivePrompt } from "./agent-prompts";
 import { deepseekAgentProvider } from "./deepseek-provider";
 import { getActiveBotRules } from "./ai-bot-rules-server";
-import { loadActiveEventContext } from "./event-context-loader";
+import { loadActiveEventContext, loadCoursesCatalogBlock } from "./event-context-loader";
 import { loadLeadProfile } from "./lead-profile";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
@@ -343,10 +343,16 @@ export async function simulateConversationTurn(
 
   // 8. Construir el contexto del agente.
   const conversationWindow = buildConversationWindowFromHistory(req.history);
+  // FIX 2026-07-13 (súper-auditoría + plan anti-alucinación, Ola 1):
+  // Cargar el catálogo de cursos LMS asincrónicos. Mismo TTL 5 min
+  // que el catálogo de eventos. Si falla, se inyecta string vacío
+  // y el sistema sigue funcionando (el prompt no se rompe).
+  const coursesCatalogBlock = await loadCoursesCatalogBlock().catch(() => "");
   const context: AgentContext = {
     profile: aiAgentProfile,
     lastIncomingMessage: req.message,
     conversationWindow,
+    coursesCatalogBlock,
     ...(leadProfile ? { leadProfile } : {}),
     // Override del system prompt (clave del aislamiento de modo).
     systemPromptOverride: systemPrompt,
