@@ -152,13 +152,13 @@ export default async function PayPage({
       ? "success"
       : "warning";
     const badgeText = alreadyPurchased
-      ? "Ya tenés este curso"
+      ? "Ya tienes este curso"
       : "Procesando tu pago";
     const headerText = alreadyPurchased
       ? session
         ? "Tu pago fue confirmado. El curso ya está disponible en tu dashboard."
-        : `Tu pago fue confirmado${purchaseEmail ? ` para ${purchaseEmail}` : ""}. Te enviamos un link de acceso al email. Si no te llegó, podés reenviarlo desde el botón de abajo.`
-      : `Recibimos tu pago${purchaseEmail ? ` de ${purchaseEmail}` : ""}. El webhook de Stripe está terminando de procesarlo —en unos segundos deberías ver el curso en tu dashboard. Si después de 1 minuto no aparece, contactános.`;
+        : `Tu pago fue confirmado${purchaseEmail ? ` para ${purchaseEmail}` : ""}. Te enviamos un link de acceso al email. Si no te llegó, puedes reenviarlo desde el botón de abajo.`
+      : `Recibimos tu pago${purchaseEmail ? ` de ${purchaseEmail}` : ""}. El webhook de Stripe está terminando de procesarlo —en unos segundos deberías ver el curso en tu dashboard. Si después de 1 minuto no aparece, contáctanos.`;
     return (
       <>
         <Navbar />
@@ -283,7 +283,7 @@ export default async function PayPage({
               </div>
 
               <p className="mt-6 text-sm text-ink-muted text-center">
-                ¿Querés ver el detalle antes de pagar?{" "}
+                ¿Quieres ver el detalle antes de pagar?{" "}
                 <a
                   href={`/cursos/${course.slug}`}
                   className="font-semibold text-brand-600 hover:underline"

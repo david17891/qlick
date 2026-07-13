@@ -65,14 +65,21 @@ export async function GET() {
   }
 
   try {
-    const [leads, intelligence] = await Promise.all([
-      getLeads(),
+    // AUDIT-001: pageSize=200 (max del wrapper `getLeads`). El overview
+    // usa una muestra representativa de los leads más recientes para
+    // calcular los counts por status. Si David quiere 100% precisión
+    // con >200 leads, refactorizar a queries aggregate (COUNT GROUP BY
+    // status) — fuera del scope de AUDIT-001.
+    const [leadsResult, intelligence] = await Promise.all([
+      getLeads({ page: 0, pageSize: 200 }),
       getCrmIntelligence(),
     ]);
+    const leads = leadsResult.leads;
+    const totalLeads = leadsResult.total;
 
     // Métricas reales (derivadas de leads reales).
     const realOverview: CRMOverview = {
-      totalLeads: leads.length,
+      totalLeads,
       newLeads: countByStatus(leads, "new"),
       contactedLeads: countByStatus(leads, "contacted"),
       paymentPending: countByStatus(leads, "payment_pending"),

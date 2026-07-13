@@ -126,10 +126,11 @@
 - [x] **LMS Real Foundation v0.9.0** — fase cerrada y mergeada a `main` (commit `78db4a3`) el 2026-06-25
   - 14 commits: DB (5 tablas + RLS) → server libs → docs handoff → Google OAuth → fix `client.ts` → QR enrollment → fallbacks UUID/FK → seed script → docs E2E plan → tour Playwright
   - Validado: `npm run type-check && npm run build` green, query directa a DB confirma 4 cursos + 12 módulos + 36 lecciones
+    - **Actualizado 2026-07-13 (súper-auditoría AUDIT-006):** el catálogo real productivo ahora tiene **6 cursos, 15 módulos, 45 lecciones**. Se agregaron 2 cursos + 3 módulos + 9 lecciones en sprints posteriores a v0.9.0.
 - [x] **feat/google-oauth** — Google OAuth reemplaza magic link + fix `client.ts` acceso literal a `NEXT_PUBLIC_*`
 - [x] **feat/qr-enrollment** — Inscripción con QR + tracking `source` + página `/inscripcion/[slug]`
   - Fallbacks automáticos: `getCourseBySlug` cae al mock cuando DB no tiene el slug; `enrollUserInCourse` valida UUID antes del upsert y cae a demo si el ID es mock legacy
-- [x] **seed:courses** — Script ejecutado el 2026-06-25: 4 cursos + 12 módulos + 36 lecciones cargados en Supabase (idempotente, ya no-op en re-runs).
+- [x] **seed:courses** — Script ejecutado el 2026-06-25: 4 cursos + 12 módulos + 36 lecciones cargados en Supabase (idempotente, ya no-op en re-runs). **Actualizado 2026-07-13 (AUDIT-006):** el catálogo productivo actual tiene 6 cursos, 15 módulos, 45 lecciones (sprints posteriores agregaron 2+3+9).
 - [x] **Entitlements v1.0.0+** — capa de acceso comercial (Fase A+B+C) mergeada a `main` (commits `5f76584` / `2d156a6` / `7b26fcc` / `8b9ea5d` / `42076da` / `f2f158d` / `[próximo]`).
   - **Fase A (v1.0.0)**: schema con `courses.access_type`, tablas `course_access` + `payments` con RLS. 1 curso paid ($499 MXN) + 3 free.
   - **Fase B**: server lib `src/lib/lms/entitlements.ts` con `getCourseAccess`, `checkCourseAccess`, `grantAccess`, `revokeAccess` (idempotente).
@@ -148,7 +149,7 @@
 
 ## Deuda activa (no bloqueante)
 
-- **Catálogo real**: los 4 cursos siguen duplicados entre `src/lib/data/courses.ts` (mock) y la DB (via seed). Cuando David decida el catálogo final con socios, se elimina el mock y se regenera el seed con los datos reales.
+- **Catálogo real**: los 6 cursos productivos (actualizado 2026-07-13 vía AUDIT-006) siguen duplicados entre `src/lib/data/courses.ts` (mock) y la DB (via seed). Cuando David decida el catálogo final con socios, se elimina el mock y se regenera el seed con los datos reales.
 - **Inconsistencia `LessonVideoProvider "external"`** (CHECK vs TS) — pendiente sin fase asignada (1 línea de fix cuando se decida).
 
 ## En curso

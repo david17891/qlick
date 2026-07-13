@@ -31,6 +31,22 @@
  *   - `stripe listen --forward-to localhost:3000/api/webhooks/stripe`
  *     en dev local. En prod, registrar endpoint en Stripe Dashboard.
  *
+ * TYPE NARROWING (súper-auditoría 2026-07-12, AUDIT-007+009):
+ *   - El parseo de eventos YA usa narrowing por discriminador desde
+ *     antes de esta auditoría:
+ *       - `event.data.object as Stripe.Checkout.Session` (línea 299, 505, 565)
+ *       - `event.data.object as Stripe.Charge` (línea 618)
+ *       - `event.data.object as CheckoutSession` (type alias interno)
+ *   - Los 9 type-bypasses restantes (`as any` + `@ts-ignore`) están en
+ *     QUERIES a Supabase (NO en el parseo de eventos), y son legítimos
+ *     por typegen stale:
+ *       - `payments.course_id` es nullable en DB (migration 20260707110000)
+ *         pero el typegen local aún dice NOT NULL.
+ *       - `event_access` no tiene typegen en `src/types/supabase.ts`.
+ *     La fix definitivo es regenerar el typegen con `supabase gen types
+ *     typescript --local > src/types/supabase.ts` (script de typegen
+ *     pendiente — fuera del scope de este sprint).
+ *
  * @see docs/PAYMENTS_STRIPE_SETUP.md para la guía de setup.
  */
 

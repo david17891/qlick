@@ -1,80 +1,51 @@
-import { Container, Card, Skeleton } from "@/components/ui";
-import { Navbar, Footer } from "@/components/layout";
+// Loading skeleton para /admin/* (cubre /admin/dashboard, /admin/bot,
+// /admin/eventos, /admin/handoffs, /admin/system, etc.).
+//
+// AUDIT-004: SUPER_AUDIT_REMEDIATION_PROTOCOL.md Ola 2 (Nivel 2).
+// Skeleton premium con animate-pulse, español neutro, jerarquía visual
+// coherente con el branding de Qlick.
 
-/**
- * Loading state para `/admin` (AdminView).
- *
- * Aparece mientras Next.js hace el fetch de `getCurrentUser()` + `isSupabaseConfigured()`
- * en el useEffect del AdminView. Skeleton del header + tabs + (Resumen) 4 stat cards +
- * 2 cards de Top cursos / Estado pagos, así cuando llega el contenido real el cambio
- * se ve continuo y no un flash a página en blanco.
- *
- * Mismo patrón que `/admin/eventos/loading.tsx` y `/admin/eventos/[id]/loading.tsx`.
- */
 export default function AdminLoading() {
   return (
-    <>
-      <Navbar />
-      <Container size="wide" className="py-10">
-        {/* Header: saludo + badge de rol */}
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-          <div className="space-y-2">
-            <Skeleton className="h-4 w-40" />
-            <Skeleton className="h-8 w-72" />
+    <div
+      className="min-h-[60vh] w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
+      aria-busy="true"
+      aria-label="Cargando panel administrativo"
+    >
+      {/* Header skeleton */}
+      <div className="space-y-3 mb-8">
+        <div className="h-8 bg-gradient-to-r from-purple-100 to-purple-50 rounded animate-pulse w-1/3" />
+        <div className="h-4 bg-gray-100 rounded animate-pulse w-1/2" />
+      </div>
+
+      {/* Cards de métricas */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        {[1, 2, 3, 4].map((i) => (
+          <div
+            key={i}
+            className="h-28 bg-white border border-gray-200 rounded-lg p-4 space-y-2"
+          >
+            <div className="h-3 bg-gray-100 rounded animate-pulse w-1/2" />
+            <div className="h-7 bg-gradient-to-r from-purple-50 to-gray-50 rounded animate-pulse w-2/3" />
+            <div className="h-2 bg-gray-50 rounded animate-pulse w-full" />
           </div>
-          <Skeleton className="h-7 w-20 rounded-full" />
-        </div>
+        ))}
+      </div>
 
-        {/* Tabs (7 tabs + 1 link a eventos) */}
-        <div className="flex flex-wrap items-center gap-2 mb-8 border-b border-brand-100 pb-3">
-          {[1, 2, 3, 4, 5, 6, 7].map((i) => (
-            <Skeleton key={i} className="h-9 w-24 rounded-full" />
-          ))}
-          <Skeleton className="h-9 w-36 rounded-full ml-auto" />
-        </div>
-
-        {/* Stat cards (Resumen tab) */}
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-          {[1, 2, 3, 4].map((i) => (
-            <Card key={i} className="p-5">
-              <Skeleton className="h-3 w-20 mb-2" />
-              <Skeleton className="h-7 w-24 mb-1" />
-              <Skeleton className="h-3 w-32" />
-            </Card>
-          ))}
-        </div>
-
-        {/* Top cursos + Estado pagos */}
-        <div className="grid lg:grid-cols-2 gap-6">
-          <Card className="p-6">
-            <Skeleton className="h-5 w-48 mb-4" />
-            <ul className="space-y-3">
-              {[1, 2, 3, 4].map((i) => (
-                <li key={i} className="flex items-center justify-between">
-                  <Skeleton className="h-4 w-48" />
-                  <Skeleton className="h-6 w-20 rounded-full" />
-                </li>
-              ))}
-            </ul>
-          </Card>
-          <Card className="p-6">
-            <Skeleton className="h-5 w-56 mb-4" />
-            <ul className="space-y-3">
-              {[1, 2, 3].map((i) => (
-                <li key={i} className="flex items-center justify-between">
-                  <Skeleton className="h-6 w-20 rounded-full" />
-                  <Skeleton className="h-5 w-8" />
-                </li>
-              ))}
-            </ul>
-          </Card>
-        </div>
-
-        <p className="text-center text-ink-muted mt-10 text-sm">
-          Cargando panel…
-        </p>
-      </Container>
-      <Footer />
-    </>
+      {/* Tabla de datos */}
+      <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
+        <div className="h-5 bg-gray-100 rounded animate-pulse w-1/4 mb-4" />
+        {[1, 2, 3, 4, 5, 6].map((i) => (
+          <div key={i} className="flex items-center gap-4">
+            <div className="h-9 w-9 bg-purple-50 rounded-full animate-pulse" />
+            <div className="flex-1 space-y-1">
+              <div className="h-3 bg-gray-100 rounded animate-pulse w-1/3" />
+              <div className="h-2 bg-gray-50 rounded animate-pulse w-1/2" />
+            </div>
+            <div className="h-6 w-16 bg-gray-100 rounded animate-pulse" />
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

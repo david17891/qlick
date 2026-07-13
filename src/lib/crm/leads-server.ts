@@ -52,18 +52,62 @@ function isRealMode(): boolean {
 /* --------------------------- Lecturas --------------------------- */
 
 /**
- * Devuelve todos los leads (reales si hay Supabase, mocks si no).
- * Server-only.
+ * Tamaño de página por defecto para `getLeads`. Limita la cantidad de
+ * filas que se cargan en memoria al listar leads (AUDIT-001 del súper-
+ * audit 2026-07-12: antes era `select('*')` sin límite, lo cual forzaba
+ * un table scan completo al escalar la base de leads).
  */
-export async function getLeads(): Promise<Lead[]> {
+const DEFAULT_LEADS_PAGE_SIZE = 50;
+
+/** Opciones de paginación para `getLeads`. */
+export interface GetLeadsOptions {
+  /** Página 0-indexed. Default: 0. */
+  page?: number;
+  /** Tamaño de página. Default: DEFAULT_LEADS_PAGE_SIZE. */
+  pageSize?: number;
+}
+
+/** Resultado paginado de `getLeads`. */
+export interface GetLeadsResult {
+  leads: Lead[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+/**
+ * Devuelve una página de leads (reales si hay Supabase, mocks si no).
+ * Server-only.
+ *
+ * Por defecto devuelve la primera página con 50 leads. Para infinite
+ * scroll, usar `getLeads({ page: N })` incrementando N.
+ */
+export async function getLeads(
+  opts: GetLeadsOptions = {},
+): Promise<GetLeadsResult> {
+  const page = Math.max(0, Math.floor(opts.page ?? 0));
+  const pageSize = Math.max(
+    1,
+    Math.min(200, Math.floor(opts.pageSize ?? DEFAULT_LEADS_PAGE_SIZE)),
+  );
+  const from = page * pageSize;
+  const to = from + pageSize - 1;
+
   if (!isRealMode()) {
-    return getLeadsMock();
+    const all = getLeadsMock();
+    return {
+      leads: all.slice(from, to + 1),
+      total: all.length,
+      page,
+      pageSize,
+    };
   }
   const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
+  const { data, error, count } = await supabase
     .from("leads")
-    .select("*")
-    .order("created_at", { ascending: false });
+    .select("*", { count: "exact" })
+    .order("created_at", { ascending: false })
+    .range(from, to);
   if (error) {
     // No exponemos el detalle del error al caller; caemos a mock para no romper
     // la UI. Se loggea para diagnóstico del operador.
@@ -71,9 +115,20 @@ export async function getLeads(): Promise<Lead[]> {
     console.error("[leads-server] getLeads falló; usando mocks", {
       code: error.code,
     });
-    return getLeadsMock();
+    const all = getLeadsMock();
+    return {
+      leads: all.slice(from, to + 1),
+      total: all.length,
+      page,
+      pageSize,
+    };
   }
-  return (data ?? []).map((row) => mapLeadRowToLead(row));
+  return {
+    leads: (data ?? []).map((row) => mapLeadRowToLead(row)),
+    total: count ?? 0,
+    page,
+    pageSize,
+  };
 }
 
 /**

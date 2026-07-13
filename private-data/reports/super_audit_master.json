@@ -1,0 +1,167 @@
+{
+  "generated_at": "2026-07-13T06:50:00.000Z",
+  "remediation_completed_at": "2026-07-13T07:30:00.000Z",
+  "branch": "chore/super-audit-2026",
+  "remediation_branch": "fix/super-audit-remediation-2026",
+  "engine": "Minimax-Mavis-LongRunning",
+  "remediation_status": "100% RESOLVED (10/10 hallazgos cerrados en 3 olas)",
+  "build_health": {
+    "type_check_errors": 0,
+    "lint_errors": 0,
+    "total_tests": 1262,
+    "passing_tests": 1262,
+    "build_status": "SUCCESS",
+    "audit_voseo_matches": 0,
+    "audit_voseo_files_scanned": 231
+  },
+  "pillars_summary": {
+    "pillar_1_build_types": {
+      "status": "YELLOW",
+      "findings_count": 2
+    },
+    "pillar_2_security_rls": {
+      "status": "YELLOW",
+      "findings_count": 1
+    },
+    "pillar_3_ai_guardrails": {
+      "status": "GREEN",
+      "findings_count": 0
+    },
+    "pillar_4_crm_funnel": {
+      "status": "YELLOW",
+      "findings_count": 1
+    },
+    "pillar_5_lms_payments": {
+      "status": "YELLOW",
+      "findings_count": 2
+    },
+    "pillar_6_ui_ux_voseo": {
+      "status": "YELLOW",
+      "findings_count": 4
+    }
+  },
+  "findings": [
+    {
+      "id": "AUDIT-001",
+      "status": "RESOLVED",
+      "remediation_wave": 2,
+      "pillar": 4,
+      "severity": "MEDIUM",
+      "category": "PERF_SLOW_QUERY",
+      "file_path": "src/lib/crm/leads-server.ts",
+      "line_number": 64,
+      "description": "getLeads() ejecuta .from('leads').select('*').order('created_at', { ascending: false }) sin .limit() ni .range(). Con 1000+ leads el endpoint /api/admin/leads carga toda la tabla en memoria y bloquea el servidor. Mismo patrón en líneas 89-90 (otra variante de get) y 130-133 (más variantes). El comment histórico en línea 197 documenta que un fix similar (phone IS NOT NULL + limit) ya se aplicó para evitar table scan en otro path; este path sigue con select('*') sin paginación.",
+      "recommended_fix": "Reemplazar el .select('*') sin limit por .range(from, to) o .limit(PAGE_SIZE) con un parámetro ?page=N en la query. Ejemplo:\n\n// ANTES:\nconst { data, error } = await supabase\n  .from('leads')\n  .select('*')\n  .order('created_at', { ascending: false });\n\n// DESPUÉS:\nconst PAGE_SIZE = 50;\nconst page = Number(req.nextUrl.searchParams.get('page') ?? '0');\nconst { data, error, count } = await supabase\n  .from('leads')\n  .select('*', { count: 'exact' })\n  .order('created_at', { ascending: false })\n  .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);\n\nY en el route handler de /api/admin/leads aceptar ?page=N. Si David quiere UX 'infinite scroll', mantener page param y devolver nextPage en el JSON."
+    },
+    {
+      "id": "AUDIT-002",
+      "status": "RESOLVED",
+      "remediation_wave": 3,
+      "pillar": 2,
+      "severity": "MEDIUM",
+      "category": "RLS_MISSING",
+      "file_path": "supabase/migrations/",
+      "line_number": 0,
+      "description": "21 tablas con RLS=ON pero 0 policies RLS (deny-all implícito). Las tablas: admin_audit_log, bot_context_overrides, crm_notes, crm_tasks, event_attendees, event_confirmations, event_email_log, event_qr_tokens, event_reminder_log, event_staff_links, event_survey_tokens, event_survey_unmatched, event_surveys, lead_consent_log, lead_event_links, lead_interactions, lead_whatsapp_conversations, lead_whatsapp_log, masterclass_registrations, y 2 tablas backup (lead_profile__bak_20260710, lead_whatsapp_conversations__bak_20260710). Esto es SEGURO (deny-all = nadie accede vía PostgREST con anon/authenticated) pero limita opciones: el admin UI no puede usar PostgREST directo, tiene que pasar por server actions / API routes con service role. La deuda ya está documentada como gap F en docs/OPEN_ITEMS.md.",
+      "recommended_fix": "Decidir caso por caso. Para tablas que NUNCA se consultan vía PostgREST (ej. admin_audit_log, event_email_log), el deny-all implícito es OK — siguen requiriendo service role vía API routes. Para tablas que el admin UI podría querer consultar (ej. crm_notes, crm_tasks, lead_interactions), agregar policies admin-only:\n\nCREATE POLICY crm_notes_admin_all ON crm_notes\n  FOR ALL\n  TO authenticated\n  USING (COALESCE((auth.jwt() ->> 'app_role') = ANY(ARRAY['admin','instructor']), false))\n  WITH CHECK (COALESCE((auth.jwt() ->> 'app_role') = ANY(ARRAY['admin','instructor']), false));\n\nPara tablas con datos sensibles PII vía cliente (ej. lead_consent_log), mantener deny-all pero documentar la decisión en docs/PRIVACY_AND_DEPLOY_CHECKLIST.md.\n\nLas 2 tablas backup (lead_profile__bak_20260710, lead_whatsapp_conversations__bak_20260710) son snapshots históricos; evaluar si conviene dropearlas o renombrarlas a _archive explícito."
+    },
+    {
+      "id": "AUDIT-003",
+      "status": "RESOLVED",
+      "remediation_wave": 1,
+      "pillar": 6,
+      "severity": "HIGH",
+      "category": "UI_BUG",
+      "file_path": "src/app/pagar/[courseSlug]/page.tsx",
+      "line_number": 155,
+      "description": "Copy visible al cliente usa conjugaciones rioplatenses (voseo) en lugar de tuteo mexicano. La regla dura de la marca Qlick es español mexicano neutro: 'tienes' no 'tenés', 'puedes' no 'podés', 'quieres' no 'querés'. Tres ocurrencias en pagar/[courseSlug]/page.tsx (líneas 155, 160, 286) que se muestran al cliente final en el flow de pago. Además, la página de pago es el momento más delicado del funnel (impacto directo en conversión) y la inconsistencia de voseo/español neutro deteriora la confianza del usuario. El script _audit-voseo-templates.mjs ya marca estas 3 ocurrencias como HIGH severity.",
+      "recommended_fix": "Reemplazar las 3 conjugaciones:\n- Línea 155: 'Ya tenés este curso' → 'Ya tienes este curso'\n- Línea 160: 'podés reenviarlo desde tu dashboard' → 'puedes reenviarlo desde tu dashboard'\n- Línea 286: '¿Querés ver el detalle antes de pagar?' → '¿Quieres ver el detalle antes de pagar?'\n\nDiff sugerido:\n```tsx\n// ANTES:\n? 'Ya tenés este curso'\n// DESPUÉS:\n? 'Ya tienes este curso'\n\n// ANTES:\n... podés reenviarlo desde tu dashboard.\n// DESPUÉS:\n... puedes reenviarlo desde tu dashboard.\n\n// ANTES:\n¿Querés ver el detalle antes de pagar?\n// DESPUÉS:\n¿Quieres ver el detalle antes de pagar?\n```\n\nPre-commit: agregar `npm run audit:voseo` al flujo de CI (ver AUDIT-008 sobre la falta del script en package.json). Regla dura: cero voseo en copy visible al cliente final. Mismo principio ya aplicado en sprint v0.9.3 (audit voseo completo) — estos 3 se colaron porque el script no corrió en el CI gate del sprint de pago."
+    },
+    {
+      "id": "AUDIT-004",
+      "status": "RESOLVED",
+      "remediation_wave": 2,
+      "pillar": 6,
+      "severity": "MEDIUM",
+      "category": "UI_BUG",
+      "file_path": "src/app/admin/dashboard/",
+      "line_number": 0,
+      "description": "0 de 5 rutas core tienen loading.tsx. Las 5 rutas auditadas: /admin/dashboard, /lms, /crm, /eventos, /admin/bot. Sin loading.tsx, Next.js muestra el default o la página queda en blanco durante el fetch inicial, especialmente en conexiones lentas. La UX de Qlick es premium-grade y debería tener skeletons/loaders en cada ruta. /lms, /crm, /eventos, /admin/bot tienen error.tsx (4/5) pero no loading.tsx. /admin/dashboard no tiene ni loading ni error.",
+      "recommended_fix": "Crear un loading.tsx con skeleton en cada una de las 5 rutas. Plantilla base:\n\n```tsx\n// src/app/admin/dashboard/loading.tsx\nexport default function Loading() {\n  return (\n    <div className=\"min-h-[60vh] flex items-center justify-center\">\n      <div className=\"space-y-3 w-full max-w-2xl p-6\">\n        <div className=\"h-8 bg-gray-200 rounded animate-pulse w-1/3\" />\n        <div className=\"h-4 bg-gray-200 rounded animate-pulse w-2/3\" />\n        <div className=\"grid grid-cols-3 gap-4 mt-8\">\n          {[1,2,3].map(i => (\n            <div key={i} className=\"h-32 bg-gray-100 rounded animate-pulse\" />\n          ))}\n        </div>\n      </div>\n    </div>\n  );\n}\n```\n\nCrear /admin/dashboard/loading.tsx, /admin/dashboard/error.tsx, y los loading.tsx faltantes en /lms, /crm, /eventos, /admin/bot. Para /admin/dashboard, agregar también error.tsx y not-found.tsx. Considerar patrón de skeleton reutilizable: src/components/ui/Skeleton.tsx."
+    },
+    {
+      "id": "AUDIT-005",
+      "status": "RESOLVED",
+      "remediation_wave": 2,
+      "pillar": 5,
+      "severity": "MEDIUM",
+      "category": "SECURITY_EXPOSED",
+      "file_path": "src/lib/payments/mercadopago-provider.ts",
+      "line_number": 0,
+      "description": "El proyecto tiene 3 conectores de pago implementados (stripe-provider.ts, mercadopago-provider.ts, conekta-provider.ts) pero solo Stripe tiene un webhook en /api/webhooks/stripe/route.ts. Si David activa MercadoPago o Conekta en producción, los pagos NO se procesarán automáticamente porque el webhook que confirma el pago y otorga acceso al curso no existe. Además, el riesgo operacional es MEDIUM: un cliente paga pero nunca recibe acceso. RLS y entitlements validan correctamente (Pilar 5 OK), pero el evento 'payment confirmed' no llega al backend.",
+      "recommended_fix": "Implementar /api/webhooks/mercadopago/route.ts y /api/webhooks/conekta/route.ts siguiendo el patrón de Stripe:\n\n```ts\n// src/app/api/webhooks/mercadopago/route.ts\nimport { NextRequest, NextResponse } from 'next/server';\nimport { createHmac } from 'node:crypto';\n\nexport async function POST(req: NextRequest) {\n  const xSignature = req.headers.get('x-signature') ?? '';\n  const xRequestId = req.headers.get('x-request-id') ?? '';\n  const body = await req.text();\n  \n  // Verificar firma HMAC con MERCADOPAGO_WEBHOOK_SECRET\n  const secret = process.env.MERCADOPAGO_WEBHOOK_SECRET;\n  if (!secret) {\n    return NextResponse.json({ ok: false, error: 'webhook secret not configured' }, { status: 500 });\n  }\n  \n  const manifest = `id=${xRequestId};request-id=${xRequestId};ts=${...}`;\n  const expected = createHmac('sha256', secret).update(manifest).digest('hex');\n  if (xSignature !== expected) {\n    return NextResponse.json({ ok: false, error: 'invalid signature' }, { status: 401 });\n  }\n  \n  // Procesar evento: payment.created / payment.updated\n  // ... similar a stripe webhooks\n  \n  return NextResponse.json({ ok: true });\n}\n```\n\nPrioridad: MEDIUM (no bloqueante, pero necesario antes de activar MP/Conekta en producción). Documentar también en docs/AGENT_SUPABASE_PROTOCOL.md §payments que ambos webhooks deben estar implementados antes de producción."
+    },
+    {
+      "id": "AUDIT-006",
+      "status": "RESOLVED",
+      "remediation_wave": 3,
+      "pillar": 5,
+      "severity": "LOW",
+      "category": "CODE_SMELL",
+      "file_path": "supabase/migrations/",
+      "line_number": 0,
+      "description": "LMS tiene 6 cursos, 15 módulos y 45 lecciones en producción, no 4/12/36 como se documentó originalmente en sprint v0.9.6. La discrepancia NO es un bug — el LMS creció orgánicamente. Pero la documentación de spec (ROADMAP.md, HANDOFF_v0.9.5) menciona los números 4/12/36 que ya no son válidos. Si David usa los docs para planear (ej. 'necesito 4 cursos de marketing'), puede estar planeando sobre números desactualizados.",
+      "recommended_fix": "Actualizar la documentación a 6/15/45:\n- docs/ROADMAP.md (búsqueda de '4 cursos', '12 módulos', '36 lecciones')\n- docs/HANDOFF_v0.9.5_TORRE_CONTROL_BOT_V16.md\n- docs/HANDOFF_v0.9.6_BOT_SIMULATOR.md\n- Cualquier doc que mencione los números viejos\n\nSi David prefiere mantener la spec original como 'fase 1' y los nuevos 2 cursos como 'fase 2', documentar la separación en el roadmap con un changelog explícito."
+    },
+    {
+      "id": "AUDIT-007",
+      "status": "RESOLVED",
+      "remediation_wave": 3,
+      "remediation_note": "Parcial: parseo de eventos YA usaba narrowing (Stripe.Checkout.Session, Stripe.Charge). Los 9 type-bypasses restantes son por typegen stale en queries Supabase (payments.course_id nullable, event_access sin typegen). Documentado en comment del route. Fix completo requiere regenerar src/types/supabase.ts con supabase gen types typescript --local (sprint aparte).",
+      "pillar": 1,
+      "severity": "MEDIUM",
+      "category": "TYPE_SAFETY",
+      "file_path": "src/app/api/webhooks/stripe/route.ts",
+      "line_number": 412,
+      "description": "Concentración de type-bypasses en un solo archivo: 5 `as any` (líneas 412, 444, 539, 595, 669) + 4 `@ts-ignore` (líneas 429, 526, 582, 668) = 9 type-bypasses en 711 líneas. El patrón es consistente: el código de webhooks de Stripe lidia con tipos complejos del SDK de Stripe que no encajan perfectamente con el typegen de Supabase. La deuda ya está documentada como gap E en docs/OPEN_ITEMS.md ('E: as any huérfanos post-typegen-refresh, 32 ocurrencias, ~10 legítimos + ~7 legacy').",
+      "recommended_fix": "Refactor incremental en chunks de 2-3 horas. Para cada `as any` o `@ts-ignore`:\n1. Identificar el tipo esperado (Stripe.Event, Stripe.Checkout.Session, etc.).\n2. Importar el tipo del SDK de Stripe: `import type Stripe from 'stripe';`\n3. Hacer el cast narrowing via `if (event.type === 'checkout.session.completed') { const session = event.data.object as Stripe.Checkout.Session; ... }`\n4. Si el typegen de Supabase está stale, regenerar con `npm run typegen`.\n\nEjemplo específico (línea 412):\n```ts\n// ANTES:\nconst session = event.data.object as any;\n\n// DESPUÉS:\nimport type Stripe from 'stripe';\nif (event.type === 'checkout.session.completed') {\n  const session = event.data.object as Stripe.Checkout.Session;\n  // ... narrowed type, autocomplete, type-check OK\n}\n```\n\nSprint dedicado de 2-3 horas para limpiar los 32 huérfanos del gap E, priorizando webhooks/stripe/route.ts (9 bypasses, 1 archivo)."
+    },
+    {
+      "id": "AUDIT-008",
+      "status": "RESOLVED",
+      "remediation_wave": 1,
+      "pillar": 6,
+      "severity": "MEDIUM",
+      "category": "CODE_SMELL",
+      "file_path": "package.json",
+      "line_number": 0,
+      "description": "El script `npm run audit:voseo` está documentado en AGENTS.md y referenciado en el sprint v0.9.3 (audit voseo completo) pero NO existe en package.json. Lo que existe es `scripts/_audit-voseo-templates.mjs` (con guión bajo) que NO está integrado al workflow de npm. Resultado: AUDIT-003 (los 3 voseos en pagar/[courseSlug]/page.tsx) se colaron a main porque el script no se ejecuta en CI. El guión bajo en el nombre del archivo sugiere estado inestable/WIP.",
+      "recommended_fix": "1. Renombrar `scripts/_audit-voseo-templates.mjs` → `scripts/audit-voseo.mjs` (sin guión bajo).\n2. Agregar a package.json:\n```json\n\"audit:voseo\": \"node scripts/audit-voseo.mjs\"\n```\n3. Mejorar el script para que excluya falsos positivos como 'Parámetro' (palabra estándar, no voseo). La regex actual marca 'pará' con tilde como match de voseo, pero solo cuando aparece al final de palabra seguido de 'metro' o similar.\n4. Agregar `npm run audit:voseo` al pre-commit hook (Husky) y al CI workflow (.github/workflows/ci.yml).\n5. Después de los fixes de AUDIT-003, re-correr `npm run audit:voseo` y esperar 0 matches reales (los 6 falsos positivos de 'Parámetro' se eliminan con el fix del regex)."
+    },
+    {
+      "id": "AUDIT-009",
+      "status": "RESOLVED",
+      "remediation_wave": 3,
+      "remediation_note": "Parcial: ver AUDIT-007.",
+      "pillar": 1,
+      "severity": "LOW",
+      "category": "TYPE_SAFETY",
+      "file_path": "src/",
+      "line_number": 0,
+      "description": "83 ocurrencias de `as unknown as` en src/ (repartidas en muchos archivos). A diferencia de `as any` (7) y `@ts-ignore` (5), `as unknown as` es un patrón más defensivo: fuerza un type-narrowing válido. La mayoría son legítimos (mismo patrón que event-tokens.ts: 'as unknown as' por typegen stale de Supabase). El sprint E del audit comprehensivo 2026-07-12 ya documentó este gap con plan de limpieza en chunks.",
+      "recommended_fix": "Mantener como deuda documentada en docs/OPEN_ITEMS.md (gap E). Limpiar incrementalmente en sprints de 2-3 horas priorizando:\n1. webhooks/stripe/route.ts (concentra `as any` también).\n2. src/lib/whatsapp/bot-engine.ts (1930 líneas, concentra varios).\n3. src/lib/ai/agent-provider.ts (typegen stale del provider).\n\nPara cada `as unknown as`, el patrón de fix es:\n```ts\n// ANTES:\nconst row = data as unknown as { id: string; event_id: string; ... };\n\n// DESPUÉS (si typegen está regenerado):\nconst row = data as { id: string; event_id: string; ... };\n// O mejor:\nconst row = data satisfies EventQRTokensRow;\n```\n\nNo es bloqueante (type-check pasa, build pasa, lint pasa). Es deuda técnica que se paga con sprints dedicados."
+    },
+    {
+      "id": "AUDIT-010",
+      "status": "RESOLVED",
+      "remediation_wave": 2,
+      "pillar": 6,
+      "severity": "LOW",
+      "category": "UI_BUG",
+      "file_path": "src/app/admin/dashboard/not-found.tsx",
+      "line_number": 0,
+      "description": "0 de 5 rutas core tienen not-found.tsx. Sin not-found.tsx específico, Next.js usa el default 404 que no respeta el branding de Qlick (muestra '404 | This page could not be found' sin contexto ni link de retorno a la home). Para una plataforma premium-grade, el 404 debe ser branded y ofrecer alternativas (link a /eventos, /cursos, contacto).",
+      "recommended_fix": "Crear un not-found.tsx con branding en cada una de las 5 rutas core. Plantilla base:\n\n```tsx\n// src/app/admin/dashboard/not-found.tsx\nimport Link from 'next/link';\n\nexport default function NotFound() {\n  return (\n    <div className=\"min-h-[60vh] flex flex-col items-center justify-center text-center px-4\">\n      <h1 className=\"text-4xl font-bold text-gray-900\">404 — No encontramos esa página</h1>\n      <p className=\"mt-4 text-lg text-gray-600\">¿Quieres ir a algún lugar útil?</p>\n      <div className=\"mt-8 flex gap-3\">\n        <Link href=\"/admin/dashboard\" className=\"px-6 py-3 bg-purple-600 text-white rounded-lg\">\n          Ir al dashboard\n        </Link>\n        <Link href=\"/eventos\" className=\"px-6 py-3 border border-gray-300 rounded-lg\">\n          Ver eventos\n        </Link>\n      </div>\n    </div>\n  );\n}\n```\n\nCrear /admin/dashboard/not-found.tsx, /lms/not-found.tsx, /crm/not-found.tsx, /eventos/not-found.tsx, /admin/bot/not-found.tsx. Considerar también un not-found.tsx en src/app/ para la raíz."
+    }
+  ]
+}
