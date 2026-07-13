@@ -8,9 +8,9 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-12 05:00 Phoenix — **Sprint v0.9.8 + v0.9.9 cerrado (PR #26 abierto)**: 3 mejoras del Súper Ejecutivo (detección de typos de dominio, cadencia suave anti-insistencia, tool `add_event_guest` con migración `guests JSONB`) + arnés de simulación masiva con 200 situaciones cartesianas × 5 métricas. 5 commits atómicos en `feat/fase-17-4-improvements-and-massive-harness`. Validación: 1262/1262 tests verde (+36 desde 1226), type-check 0 errors, lint 0/0, build ✓. Reporte de la matriz en `docs/BOT_MASSIVE_SIMULATION_200_REPORT.md` muestra 60.0% pass rate baseline (120/200) con 4 arquetipos rojos documentados como stress esperados. PR #26 listo para review contra `feat/fase-17-4-improvements-and-massive-harness`.
+> **Última actualización:** 2026-07-12 19:30 Phoenix — **PR #26 mergeado a `main` (HEAD `89902e8`)**. Sprint v0.9.8 + v0.9.9 cerrado. 1262/1262 tests verde, type-check 0, lint 0/0, build ✓. Vercel auto-deploy disparado. Bot Súper Ejecutivo en producción usando tool `add_event_guest` para registrar acompañantes. Cluster de housekeeping v0.9.10 en curso (rama `feat/housekeeping-2026-07-12`).
 >
-> Estado anterior (2026-07-12 01:48): Sprint v16 hotfix #3 mergeado (PR #20) — persistencia real de `onSelectMode` + anti-flicker de carga. Sigue vigente (mergeado a main con HEAD `aea4b8e`).
+> **Body del doc (líneas debajo):** es archivo histórico de sprints cerrados. Para estado actual, ver este snapshot.
 
 ---
 
@@ -49,9 +49,7 @@
    - `docs/BOT_MASSIVE_SIMULATION_200_REPORT.md`: 215 líneas, semáforo por arquetipo, desglose por métrica, listado de fallas detectadas (primeras 20), distribución por contexto.
    - Reporte completo en `private-data/reports/bot_simulation_massive_200.json` (gitignored, ~236KB).
 
-**Rama:** `feat/fase-17-4-improvements-and-massive-harness` (desde main HEAD `aea4b8e`, 5 commits atómicos).
-
-**PR:** #26 abierto contra `feat/fase-17-4-improvements-and-massive-harness`. Listo para review y merge.
+**Rama:** `feat/fase-17-4-improvements-and-massive-harness` (desde main HEAD `aea4b8e`, 5 commits atómicos) → **mergeada a main el 2026-07-12 19:30 Phoenix (PR #26 MERGED, HEAD `89902e8`)**.
 
 **Validación:** type-check ✓ · lint ✓ (0/0) · **1262/1262 tests verde** (+36 desde 1226 baseline) · build ✓ · arnés corre 200 situaciones en 5ms (límite <5s).
 

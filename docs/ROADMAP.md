@@ -1,13 +1,13 @@
 # Qlick LMS — Roadmap
 
 > Fuente de verdad del plan del LMS. Cualquier desvío se conversa y se actualiza acá.
-> Última revisión: 2026-07-12 05:00 Phoenix — **Sprint v0.9.8 + v0.9.9 (mejoras del Súper Ejecutivo + arnés masivo)** cerrado en `feat/fase-17-4-improvements-and-massive-harness` con PR #26. 5 commits atómicos. 1262/1262 tests verde (+36 desde 1226). Estado anterior (2026-07-11 19:30): Sprint CI verde + secrets config cerrado.
+> Última revisión: 2026-07-12 19:30 Phoenix — **PR #26 (sprint v0.9.8 + v0.9.9) MERGED a `main` (HEAD `89902e8`)**. 5 commits atómicos. 1262/1262 tests verde (+36 desde 1226). Cluster de housekeeping v0.9.10 en `feat/housekeeping-2026-07-12`. Estado anterior (2026-07-12 05:00): Sprint v0.9.8 + v0.9.9 cerrado en `feat/fase-17-4-improvements-and-massive-harness` con PR #26 abierto. Estado anterior (2026-07-11 19:30): Sprint CI verde + secrets config cerrado.
 
 ---
 
 ## Estado actual
 
-- [x] **v0.9.8 + v0.9.9 — Mejoras del Súper Ejecutivo + Arnés masivo** — sprint cerrado el 2026-07-12 05:00 Phoenix en `feat/fase-17-4-improvements-and-massive-harness` con PR #26. 5 commits atómicos.
+- [x] **v0.9.8 + v0.9.9 — Mejoras del Súper Ejecutivo + Arnés masivo** — sprint cerrado el 2026-07-12 05:00 Phoenix y **mergeado a `main` el 2026-07-12 19:30 Phoenix (PR #26, HEAD `89902e8`)**. 5 commits atómicos.
   - **Qué incluye (3 mejoras del Súper Ejecutivo):**
     - **Detección de typos de dominio** en `extract-contact.ts`: dict de 15 typos frecuentes, `detectDomainTypo()`, `executeExtractAndSaveContact()` retorna `needs_domain_confirmation` con `suggested_domain` cuando hay typo (commit `2348103`).
     - **Cadencia suave de cierre (anti-insistencia)** en prompt WhatsApp del Súper Ejecutivo: máximo 1 mención al enlace/4 turns, 1 pregunta de calificación/6 turns, no insistir con el mismo ángulo si ya hubo >0 objeciones (commit `038b519`).
@@ -16,9 +16,9 @@
     - 10 arquetipos × 4 contextos × 5 trayectorias = 200 situaciones cartesianas (`massive-matrix-generator.ts`).
     - 5 métricas de calidad: `isBrief`, `guestsHandledCorrectly`, `typoIntercepted`, `cadenciaSuaveRespetada`, `toolCalledCorrectly` (`matrix-auditor.ts`).
     - Reporte ejecutivo en `docs/BOT_MASSIVE_SIMULATION_200_REPORT.md` (60.0% pass rate baseline, 5ms arnés, 4 arquetipos rojos documentados como stress).
-  - **Status vivo:** `docs/STATUS.md` (snapshot 2026-07-12 05:00).
+  - **Status vivo:** `docs/STATUS.md` (snapshot 2026-07-12 19:30, post-merge).
   - **Validación:** 1262/1262 tests verde (+36 desde 1226), type-check ✓, lint 0/0, build ✓.
-  - **PR:** #26 abierto contra `feat/fase-17-4-improvements-and-massive-harness`.
+  - **PR:** #26 MERGED a `main` 2026-07-12 19:30 Phoenix (HEAD `89902e8`).
 - [x] **v0.9.4 — Sprint CI verde + GitHub Secrets config (operacional)** — sprint cerrado el 2026-07-11 19:30 Phoenix. NO incluye cambios de código, solo infra.
   - **Qué incluye:**
     - **3 GitHub Secrets** configurados en `david17891/qlick` (encriptados en reposo): `SUPABASE_URL`, `SUPABASE_PROJECT_REF` (extraído del subdominio, público), `SUPABASE_SECRET_KEY` (de `.env.local`, formato `sb_secret_xxx` válido).
@@ -149,8 +149,7 @@
 ## Deuda activa (no bloqueante)
 
 - **Catálogo real**: los 4 cursos siguen duplicados entre `src/lib/data/courses.ts` (mock) y la DB (via seed). Cuando David decida el catálogo final con socios, se elimina el mock y se regenera el seed con los datos reales.
-- **Inconsistencia `LessonVideoProvider "external"`** (CHECK vs TS) — H1 del audit original. Fix de 1 línea cuando se decida.
-- **`ADMIN_EMAIL_ALLOWLIST` durante testing**: probamos con la cuenta `layerzero3dprint@gmail.com` que NO estaba en el allowlist. Si vuelve a estar en el allowlist, OAuth alumno va a loopear (es admin, no entra como student — por diseño).
+- **Inconsistencia `LessonVideoProvider "external"`** (CHECK vs TS) — pendiente sin fase asignada (1 línea de fix cuando se decida).
 
 ## En curso
 
