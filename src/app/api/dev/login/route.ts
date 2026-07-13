@@ -43,6 +43,19 @@
  * - NO publicar el secret. Mantener en .env.local + Vercel env vars.
  * - Si el secret se compromete: rotarlo en Vercel + .env.local simultáneamente.
  *
+ * **Sprint housekeeping 2026-07-12 (A-7)** — agregado:
+ * - **Rate limit 10 calls / 60s por IP** (más permisivo que el default
+ *   de 5/60s del helper porque Mavis + tests pueden requerir varios
+ *   logins en poco tiempo, pero aún protege contra brute-force si el
+ *   secret se filtra). Usa `recordAndCheckRateLimit` in-memory (mismo
+ *   trade-off de Vercel containers explicado en `rate-limit.ts:11`).
+ * - **Audit log en `admin_audit_log`** con 3 actions distintas:
+ *   - `dev_login_attempt` — siempre se registra al recibir el request
+ *     (con email + IP + secret_ok). Best-effort: no rompe si la DB falla.
+ *   - `dev_login_success` — cuando el signInWithPassword retorna usuario.
+ *   - `dev_login_failure` — cuando algo falla (secret incorrecto, signIn
+ *     falla, user no encontrado, error de DB).
+ *
  * USO DESDE MAVIS (testing)
  *
  *   $secret = (Get-Content .env.local | Select-String 'DEV_ADMIN_SECRET').ToString().Split('"')[1]
@@ -75,8 +88,14 @@ import { createServerClient } from "@supabase/ssr";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isAdminEmail } from "@/lib/auth/admin-auth";
 import { supabaseConfig, isValidSupabaseUrl } from "@/lib/supabase/config";
+import { recordAndCheckRateLimit, getClientIp } from "@/lib/api/rate-limit";
+import { logAdminAction } from "@/lib/crm/audit-server";
 
 export const dynamic = "force-dynamic";
+
+// Rate limit: 10 calls / 60s por IP (sprint housekeeping 2026-07-12, A-7).
+const DEV_LOGIN_WINDOW_MS = 60_000;
+const DEV_LOGIN_MAX_CALLS = 10;
 
 interface RequestBody {
   email?: unknown;
@@ -107,6 +126,39 @@ export async function POST(request: Request) {
     );
   }
 
+  // Gate 3: Rate limit por IP (sprint housekeeping 2026-07-12, A-7).
+  const clientIp = getClientIp(request);
+  const rateDecision = recordAndCheckRateLimit(`dev_login:${clientIp}`, {
+    windowMs: DEV_LOGIN_WINDOW_MS,
+    maxCalls: DEV_LOGIN_MAX_CALLS,
+  });
+  if (!rateDecision.allowed) {
+    // Audit log del rate-limit hit (best-effort).
+    await logAdminAction({
+      actor_email: "anonymous",
+      action: "dev_login_failure",
+      entity_type: "dev_login",
+      entity_id: null,
+      metadata: {
+        reason: "rate_limited",
+        ip: clientIp,
+        callCount: rateDecision.callCount,
+        resetMs: rateDecision.resetMs,
+      },
+    });
+    return NextResponse.json(
+      {
+        error: `Rate limit excedido. ${rateDecision.callCount} intentos en ${DEV_LOGIN_WINDOW_MS / 1000}s. Reintentar en ${Math.ceil(rateDecision.resetMs / 1000)}s.`,
+      },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(Math.ceil(rateDecision.resetMs / 1000)),
+        },
+      },
+    );
+  }
+
   // Parse + validación de input.
   let body: RequestBody;
   try {
@@ -124,11 +176,36 @@ export async function POST(request: Request) {
     );
   }
 
-  // Gate 3: secret correcto.
-  if (secret !== expectedSecret) {
+  // Gate 4: secret correcto.
+  const secretOk = secret === expectedSecret;
+  if (!secretOk) {
+    // Audit log del secret incorrecto (best-effort, no rompe el response).
+    await logAdminAction({
+      actor_email: email || "unknown",
+      action: "dev_login_failure",
+      entity_type: "dev_login",
+      entity_id: null,
+      metadata: {
+        reason: "secret_incorrecto",
+        ip: clientIp,
+        email_attempted: email,
+      },
+    });
     return NextResponse.json({ error: "Secret incorrecto." }, { status: 403 });
   }
   // (Removido 2026-06-29: isAdminEmail check. Acepta cualquier email.)
+
+  // Audit log del intento que pasó el secret (best-effort).
+  await logAdminAction({
+    actor_email: email,
+    action: "dev_login_attempt",
+    entity_type: "dev_login",
+    entity_id: null,
+    metadata: {
+      reason: "secret_ok",
+      ip: clientIp,
+    },
+  });
 
   // --- Crear/actualizar user con password aleatorio (service role) ---
   const adminClient = createSupabaseAdminClient();
@@ -147,6 +224,17 @@ export async function POST(request: Request) {
     const { data: listData, error: listError } =
       await adminClient.auth.admin.listUsers({ page: 1, perPage: 200 });
     if (listError) {
+      await logAdminAction({
+        actor_email: email,
+        action: "dev_login_failure",
+        entity_type: "dev_login",
+        entity_id: null,
+        metadata: {
+          reason: "list_users_failed",
+          ip: clientIp,
+          error: listError.message,
+        },
+      });
       return NextResponse.json(
         { error: `No se pudo buscar el user: ${listError.message}` },
         { status: 500 },
@@ -156,6 +244,17 @@ export async function POST(request: Request) {
       (u) => u.email?.toLowerCase() === email,
     );
     if (!existing) {
+      await logAdminAction({
+        actor_email: email,
+        action: "dev_login_failure",
+        entity_type: "dev_login",
+        entity_id: null,
+        metadata: {
+          reason: "user_not_found",
+          ip: clientIp,
+          create_error: createError?.message,
+        },
+      });
       return NextResponse.json(
         {
           error:
@@ -169,6 +268,17 @@ export async function POST(request: Request) {
     const { error: updateError } =
       await adminClient.auth.admin.updateUserById(userId, { password });
     if (updateError) {
+      await logAdminAction({
+        actor_email: email,
+        action: "dev_login_failure",
+        entity_type: "dev_login",
+        entity_id: userId,
+        metadata: {
+          reason: "update_password_failed",
+          ip: clientIp,
+          error: updateError.message,
+        },
+      });
       return NextResponse.json(
         { error: `No se pudo actualizar password: ${updateError.message}` },
         { status: 500 },
@@ -216,6 +326,17 @@ export async function POST(request: Request) {
   });
 
   if (error || !data?.user) {
+    await logAdminAction({
+      actor_email: email,
+      action: "dev_login_failure",
+      entity_type: "dev_login",
+      entity_id: userId,
+      metadata: {
+        reason: "signin_failed",
+        ip: clientIp,
+        error: error?.message,
+      },
+    });
     return NextResponse.json(
       {
         error: `signInWithPassword falló: ${error?.message ?? "sin usuario devuelto"}. El user fue creado/actualizado pero la sesión no. Reintentar o revisar logs de Supabase.`,
@@ -223,6 +344,18 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
+
+  // Audit log del éxito (best-effort, no rompe el response).
+  await logAdminAction({
+    actor_email: email,
+    action: "dev_login_success",
+    entity_type: "dev_login",
+    entity_id: userId,
+    metadata: {
+      ip: clientIp,
+      isAdmin: adminCheck,
+    },
+  });
 
   return res;
 }

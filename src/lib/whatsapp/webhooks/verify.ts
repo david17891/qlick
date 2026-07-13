@@ -6,8 +6,15 @@
  *   hub.challenge=<string a devolver>
  *   hub.verify_token=<token que debe coincidir con tu Verify Token>
  *
- * PLACEHOLDER SEGURO: no se ejecuta en producción todavía (no hay endpoint
- * HTTP conectado). Solo valida que el verify token esté configurado.
+ * Sprint housekeeping 2026-07-12 (G-16): el comentario anterior decía
+ * "PLACEHOLDER SEGURO: no se ejecuta en producción todavía". ESTO ES INCORRECTO.
+ * El webhook de WhatsApp está activo en producción desde 2026-07-08 (sprint v0.9.4
+ * cerró G-2 con secret HMAC validado). Endpoint: `/api/whatsapp/webhook/route.ts`.
+ *
+ * Esta función se llama desde el GET de verificación inicial de Meta cuando
+ * configuras el webhook en el panel de WhatsApp Business. Después de la primera
+ * verificación exitosa, Meta solo envía POSTs (procesados por la lógica de
+ * processInboundMessage en `bot-engine.ts`).
  *
  * Ver docs/WHATSAPP_OFFICIAL_INTEGRATION_PLAN.md.
  */

@@ -48,7 +48,10 @@
 | Gap | Síntoma | Acción |
 |---|---|---|
 | **A-2** | Typegen Supabase desincronizado. Casts `as never` / `as unknown as Json` residuales. | Regenerar con `npx supabase gen types typescript --linked` y limpiar casts. **Parcialmente hecho en PR #26** (v0.9.8 typegen fresh para `event_attendees.guests` y `admin_audit_log.before/after`). Faltan otras tablas. |
-| **A-6** | 6 TODOs `// TODO(futura fase):` dispersos en código: `bsp-provider.ts:52`, `mercadopago-provider.ts:42`, `conekta-provider.ts:43`, `resend-contact-provider.ts:33`, `crm-contact-provider.ts:34`, `openrouter-provider.ts:52`. | Mover a OPEN_ITEMS con owner + fecha. NO implementar. |
+| **A-6** | 6 TODOs `// TODO(futura fase):` / `// TODO(Fase 2):` dispersos en código (stubs de providers). NO se implementan en sprint de housekeeping. Owner: sprint dedicado cuando David dispare cada feature. Detalle: | Ver desglose abajo. NO implementar. |
+| **A-3** | ~~`/api/dev/simulate-webhook` sin protección `DEV_ADMIN_SECRET`.~~ | ✅ **CERRADO** (v0.9.3, CHANGELOG). El endpoint ahora acepta header `x-dev-admin-secret` cuando `process.env.DEV_ADMIN_SECRET` está seteado Y matchea, además de la sesión de estudiante. OPEN_ITEMS desactualizado (sprint housekeeping 2026-07-12). | — |
+| **A-4** | ~~10+ stale remote branches sin local.~~ | ✅ **CERRADO** (sprint housekeeping 2026-07-12, rama `feat/housekeeping-2026-07-12`). 47 ramas eliminadas: 26 locales + 21 remotas en primera pasada. Solo quedan `main` + la rama de housekeeping. | — |
+| **A-5** | ~~`package.json` drift: `"version": "0.8.0"` pero release real era v0.9.9.~~ | ✅ **CERRADO** (sprint housekeeping 2026-07-12). Bumpeado a `"version": "0.9.9"`. | — |
 | **A-7** | `/api/dev/login` activo con `DEV_ADMIN_SECRET` como única barrera, sin rate limit ni audit log. | Agregar rate limit + audit log entry. ~20 min. |
 | **G-15** | Sweep comprehensivo de 9 docs históricos que mencionan `Resend` o `qlick.marketing` (HANDOFF_v0.7.1, SMTP_SETUP, FASE_5_PLAN, AUDIT_AND_PLAN, ASSESSMENT_PRODUCCION, PRE_MERGE_CHECKLIST, EVENTS_ADMIN_GUIDE, CONTACT_STRATEGY, TECHNICAL-REVIEW). | Agregar nota al inicio de cada doc explicando que es snapshot histórico válido. NO reescribir (regla del audit). |
 | **G-16** | 3 comentarios engañosos en código: `webhooks/handler.ts:1-13` dice "PLACEHOLDER SEGURO" pero persiste, `whatsapp-provider.ts:7-13` dice "manual_wa único activo" cuando `meta_cloud_api` está activo, `agent-provider.ts:7-9` dice "modo sugerencia" cuando responde auto. | Limpiar 3 comentarios para reflejar el estado real. |
@@ -123,6 +126,23 @@
 ### 📚 Histórico
 
 El cuerpo del doc (líneas debajo) preserva la trazabilidad completa de cada gap con: SHA del commit de cierre, sesión que lo cerró, archivo afectado, decisión arquitectónica asociada. **No leer de arriba a abajo** — usar el resumen de estado actual al inicio como source of truth y bajar al cuerpo solo cuando se necesita evidencia de cierre o contexto de un gap específico.
+
+---
+
+### A-6 · Desglose de los 6 TODOs `// TODO(futura fase):` en código
+
+(verificado sprint housekeeping 2026-07-12; no se implementan en este sprint, son referencia para sprints dedicados cuando David dispare cada feature)
+
+| Archivo | Línea | TODO | Owner / Trigger | Estimación |
+|---|---|---|---|---|
+| `src/lib/whatsapp/providers/bsp-provider.ts` | 52 | `// TODO(futura fase): llamada real a la API del BSP elegido` (360dialog, YCloud, Twilio, Wati). | Sprint dedicado cuando David elija BSP. Depende de G-5 (Meta templates aprobadas). | ~1 día por BSP elegido. |
+| `src/lib/payments/mercadopago-provider.ts` | 42 | `// TODO(Fase 2): crear Preference con SDK oficial mercadopago`. | Sprint dedicado cuando David elija MercadoPago como proveedor de pagos. | ~2-3 días. |
+| `src/lib/payments/conekta-provider.ts` | 43 | `// TODO(Fase 2): crear Order con Conekta`. | Sprint dedicado cuando David elija Conekta. | ~2-3 días. |
+| `src/lib/contact/resend-contact-provider.ts` | 33 | `// TODO(futura fase): enviar email real con Resend SDK`. | Sprint dedicado cuando David active Resend (nota: ya se migró a Brevo en otros paths, este contact-provider sigue siendo stub de Resend). | ~1 día. |
+| `src/lib/contact/crm-contact-provider.ts` | 34 | `// TODO(futura fase): crear contacto + deal en el CRM`. | Sprint dedicado cuando David integre HubSpot/Zoho/Pipedrive. | ~2-3 días. |
+| `src/lib/ai/openrouter-provider.ts` | 52 | `// TODO(futura fase): setup completo OpenRouter (fetch a api/v1/chat/completions)`. | Sprint dedicado cuando David quiera multi-modelo IA. Hoy solo DeepSeek activo. | ~1 día. |
+
+**Regla:** NO eliminar los `// TODO(futura fase):` del código hasta que el sprint dedicado los implemente. Son la única referencia operativa de qué falta en cada provider stub.
 
 ---
 
