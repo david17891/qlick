@@ -24,10 +24,10 @@ export default function AdminEventosNotFound() {
           Ver todos los eventos
         </Link>
         <Link
-          href="/admin/handoffs"
+          href="/admin/system"
           className="inline-flex items-center justify-center px-6 py-3 border border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition"
         >
-          Ver handoffs
+          Ir al sistema
         </Link>
       </div>
     </div>

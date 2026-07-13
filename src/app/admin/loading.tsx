@@ -1,7 +1,7 @@
-// Loading skeleton para /admin/* (cubre /admin/dashboard, /admin/bot,
-// /admin/eventos, /admin/handoffs, /admin/system, etc.).
+// Loading skeleton para /admin/* (cubre /admin/eventos, /admin/system, etc.).
 //
 // AUDIT-004: SUPER_AUDIT_REMEDIATION_PROTOCOL.md Ola 2 (Nivel 2).
+// (Cleanup 2026-07-13: /admin/handoffs y /admin/bot-v2 eliminados.)
 // Skeleton premium con animate-pulse, español neutro, jerarquía visual
 // coherente con el branding de Qlick.
 
