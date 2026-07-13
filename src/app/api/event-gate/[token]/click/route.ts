@@ -52,11 +52,15 @@ export async function GET(
 
   const supabase = createSupabaseAdminClient();
 
-  // 3) Lookup token. Cast `as never` por el typegen stale (mismo patrón
-  // que event-tokens.ts).
+  // 3) Lookup token + evento en una sola query (JOIN via PostgREST
+  // sobre la FK event_qr_tokens.event_id → events.id). Esto colapsa
+  // Q1+Q2 del audit comprehensivo (4→2 queries bloqueantes).
+  // Cast `as never` por el typegen stale (mismo patrón que event-tokens.ts).
   const { data: tokenRow, error: tokenErr } = await supabase
     .from("event_qr_tokens" as never)
-    .select("id, event_id, attendee_name, attendee_email, attendee_phone_normalized, expires_at, checked_in_at")
+    .select(
+      "id, event_id, attendee_name, attendee_email, attendee_phone_normalized, expires_at, checked_in_at, events:event_id (id, slug, format, streaming_url)",
+    )
     .eq("token" as never, token)
     .maybeSingle();
 
@@ -75,30 +79,23 @@ export async function GET(
     attendee_phone_normalized: string | null;
     expires_at: string;
     checked_in_at: string | null;
+    events: {
+      id: string;
+      slug: string;
+      format: "in_person" | "virtual" | "hybrid";
+      streaming_url: string | null;
+    } | null;
   };
 
-  // 4) Traer evento. Necesitamos `format`, `streaming_url` y `slug`.
-  const { data: eventRow, error: eventErr } = await supabase
-    .from("events")
-    .select("id, slug, format, streaming_url")
-    .eq("id", row.event_id)
-    .maybeSingle();
-
-  if (eventErr || !eventRow) {
+  // 4) El evento viene anidado en el JOIN (Q1+Q2 combinadas). Si el
+  // JOIN devolvió null (token huérfano por delete concurrente, etc.),
+  // tratamos como token no encontrado.
+  const event = row.events;
+  if (!event) {
     return NextResponse.redirect(
       new URL("/eventos", process.env.NEXT_PUBLIC_APP_URL ?? "https://qlick.mx"),
     );
   }
-
-  // FIX 2026-07-07: typegen regenerado, formato infiere directo del Row.
-  // El cast residual es para narrowed type en este punto (TS no propaga
-  // el null check via destructure en una sola expresión).
-  const event = eventRow as {
-    id: string;
-    slug: string;
-    format: "in_person" | "virtual" | "hybrid";
-    streaming_url: string | null;
-  };
 
   // 5) Si el evento NO es virtual/hybrid (legacy in_person), el gate no
   // aplica. Redirect al check-in público tradicional.
@@ -150,8 +147,14 @@ export async function GET(
       note: result.note,
     });
   } else {
-    // Audit log para visibilidad admin ("quién clickeó SÍ, VOY").
-    await logAdminAction({
+    // Audit log fire-and-forget: NO bloquea el redirect al streaming.
+    // La asistencia ya quedó registrada en event_attendees (Q3 arriba);
+    // si el audit log falla, el asistente no se entera y la fila en
+    // event_attendees es la fuente de verdad. El admin UI puede
+    // reconstruir "quién clickeó SÍ, VOY" desde event_attendees si
+    // necesita 100% precisión. Esto cierra H-1 del audit comprehensivo
+    // (4→2 queries bloqueantes en el path crítico del gate).
+    logAdminAction({
       actor_email: row.attendee_email ?? `phone:${row.attendee_phone_normalized ?? "unknown"}`,
       action: "event_gate_click",
       entity_type: "event_attendee",
@@ -164,6 +167,13 @@ export async function GET(
       },
       before: null,
       after: { source: "zoom_export", intent: "gate_click" },
+    }).catch((err: unknown) => {
+      // eslint-disable-next-line no-console
+      console.error("[event-gate/click] audit log falló (fire-and-forget)", {
+        err: err instanceof Error ? err.message : String(err),
+        tokenId: row.id,
+        eventId: event.id,
+      });
     });
   }
 
