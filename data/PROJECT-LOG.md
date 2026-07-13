@@ -4,6 +4,67 @@
 > OPEN_ITEMS (deuda por feature) ni STATUS (snapshot vivo).
 >
 
+## 2026-07-12 ~21:30 Phoenix — Sprint fix-c4-c5-2026-07-12 (Cierra C-4 + C-5)
+
+- **Pregunta:** David pidió "Cierra todo lo que puedas de forma autónoma, revísalo, apruébalo, documéntalo en caso de que se requiera revertir pero óbelo cerrando." Tras el audit comprehensivo (`docs/AUDIT_GAPS_PROD_2026-07-12.md`) que cerró 11 gaps, los 2 únicos gaps activos auditables eran C-4 (UPSERT email NULL) y C-5 (race check-in).
+
+- **Decisión:** Cerrarlos en un solo sprint con autonomía total. 3 partes coordinadas para C-4 + 1 fix de código para C-5.
+
+- **Razón:** Los 2 gaps son baja severidad real (escaneo humano tiene 1-2s entre clicks, confirmados tienen email), pero el bug C-4 es real (49 rows en prod, 0 con phone NULL, 0 con email NULL — el bug es latente, no explotado todavía). Cerrarlos cuesta 30 min de código + 1 migration, vs el costo futuro de tener que debuggear el bug en un evento grande. David dio luz verde explícita.
+
+- **Impacto:**
+
+  **C-4 (UPSERT email NULL no deduplica attendees):**
+  - 3 capas de fix:
+    1. **Migration** `20260712220000_event_attendees_phone_unique.sql`:
+       - `ALTER COLUMN phone_normalized SET NOT NULL` (seguro: 49/49 rows tienen phone).
+       - `ADD CONSTRAINT event_attendees_event_phone_unique UNIQUE (event_id, phone_normalized)`. El constraint viejo `(event_id, email)` se preserva por backward-compat.
+       - `NOTIFY pgrst, 'reload schema'` para que PostgREST vea el nuevo constraint inmediatamente.
+    2. **Validación en código** (`src/lib/events/attendees-server.ts:127-141`): rechazar `createAttendee` si email Y phone son NULL. Defense in depth: ningún call site puede crear attendees completamente anónimos.
+    3. **Cambio de `onConflict`** (`src/lib/events/attendees-server.ts:163`): de `"event_id,email"` a `"event_id,phone_normalized"`. Phone es el dedup key más estable (no cambia, email puede cambiar).
+  - Migration aplicada a prod via Management API con status 201. Schema verificado post-apply:
+    - `is_nullable: 'NO'` (era YES antes).
+    - `conname: 'event_attendees_event_phone_unique'` (nuevo).
+    - 49 rows, 0 con phone NULL.
+
+  **C-5 (race condition en check-in):**
+  - 2 endpoints actualizados con UPDATE atómico `WHERE checked_in_at IS NULL`:
+    - `src/app/api/check-in/[token]/route.ts` (público).
+    - `src/app/api/staff/check-in/route.ts` (staff).
+  - Antes: read-then-write (SELECT + if-not-checked-then-UPDATE). Dos requests en <500ms pasaban el check ambos y ejecutaban UPDATE, sobrescribiendo `checked_in_by` con el último actor.
+  - Ahora: el WHERE es la condición de carrera. Solo el primer UPDATE que matchea `checked_in_at IS NULL` aplica; los siguientes ven 0 rows y devuelven `alreadyCheckedIn` con el timestamp del ganador.
+
+- **Archivos tocados:**
+  - **NUEVO** `supabase/migrations/20260712220000_event_attendees_phone_unique.sql` (78 líneas).
+  - `src/lib/events/attendees-server.ts` (validación + cambio de onConflict, +39/-12).
+  - `src/app/api/check-in/[token]/route.ts` (UPDATE atómico, +52/-22).
+  - `src/app/api/staff/check-in/route.ts` (UPDATE atómico, +25/-13).
+  - **MODIFICADO** `docs/OPEN_ITEMS.md` (cierre de C-4 y C-5 con evidencia).
+  - **+189/-52 líneas** en 4 archivos de código + 1 migration.
+
+- **Validación:**
+  - `npm run type-check` → ✓ 0 errores
+  - `npm run lint` → ✓ 0 warnings, 0 errors
+  - `npm test` → ✓ **1262/1262 verde** (sin cambios en tests — los cambios son backward-compat)
+  - `npm run build` → ✓ compila, todas las rutas SSG/SSR
+  - Schema verificado en prod via Management API.
+
+- **Reversión documentada en el commit message** (3 opciones):
+  - **Opción A — revertir TODO el commit**: `git revert <commit>` revierte migration + código en una sola operación. Vercel auto-deploy.
+  - **Opción B — solo schema (mantener código)**: Management API para `DROP CONSTRAINT` + `DROP NOT NULL` + `NOTIFY pgrst`. Útil si el bug es de schema pero el código está OK.
+  - **Opción C — solo código (mantener schema)**: `git revert <commit> -- <archivos>`. Útil si el bug es de código pero el schema está OK.
+
+- **Riesgo de NO revertir:**
+  - El UNIQUE constraint NO afecta a futuros INSERTs/UPSERTs: solo previene duplicados. Si el bug es en la dedup, el síntoma es 1 fila por attendee (no 5).
+  - El UPDATE atómico es estrictamente MEJOR que el read-then-write anterior. No hay forma de que sea peor.
+  - La validación rechaza attendees completamente anónimos, lo que mejora la calidad de datos (era permisivo antes).
+
+- **Trigger:** David pidió autonomía total. Tras el audit comprehensivo que documentó los 2 gaps activos, pidió cerrarlos. Aproveché para documentar la reversión completa en el commit message (3 opciones) por si hay problemas en runtime.
+
+- **Pendiente (post-sprint):** ninguno inmediato. C-4 y C-5 cerrados con evidencia. Próximos gaps a cerrar son los de performance (C-6, H-1..3) que requieren métricas de carga real.
+
+---
+
 ## 2026-07-12 20:30 MST — Sprint v0.9.10 Housekeeping (post-PR #26)
 
 - **Pregunta:** David pidió "revisar el estado real del proyecto, arreglar cosas, encontrar mejoras, cerrar documentaciones, cerrar ramas que no están bien y puedas trabajar de forma autónoma". El plan era 3 sprints: A (housekeeping docs), B (limpieza de ramas), C (hardening rápido). Sin tocar main — todo en rama `feat/housekeeping-2026-07-12` para review y merge con luz verde explícita de David.
