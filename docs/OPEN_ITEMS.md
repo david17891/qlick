@@ -30,15 +30,15 @@
 | Gap | Síntoma | Acción |
 |---|---|---|
 | **G-5** | 3 plantillas Meta NO creadas en Business Manager (`conf_bienvenida`, `conf_info_evento`, `conf_confirmacion_registro`). Bloquea outreach proactivo + cron Fase 2. | **David en Meta UI** + 24-48h approval. |
-| **G-6** | 5 migrations Fase 7a no verificadas aplicadas en Supabase (`20260630164900_bot_manual_context.sql`, `20260701120000_lead_profile.sql`, `20260701160000_handoff_requests.sql`, `20260701170000_lead_event_attended_status.sql`, `20260701180000_event_reminder_log.sql`). | **David corre** `npx supabase migration list` o SQL Editor → `SELECT table_name FROM information_schema.tables WHERE table_schema='public';` |
+| **G-6** | ~~5 migrations Fase 7a no verificadas aplicadas en Supabase.~~ | ✅ **CERRADO** (audit 2026-07-12, sprint `feat/audit-gaps-prod-2026-07-12`). `npm run audit:migrations` retorna **0/37 tablas faltantes, 0/28 columnas faltantes**. Las 5 migrations SÍ están aplicadas. Evidencia: `docs/AUDIT_GAPS_PROD_2026-07-12.md` §1. OPEN_ITEMS sección §0 tabla y §0.5 tabla de cierres históricos tienen más detalle (inconsistencia documental pre-existente, no nuevo). | — |
 
 #### 🟠 Altos (algunos son decisión de David, no míos)
 
 | Gap | Síntoma | Acción |
 |---|---|---|
 | **A-1** | Next.js 14.2.35 → 15/16 upgrade (12+ CVEs HIGH). Decisión vigente 2026-07-08: "podemos vivir sin eso" hasta Q4 2026 o incidente. | Mantener decisión. Revisar en Q4 2026. |
-| **G-7** | `NEXT_PUBLIC_APP_URL` en Vercel env vars — drift documentado entre `qlick-three.vercel.app` y `qlick.digital`. | **David verifica** con `vercel env ls production`. |
-| **G-12** | `findLeadByPhone` timeout intermitente (5s peor caso). | Considerar timeout explícito 3s + retry; investigar región Supabase ↔ Vercel. |
+| **G-7** | ~~`NEXT_PUBLIC_APP_URL` apunta a `qlick-three.vercel.app` (no `qlick.digital`).~~ | ✅ **CERRADO** (audit 2026-07-12). Env var SÍ está en Vercel production (`type=sensitive`, API REST lo confirma). Valor real = `https://www.qlick.digital` (verificado vía request público a `https://www.qlick.digital/robots.txt` y `https://qlick-three.vercel.app/robots.txt` — ambos devuelven `Sitemap: https://www.qlick.digital/sitemap.xml`). El CLI `vercel env pull` miente (memory operativa confirmada: devuelve `""` aunque la variable existe). Evidencia completa: `docs/AUDIT_GAPS_PROD_2026-07-12.md` §2. | — |
+| **G-12** | ~~`findLeadByPhone` timeout intermitente (5s peor caso).~~ | ✅ **CERRADO** (FIX 2026-07-04 en `src/lib/crm/leads-server.ts:206-216` + `_findLeadByPhoneRaw:274-293`). 3 capas: (1) índice UNIQUE en `phone_normalized` (`<100ms` típico), (2) timeout 3s + 1 retry con backoff 200ms, (3) `Promise.race` con timeout 5s en caller `bot-engine.ts:1828` fuerza fallback a mock si todo falla. Evidencia: `docs/AUDIT_GAPS_PROD_2026-07-12.md` §8. | — |
 | **C-4** | UPSERT `event_attendees` con email NULL no deduplica attendees (UNIQUE trata NULLs como distintos). | Cambiar dedup key a `(event_id, phone_normalized)` o UNIQUE `NULLS NOT DISTINCT`. ~30 min. |
 | **C-5** | Race condition en check-in (SELECT+UPDATE sin lock, doble escaneo sobrescribe `checked_in_by`). | UPDATE atómico con `WHERE checked_in_at IS NULL`. ~20 min. |
 | **C-6** | Check-in endpoints hacen 5-7 queries seriales (~900ms). Con 200 personas escaneando QR en 5 min, cola llega a 5+ min. | Paralelizar con `Promise.all` + audit log fire-and-forget. ~1h. |
