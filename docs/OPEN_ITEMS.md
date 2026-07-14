@@ -21,7 +21,7 @@
 
 ## 📊 Estado actual (snapshot 2026-07-12 — sprint housekeeping v0.9.9)
 
-> **TL;DR:** main está verde con 1262/1262 tests, PR #26 (v0.9.8 + v0.9.9) mergeado. Quedan 4 gaps críticos/altos (3 son de David: Meta templates, Vercel env var, migrations en prod) y ~20 gaps de severidad media/baja para sprints futuros. El cuerpo del doc (líneas 22-2097) es **archivo histórico** — no leer de arriba a abajo, este resumen es el source of truth del estado actual.
+> **TL;DR:** main está verde con 1365/1365 tests (HEAD `95a7398`). Sprint security 2026-07-14: G-18 (RLS en `bot_usage_daily`) CERRADO. Quedan 3 gaps críticos/altos (2 son de David: Meta templates + Vercel env var, 1 es `findLeadByPhone` timeout) y ~20 gaps de severidad media/baja para sprints futuros. El cuerpo del doc (líneas 22-2097) es **archivo histórico** — no leer de arriba a abajo, este resumen es el source of truth del estado actual.
 
 ### 🟢 Abiertos (ordenados por severidad)
 
@@ -31,6 +31,7 @@
 |---|---|---|
 | **G-5** | 3 plantillas Meta NO creadas en Business Manager (`conf_bienvenida`, `conf_info_evento`, `conf_confirmacion_registro`). Bloquea outreach proactivo + cron Fase 2. | ⏸ **PAUSADA** por decisión de David (2026-07-12 ~21:47 Phoenix): "las plantillas las vamos a dejar pausadas por el hecho de que cuestan más". El bot sigue usando texto libre (funciona en ventana 24h). Si David revierte la decisión: **David en Meta UI** + 24-48h approval. |
 | **G-6** | 5 migrations Fase 7a no verificadas aplicadas en Supabase (`20260630164900_bot_manual_context.sql`, `20260701120000_lead_profile.sql`, `20260701160000_handoff_requests.sql`, `20260701170000_lead_event_attended_status.sql`, `20260701180000_event_reminder_log.sql`). | **David corre** `npx supabase migration list` o SQL Editor → `SELECT table_name FROM information_schema.tables WHERE table_schema='public';` |
+| **G-18** | ~~Email CRITICAL de Supabase: `bot_usage_daily` con RLS deshabilitado en `public`. Cualquier cliente con la URL del proyecto podía leer/insertar/update/delete el histórico de tokens + costo DeepSeek.~~ | ✅ **CERRADO** (Sprint security 2026-07-14, commit `95a7398`). Migration `20260714140000_rls_bot_usage_daily.sql`: `ENABLE ROW LEVEL SECURITY` + 2 policies (`block_anon` + `block_authenticated`) con `USING(false) WITH CHECK(false)`. service_role bypassa RLS → backend (`recordDeepseekUsage` + `/api/admin/bot/stats`) sigue funcionando sin cambios. Verificado end-to-end: INSERT 201 / SELECT 200 / DELETE 204 con service_role; anon y authenticated devuelven 0 filas. 1365/1365 tests verde. |
 
 #### 🟠 Altos (algunos son decisión de David, no míos)
 
@@ -171,8 +172,9 @@ El cuerpo del doc (líneas debajo) preserva la trazabilidad completa de cada gap
 | **G-15** | 🟡 | ✅ **CERRADO** | Scope limitado (STATUS.md refrescado, OPEN_ITEMS cerrado). Sweep comprehensivo de los 9 docs históricos queda para post-evento 10 jul. |
 | **G-16** | 🟡 | ✅ **CERRADO** | 3 comentarios engañosos en código (webhooks/handler, whatsapp-provider, agent-provider) + 4 archivos collateral (mock-agent-provider, index.ts, manual-wa-provider, bot-engine) arreglados en Sprint v0.11. |
 | **G-17** | 🟢 | ⚠️ Pendiente | App fantasma Meta no se puede borrar. |
+| **G-18** | 🔴 | ✅ **CERRADO** | Email CRITICAL de Supabase: `bot_usage_daily` con RLS deshabilitado. Sprint security 2026-07-14, commit `95a7398`. Migration `20260714140000_rls_bot_usage_daily.sql`: ENABLE RLS + 2 policies anon/authenticated. service_role bypassa RLS, backend intacto. 1365/1365 tests verde. |
 
-**Resumen:** 13 gaps cerrados (G-1, G-2, G-3, G-4, G-6, G-7, G-8, G-9, G-10, G-11, G-13, G-14, G-15, G-16). 3 pendientes (2 críticos: ninguno; 2 altos: G-5, G-12; 1 medio/bajo: G-17). Sesión 2026-07-14 ~05:30 (Phoenix, Sprint v0.11).
+**Resumen:** 14 gaps cerrados (G-1, G-2, G-3, G-4, G-6, G-7, G-8, G-9, G-10, G-11, G-13, G-14, G-15, G-16, G-18). 3 pendientes (2 críticos: ninguno; 2 altos: G-5, G-12; 1 medio/bajo: G-17). Sesión 2026-07-14 ~14:30 (Phoenix, Sprint security).
 
 ### 0.6. Sesión 2026-07-11 — Desbloqueo de Supabase via Management API ✅
 
@@ -1958,7 +1960,8 @@ post-limpieza de docs. Detalle completo en `EVENTS_FUNNEL_FOUNDATION.md`.
   $env:SUPABASE_DB_PASSWORD = "<db-password-del-dashboard>"
   node --env-file=.env.local scripts/exec-sql.mjs supabase/migrations/20260702180000_add_requires_name_to_events.sql
   `
-  O pegar el SQL en https://supabase.com/dashboard/project/ugpejblymtbwtsoiykyj/sql/new. Sin esto, el flow funciona con equiresName=false (fallback silencioso, sin pedir nombre).
+  O pegar el SQL en https://supabase.com/dashboard/project/ugpejblymtbwtsoiykyj/sql/new. Sin esto, el flow funciona con 
+equiresName=false (fallback silencioso, sin pedir nombre).
 
 ### 🟠 Planificados para próxima sesión
 

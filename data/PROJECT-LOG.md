@@ -4362,3 +4362,65 @@ ame si esta null y tenemos confirmation linkeada (defense in depth para attendee
 
 - **Lección operativa (a guardar en memory):** "Cuando una tool tiene un parametro resuelto por el sistema (no por el LLM), declararlo en la description Y en la prompt. No basta con que el dispatch tenga el fallback — el LLM necesita saber que NO debe pedirle el dato al usuario. Caso real: el LLM con el modelo multi-evento empezo a preguntar 'a cual evento?' aunque el executor ya resolvia el evento por checked_in_at desc. El fix fue explicitar en description + prompt que el sistema decide."
 
+
+## 2026-07-14 ~14:30 (Phoenix) — Sprint security: RLS en bot_usage_daily (G-18)
+
+- **Trigger:** email CRITICAL de Supabase (`rls_disabled_in_public`) notificando
+  que la tabla `bot_usage_daily` (acumulador diario de tokens + costo DeepSeek)
+  estaba sin RLS en `public`. Cualquier cliente con la URL del proyecto podía
+  SELECT/INSERT/UPDATE/DELETE el consumo de la operación. Qlick expuesta a fuga
+  de métricas operativas + posibilidad de inyectar datos falsos en el dashboard
+  de stats.
+
+- **Diagnóstico:** `scripts/audit-rls-status.mjs` confirmó que el resto de las
+  27 tablas en `public` SÍ tienen RLS habilitado. Solo `bot_usage_daily`
+  (escrita por `src/lib/ai/deepseek-cost.ts:recordDeepseekUsage` y leída por
+  `/api/admin/bot/stats/route.ts`) tenía la omisión. Backend usa
+  `SUPABASE_SECRET_KEY` (service_role) que bypassa RLS por default, así que
+  el fix es seguro.
+
+- **Fix aplicado (commit `95a7398`):**
+  - Migration `supabase/migrations/20260714140000_rls_bot_usage_daily.sql`:
+    `ALTER TABLE public.bot_usage_daily ENABLE ROW LEVEL SECURITY` + 2
+    policies `USING(false) WITH CHECK(false)` para roles `anon` y
+    `authenticated` (defense in depth). NO policy para service_role (bypassa
+    RLS por diseño). `COMMENT ON TABLE` documentando el invariante.
+  - Aplicada via Management API
+    (`node --env-file=.env.local scripts/apply-migration-management.mjs`) con
+    `POST https://api.supabase.com/v1/projects/{ref}/database/query` (status 201).
+  - 4 scripts de verificación: `verify-rls-bot-usage-daily.mjs` (schema
+    post-RLS), `test-service-role-write.mjs` (INSERT/SELECT/DELETE con
+    service_role), `check-bot-usage-checks.mjs` (descubrió CHECK constraint
+    `model IN ('deepseek-chat', 'deepseek-reasoner')` que rompió la primera
+    pasada), `check-bot-usage-write.mjs` (últimas escrituras).
+
+- **Verificación end-to-end (post-aplicación):**
+  - `pg_class.relrowsecurity = true` en `bot_usage_daily`.
+  - 2 policies en `pg_policies` (`bot_usage_daily_block_anon`,
+    `bot_usage_daily_block_authenticated`) con `qual='false'`,
+    `with_check='false'`.
+  - service_role: INSERT 201 + SELECT 200 + DELETE 204. Backend intacto.
+  - anon: SELECT 200 con array vacío (RLS rechaza filas). Bloqueado.
+  - 1365/1365 tests verde. Push OK a `origin/main`.
+
+- **Archivos tocados (5 en total):**
+  - 1 migration nueva (`20260714140000_rls_bot_usage_daily.sql`, 51 líneas).
+  - 4 scripts de verificación: `verify-rls-bot-usage-daily.mjs` (56 líneas),
+    `test-service-role-write.mjs` (77 líneas), `check-bot-usage-checks.mjs`
+    (21 líneas), `check-bot-usage-write.mjs` (43 líneas).
+  - 1 doc actualizado: `docs/OPEN_ITEMS.md` (G-18 nuevo en sección Críticos,
+    ya cerrado; resumen actualizado a 14 gaps cerrados).
+
+- **Lección operativa (a guardar en memory):** "Cuando Supabase envía email
+  CRITICAL de RLS, el camino canónico es: (1) audit-script para confirmar
+  que SOLO esa tabla está afectada, (2) migration ENABLE RLS + policies
+  `USING(false) WITH CHECK(false)` para roles no service_role, (3) verificar
+  que el backend sigue funcionando con service_role. NO asumas que el resto
+  de la DB está mal: este caso específico era UNA tabla entre 27. El CHECK
+  constraint del modelo (`model IN ('deepseek-chat', 'deepseek-reasoner')`)
+  fue surprise: el primer INSERT de prueba falló con `23514 check_violation`
+  y tuve que descubrirlo via `pg_constraint` antes de poder hacer el test
+  E2E. Regla operativa: cuando el primer test de smoke falla, asumir
+  restricciones CHECK/UNIQUE desconocidos y validar el schema con
+  `information_schema.columns` + `pg_constraint` antes de culpar al fix."
+

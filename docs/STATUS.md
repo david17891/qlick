@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-14 04:35 Phoenix — **Sprint v0.10 cerrado y mergeado a `main` (HEAD `15162fc`)**. 1362/1362 tests verde, type-check 0, lint 0/0, build OK. 4 bloques de hardening (ZWSP, check-in paralelo, paginación CRM, E2E journey) + 4 hotfixes E2E con deepseek real (cast as-never, jsonb string, dispatch !=extract, parent_lead_id opcional). 2 audits adversariales en verde (15/15 + 60/60). 2 E2E con deepseek real en verde (39/39 + 15/15). API key de DeepSeek activa en historial de chat (David debe revocar en platform.deepseek.com).
+> **Última actualización:** 2026-07-14 14:35 Phoenix — **Sprint security G-18 cerrado y mergeado a `main` (HEAD `95a7398`)**. 1365/1365 tests verde, type-check 0, lint 0/0. RLS habilitado en `bot_usage_daily` con 2 policies explícitas para `anon` y `authenticated` (service_role bypassa, backend intacto). Email CRITICAL de Supabase (`rls_disabled_in_public`) resuelto end-to-end. Antes de este sprint: v0.11 (multi-evento lead_id + G-16 housekeeping completo) + v0.12 (4 tests E2E para add_event_guest + bug fix en `upsertGuestInArray`) + reset-lead endpoint + cleanup de 46 eventos de testing (1 real preservado, 1 piloto creado). `DEEPSEEK_TOOL_LOOP_TIER=pro` por default, `flash` para E2E (10x más barato, mismo endpoint). Saldo DeepSeek: $2 USD ($0.30 duró 3 semanas). API key `sk-26261d4559c0475ea12b16cb418f09c9` activa en historial de chat (David debe revocar en platform.deepseek.com).
 >
 > **Body del doc (líneas debajo):** es archivo histórico de sprints cerrados. Para estado actual, ver este snapshot.
 
@@ -670,3 +670,44 @@ David detectó conjugaciones voseantes argentinas en el template `survey-invite.
 - `docs/ROADMAP.md` actualizado con el sprint (verificar entrada en próxima pasada).
 - `docs/OPEN_ITEMS.md` gaps a cerrar (verificar).
 - `MEMORY.md` (Mavis global) sección "Voseo/vos en emails visibles al cliente final (HOT, 2026-07-11)" con la regla endurecida.
+
+## Sprint security G-18 — RLS en ot_usage_daily (2026-07-14 14:00 → 14:35)
+
+**Trigger:** email CRITICAL de Supabase notificando ls_disabled_in_public en
+ot_usage_daily. Diagnóstico confirmó que SOLO esta tabla de las 27 en
+public estaba sin RLS (escrita por ecordDeepseekUsage en
+src/lib/ai/deepseek-cost.ts y leída por /api/admin/bot/stats/route.ts).
+
+**Fix aplicado (commit 95a7398):**
+- Migration 20260714140000_rls_bot_usage_daily.sql: ENABLE ROW LEVEL
+  SECURITY + 2 policies USING(false) WITH CHECK(false) para roles
+  non y uthenticated. NO policy para service_role (bypassa RLS por
+  diseño).
+- 4 scripts de verificación: erify-rls-bot-usage-daily.mjs,
+  	est-service-role-write.mjs, check-bot-usage-checks.mjs,
+  check-bot-usage-write.mjs.
+
+**Verificación end-to-end (post-aplicación):**
+- pg_class.relrowsecurity = true en ot_usage_daily.
+- 2 policies creadas (ot_usage_daily_block_anon,
+  ot_usage_daily_block_authenticated).
+- service_role: INSERT 201 + SELECT 200 + DELETE 204. Backend intacto.
+- anon: SELECT 200 con array vacío. Bloqueado.
+- 1365/1365 tests verde. Push OK a origin/main.
+
+**Lección operativa:** "Cuando Supabase envía email CRITICAL de RLS, el camino
+canónico es: (1) audit-script para confirmar que SOLO esa tabla está
+afectada, (2) migration ENABLE RLS + policies USING(false) WITH CHECK(false)
+para roles no service_role, (3) verificar que el backend sigue funcionando
+con service_role. El CHECK constraint del modelo (model IN ('deepseek-chat',
+'deepseek-reasoner')) fue surprise en la primera pasada — validar schema
+con information_schema.columns + pg_constraint antes de culpar al fix."
+
+### Trazabilidad
+
+- data/PROJECT-LOG.md entrada 2026-07-14 ~14:30 — Sprint security: RLS en
+  bot_usage_daily (G-18).
+- docs/OPEN_ITEMS.md: G-18 nuevo en sección Críticos, ya cerrado.
+  Resumen actualizado a 14 gaps cerrados.
+- Migration supabase/migrations/20260714140000_rls_bot_usage_daily.sql
+  aplicada via Management API.
