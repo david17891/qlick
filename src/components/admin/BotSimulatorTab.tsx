@@ -477,6 +477,46 @@ export function BotSimulatorTab({ currentMode }: BotSimulatorTabProps) {
     setError(null);
   }, []);
 
+  /**
+   * Sprint v0.12: reset del contexto de un lead real (por phone).
+   * Útil para que David pruebe el bot con su número entre sesiones
+   * sin que el contexto (wizard state, lead_profile.summary) se acumule.
+   * POST /api/admin/bot/reset-lead con { phone }.
+   */
+  const [resetPhone, setResetPhone] = useState("");
+  const [resetting, setResetting] = useState(false);
+  const [resetResult, setResetResult] = useState<string | null>(null);
+  const resetLeadContext = useCallback(async () => {
+    const phone = resetPhone.trim();
+    if (!phone) {
+      setResetResult("⚠️ Ingresa un phone (ej. +526532935492)");
+      return;
+    }
+    if (!window.confirm(`¿Olvidar el contexto del lead con phone ${phone}? El siguiente mensaje se trata como conversación nueva.`)) {
+      return;
+    }
+    setResetting(true);
+    setResetResult(null);
+    try {
+      const r = await fetch("/api/admin/bot/reset-lead", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone })
+      });
+      const j = (await r.json()) as { ok?: boolean; error?: string; cleared?: { outbounds: number; profiles: number; attendees: number } };
+      if (j.ok) {
+        const c = j.cleared ?? { outbounds: 0, profiles: 0, attendees: 0 };
+        setResetResult(`✓ Contexto limpiado. Wizard state: ${c.outbounds} outbound${c.outbounds === 1 ? "" : "s"}, lead_profile: ${c.profiles}, attendees: ${c.attendees}.`);
+      } else {
+        setResetResult(`✗ Error: ${j.error ?? "desconocido"}`);
+      }
+    } catch (err) {
+      setResetResult(`✗ Network error: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setResetting(false);
+    }
+  }, [resetPhone]);
+
   return (
     <div className="space-y-4">
       {/* Cabecera con garantías + acumulado de sesión */}
@@ -490,6 +530,51 @@ export function BotSimulatorTab({ currentMode }: BotSimulatorTabProps) {
           <p className="mt-2 text-xs font-mono">
             Sesión actual: <strong>{sessionTurns}</strong> turno{sessionTurns === 1 ? "" : "s"} ·
             Costo acumulado: <strong>${(sessionCostCents / 100).toFixed(4)} USD</strong>
+          </p>
+        )}
+      </div>
+
+      {/* Sprint v0.12: Reset del contexto de un lead (por phone).
+          Útil para probar el bot con un número real entre sesiones. */}
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <div className="flex items-center justify-between mb-2">
+          <p className="font-semibold">🔄 Olvidar contexto de un lead (por phone)</p>
+        </div>
+        <p className="text-xs mb-2">
+          Limpia el wizard state del último outbound, el summary de
+          lead_profile, y opcionalmente los event_attendees. El
+          siguiente mensaje del phone se trata como conversación nueva.
+        </p>
+        <div className="flex gap-2 items-center">
+          <input
+            type="tel"
+            value={resetPhone}
+            onChange={(e) => setResetPhone(e.target.value)}
+            placeholder="+526532935492"
+            disabled={resetting}
+            className="flex-1 p-2 border border-amber-200 rounded-md text-sm font-mono"
+          />
+          <Button
+            type="button"
+            onClick={() => void resetLeadContext()}
+            disabled={resetting || !resetPhone.trim()}
+            className="text-sm px-3 py-2 bg-amber-600 text-white rounded"
+          >
+            {resetting ? "⏳" : "🔄"} Olvidar
+          </Button>
+        </div>
+        {resetResult && (
+          <p
+            className={
+              "text-xs mt-2 font-mono whitespace-pre-wrap " +
+              (resetResult.startsWith("✓")
+                ? "text-emerald-700"
+                : resetResult.startsWith("⚠")
+                ? "text-amber-700"
+                : "text-red-700")
+            }
+          >
+            {resetResult}
           </p>
         )}
       </div>
