@@ -922,12 +922,18 @@ export const deepseekAgentProvider: AIAgentProvider = {
     if (context.supabase) {
       try {
         const v = await readSystemSetting(KEY_DEEPSEEK_TOOLS_ENABLED);
-        if (v === true) {
+        // FIX 2026-07-14 (Sprint v0.10 hotfix post-E2E): aceptar tanto el
+        // boolean `true` como el string `"true"` (jsonb round-trip desde
+        // scripts que llaman `setSystemSetting(key, "true", ...)`). El
+        // código original solo aceptaba `v === true` (boolean estricto),
+        // por lo que el flag NUNCA se activaba cuando se seteaba como
+        // string (caso típico de scripts de admin/test).
+        if (v === true || v === "true") {
           flagEnabled = true;
-        } else if (v === false) {
+        } else if (v === false || v === "false") {
           flagEnabled = false;
         }
-        // v === null: dejamos el flagEnabled como está (fallback env var).
+        // v === null u otro: dejamos el flagEnabled como está (fallback env var).
       } catch {
         // DB falló (red, timeout, RLS). Fallback al env var.
       }
