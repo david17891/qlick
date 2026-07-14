@@ -126,6 +126,8 @@ async function main() {
   const toolsEnabled = isDeepseekToolsEnabled({ supabase: sb });
 
   console.log("=== E2E Real Validation — human_first journey ===");
+  console.log(`[debug] process.env.DEEPSEEK_API_KEY: ${process.env.DEEPSEEK_API_KEY ? `SET (len=${process.env.DEEPSEEK_API_KEY.length})` : "NOT SET"}`);
+  console.log(`[debug] process.env.AI_AGENT_PROVIDER: ${process.env.AI_AGENT_PROVIDER ?? "NOT SET"}`);
   console.log(`Provider activo: ${activeProvider.name} (${activeProvider.displayName})`);
   console.log(
     `Tools habilitadas: ${toolsEnabled ? "sí" : "no"} (requiere deepseek + deepseek_tools_enabled=true)`
