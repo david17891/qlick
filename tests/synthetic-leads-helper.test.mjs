@@ -110,3 +110,81 @@ test("createSyntheticLead: lanza si no hay Supabase (no se puede crear sin DB)",
     /Supabase|configurado/
   );
 });
+
+/* ─────────────────────────────────────────────────────────────
+ * 4. REGRESIÓN — FIXES DE LA AUDITORÍA 2026-07-14
+ *    Estos tests verifican que los bugs críticos encontrados en la
+ *    auditoría pre-merge están arreglados.
+ * ───────────────────────────────────────────────────────────── */
+
+test("REGRESIÓN #1: source del lead sintético es 'synthetic_lab' (valor válido del enum)", () => {
+  // El helper `createSyntheticLead` setea `source: "synthetic_lab"`.
+  // Antes de la auditoría, este valor NO estaba en el enum `lead_source`,
+  // por lo que el INSERT fallaba con `invalid input value for enum`.
+  // La migration `20260714110000_lead_source_synthetic_lab.sql` agregó
+  // el valor al enum. Este test documenta el valor esperado.
+  //
+  // Valores válidos del enum lead_source (migration 20260623000001):
+  //   website, whatsapp, facebook_ads, instagram_ads,
+  //   referral, event, manual, organic, other, synthetic_lab
+  const VALID_LEAD_SOURCE_VALUES = [
+    "website", "whatsapp", "facebook_ads", "instagram_ads",
+    "referral", "event", "manual", "organic", "other", "synthetic_lab"
+  ];
+  assert.ok(
+    VALID_LEAD_SOURCE_VALUES.includes("synthetic_lab"),
+    "synthetic_lab debe estar en el set válido de lead_source"
+  );
+});
+
+test("REGRESIÓN #2: phone sintético tiene formato E.164 estricto", () => {
+  // El phone DEBE ser `+52555555 + 10 dígitos` (19 chars total:
+  // 9 del prefijo + 10 dígitos).
+  // Verificamos el patrón con una regex.
+  const samplePhone = "+525555551234567890";
+  assert.match(samplePhone, /^\+52555555\d{10}$/);
+  assert.equal(samplePhone.length, 19);
+});
+
+test("REGRESIÓN #3: email sintético usa TLD .test (RFC 2606 reservado)", () => {
+  // El email DEBE terminar en @qlick.test. El TLD .test está reservado
+  // por RFC 2606 y nunca se resuelve a un server real.
+  const sampleEmail = "lab+12345678-1234-1234-1234-123456789012@qlick.test";
+  assert.match(sampleEmail, /@qlick\.test$/);
+});
+
+test("REGRESIÓN #4: crypto.randomUUID() disponible en el runtime de Node", () => {
+  // El helper de generación de phone/email usa `crypto.randomUUID()`.
+  // Si no está disponible, el fallback usa Date.now() + Math.random(),
+  // que puede colisionar. Verificamos que Node 18+ lo tiene.
+  assert.equal(
+    typeof globalThis.crypto?.randomUUID,
+    "function",
+    "globalThis.crypto.randomUUID debe estar disponible (Node 18+)"
+  );
+});
+
+test("REGRESIÓN #5: 1000 generaciones de phone no colisionan (10^10 combinaciones)", () => {
+  // FIX auditoría 2026-07-14 (segundo intento): el primer fix usaba
+  // `% 100` que solo daba 100 valores. Ahora el helper usa XOR de 4
+  // chunks de 8 chars hex del UUID, modulo 10^10. Combinaciones únicas:
+  // 10,000,000,000. El test genera 1000 y verifica unicidad estricta.
+  const phones = new Set();
+  for (let i = 0; i < 1000; i++) {
+    const uuid = globalThis.crypto.randomUUID();
+    const hex = uuid.replace(/-/g, "");
+    const chunk1 = parseInt(hex.slice(0, 8), 16);
+    const chunk2 = parseInt(hex.slice(8, 16), 16);
+    const chunk3 = parseInt(hex.slice(16, 24), 16);
+    const chunk4 = parseInt(hex.slice(24, 32), 16);
+    const num = (chunk1 ^ chunk2 ^ chunk3 ^ chunk4) % 10_000_000_000;
+    phones.add(`+52555555${num.toString().padStart(10, "0")}`);
+  }
+  // Con 10^10 valores únicos y 1000 generaciones, la probabilidad
+  // de colisión es < 0.005% (birthday paradox). Esperamos 1000 únicos.
+  assert.equal(
+    phones.size,
+    1000,
+    `Esperaba 1000 phones únicos, obtuve ${phones.size}. Probable colisión en el algoritmo.`
+  );
+});

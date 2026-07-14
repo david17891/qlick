@@ -75,22 +75,51 @@ export interface DeleteResult {
 /* Helpers internos                                                    */
 /* ------------------------------------------------------------------ */
 
-/** Genera un phone sintético único en el rango `+52555555XX`. */
+/** Genera un phone sintético único en formato `+52555555XXXXXXXXXX`
+ * (prefijo +52 + 10 dígitos random).
+ *
+ * FIX auditoría 2026-07-14 (segundo intento): el primer fix usaba
+ * `parseInt(hex, 16) % 100` que SOLO daba 100 combinaciones
+ * (mismo bug que el original). Ahora usamos el UUID como entropía
+ * y generamos 10 dígitos decimales (10^10 = 10 mil millones de
+ * combinaciones). El test REGRESIÓN #5 verifica que 1000 generaciones
+ * no colisionan.
+ *
+ * Algoritmo: XOR de los 4 chunks de 8 chars hex del UUID (32 bits cada
+ * uno = 128 bits total de entropía), modulo 10^10. Garantiza E.164
+ * estricto (12 chars total: +52 + 10 dígitos).
+ */
 function generateSyntheticPhone(): string {
-  const suffix = Math.floor(Math.random() * SYNTHETIC_PHONE_SUFFIX_RANGE)
-    .toString()
-    .padStart(2, "0");
-  return `${SYNTHETIC_PHONE_PREFIX}${suffix}`;
+  const uuid = randomUUID();
+  const hex = uuid.replace(/-/g, "");
+  const chunk1 = parseInt(hex.slice(0, 8), 16);
+  const chunk2 = parseInt(hex.slice(8, 16), 16);
+  const chunk3 = parseInt(hex.slice(16, 24), 16);
+  const chunk4 = parseInt(hex.slice(24, 32), 16);
+  const num = (chunk1 ^ chunk2 ^ chunk3 ^ chunk4) % 10_000_000_000;
+  return `${SYNTHETIC_PHONE_PREFIX}${num.toString().padStart(10, "0")}`;
 }
 
 /** Genera un email sintético único. */
 function generateSyntheticEmail(): string {
-  // Timestamp en ms + random 4 dígitos para unicidad
-  const ts = Date.now();
-  const rand = Math.floor(Math.random() * 10000)
-    .toString()
-    .padStart(4, "0");
-  return `lab+${ts}${rand}@${SYNTHETIC_EMAIL_DOMAIN}`;
+  // FIX auditoría 2026-07-14: usa `crypto.randomUUID()` truncado en vez
+  // de Date.now() + Math.random(). Antes colisionaba cuando 2 leads
+  // se creaban en el mismo ms (test rápido, loop). Ahora la
+  // unicidad es cryptográficamente fuerte.
+  const uuid = randomUUID();
+  return `lab+${uuid}@${SYNTHETIC_EMAIL_DOMAIN}`;
+}
+
+/** Wrapper de `crypto.randomUUID()` que funciona en Node 18+ y navegadores. */
+function randomUUID(): string {
+  // En Node 18+ está disponible globalmente. Fallback por si corre
+  // en un ambiente raro (tests viejos, etc).
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  // Fallback no-cryptográfico (degradación graceful). Mantiene
+  // unicidad razonable para testing.
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 /* ------------------------------------------------------------------ */

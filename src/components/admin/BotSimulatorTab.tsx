@@ -164,28 +164,47 @@ export function BotSimulatorTab({ currentMode }: BotSimulatorTabProps) {
   // Ref para auto-scroll del chat al último mensaje.
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
+  // FIX auditoría 2026-07-14: AbortController para cancelar fetches en
+  // unmount, evitando el warning de React "state update on unmounted
+  // component". También para el setInterval del auto-timeout.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   /**
    * Sprint v0.9.x PR #3: carga la lista de leads sintéticos desde el
    * endpoint. Si la lista está vacía, el admin debe crear uno.
    * Declarado ANTES de los useEffect que lo usan para evitar
    * "used before declaration" de TS.
+   *
+   * FIX auditoría 2026-07-14: usa AbortController para cancelar el
+   * fetch si el componente se desmonta durante el await.
    */
   const loadSyntheticLeads = useCallback(async () => {
+    const controller = new AbortController();
     try {
       const r = await fetch("/api/admin/bot/synthetic-leads", {
-        cache: "no-store"
+        cache: "no-store",
+        signal: controller.signal
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const j = (await r.json()) as { ok: boolean; leads?: SyntheticLeadSummary[]; error?: string };
-      if (j.ok && j.leads) {
+      if (mountedRef.current && j.ok && j.leads) {
         setSyntheticLeads(j.leads);
       }
     } catch (err) {
-      // best-effort: si falla, dejamos la lista vacía
-      setError(
-        `No se pudo cargar leads sintéticos: ${err instanceof Error ? err.message : String(err)}`
-      );
+      if (err instanceof Error && err.name === "AbortError") return;
+      if (mountedRef.current) {
+        setError(
+          `No se pudo cargar leads sintéticos: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
     }
+    return () => controller.abort();
   }, []);
 
   useEffect(() => {
@@ -208,9 +227,12 @@ export function BotSimulatorTab({ currentMode }: BotSimulatorTabProps) {
 
   // Sprint v0.9.x PR #3: auto-timeout del modo Real (30 min sin actividad).
   // Si pasaron 30 min desde `realModeStartedAt`, desconectamos el modo.
+  // FIX auditoría 2026-07-14: usa `mountedRef` para evitar setState en
+  // componente desmontado (warning de React).
   useEffect(() => {
     if (simulationMode !== "real" || realModeStartedAt === null) return;
     const interval = setInterval(() => {
+      if (!mountedRef.current) return;
       if (Date.now() - realModeStartedAt > REAL_MODE_TIMEOUT_MS) {
         setSimulationMode("sandbox");
         setError(

@@ -173,23 +173,40 @@ export async function POST(req: NextRequest) {
   };
 
   // 4. Ejecutar processInboundMessage (el flow completo).
+  //    FIX auditoría 2026-07-14: agregamos timeout 8s con Promise.race
+  //    para no timeout a los 10s de Vercel Hobby sin control. Si el
+  //    LLM tarda más, retornamos 504 con nota explicativa. El inbound
+  //    ya se persistió dentro de processInboundMessage, pero el cliente
+  //    recibe un error claro.
   const t0 = Date.now();
   let botResult;
   try {
-    botResult = await processInboundMessage(message);
+    const TIMEOUT_MS = 8_000;
+    botResult = await Promise.race([
+      processInboundMessage(message),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error(`processInboundMessage timeout (${TIMEOUT_MS}ms)`)),
+          TIMEOUT_MS
+        )
+      )
+    ]);
   } catch (err) {
-    errorLog("[simulate-real] processInboundMessage lanzó", {
+    errorLog("[simulate-real] processInboundMessage lanzó o timeout", {
       leadId: leadRow.id,
       error: err instanceof Error ? err.message : String(err)
     });
+    const isTimeout = err instanceof Error && err.message.includes("timeout");
     return NextResponse.json(
       {
         ok: false,
-        error: `processInboundMessage lanzó: ${
-          err instanceof Error ? err.message : String(err)
-        }`
+        error: isTimeout
+          ? `Timeout (8s): el flow del bot tardó más de lo esperado. Probable causa: LLM lento o DB caída.`
+          : `processInboundMessage lanzó: ${
+              err instanceof Error ? err.message : String(err)
+            }`
       },
-      { status: 500 }
+      { status: isTimeout ? 504 : 500 }
     );
   }
   const latencyMs = Date.now() - t0;
