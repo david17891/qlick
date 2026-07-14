@@ -4150,3 +4150,45 @@ ame si esta null y tenemos confirmation linkeada (defense in depth para attendee
   - Refactor de la duplicación del type `BotMode`/`BotGlobalMode` (4 archivos)
 
 - **Trigger:** David pidió "dame una triple auditoría antes de revisar el PR". La auditoría end-to-end del sprint completo encontró 13 bugs reales, 3 de los cuales eran críticos y rompían el feature. Sin esta auditoría, los bugs habrían llegado a producción.
+
+
+## 2026-07-14 ~03:00 Phoenix — Sprint v0.9.x PR #7: Hotfix post-merge por bug reportado por David
+
+- **Pregunta:** David probó el modo Real del simulador (toggle en /admin/bot) y al hacer click en "➕ Crear" para una persona sintética, el sistema mostraba el error "no se pudo crear el lead sintético". El modo Real estaba completamente roto en runtime.
+
+- **Decisión:** Investigar end-to-end con un script de debug que ejecuta el helper `createSyntheticLead` directamente. Aplicar la migration faltante a prod. Arreglar el bug secundario del phone negativo. Commit + push como PR #7.
+
+- **Bugs encontrados en este PR #7:**
+
+  **BUG #1 (CRÍTICO, causa raíz) — Migration `20260714100000_leads_simulation_source.sql` NO se había aplicado a prod:**
+  - En el sprint original, aplicé la migration del enum `lead_source` (PR #6) pero NO la primera migration del sprint (PR #3) que crea las columnas `simulation_source` y `simulation_metadata` en `leads`.
+  - Memory operativa: "Migration en repo ≠ aplicada a prod; verificar en DB". Lo incumplí.
+  - **Síntoma:** el INSERT retornaba error `42703 undefined column`. El endpoint POST retornaba 500. El error que veía David era "No se pudo crear el lead sintético: column leads.simulation_source does not exist".
+  - **Fix:** aplicar la migration vía Management API con status 201. Verificar schema con query directo.
+
+  **BUG #2 (ALTO) — Phone sintético con guión en medio:**
+  - El debug script (después de aplicar la migration) reveló que el phone generado era `+52555555-1691567469`, NO E.164 válido. El guión viene de `toString()` cuando el número es NEGATIVO.
+  - **Causa:** en JS, el operador `%` preserva el signo del dividendo. El XOR de 4 chunks de 32 bits puede dar negativo. `Math.abs()` faltaba antes del módulo.
+  - **Fix:** `const num = Math.abs(chunk1 ^ chunk2 ^ chunk3 ^ chunk4) % 10_000_000_000;`. Phone ahora es SIEMPRE E.164 estricto.
+  - **Test REGRESION #6:** 1000 phones generados, todos matchean el regex `/^\+52555555\d{10}$/`. Antes del fix, ~50% de los phones tenían guión.
+
+- **Por qué la auditoría del sprint (PR #6) NO detecté estos bugs:**
+
+  - **BUG #1** es de deploy, no de código. La auditoría verificó que la migration estaba en el repo y era correcta. NO verificù si estaba aplicada a prod. Memory: "Migration en repo ≠ aplicada a prod; verificar en DB". La lección: en cada sprint, la auditoría debe incluir un "checklist de migrations aplicadas" además de la revisión de código.
+
+  - **BUG #2** es un edge case del algoritmo de generación. El test REGRESION #2 validaba un phone "perfecto" (+525555551234567890) que NO es representativo. El test debería haber ejecutado el helper real 100 veces y validado cada resultado. La lección: tests de generadores random deben ejecutar el código real N veces, no solo validar 1 caso fijo.
+
+- **Validación post-fix:**
+  - Migration aplicada a prod (status 201).
+  - Debug script re-ejecutado: createSyntheticLead retorna phone válido E.164 (`+525555550907147417`).
+  - Tests: 1326/1326 verde (de 1325 base, +1 test).
+  - Build + type-check + lint: limpios.
+  - Push a main: Vercel auto-deploy disparado.
+
+- **Archivos tocados (2):**
+  - `src/lib/whatsapp/synthetic-leads.ts` (+6/-2) — `Math.abs()` antes del módulo.
+  - `tests/synthetic-leads-helper.test.mjs` (+37/-0) — REGRESION #6.
+
+- **Trigger:** David reportó "no se pudo crear el lead sintético" al probar el modo Real. Investigación end-to-end con script de debug reveló que la migration NO estaba aplicada a prod. La aplicación y el debug revelaron además el bug del phone negativo. Sin la investigación, el modo Real seguiría roto.
+
+- **Lección operativa (a guardar en memory):** "En cada sprint, después de mergear, ejecutar `node --env-file=.env.local scripts/apply-migration-management.mjs` para TODAS las migrations nuevas del sprint. No asumir que la aplicación previa fue exitosa."
