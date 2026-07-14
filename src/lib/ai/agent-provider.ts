@@ -27,7 +27,9 @@
  * Ver docs/AI_AGENT_GUARDRAILS.md y docs/WHATSAPP_AI_AGENT_STRATEGY.md.
  */
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AIAgentProfile, LeadIntent } from "@/types";
+import type { Database } from "@/types/supabase";
 
 export type AIAgentProviderName = "mock" | "openrouter" | "deepseek";
 
@@ -105,8 +107,17 @@ export interface AgentContext {
    * pre-instanciado, pasado por el bot-engine para que el tool loop no
    * tenga que crearlo (ahorra ~50ms). Opcional. Si ausente, el tool
    * corre en modo demo.
+   *
+   * FIX 2026-07-14 (Sprint v0.10 hotfix post-E2E): el tipo era `unknown`
+   * (genérico para evitar acoplar este archivo con `@supabase/...`),
+   * pero eso forzaba al deepseek-provider a hacer un cast
+   * `as { supabase?: never }` que en runtime descartaba el valor real
+   * a `null` y hacía que la tool corra en modo demo. Ahora tipamos
+   * correctamente como `SupabaseClient<Database> | null` (que es lo
+   * que el bot-engine pasa y lo que el tool executor espera). Ver
+   * PR #10 (commit edfdea5) y bug detectado en E2E real.
    */
-  supabase?: unknown;
+  supabase?: SupabaseClient<Database> | null;
   /**
    * Sprint v15 PR #2 (I-FINAL-4): clasificación de la oferta del evento
    * activo. El bot-engine la calcula con `classifyEventType(activeEvent)`

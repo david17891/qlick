@@ -635,7 +635,15 @@ async function runWithToolLoop(
       toolResult = await runWithTimeout(
         executeExtractAndSaveContact(parsedArgs, {
           leadId: context.leadId ?? "",
-          supabase: (context as { supabase?: never }).supabase ?? null
+          // FIX 2026-07-14 (Sprint v0.10 hotfix post-E2E): antes era
+          // `(context as { supabase?: never }).supabase ?? null`. El cast
+          // `as { supabase?: never }` declaraba el tipo como `never`, lo
+          // que en runtime hacía que `context.supabase` SIEMPRE fuera
+          // `undefined` y se sustituyera a `null` — la tool corría en
+          // modo demo (no persistía) aunque el bot-engine pasara el
+          // cliente admin real. Removimos el cast porque el tipo en
+          // `AgentContext.supabase` ahora es `SupabaseClient<Database> | null`.
+          supabase: context.supabase ?? null
         }),
         TOOL_EXEC_TIMEOUT_MS,
         `tool_exec_timeout (${TOOL_EXEC_TIMEOUT_MS}ms)`
