@@ -220,61 +220,91 @@ export async function POST(req: Request) {
   // (event_id, phone_normalized) si existe. Si la confirmation existe, el
   // attendee se crea/actualiza con `confirmation_id = matched.id` en vez
   // de null. Si no hay confirmation previa, queda como walk-in real.
-  const confirmationId = await resolveConfirmationIdForCheckIn(
-    supabase,
-    found.row.event_id,
-    found.row.attendee_phone_normalized,
-  );
-  if (found.row.attendee_phone_normalized) {
-    const phone = found.row.attendee_phone_normalized;
-    const { data: attendeeRows, error: attErr } = await supabase
-      .from("event_attendees")
-      .select("id, checked_in_at, confirmation_id")
-      .eq("event_id", found.row.event_id)
-      .eq("phone_normalized", phone)
-      .limit(1);
-    if (attErr) {
-      debugLog("[api/staff/check-in] SELECT event_attendees falló", {
-        code: attErr.code,
-      });
-    } else if (attendeeRows && attendeeRows.length > 0) {
-      const target = attendeeRows[0] as {
-        id: string;
-        checked_in_at: string | null;
-        confirmation_id: string | null;
-      };
-      // FIX 2026-07-12 (C-5 de OPEN_ITEMS): UPDATE atómico con
-      // `WHERE checked_in_at IS NULL` (mismo patrón que el endpoint
-      // público). Cierra la race condition del read-then-write.
-      const updatePayload = {
-        checked_in_at: nowIso,
-        checked_in_by: staffActorEmail,
-        ...(confirmationId && !target.confirmation_id
-          ? { confirmation_id: confirmationId }
-          : {}),
-      };
-      const { data: updated, error: updErr } = await supabase
-        .from("event_attendees")
-        .update(updatePayload as never)
-        .eq("id", target.id)
-        .is("checked_in_at", null)
-        .select("id, checked_in_at")
-        .maybeSingle();
-      if (updErr) {
-        debugLog("[api/staff/check-in] UPDATE atómico falló", {
-          code: updErr.code,
-          attendeeId: target.id,
+  //
+  // FIX 2026-07-14 (Sprint v0.10 Bloque 2): las 3 SELECTs
+  // (event_confirmations via resolveConfirmationIdForCheckIn,
+  // event_attendees, leads) se ejecutan en paralelo con Promise.all
+  // en vez de en serie. Reduce latencia ~200-300ms. El UPDATE del
+  // attendee y el promote del lead también corren en paralelo
+  // (independientes entre sí).
+  const phone = found.row.attendee_phone_normalized;
+  const [confirmationId, attendeeResult, leadResult] = await Promise.all([
+    resolveConfirmationIdForCheckIn(supabase, found.row.event_id, phone),
+    phone
+      ? supabase
+          .from("event_attendees")
+          .select("id, checked_in_at, confirmation_id")
+          .eq("event_id", found.row.event_id)
+          .eq("phone_normalized", phone)
+          .limit(1)
+      : Promise.resolve({ data: [], error: null } as {
+          data: Array<{
+            id: string;
+            checked_in_at: string | null;
+            confirmation_id: string | null;
+          }>;
+          error: null;
+        }),
+    phone
+      ? supabase
+          .from("leads")
+          .select("id, status, tags")
+          .eq("phone_normalized", phone)
+          .limit(1)
+      : Promise.resolve({ data: [], error: null } as {
+          data: Array<{ id: string; status: string; tags: string[] | null }>;
+          error: null;
+        }),
+  ]);
+
+  // UPDATE attendee + promote lead en paralelo.
+  await Promise.all([
+    (async () => {
+      if (!phone) return;
+      const attErr = attendeeResult.error;
+      const attendeeRows = attendeeResult.data;
+      if (attErr) {
+        debugLog("[api/staff/check-in] SELECT event_attendees falló", {
+          code: attErr.code,
         });
-      } else if (!updated) {
-        // Otro request ganó la carrera. Salimos del if y el caller
-        // continúa con el flujo normal (que el handler usa para
-        // devolver alreadyCheckedIn al staff). El checked_in_at del
-        // SELECT previo tiene el timestamp del ganador.
-        debugLog("[api/staff/check-in] race: otro request ya marcó checked_in", {
-          attendeeId: target.id,
-        });
+        return;
       }
-    } else {
+      if (attendeeRows && attendeeRows.length > 0) {
+        const target = attendeeRows[0] as {
+          id: string;
+          checked_in_at: string | null;
+          confirmation_id: string | null;
+        };
+        // FIX 2026-07-12 (C-5 de OPEN_ITEMS): UPDATE atómico con
+        // `WHERE checked_in_at IS NULL` (mismo patrón que el endpoint
+        // público). Cierra la race condition del read-then-write.
+        const updatePayload = {
+          checked_in_at: nowIso,
+          checked_in_by: staffActorEmail,
+          ...(confirmationId && !target.confirmation_id
+            ? { confirmation_id: confirmationId }
+            : {}),
+        };
+        const { data: updated, error: updErr } = await supabase
+          .from("event_attendees")
+          .update(updatePayload as never)
+          .eq("id", target.id)
+          .is("checked_in_at", null)
+          .select("id, checked_in_at")
+          .maybeSingle();
+        if (updErr) {
+          debugLog("[api/staff/check-in] UPDATE atómico falló", {
+            code: updErr.code,
+            attendeeId: target.id,
+          });
+        } else if (!updated) {
+          debugLog(
+            "[api/staff/check-in] race: otro request ya marcó checked_in",
+            { attendeeId: target.id }
+          );
+        }
+        return;
+      }
       // Walk-in: crear attendee al vuelo con confirmation_id matcheado
       // si existe.
       const { error: insErr } = await supabase
@@ -289,45 +319,48 @@ export async function POST(req: Request) {
           checked_in_by: staffActorEmail,
           source: "check_in",
         });
-        if (insErr && insErr.code !== "23505") {
-          errorLog("[api/staff/check-in] INSERT walk-in falló", {
-            code: insErr.code,
-          });
+      if (insErr && insErr.code !== "23505") {
+        errorLog("[api/staff/check-in] INSERT walk-in falló", {
+          code: insErr.code,
+        });
       }
-    }
-  }
-
-  // 8. Promover lead a event_attended (mismo flujo que endpoint público).
-  if (found.row.attendee_phone_normalized) {
-    const { data: leadRows, error: leadErr } = await supabase
-      .from("leads")
-      .select("id, status, tags")
-      .eq("phone_normalized", found.row.attendee_phone_normalized)
-      .limit(1);
-    if (!leadErr && leadRows && leadRows.length > 0) {
+    })(),
+    (async () => {
+      if (!phone) return;
+      const leadRows = leadResult.data ?? [];
+      const leadErr = leadResult.error;
+      if (leadErr || leadRows.length === 0) return;
       const lead = leadRows[0] as { id: string; status: string; tags: string[] | null };
       const wasAttended = lead.status === "event_attended";
       const wasClosed = lead.status === "lost" || lead.status === "archived";
-      if (!wasAttended && !wasClosed) {
-        const tagToAdd = `event:${found.event.slug}:attended`;
-        const existingTags = lead.tags ?? [];
-        const mergedTags = existingTags.includes(tagToAdd)
-          ? existingTags
-          : [...existingTags, tagToAdd];
-        await supabase
-          .from("leads")
-          .update({
-            status: "event_attended",
-            tags: mergedTags,
-            last_contacted_at: nowIso,
-          })
-          .eq("id", lead.id);
+      if (wasAttended || wasClosed) return;
+      const tagToAdd = `event:${found.event.slug}:attended`;
+      const existingTags = lead.tags ?? [];
+      const mergedTags = existingTags.includes(tagToAdd)
+        ? existingTags
+        : [...existingTags, tagToAdd];
+      const { error: updErr } = await supabase
+        .from("leads")
+        .update({
+          status: "event_attended",
+          tags: mergedTags,
+          last_contacted_at: nowIso,
+        })
+        .eq("id", lead.id);
+      if (updErr) {
+        debugLog("[api/staff/check-in] UPDATE leads (promote) falló", {
+          code: updErr.code,
+        });
       }
-    }
-  }
+    })(),
+  ]);
 
   // 9. Audit log con actor = staff (FIX P1 2026-07-03: CheckInActor real).
-  await logAdminAction({
+  // FIX 2026-07-14 (Sprint v0.10 Bloque 2): fire-and-forget. No
+  // bloqueamos la respuesta del endpoint en el INSERT del audit log.
+  // El check-in YA quedó registrado en event_qr_tokens + event_attendees
+  // (fuente de verdad). El audit es secundario.
+  void logAdminAction({
     actor_email: staffActorEmail,
     action: "check_in",
     entity_type: "event_qr_token",
@@ -343,10 +376,20 @@ export async function POST(req: Request) {
       ip: req.headers.get("x-forwarded-for") ?? null,
       ua: req.headers.get("user-agent") ?? null,
     },
+  }).catch((err: unknown) => {
+    errorLog("[api/staff/check-in] audit log falló (fire-and-forget)", {
+      error: err instanceof Error ? err.message : String(err),
+      qrTokenId: found.row.id,
+    });
   });
 
-  // 10. Bump métricas operacionales del staff link.
-  await recordStaffLinkUse(staffLink.id);
+  // 10. Bump métricas operacionales del staff link. También fire-and-forget
+  // porque no afecta el response al staff scanner.
+  void recordStaffLinkUse(staffLink.id).catch((err: unknown) => {
+    debugLog("[api/staff/check-in] recordStaffLinkUse falló (fire-and-forget)", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  });
 
   return NextResponse.json({
     ok: true,
