@@ -3948,3 +3948,83 @@ ame si esta null y tenemos confirmation linkeada (defense in depth para attendee
   - 	ests/human-first-mode.test.mjs (8 tests nuevos).
 
 - **Trigger:** PR #1 dejó el modo opt-in funcional pero inerte. PR #2 lo activa. Con este PR, el modo human_first ya es usable de verdad: si David lo activa en /admin/bot, el bot bypasea los intents rígidos y deja al LLM controlar el flow conversacional. Los gates de seguridad (opt_out + provide_email + bot_paused_* + escalación) se mantienen.
+
+
+## 2026-07-14 ~01:55 Phoenix — Sprint v0.9.x PR #3: Simulador modo Real con personas sintéticas
+
+- **Pregunta:** David pidió que el simulador pudiera "simular nuevas personas que de verdad registre en las bases de datos en los eventos que lo que pase en el simulador pase realmente para probar todo el sistema completo y que pueda una vez que se valide en el simulador que se desconecte y se conecte realmente y pase exactamente eso". En otras palabras: el simulador actual es un laboratorio de prompt (solo LLM), y David quiere un laboratorio de integración (flow completo del bot-engine contra una persona sintética que se persiste en la DB).
+
+- **Decisión:** Agregar un toggle Sandbox/Real al BotSimulatorTab. Cuando está en Real: (a) el simulador llama a un nuevo endpoint /api/admin/bot/simulate/real que ejecuta processInboundMessage directamente con el leadId seleccionado; (b) la persona sintética se persiste en leads con simulation_source='admin_lab' y se puede limpiar masivamente. Phone ficticio en rango +52555555XX (Meta rechaza, no genera ruido outbound).
+
+- **Razón:** El modo Sandbox (PR #1-2) sigue siendo útil para iterar el system prompt del LLM sin tocar DB. El modo Real es la herramienta para validar el flow end-to-end antes de activar un cambio en producción. Los dos se complementan: Sandbox = "Laboratorio de Prompt", Real = "Laboratorio de Integración".
+
+- **Impacto:**
+
+  **Migration 20260714100000_leads_simulation_source.sql:**
+  - 2 columnas nuevas en leads: simulation_source (text) y simulation_metadata (jsonb).
+  - CHECK constraint: simulation_source IS NULL OR simulation_source = 'admin_lab'. Set cerrado para evitar basura accidental.
+  - Índice parcial idx_leads_simulation_source WHERE simulation_source IS NOT NULL para queries de stats y limpieza.
+  - Idempotente (IF NOT EXISTS, DO  ...  para constraint).
+  - NOTIFY pgrst, 'reload schema' para visibilidad inmediata en PostgREST.
+  - **CRÍTICO — aplicada a prod antes de merge:** se aplica via Management API con status 201. Sin esta migration, los endpoints del PR devuelven error al intentar leer/insertar las columnas nuevas.
+
+  **Helper src/lib/whatsapp/synthetic-leads.ts:**
+  - createSyntheticLead({ createdBy, name?, phone?, sessionId? }): inserta un lead con phone sintético, email qlick.test (TLD reservado RFC 2606), name Test Lab <timestamp>, y metadata de auditoría.
+  - listSyntheticLeads(): lista todos los sintéticos activos.
+  - deleteAllSyntheticLeads(): borra todos con CASCADE automático a lead_whatsapp_conversations, lead_event_links, event_attendees, etc.
+
+  **Endpoint POST/GET/DELETE /api/admin/bot/synthetic-leads:**
+  - Auth: equireAdmin (mismo patrón que el resto de endpoints admin).
+  - DELETE requiere { confirm: true } en el body (defense in depth contra borrados accidentales).
+  - Retorna conteos de filas afectadas para feedback en la UI.
+
+  **Endpoint POST /api/admin/bot/simulate/real:**
+  - Auth admin.
+  - Verifica que el leadId corresponde a un lead sintético (rechaza con 403 si es real).
+  - Rate limit: 100 turnos por lead sintético (defense in depth contra loops accidentales).
+  - Construye un IncomingWhatsAppMessage con el phone del lead y llama a processInboundMessage directamente.
+  - Retorna SimulateRealResponse con: otResult (intent + responseKind + preview), providerAttempt (siempre falla porque el phone no existe en Meta — esperado), latencyMs.
+
+  **UI BotSimulatorTab.tsx:**
+  - Toggle Sandbox/Real en la parte superior de los controles.
+  - Cuando Real: banner rojo persistente con auto-timeout de 30 min.
+  - Lista de personas sintéticas con botón "Crear" y "Limpiar todo" (con window.confirm doble).
+  - Cuando el admin manda un mensaje, el simulador llama al endpoint Real en lugar del endpoint Sandbox.
+  - Telemetría muestra: intent detectado, esponseKind, latencyMs, provider.errorMessage (esperado: "phone no existe en Meta").
+
+  **Tests (8 nuevos, total 1309/1309 verde):**
+  - SIMULATION_SOURCE_ADMIN_LAB === "admin_lab" (constante canónica).
+  - Las 3 funciones públicas existen y son funciones.
+  - createSyntheticLead rechaza sin Supabase (lanza con mensaje "configurado").
+  - listSyntheticLeads retorna array O lanza si no hay DB.
+  - deleteAllSyntheticLeads retorna DeleteResult o lanza si no hay DB.
+
+  **Build + type-check + lint: limpios.**
+
+- **Cómo usar el modo Real (workflow del admin):**
+  1. Ir a /admin/bot, pestaña "Laboratorio".
+  2. Click en "?? Real (flow completo)" — aparece banner rojo + lista de sintéticos.
+  3. Click "? Crear" — se inserta un lead con phone +52555555XX en la DB.
+  4. Seleccionar el lead creado del dropdown.
+  5. Mandar mensajes en el chat — cada uno ejecuta el flow completo del bot.
+  6. La telemetría muestra qué detectó el LLM, qué respondió, y el error esperado del provider.
+  7. Click "??? Limpiar todo" cuando termines — borra todos los sintéticos con CASCADE.
+  8. Si te olvidas, auto-desconexión a los 30 min.
+
+- **Archivos tocados (6, 1 NUEVO migration + 1 NUEVO test):**
+  - **NUEVO** supabase/migrations/20260714100000_leads_simulation_source.sql (64 líneas).
+  - **NUEVO** src/lib/whatsapp/synthetic-leads.ts (294 líneas).
+  - **NUEVO** src/app/api/admin/bot/synthetic-leads/route.ts (134 líneas).
+  - **NUEVO** src/app/api/admin/bot/simulate/real/route.ts (234 líneas).
+  - **NUEVO** 	ests/synthetic-leads-helper.test.mjs (112 líneas).
+  - src/components/admin/BotSimulatorTab.tsx (toggle + banner + lista + send Real).
+
+- **Riesgo y mitigaciones:**
+  - **Personas sintéticas en DB de prod:** marcadas con simulation_source='admin_lab', filtro SQL para excluirlas de stats (WHERE simulation_source IS NULL). Email domain qlick.test (TLD reservado, no llega a inbox real).
+  - **Phone sintético en Meta:** Meta rechaza el envío outbound (status 400). Loggeado en lead_whatsapp_conversations.metadata.error_note. Cero impacto a humanos reales.
+  - **Auto-desconexión:** 30 min sin actividad ? vuelve a Sandbox. Imposible dejarlo activo por accidente.
+  - **Doble confirmación de limpieza:** window.confirm() en UI + { confirm: true } en el body del DELETE.
+  - **Rate limit por sesión:** 100 turnos/lead sintético. Defense in depth contra loops accidentales.
+  - **Authorization:** equireAdmin en todos los endpoints. Solo el admin puede crear/limpiar/ejecutar contra sintéticos.
+
+- **Trigger:** David dijo "yo quiero que el modo simulación también tenga un modo simulación extrema, bueno simulación real donde yo pueda, por ejemplo, simular nuevas personas que de verdad registre en las bases de datos". Después de este PR, el laboratorio del admin puede ejecutar el flow completo del bot sin tocar leads reales.
