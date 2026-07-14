@@ -102,6 +102,14 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
 
   const [realLeads, setRealLeads] = useState<Lead[] | null>(null);
   const [realLeadsError, setRealLeadsError] = useState<string | null>(null);
+  // FIX 2026-07-14 (Sprint v0.10 Bloque 3): paginación server-side.
+  // Antes la UI cargaba todos los leads en una sola request (table
+  // scan en Supabase al escalar). Ahora la UI navega por páginas.
+  const [leadsPage, setLeadsPage] = useState(1);
+  const [leadsLimit] = useState(50);
+  const [leadsTotal, setLeadsTotal] = useState(0);
+  const [leadsTotalPages, setLeadsTotalPages] = useState(0);
+  const [leadsLoading, setLeadsLoading] = useState(false);
   const [realOverview, setRealOverview] = useState<CRMOverview | null>(null);
   const [realOverviewError, setRealOverviewError] = useState<string | null>(null);
   // Inteligencia comercial (Fase 3): LVR, SLA Overdue, Heat Distribution,
@@ -208,32 +216,45 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
     if (!realMode) return;
     let cancelled = false;
     setRealLeadsError(null);
-    fetch("/api/admin/leads", { cache: "no-store" })
+    setLeadsLoading(true);
+    // FIX 2026-07-14 (Sprint v0.10 Bloque 3): paginación server-side
+    // con `?page=N&limit=M` (1-indexed). Re-fetch cuando cambia la página.
+    const url = `/api/admin/leads?page=${leadsPage}&limit=${leadsLimit}`;
+    fetch(url, { cache: "no-store" })
       .then(async (res) => {
         if (res.status === 401 || res.status === 403) {
           // Sin sesión admin: no mostramos datos reales. El middleware redirige
           // a /admin/login en /admin, pero este componente puede montarse antes.
-          if (!cancelled) setRealLeads(null);
+          if (!cancelled) {
+            setRealLeads(null);
+            setLeadsLoading(false);
+          }
           return null;
         }
         const data = await res.json();
         if (!cancelled) {
           if (res.ok && data?.ok) {
             setRealLeads(data.leads ?? []);
+            setLeadsTotal(data.total ?? 0);
+            setLeadsTotalPages(data.totalPages ?? 0);
           } else {
             setRealLeads(null);
             setRealLeadsError(data?.error ?? "No se pudieron cargar los leads.");
           }
+          if (!cancelled) setLeadsLoading(false);
         }
         return null;
       })
       .catch(() => {
-        if (!cancelled) setRealLeadsError("Error de red al cargar leads.");
+        if (!cancelled) {
+          setRealLeadsError("Error de red al cargar leads.");
+          setLeadsLoading(false);
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [realMode]);
+  }, [realMode, leadsPage, leadsLimit]);
 
   // Overview real: calcula métricas sobre los leads reales (vía API admin).
   useEffect(() => {
@@ -371,6 +392,54 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
         <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
           <strong>CRM en modo demo.</strong> Los datos son ficticios y las acciones no se
           persisten. En producción se conecta a Supabase y a WhatsApp oficial.
+        </div>
+      )}
+
+      {/* FIX 2026-07-14 (Sprint v0.10 Bloque 3): barra de paginación
+          server-side. Solo visible en modo real (en demo no aplica
+          porque mockLeads no pagina). Muestra "Página N de M · T
+          leads" + botones Anterior/Siguiente. Las páginas saltan con
+          clic y disparan un re-fetch via el useEffect que depende
+          de leadsPage. */}
+      {realMode && realLeads !== null && !realLeadsError && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-brand-100 bg-white px-3 py-2 text-xs">
+          <div className="text-ink-soft">
+            {leadsLoading ? (
+              <span className="italic">Cargando página {leadsPage}…</span>
+            ) : (
+              <>
+                Página <strong>{leadsPage}</strong> de{" "}
+                <strong>{Math.max(1, leadsTotalPages)}</strong> ·{" "}
+                <strong>{leadsTotal}</strong> lead{leadsTotal === 1 ? "" : "s"} en total
+                {" "}
+                <span className="text-ink-muted">
+                  (mostrando {realLeads.length} de {leadsLimit} por página)
+                </span>
+              </>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setLeadsPage((p) => Math.max(1, p - 1))}
+              disabled={leadsPage <= 1 || leadsLoading}
+              className="rounded-md border border-brand-200 px-3 py-1 font-semibold text-ink-soft transition hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              ← Anterior
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                setLeadsPage((p) =>
+                  leadsTotalPages > 0 ? Math.min(leadsTotalPages, p + 1) : p + 1
+                )
+              }
+              disabled={leadsPage >= leadsTotalPages || leadsLoading}
+              className="rounded-md border border-brand-200 px-3 py-1 font-semibold text-ink-soft transition hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Siguiente →
+            </button>
+          </div>
         </div>
       )}
 

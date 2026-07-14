@@ -49,6 +49,61 @@ export type InsertLeadPayload = Omit<
 };
 
 /**
+ * FIX 2026-07-14 (Sprint v0.10 Bloque 3): parsea un `leads.name` que
+ * puede tener tags de origen entre corchetes, y lo separa en first/last.
+ *
+ * Caso típico: cuando un lead llega de un evento o masterclass, el
+ * nombre se persiste con un prefijo de origen entre corchetes:
+ *   - "[MASTERCLASS] María López"  → firstName="María", lastName="López"
+ *   - "[WEBINAR] Juan Pérez"       → firstName="Juan", lastName="Pérez"
+ *   - "Ana Ruiz"                   → firstName="Ana", lastName="Ruiz"
+ *   - "Carlos"                     → firstName="Carlos", lastName=undefined
+ *   - "[REFERRAL]  Pedro  Paramo " → firstName="Pedro", lastName="Paramo"
+ *   - ""                           → firstName=undefined, lastName=undefined
+ *   - "[TAG]" (sin nombre)         → firstName=undefined, lastName=undefined
+ *
+ * Reglas:
+ *   1. Quitar cualquier secuencia `[...]` al inicio del string (case
+ *      insensitive, uno o más tags). Soporta `[TAG]`, `[TAG1][TAG2]`.
+ *   2. Trim del string restante.
+ *   3. Si queda vacío → firstName y lastName undefined.
+ *   4. Split por whitespace. Primer token = firstName, resto = lastName
+ *      (joined con un espacio). Si solo hay 1 token, lastName = undefined.
+ *
+ * Decisión: NO validar que el firstName/lastName sean "nombre humano"
+ * real (e.g. que no tengan dígitos). El caller (CRM admin) puede ver
+ * el `name` original y corregir manualmente si hay garbage. El parseo
+ * es best-effort, no bloqueante.
+ *
+ * Decisión: NO persistir firstName/lastName en DB. Se computan
+ * on-the-fly cada vez que se mapea. El `name` es la fuente de verdad
+ * (puede ser modificado manualmente por el admin vía el panel).
+ */
+export function parseLeadName(rawName: string | null | undefined): {
+  firstName?: string;
+  lastName?: string;
+} {
+  if (!rawName) return {};
+  // 1. Quitar corchetes al inicio: [TAG], [TAG1][TAG2], etc.
+  // Soporta tags en MAYÚSCULAS, mixed case. Trim después.
+  const stripped = rawName
+    .replace(/^\s*(?:\[[^\]]*\]\s*)+/g, "")
+    .trim();
+  if (!stripped) return {};
+  // 2. Split por whitespace. Filtrar tokens vacíos (caso "  Ana  Ruiz  ").
+  const tokens = stripped.split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return {};
+  if (tokens.length === 1) {
+    return { firstName: tokens[0] };
+  }
+  // Primer token = firstName, resto joined = lastName.
+  return {
+    firstName: tokens[0],
+    lastName: tokens.slice(1).join(" "),
+  };
+}
+
+/**
  * Convierte una fila de la DB a un `Lead` del dominio.
  *
  * Los enums de la DB (`Database["public"]["Enums"]`) son literales idénticos a
@@ -57,9 +112,15 @@ export type InsertLeadPayload = Omit<
  * donde añadir la conversión explícita.
  */
 export function mapLeadRowToLead(row: LeadRow): Lead {
+  // FIX 2026-07-14 (Sprint v0.10 Bloque 3): extraer firstName/lastName
+  // del `name`, ignorando tags de origen entre corchetes. Ver
+  // `parseLeadName` arriba para las reglas completas.
+  const parsedName = parseLeadName(row.name);
   return {
     id: row.id,
     name: row.name,
+    firstName: parsedName.firstName,
+    lastName: parsedName.lastName,
     email: row.email,
     phone: row.phone ?? undefined,
     courseOfInterest: row.course_of_interest ?? undefined,

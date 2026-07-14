@@ -42,22 +42,56 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // AUDIT-001: paginación con ?page=N&pageSize=M (default page=0, pageSize=50).
-    // Antes hacía `SELECT *` sin límite (table scan completo al escalar).
-    const page = Number(req.nextUrl.searchParams.get("page") ?? "0");
-    const pageSize = Number(
-      req.nextUrl.searchParams.get("pageSize") ?? "50",
-    );
+    // Sprint v0.10 Bloque 3: paginación server-side con `?page=N&limit=M`
+    // (1-indexed, convención estándar HTTP). Aplica `.range((page-1)*limit,
+    // page*limit-1)` en Supabase. Defaults: page=1, limit=50. Cap de
+    // limit=200 para no freir Supabase.
+    //
+    // Back-compat: aceptamos `pageSize` (alias de `limit`) y `page=0`
+    // (legacy 0-indexed, lo tratamos como page=1). Si el caller manda
+    // ambos `page` y `pageSize`, gana `page` + `limit`.
+    const rawPage = req.nextUrl.searchParams.get("page");
+    const rawLimit = req.nextUrl.searchParams.get("limit");
+    const rawPageSize = req.nextUrl.searchParams.get("pageSize");
+    const MAX_LIMIT = 200;
+    const DEFAULT_LIMIT = 50;
+    let page = 1;
+    let limit = DEFAULT_LIMIT;
+    if (rawPage !== null) {
+      const n = Number(rawPage);
+      if (Number.isFinite(n) && n >= 0) {
+        // Compat: page=0 (legacy) → 1. Cualquier page < 1 → 1.
+        page = Math.max(1, Math.floor(n));
+      }
+    }
+    if (rawLimit !== null) {
+      const n = Number(rawLimit);
+      if (Number.isFinite(n) && n > 0) {
+        limit = Math.min(MAX_LIMIT, Math.max(1, Math.floor(n)));
+      }
+    } else if (rawPageSize !== null) {
+      const n = Number(rawPageSize);
+      if (Number.isFinite(n) && n > 0) {
+        limit = Math.min(MAX_LIMIT, Math.max(1, Math.floor(n)));
+      }
+    }
+    // getLeads internamente usa page 0-indexed y pageSize. Convertimos.
     const { leads, total, page: p, pageSize: ps } = await getLeads({
-      page: Number.isFinite(page) ? page : 0,
-      pageSize: Number.isFinite(pageSize) ? pageSize : 50,
+      page: page - 1,
+      pageSize: limit,
     });
+    // Devolvemos page 1-indexed y limit (no pageSize) al cliente para
+    // consistencia con la request.
     return NextResponse.json({
       ok: true,
       leads,
       total,
-      page: p,
+      page,
+      limit: ps,
+      // Mantenemos `pageSize` en la response para back-compat con
+      // consumidores que aún lo esperan.
       pageSize: ps,
+      totalPages: ps > 0 ? Math.ceil(total / ps) : 0,
       demo: false,
     });
   } catch (err) {

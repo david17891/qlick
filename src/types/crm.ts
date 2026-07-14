@@ -111,8 +111,24 @@ export interface SalesOwner {
 
 export interface Lead {
   id: string;
-  /** Nombre para mostrar (puede ser solo nombre o nombre + apellido). */
+  /** Nombre para mostrar (puede ser solo nombre o nombre + apellido).
+   *  Fuente de verdad — el admin lo edita manualmente desde el panel. */
   name: string;
+  /**
+   * FIX 2026-07-14 (Sprint v0.10 Bloque 3): primer nombre parseado de
+   * `name`, ignorando tags de origen entre corchetes. Computado
+   * on-the-fly en `mapLeadRowToLead` vía `parseLeadName`. NO se persiste
+   * (la DB solo tiene `name`). Opcional porque `name` puede ser vacío
+   * o consistir solo de tags como "[MASTERCLASS]".
+   *
+   * Ejemplos:
+   *   - "María López"          → firstName="María", lastName="López"
+   *   - "[MASTERCLASS] María"  → firstName="María", lastName=undefined
+   *   - "[TAG1][TAG2] Juan Pérez García" → firstName="Juan", lastName="Pérez García"
+   */
+  firstName?: string;
+  /** Apellido(s) parseado(s) de `name`. Ver `firstName` para reglas. */
+  lastName?: string;
   /** Email de contacto. */
   email: string;
   /**
