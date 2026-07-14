@@ -3901,3 +3901,50 @@ ame si esta null y tenemos confirmation linkeada (defense in depth para attendee
   - massive-matrix-generator.ts no incluye human_first en su ContextKey. Documentado con TODO explicando por qué rompe el patrón de "modo × tipo de evento".
 
 - **Trigger:** Conversación sobre la discrepancia simulador vs producción. David dijo: "yo quería un modo más humano y que pudiera realmente trabajar de una forma más efectiva". Aceptó el approach incremental (4 PRs) en lugar del cambio radical (LLM-first total inmediato). Esta semana sin eventos programados = momento perfecto para experimentar con NO_ACTIVE_EVENTS_MODE activo y sin riesgo de afectar leads reales.
+
+
+## 2026-07-14 ~01:10 Phoenix — Sprint v0.9.x PR #2: Skip de intents en modo human_first
+
+- **Pregunta:** PR #1 agregó el modo opt-in human_first a la SSOT pero no cambió el comportamiento. Para que el modo sea útil, tiene que bypasear la capa de intents rígida del bot-engine. La pregunta era: ¿qué gates de seguridad mantener como regex determinista, y qué dejar al LLM?
+
+- **Decisión:** Mantener opt_out (LFPDPPP, respeto de baja) y provide_email (captura de datos) como gates deterministas. Todo lo demás (welcome, greeting, register, question detection) va al LLM. Razón: el LLM puede "negociar" o "interpretar" el opt_out (violación legal), y puede decidir no extraer un email obvio (pérdida de lead). El resto es copy comercial — delegable al LLM.
+
+- **Razón:** El bot-engine tiene 6 intents. 4 son interactive buttons (welcome, greeting, register, provide_name) que el LLM NO puede generar (no existe tool para interactive buttons ad-hoc en el sprint actual). Si el LLM responde a "Hola" con copy cálido en lugar de botones, es una pérdida aceptable en modo human_first (documentado en el prompt).
+
+- **Impacto:**
+
+  **Helper esolveIntent (sync, pure):**
+  - Wrapper sobre detectIntent que recibe isHumanFirstMode como parámetro.
+  - Si isHumanFirstMode=false ? llama a detectIntent original (regresión 0).
+  - Si isHumanFirstMode=true ? solo opt_out, provide_email, o question.
+
+  **Lectura del modo una vez por mensaje:**
+  - eadSystemSetting(KEY_BOT_GLOBAL_MODE) con caché 30s. Se hace UNA vez al inicio de processInboundMessage (después de los gates ot_paused_* y mustEscalateToHuman, antes de detectIntent).
+  - Agregado KEY_BOT_GLOBAL_MODE al import desde system-settings-server.ts.
+
+  **4 call sites reemplazados:**
+  - Las 4 invocaciones de detectIntent(body, isFirstMessage) dentro de processInboundMessage (flujo normal + wizard de encuesta step 4 + provide_name fallback) ahora pasan por esolveIntent(body, isFirstMessage, isHumanFirstMode).
+  - detectIntent sigue exportado para tests legacy (	ests/whatsapp-bot.test.mjs lo usa directo).
+
+  **Tests (8 nuevos, total 1301/1301 verde):**
+  - Regresión: con human_first=false, comportamiento IDÉNTICO al de los 3 modos anteriores (welcome/greeting/register/opt_out/provide_email).
+  - Skip welcome/greeting: "Hola" / "Buenos días" / "Info" con human_first=true ? "question".
+  - Skip register: "Si, quiero inscribirme" / "me apunto" con human_first=true ? "question" (NO interactive).
+  - Gate opt_out: "no me interesa" / "baja" / "cancelar" / "stop" / "No, gracias" con human_first=true ? "opt_out" (REGRESIÓN CRÍTICA).
+  - Gate provide_email: emails puros (anchors ^...$) con human_first=true ? "provide_email" (REGRESIÓN CRÍTICA).
+  - Preguntas libres: "Qué incluye?" / "Cuánto cuesta?" con human_first=true ? "question".
+  - Body vacío: "" / "   " con human_first=true ? "question" (consistente con original).
+  - isFirstMessage irrelevante en human_first: "Hola" primer mensaje == "Hola" mensaje posterior.
+
+  **Build + type-check + lint: limpios.**
+
+- **Lo que se PIERDE en human_first (documentado en uildHumanFirstPrompt):**
+  - Interactive buttons de welcome/greeting/register. El LLM produce texto plano.
+  - El prompt del human_first explica esto al LLM: "Por ahora no tienes herramienta para enviar interactive buttons ad-hoc. Si quieres ofrecer opciones, hazlo en tu copy (ej: '¿Quieres ver el temario o prefieres los horarios? Responde temario u horarios.')".
+  - Es un trade-off explícito del modo. Si en sprints futuros queremos interactive buttons, agregamos la tool send_interactive_button (no existe hoy).
+
+- **Archivos tocados (2):**
+  - src/lib/whatsapp/bot-engine.ts (helper esolveIntent + lectura de modo + 4 call sites reemplazados).
+  - 	ests/human-first-mode.test.mjs (8 tests nuevos).
+
+- **Trigger:** PR #1 dejó el modo opt-in funcional pero inerte. PR #2 lo activa. Con este PR, el modo human_first ya es usable de verdad: si David lo activa en /admin/bot, el bot bypasea los intents rígidos y deja al LLM controlar el flow conversacional. Los gates de seguridad (opt_out + provide_email + bot_paused_* + escalación) se mantienen.
