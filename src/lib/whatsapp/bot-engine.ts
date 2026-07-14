@@ -4240,6 +4240,87 @@ export async function processInboundMessage(
   // por privacidad" NO matchea OPT_OUT_RE (texto antes) y SI escala a
   // humano, que es lo correcto.
   //
+  // FIX 2026-07-14 (auditoría adversarial con deepseek real): los gates
+  // legales (opt_out por LFPDPPP) y de captura (provide_email) DEBEN
+  // respetarse ANTES del kill-switch diario. Bug detectado: cuando el
+  // kill-switch estaba activo (50/50 outbound rolling 24h), un lead que
+  // escribía "STOP" o pasaba un email NO quedaba registrado como
+  // opt-out / provide_email — el kill-switch retornaba early con
+  // `intent = "question"` ANTES de que el flow de detección de intent
+  // corriera. Esto es violación LFPDPPP: la LFPDPPP exige que el opt-out
+  // se procese siempre, sin importar el estado operativo del bot.
+  //
+  // Por qué NO movimos el override existente (línea 5147) al inicio:
+  // ese override está acoplado a `isHumanFirstMode` (override del
+  // comportamiento de human_first). El nuevo handler de gates es para
+  // TODOS los modos (LFPDPPP aplica universalmente), corre ANTES del
+  // kill-switch, y persiste el side-effect (whatsapp_status = "lost"
+  // para opt_out, email update para provide_email) sin enviar
+  // confirmación outbound (porque el kill-switch o bot_paused lo
+  // impide, y LFPDPPP no requiere confirmación — solo que se registre).
+  if (body && lead.id && supabase) {
+    const trimmedBody = body.trim();
+    // Gate 1: opt-out (LFPDPPP, REQUERIDO sin importar estado del bot).
+    if (trimmedBody && OPT_OUT_RE.test(trimmedBody)) {
+      debugLog("[whatsapp/bot] early-gate opt_out (LFPDPPP, pre-kill-switch)", {
+        leadId: lead.id,
+        body: trimmedBody.slice(0, 60)
+      });
+      // Persistir el opt-out en la DB (best-effort). NO enviamos outbound
+      // porque el kill-switch o bot_paused puede estar activo, y LFPDPPP
+      // no exige confirmación.
+      try {
+        await markWhatsAppStatus({
+          leadId: lead.id,
+          newStatus: "lost",
+          actorEmail: null,
+          messagePreview: trimmedBody.slice(0, 200),
+          metadata: { source: "bot_early_gate", intent: "opt_out" }
+        });
+      } catch (err) {
+        errorLog("[whatsapp/bot] early-gate opt_out persist failed", {
+          leadId: lead.id,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+      return {
+        ok: true,
+        intent: "opt_out",
+        leadId: lead.id,
+        responseKind: "none",
+        note: "opt-out registrado (gate legal LFPDPPP, pre-kill-switch). Sin outbound por kill-switch/bot_paused."
+      };
+    }
+    // Gate 2: provide_email (captura de email, valioso, pre-kill-switch).
+    // Solo si el body es SOLO un email (no texto que contiene un email).
+    if (trimmedBody && EMAIL_RE.test(trimmedBody)) {
+      debugLog("[whatsapp/bot] early-gate provide_email (pre-kill-switch)", {
+        leadId: lead.id,
+        body: trimmedBody.slice(0, 60)
+      });
+      // Persistir el email (best-effort). NO enviamos outbound por
+      // la misma razón que arriba.
+      try {
+        await supabase
+          .from("leads" as never)
+          .update({ email: trimmedBody } as never)
+          .eq("id" as never, lead.id);
+      } catch (err) {
+        errorLog("[whatsapp/bot] early-gate provide_email persist failed", {
+          leadId: lead.id,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+      return {
+        ok: true,
+        intent: "provide_email",
+        leadId: lead.id,
+        responseKind: "none",
+        note: "email capturado (gate pre-kill-switch). Sin outbound por kill-switch/bot_paused."
+      };
+    }
+  }
+
   // Sprint v16 PR #2.4 (M4 + Kill-Switch diario): ANTES del intent
   // detection, verificamos 2 switches globales:
   //   1. `bot_paused_global` (system_settings): si true, el bot NO

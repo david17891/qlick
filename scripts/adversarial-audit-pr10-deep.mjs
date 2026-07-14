@@ -501,6 +501,68 @@ async function main() {
       `total=${matrix.length}, esperado=${totalExpected}`
     );
     await deleteAllSyntheticLeads();
+
+    /* ============================================================ */
+    /*  7.12: Early-gate LFPDPPP con kill-switch activo             */
+    /* ============================================================ */
+    // El audit con deepseek real detectó que cuando el kill-switch
+    // diario está activo (50/50 outbound rolling 24h), un lead que
+    // escribe "STOP" o pasa un email NO quedaba registrado como
+    // opt-out / provide_email — el kill-switch retornaba early con
+    // `intent = "question"` ANTES del flow de detección. Esto es
+    // violación LFPDPPP. El fix ortogonal (early-gate) se ejecuta
+    // ANTES del kill-switch. Este test es REGRESIÓN: si alguien mueve
+    // el early-gate a un lugar posterior al kill-switch, este test
+    // falla con HIGH.
+    section("7.12: Early-gate LFPDPPP (STOP/email respetan kill-switch)");
+
+    const originalDailyLimit = await readSystemSetting("bot_daily_outbound_limit");
+    // Forzar kill-switch activo: limit=1 pero ya hay 50+ outbound hoy.
+    // El check del kill-switch es `outboundToday >= dailyLimit`, así
+    // que con limit=0 SIEMPRE está activo. Lo seteamos a 0.
+    await setSystemSetting("bot_daily_outbound_limit", 0, "pr10-audit");
+    await setSystemSetting(KEY_BOT_GLOBAL_MODE, "human_assistant", "pr10-audit");
+
+    // Caso 1: "STOP" con kill-switch activo debe dar opt_out, NO question.
+    const leadStop = await createSyntheticLead({ createdBy: "pr10-audit-7-12-stop" });
+    const resStop = await sendMessage(leadStop.phoneNormalized, "STOP");
+    record(
+      "Early-gate LFPDPPP",
+      "STOP con kill-switch activo (debe ser opt_out)",
+      resStop.intent === "opt_out" ? "OK" : "HIGH",
+      `intent=${resStop.intent} (esperado=opt_out), note="${(resStop.note ?? "").slice(0, 100)}"`
+    );
+    await deleteAllSyntheticLeads();
+
+    // Caso 2: "no me interesa" con kill-switch activo debe dar opt_out.
+    const leadNo = await createSyntheticLead({ createdBy: "pr10-audit-7-12-no" });
+    const resNo = await sendMessage(leadNo.phoneNormalized, "no me interesa");
+    record(
+      "Early-gate LFPDPPP",
+      "negativa explícita con kill-switch activo (debe ser opt_out)",
+      resNo.intent === "opt_out" ? "OK" : "HIGH",
+      `intent=${resNo.intent} (esperado=opt_out), note="${(resNo.note ?? "").slice(0, 100)}"`
+    );
+    await deleteAllSyntheticLeads();
+
+    // Caso 3: email solo con kill-switch activo debe dar provide_email.
+    const leadEmail = await createSyntheticLead({ createdBy: "pr10-audit-7-12-email" });
+    const resEmail = await sendMessage(leadEmail.phoneNormalized, "test@example.com");
+    record(
+      "Early-gate LFPDPPP",
+      "email solo con kill-switch activo (debe ser provide_email)",
+      resEmail.intent === "provide_email" ? "OK" : "HIGH",
+      `intent=${resEmail.intent} (esperado=provide_email), note="${(resEmail.note ?? "").slice(0, 100)}"`
+    );
+    await deleteAllSyntheticLeads();
+
+    // Restaurar el kill-switch.
+    if (originalDailyLimit !== null) {
+      await setSystemSetting("bot_daily_outbound_limit", originalDailyLimit, "pr10-audit");
+    } else {
+      // Si no había valor previo, dejar el default 50.
+      await setSystemSetting("bot_daily_outbound_limit", 50, "pr10-audit");
+    }
   } finally {
     await deleteAllSyntheticLeads();
     await setSystemSetting(KEY_BOT_GLOBAL_MODE, originalMode, "pr10-audit");
