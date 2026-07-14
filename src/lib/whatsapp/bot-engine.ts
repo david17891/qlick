@@ -64,7 +64,7 @@ import { mustEscalateToHuman, stripEscalateFlag } from "../ai/guardrails";
 // pausa y helpers de system_settings para leer los switches clave
 // (bot_paused_global, bot_daily_outbound_limit).
 import { resolveEffectivePause } from "../ai/deepseek-cost";
-import { readSystemSetting, KEY_BOT_PAUSED_GLOBAL, KEY_BOT_DAILY_OUTBOUND_LIMIT } from "../admin/system-settings-server";
+import { readSystemSetting, KEY_BOT_PAUSED_GLOBAL, KEY_BOT_DAILY_OUTBOUND_LIMIT, KEY_BOT_GLOBAL_MODE } from "../admin/system-settings-server";
 
 // FIX 2026-07-12 (auditoría v16 A6): caché módulo-level de 60s para
 // el conteo rolling 24h de outbound auto_enviados. El conteo se
@@ -1159,6 +1159,52 @@ export function detectIntent(
   }
   // Texto libre: primer mensaje → welcome (arranca relación).
   if (isFirstMessage) return "welcome";
+  return "question";
+}
+
+/**
+ * Sprint v0.9.x PR #2: wrapper sobre `detectIntent` que aplica el modo
+ * `human_first`. Cuando ese modo está activo, la capa de intents rígida
+ * se bypasea: solo `opt_out` (LFPDPPP) y `provide_email` (captura de
+ * datos) se mantienen como gates deterministas; todo lo demás va al
+ * LLM con el system prompt `buildHumanFirstPrompt`.
+ *
+ * Por qué mantener `opt_out` y `provide_email` aquí (y no delegar al
+ * LLM):
+ *   - `opt_out`: el LLM puede "negociar" o "interpretar" el opt_out,
+ *     lo que viola LFPDPPP. La regex `OPT_OUT_RE` es determinista.
+ *   - `provide_email`: si el LLM decide no extraer un email obvio
+ *     (por su contexto o humor), perdemos un lead. La regex es
+ *     determinista.
+ *
+ * Caso especial: el `case "register"` y `case "welcome" | "greeting"`
+ * del switch principal producen **interactive buttons** (con `Info
+ * evento / Próximos eventos`). El LLM en modo `human_first` NO puede
+ * generar esos interactive buttons (no existe la tool). Por lo tanto,
+ * "saltamos" esos intents y mandamos el mensaje al LLM como
+ * `question`, que produce texto plano. Esto es la pérdida esperada
+ * del modo y se documenta en `buildHumanFirstPrompt`.
+ *
+ * Función pura (sync). El caller pasa `isHumanFirstMode` ya resuelto
+ * (lectura cacheada de `readSystemSetting`).
+ *
+ * Exportada para tests (pura, no toca runtime).
+ */
+export function resolveIntent(
+  body: string,
+  isFirstMessage: boolean,
+  isHumanFirstMode: boolean
+): BotIntent {
+  if (!isHumanFirstMode) {
+    return detectIntent(body, isFirstMessage);
+  }
+  // Modo human_first: solo opt_out, provide_email, o question.
+  const text = body?.trim() ?? "";
+  if (!text) return "question";
+  if (OPT_OUT_RE.test(text)) return "opt_out";
+  if (EMAIL_RE.test(text)) return "provide_email";
+  // Cualquier otra cosa (incluyendo "Hola", "Sí quiero inscribirme",
+  // "Qué incluye?") va al LLM con el prompt `human_first`.
   return "question";
 }
 
@@ -4224,6 +4270,25 @@ export async function processInboundMessage(
     }
   }
 
+  // Sprint v0.9.x PR #2: leer el modo UNA vez por mensaje (caché 30s en
+  // `readSystemSetting`). El check va DESPUÉS de los gates de seguridad
+  // previos (`bot_paused_*`, `mustEscalateToHuman`) para que esos se
+  // respeten siempre, y ANTES de `detectIntent` para que `human_first`
+  // pueda bypasear la capa de intents rígida.
+  const isHumanFirstMode = await (async (): Promise<boolean> => {
+    try {
+      const v = await readSystemSetting(KEY_BOT_GLOBAL_MODE);
+      return v === "human_first";
+    } catch {
+      // Si la DB falla, default = false (comportamiento actual).
+      return false;
+    }
+  })();
+  debugLog("[whatsapp/bot] mode for this message", {
+    leadId: lead.id,
+    isHumanFirstMode
+  });
+
   if (body && !OPT_OUT_RE.test(body)) {
     const escalation = mustEscalateToHuman(body);
     if (escalation.escalate) {
@@ -4754,7 +4819,7 @@ export async function processInboundMessage(
           // Dejar que detectIntent clasifique el body normalmente.
           // Esto cae al flujo natural (provide_name si parece nombre,
           // question si es texto libre / "Si" aislado).
-          intent = detectIntent(body, isFirstMessage);
+          intent = resolveIntent(body, isFirstMessage, isHumanFirstMode);
         }
       } else {
         intent = "interactive_event_inscribir";
@@ -4814,7 +4879,7 @@ export async function processInboundMessage(
           intent = "survey_q4_skip";
         } else if (wizardStep === 4) {
           // q_consent Sí/No: opcional. Dejamos que el LLM responda.
-          intent = detectIntent(body, isFirstMessage);
+          intent = resolveIntent(body, isFirstMessage, isHumanFirstMode);
         } else {
           intent =
             wizardStep === 1
@@ -4833,7 +4898,7 @@ export async function processInboundMessage(
       } else {
         // Body no matchea ninguna respuesta esperada del step actual.
         // Caemos al detectIntent (LLM) como antes.
-        intent = detectIntent(body, isFirstMessage);
+        intent = resolveIntent(body, isFirstMessage, isHumanFirstMode);
       }
     } else {
       // FIX 2026-07-08 (sesión David "captura orden-independiente"): si el
@@ -4848,7 +4913,7 @@ export async function processInboundMessage(
       if (nameEmailTogether) {
         intent = "provide_name";
       } else {
-        intent = detectIntent(body, isFirstMessage);
+        intent = resolveIntent(body, isFirstMessage, isHumanFirstMode);
       }
     }
   }

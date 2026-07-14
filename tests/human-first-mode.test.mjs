@@ -28,6 +28,7 @@ import assert from "node:assert/strict";
 import { isBotGlobalMode, KEY_BOT_GLOBAL_MODE } from "@/lib/admin/system-settings-server";
 import { parseSimulateRequest } from "@/lib/ai/simulator-schema";
 import { buildHumanFirstPrompt } from "@/lib/ai/agent-prompts";
+import { resolveIntent } from "@/lib/whatsapp/bot-engine";
 
 /* ─────────────────────────────────────────────────────────────
  * 1. Type guard runtime
@@ -270,4 +271,141 @@ test("buildHumanFirstPrompt inyecta coursesCatalogBlock cuando existe", () => {
     })
   );
   assert.match(prompt, /Masterclass Marketing \+ IA — \$200 MXN/);
+});
+
+/* ─────────────────────────────────────────────────────────────
+ * 5. resolveIntent — PR #2: skip de intents cuando human_first
+ *    Verifica que:
+ *    - Con human_first=true, mensajes que antes disparaban
+ *      "welcome" / "greeting" / "register" ahora van a "question"
+ *      (el LLM los maneja).
+ *    - Con human_first=true, "opt_out" y "provide_email" SIGUEN
+ *      funcionando como gates deterministas (legal + captura).
+ *    - Con human_first=false, el comportamiento es IDÉNTICO al
+ *      de los 3 modos anteriores (regresión).
+ * ───────────────────────────────────────────────────────────── */
+
+test("resolveIntent: human_first=false se comporta como detectIntent (regresión)", () => {
+  // "Hola" en primer mensaje → welcome (comportamiento legacy).
+  assert.equal(resolveIntent("Hola", true, false), "welcome");
+  // "Hola" en mensaje posterior → greeting.
+  assert.equal(resolveIntent("Hola", false, false), "greeting");
+  // "Si, quiero inscribirme" → register.
+  assert.equal(
+    resolveIntent("Si, quiero inscribirme", false, false),
+    "register"
+  );
+  // "no me interesa" → opt_out.
+  assert.equal(
+    resolveIntent("no me interesa", false, false),
+    "opt_out"
+  );
+  // Email puro (anchors ^...$ en EMAIL_RE) → provide_email.
+  // NOTA: "mi correo es david@example.com" NO matchea EMAIL_RE (el regex
+  // está anclado al body entero). Para extraer emails de un texto más
+  // largo, el bot-engine usa `extractEmailFromText` (helper aparte).
+  assert.equal(
+    resolveIntent("david@example.com", false, false),
+    "provide_email"
+  );
+});
+
+test("resolveIntent: human_first=true, 'Hola' NO dispara welcome/greeting", () => {
+  // Antes: human_first=false → "welcome" en primer mensaje.
+  // Después: human_first=true → "question" (LLM lo maneja).
+  assert.equal(resolveIntent("Hola", true, true), "question");
+  assert.equal(resolveIntent("Hola", false, true), "question");
+  // Variantes de saludo tampoco disparan welcome/greeting.
+  assert.equal(resolveIntent("Buenos días", true, true), "question");
+  assert.equal(resolveIntent("Qué tal", true, true), "question");
+  assert.equal(resolveIntent("Info", true, true), "question");
+});
+
+test("resolveIntent: human_first=true, 'quiero inscribirme' NO dispara register", () => {
+  // Antes: "Si, quiero inscribirme" → register (interactive con info evento).
+  // Después: human_first=true → question (LLM responde con copy cálido).
+  assert.equal(
+    resolveIntent("Si, quiero inscribirme", false, true),
+    "question"
+  );
+  assert.equal(
+    resolveIntent("quiero inscribirme", false, true),
+    "question"
+  );
+  assert.equal(
+    resolveIntent("me apunto", false, true),
+    "question"
+  );
+});
+
+test("resolveIntent: human_first=true, opt_out SIGUE funcionando (gate LFPDPPP)", () => {
+  // REGRESIÓN CRÍTICA: opt_out es un gate legal. NO se puede romper.
+  assert.equal(
+    resolveIntent("no me interesa", false, true),
+    "opt_out"
+  );
+  assert.equal(resolveIntent("baja", false, true), "opt_out");
+  assert.equal(resolveIntent("cancelar", false, true), "opt_out");
+  assert.equal(resolveIntent("stop", false, true), "opt_out");
+  assert.equal(resolveIntent("No, gracias", false, true), "opt_out");
+});
+
+test("resolveIntent: human_first=true, provide_email SIGUE funcionando (captura)", () => {
+  // REGRESIÓN CRÍTICA: provide_email es captura de datos. NO se puede
+  // delegar al LLM (puede decidir no extraer). Email puro (anchors
+  // ^...$ en EMAIL_RE). Para emails embebidos en texto, el bot-engine
+  // usa `extractEmailFromText` después.
+  assert.equal(
+    resolveIntent("david@example.com", false, true),
+    "provide_email"
+  );
+  assert.equal(
+    resolveIntent("info@qlick.digital", false, true),
+    "provide_email"
+  );
+  assert.equal(
+    resolveIntent("david17891+test@gmail.com", false, true),
+    "provide_email"
+  );
+});
+
+test("resolveIntent: human_first=true, pregunta libre va al LLM", () => {
+  // Caso típico de human_first: el lead pregunta algo abierto.
+  assert.equal(
+    resolveIntent("Qué incluye el evento?", false, true),
+    "question"
+  );
+  assert.equal(
+    resolveIntent("Cuánto cuesta?", false, true),
+    "question"
+  );
+  assert.equal(
+    resolveIntent("Dónde es?", false, true),
+    "question"
+  );
+  assert.equal(
+    resolveIntent("Quién expone?", false, true),
+    "question"
+  );
+});
+
+test("resolveIntent: human_first=true, body vacío va a question (no detecta nada)", () => {
+  // Coherente con detectIntent original: body vacío siempre es question.
+  assert.equal(resolveIntent("", true, true), "question");
+  assert.equal(resolveIntent("", false, true), "question");
+  assert.equal(resolveIntent("   ", true, true), "question");
+});
+
+test("resolveIntent: human_first=true, isFirstMessage NO afecta el resultado", () => {
+  // Diferencia clave vs detectIntent original: en human_first, no
+  // hay distinción welcome vs greeting (ambos van al LLM). El primer
+  // mensaje y los siguientes se manejan igual.
+  assert.equal(
+    resolveIntent("Hola", true, true),
+    resolveIntent("Hola", false, true)
+  );
+  assert.equal(
+    resolveIntent("Qué onda", true, true),
+    resolveIntent("Qué onda", false, true)
+  );
 });
