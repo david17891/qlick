@@ -131,11 +131,27 @@ const EXTRACT_AND_SAVE_CONTACT_INFO_TOOL: AgentToolDefinition = {
  *
  * Reglas declaradas en la description (el LLM las lee):
  *   - `parent_lead_id` es el UUID del TITULAR (no del guest). El
- *     executor lo vincula al evento activo del lead.
+ *     executor lo vincula al evento activo del lead. **Es OPCIONAL**:
+ *     si el LLM no lo conoce o prefiere no pasarlo, el dispatch del
+ *     provider usa automáticamente el `leadId` del contexto del chat
+ *     (defense in depth). Ver deepseek-provider.ts:684
+ *     (`parsedArgs.parent_lead_id || context.leadId || ""`).
  *   - `guest_name` es OBLIGATORIO (mín. 2 palabras).
  *   - `guest_email` es OPCIONAL.
  *   - Idempotente: si el LLM llama 2 veces con el mismo (lead, name),
  *     el executor hace upsert (no duplica el guest en el array).
+ *
+ * FIX 2026-07-14 (Sprint v0.10 post-E2E #4): el LLM en el E2E con
+ * DeepSeek real NO emitía add_event_guest cuando el titular pedía
+ * inscribir a un acompañante sin proporcionar un UUID. La razón: la
+ * description declaraba `parent_lead_id` como parte de `required`, y
+ * el LLM es conservador — prefiere pedir más info al usuario antes
+ * que llamar a una tool con un campo obligatorio que no puede
+ * resolver. La solución es: (a) quitar `parent_lead_id` del array
+ * `required` (sigue siendo un parámetro válido, pero opcional); (b)
+ * declarar en la description que si se omite, el sistema usa el
+ * `leadId` del chat actual. Esto le da al LLM permiso explícito para
+ * llamar la tool sin conocer el UUID.
  */
 const ADD_EVENT_GUEST_TOOL: AgentToolDefinition = {
   type: "function",
@@ -146,9 +162,11 @@ const ADD_EVENT_GUEST_TOOL: AgentToolDefinition = {
       "mismo evento. Úsala SOLO cuando el titular te pida explícitamente " +
       "registrar a otra persona en el mismo chat (ej. 'quiero inscribir a " +
       "mi socio Carlos también'). Llama una vez por acompañante. " +
-      "`parent_lead_id` es el UUID del TITULAR (no del guest). " +
-      "`guest_name` es obligatorio (mínimo 2 palabras). `guest_email` " +
-      "es opcional pero recomendado para mandarle el acceso al acompañante. " +
+      "`guest_name` es OBLIGATORIO (mínimo 2 palabras). `guest_email` " +
+      "es opcional. " +
+      "`parent_lead_id` es OPCIONAL: si NO conoces el UUID del titular, " +
+      "OMITE el campo — el sistema usa automáticamente el titular del chat " +
+      "actual como parent. NO pidas el UUID al usuario, NO inventes uno. " +
       "NO llames esta tool si el titular solo está hablando de su propio " +
       "registro — para eso está extract_and_save_contact_info. " +
       "Tras la confirmación cálida, NO inventes datos: el ack del " +
@@ -160,7 +178,8 @@ const ADD_EVENT_GUEST_TOOL: AgentToolDefinition = {
           type: "string",
           description:
             "UUID del lead TITULAR del chat (no del guest). " +
-            "El executor vincula al acompañante al mismo evento que el titular."
+            "OPCIONAL: si no lo conoces, OMITE este campo. El sistema " +
+            "usará el titular del chat actual automáticamente."
         },
         guest_name: {
           type: "string",
@@ -175,7 +194,7 @@ const ADD_EVENT_GUEST_TOOL: AgentToolDefinition = {
             "pasa null o un string vacío. El ejecutor validará formato."
         }
       },
-      required: ["parent_lead_id", "guest_name"],
+      required: ["guest_name"],
       additionalProperties: false
     }
   }

@@ -182,16 +182,23 @@ test("A11: getAgentTools() ahora retorna 2 tools (Sprint v0.9.8)", async () => {
   );
 });
 
-test("A12: la tool add_event_guest tiene schema correcto (parent_lead_id, guest_name required; guest_email optional)", async () => {
+test("A12: la tool add_event_guest tiene schema correcto (parent_lead_id opcional, guest_name required; guest_email optional)", async () => {
   const { getAgentToolByName } = await import(TOOLS_URL);
   const tool = getAgentToolByName("add_event_guest");
   assert.ok(tool, "la tool existe");
   const params = tool.function.parameters;
-  // parent_lead_id y guest_name son required.
+  // FIX 2026-07-14 (Sprint v0.10 post-E2E #4): parent_lead_id es ahora
+  // OPCIONAL. El LLM en el E2E con DeepSeek real NO emitía
+  // add_event_guest cuando el titular pedía inscribir a un acompañante
+  // sin UUID, porque el schema declaraba parent_lead_id como required
+  // y el LLM es conservador. La solución: quitar parent_lead_id de
+  // `required` y declarar en la description que el sistema usa
+  // automáticamente el titular del chat actual si se omite (defense in
+  // depth en el dispatch del provider).
   assert.deepEqual(
     params.required,
-    ["parent_lead_id", "guest_name"],
-    "parent_lead_id y guest_name son required"
+    ["guest_name"],
+    "solo guest_name es required; parent_lead_id es opcional (fallback automático al titular del chat)"
   );
   // Las 3 properties están definidas.
   assert.ok(params.properties.parent_lead_id);
@@ -199,4 +206,16 @@ test("A12: la tool add_event_guest tiene schema correcto (parent_lead_id, guest_
   assert.ok(params.properties.guest_email);
   // additionalProperties: false (strict).
   assert.equal(params.additionalProperties, false);
+  // La description menciona explícitamente que parent_lead_id es opcional
+  // y que el sistema usa el titular del chat si se omite. Esto es lo que
+  // convence al LLM de llamar la tool sin conocer el UUID.
+  const desc = tool.function.description;
+  assert.ok(
+    /parent_lead_id.*OPCIONAL/i.test(desc) || /OPCIONAL.*parent_lead_id/i.test(desc),
+    "la description debe declarar parent_lead_id como OPCIONAL"
+  );
+  assert.ok(
+    /OMITE|omite/i.test(desc),
+    "la description debe instruir al LLM a omitir parent_lead_id si no lo conoce"
+  );
 });
