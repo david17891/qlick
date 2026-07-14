@@ -134,9 +134,28 @@ export function findGuestByName(
 
 /**
  * Hace upsert del guest en el array. Si ya existe (por nombre), lo
- * actualiza (email + added_at). Si no, lo agrega.
+ * actualiza (email + added_at). Si no, lo agrega al final.
  *
  * Pure function. Testeable sin Supabase.
+ *
+ * FIX 2026-07-14 (Sprint v0.11, audit adversarial add_event_guest):
+ * el código original tenía un bug cuando NO había match
+ * (`existingIdx === -1`):
+ *
+ *   return [
+ *     ...guests.slice(0, existingIdx),  // [0..-1] = ALL EXCEPT LAST
+ *     newGuest,
+ *     ...guests.slice(existingIdx)      // [-1] = LAST
+ *   ];
+ *
+ * Resultado: para input `[a, b, c]` con `existingIdx = -1`, devolvía
+ * `[a, b, newGuest, c]` — duplicaba el último elemento (`c` aparecía 2
+ * veces). El bug se manifestaba en producción cuando un attendee
+ * recibía múltiples guests únicos en sesiones distintas: el array
+ * crecía más rápido de lo esperado y un guest aparecía duplicado.
+ *
+ * Fix: usar `[...guests, newGuest]` (append simple) o equivalente
+ * con slicing explícito (`guests.length` en vez de `-1`).
  */
 export function upsertGuestInArray(
   guests: GuestRecord[],
@@ -158,6 +177,8 @@ export function upsertGuestInArray(
       ...guests.slice(existingIdx + 1)
     ];
   }
+  // Insert: append al final. El bug del `slice(0, -1) + slice(-1)`
+  // está corregido.
   return [...guests, newGuest];
 }
 
