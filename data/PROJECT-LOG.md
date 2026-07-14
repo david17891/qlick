@@ -3793,3 +3793,41 @@ pm run typegen en esta rama ï¿½ agregar a docs/OPEN_ITEMS.md como nota para spri
   - `scripts/audit-bot-rules.mjs` (nuevo) â€” consulta vÃ­a Management API el estado real de `ai_bot_rules` (total/activas), `events` futuros y `courses` publicados. Ãštil para auditar el estado del bot en producciÃ³n sin tocar cÃ³digo. Reutilizable.
 
 - **Trigger:** Imagen del simulador admin que mostraba al bot prometiendo inscripciÃ³n y registro de un evento inexistente. David fue claro: "el comportamiento esperado es, si no tengo cursos que dar, soy honesto".
+
+## 2026-07-13 20:18 Phoenix — Fix profundo del funnel encuesta ? asistente ? certificado
+
+- **Pregunta:** David reporto que la encuesta post-evento no dejaba responder. El fix del boton (PR #31) se mergeo. David pidio verificar que el survey hiciera que las personas queden como asistentes y se pudiera generar su certificado. Tras mergear #31 y revisar a fondo, encontre que el boton era el sintoma visible — el bug real era introducido por C-4.
+
+- **Bug real:** Sprint 2026-07-11 (migration 20260711100000_event_attendee_source_survey_attended.sql) implemento ruta survey_attended (UPSERT en event_attendees con source='survey_attended' cuando el confirmado email-only responde "Si, ingrese" en Q0). Sprint 2026-07-12 (migration 20260712220000_event_attendees_phone_unique.sql — C-4) le agrego phone_normalized NOT NULL para cerrar bug de duplicados. **Las dos partes se contradicen**: el INSERT de survey_attended no le pasa phone (es email-only), pero NOT NULL lo rechaza con 23502. surveys-server.ts:400 solo maneja 23505 (unique), por lo que el upsert falla silencioso.
+
+- **Sintoma observable:** el survey submit funciona (lead se crea, se promueve a event_attended), pero el row de event_attendees NUNCA se crea. Confirmado no aparece como attendee, no puede recibir cert, funnel no lo cuenta. Verificado con David: submit encuesta para david17891@gmail.com ? HTTP 200 con lead creado, pero 0 rows en event_attendees.
+
+- **Decisión:** 3 cambios coordinados en 2 commits:
+  1. **Migration 20260714040000_event_attendees_phone_nullable.sql** — DROP NOT NULL en phone_normalized. Las 2 UNIQUE constraints siguen activas y deduplican correctamente (por phone si está, por email si no). Postgres trata NULLs como distintos en UNIQUE constraints, asi que multiples email-only attendees por evento no chocan entre si.
+  2. **Code fix en src/lib/events/surveys-server.ts** — en el INSERT del upsert, jala el 
+ame desde event_confirmations linkeado por confirmationId. Sin esto, 
+ame quedaba NULL y el cert action (issueCertificateAction:800) rechazaba con "Attendee sin nombre real; no se puede emitir cert". Tambien: en el branch UPDATE (row existente), pobla 
+ame si esta null y tenemos confirmation linkeada (defense in depth para attendees pre-existentes).
+
+- **Razón:** El fix C-4 (NOT NULL) era correcto para los 49 rows existentes que tenian phone. Pero la ruta survey_attended (anterior) asume email-only attendees que es valido (migración 20260711100000 lo anticipaba). Los 2 sprints no se hablaron y se contradicen. C-4 no se revierte completo — solo el NOT NULL. Las UNIQUE constraints y la validation en attendees-server.ts siguen dando la dedup que C-4 queria.
+
+- **Validacion:**
+  - type-check 0, lint 0/0, 1274/1274 tests verde
+  - migration aplicada a prod via Management API (status 201)
+  - smoke test: INSERT con phone=NULL ahora aceptado (row creado + borrado)
+  - backfill David: row creado en event_attendees con name="David" pulled desde confirmation
+  - cert emitido para David: QLK-2026-68559 con metadata correcta (eventTitle, eventLocation, instructorName, etc.)
+  - batch resend: 30 emails enviados a las 31 confirmaciones con email valido (1 fallo: elix......alonsomorenofelix@gmail.com con formato invalido que Brevo rechazo — bug del seed original, no del fix)
+
+- **Scripts operativos nuevos:**
+  - scripts/audit-event-state.mjs — diagnostico (counts + listados) de confirmations/attendees/survey_tokens/surveys/certs de un evento. Usado para encontrar el bug.
+  - scripts/batch-resend-survey.mjs — replica del orquestador sendSurveyLinkToAllConfirmations sin acoplamiento a @/ aliases de TS. Manda link de encuesta a TODAS las confirmaciones de un evento. Idempotente a nivel token; email se re-manda cada vez (esperado).
+  - scripts/list-recent-events.mjs — lista eventos recientes via Management API (diagnostico).
+
+- **PRs:**
+  - #31 (boton submit) — mergeado a main 2026-07-13 20:11
+  - #32 (migration + name fix + scripts) — abierto para aprobacion de David
+
+- **Riesgo:** Bajo. Migration idempotente, sin perdida de datos (49+ rows existentes mantienen su phone), UNIQUE constraints preservan la dedup que C-4 queria, validation en attendees-server.ts sigue previniendo email+phone ambos NULL.
+
+- **Trigger:** David pidio "revisa bien que funcione la encuesta y que eso haga que las personas queden como asistentes y podamos generar su certificado". El fix del boton (PR #31) era solo el sintoma visible. La revision a fondo revelo el bug introducido por C-4.
