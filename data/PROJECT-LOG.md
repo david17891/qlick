@@ -4060,3 +4060,24 @@ ame si esta null y tenemos confirmation linkeada (defense in depth para attendee
   - Refactor del simulador para usar el motor real como dryRun: true: el endpoint Real del PR #3 ya ejecuta el motor real completo. El refactor "seco" no aporta valor adicional.
 
 - **Trigger:** Después del PR #3, el modo Real funciona end-to-end. Estos tests son la red de seguridad para futuras refactorizaciones del endpoint o del motor. Si alguien cambia el shape de la respuesta o las validaciones, los tests rompen antes de que el cambio llegue a producción.
+
+
+## 2026-07-14 ~02:30 Phoenix — Sprint v0.9.x PR #5: Docs y cierre
+
+- **Pregunta:** Sprint de 4 PRs (PR #1-4) terminó. Faltaba el cierre: actualizar STATUS.md, BOT_CONTEXT_DESIGN.md, y crear HANDOFF_v0.9.x_human-first.md.
+
+- **Decisión:** Documentación mínima viable: STATUS.md (snapshot vivo), BOT_CONTEXT_DESIGN.md (sección del 4to modo), HANDOFF (cierre completo con TL;DR + archivos + riesgos + deuda + próximos pasos + lecciones).
+
+- **Archivos tocados (3):**
+  - docs/STATUS.md: header de "Última actualización" reemplazado. Nueva sección "Sprint v0.9.x" con resumen de los 4 PRs.
+  - docs/BOT_CONTEXT_DESIGN.md: nueva sección con tabla de los 4 modos, flujo del modo human_first, pérdida esperada, cómo activar, simulador Real.
+  - docs/HANDOFF_v0.9.x_human-first.md (NUEVO): 90 líneas con cierre completo.
+
+- **Resumen del sprint cerrado:**
+  - 4 PRs atómicos en rama eat/human-first-mode.
+  - 1320/1320 tests verde (de 1283 base antes del sprint).
+  - 7 archivos nuevos + 14 modificados.
+  - Migration aplicada a prod (status 201).
+  - Sprint documentado en PROJECT-LOG con 5 entries (1 por PR + 1 de cierre).
+
+- **Cierre formal:** sprint listo para review de David. PR contra main pendiente de aprobación.
