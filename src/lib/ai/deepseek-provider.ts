@@ -491,6 +491,19 @@ async function callDeepSeekChat(opts: CallDeepSeekOptions): Promise<CallDeepSeek
 
       if (!res.ok) {
         lastError = data.error?.message ?? `HTTP ${res.status} ${res.statusText}`;
+        // FIX 2026-07-14 (Sprint v0.11): cuando el API devuelve 402
+        // "Insufficient Balance" o 401 "Invalid API Key", el fallback
+        // genérico ("Se me fue el hilo...") confunde al operador
+        // porque parece un bug del bot. Anotamos el motivo
+        // explícitamente en `lastError` para que el note del
+        // AgentResult lo refleje y el operador sepa qué pasa.
+        // El retry NO ayuda (la cuenta seguirá sin saldo), así que
+        // seguimos el path estándar de 4xx (no retry).
+        if (res.status === 402) {
+          lastError = `DeepSeek: insufficient balance (recarga en https://platform.deepseek.com). Detalle API: ${data.error?.message ?? "sin detalle"}`;
+        } else if (res.status === 401) {
+          lastError = `DeepSeek: API key inválida o revocada. Detalle API: ${data.error?.message ?? "sin detalle"}`;
+        }
         // FIX 2026-07-10: solo reintentamos errores de servidor (5xx).
         // 4xx no se reintenta — son errores lógicos del payload.
         const retryable = res.status >= 500;
