@@ -4,6 +4,54 @@
 > OPEN_ITEMS (deuda por feature) ni STATUS (snapshot vivo).
 >
 
+## 2026-07-14 02:30 Phoenix — Sprint v0.9.x PR #10 (hardening `human_first`)
+
+- **Pregunta:** David pidió 4 tareas de hardening para `human_first` más una nueva auditoría adversarial más compleja.
+
+- **Decisión:** Cerrar las 4 tareas en un solo commit (`edfdea5`) con autonomía total, y agregar `scripts/adversarial-audit-pr10-deep.mjs` con 60 tests en 11 categorías nuevas (vs 15 del audit anterior).
+
+- **Razón:** El audit previo cerró 11 gaps, pero quedaron 3 MEDIUM (DoS body, sin invariante runtime human_first, sin cobertura matrix). Estos 3 son baja severidad en condiciones normales (el LLM responde normal con bodies de cualquier tamaño, los flows secuenciales no deberían dispararse en human_first), pero son un riesgo de regresión futuro. Cerrarlos cuesta 1 commit, vs el costo de debuggear en producción un body malicioso de 100k chars o un intent drift. David dio luz verde explícita con la lista de tareas.
+
+- **Cambios concretos:**
+  - `src/app/api/whatsapp/webhook/route.ts`: `MAX_WHATSAPP_BODY_LENGTH = 4096` + `sanitizedBody` antes de persistir.
+  - `src/lib/whatsapp/bot-engine.ts`: defense-in-depth del truncate + invariante runtime `human_first` (ALLOWED_HUMAN_FIRST_INTENTS set con `errorLog` y force a `question`).
+  - `src/lib/ai/simulation/massive-matrix-generator.ts`: 3 nuevos `ContextKey` (human_first+free_masterclass, +paid_course, +no_active_event). Matriz 10×7×5 = 350 (era 200).
+  - `src/lib/ai/simulation/matrix-auditor.ts`: comentarios actualizados 200→350.
+  - `tests/bot-simulator-massive-matrix.test.mjs`: 4 tests actualizados (M1 200→350, M3 contextos 4→7, M5 200→350, M6 20→35, M8 200→350).
+  - `scripts/adversarial-audit-pr10-deep.mjs` (nuevo): 60 tests, 11 categorías.
+
+- **Verificación:**
+  - `npm run type-check` → 0 errores.
+  - `npm run lint` → 0 warnings/errors.
+  - `npm test` → 1327/1327 verde (4 tests del matrix-generator actualizados).
+  - `scripts/adversarial-audit-sprint-v0.9x.mjs` → 15/15 verde (DoS body 100k ahora OK gracias al truncate).
+  - `scripts/adversarial-audit-pr10-deep.mjs` → 59/60 OK, 0 CRITICAL/HIGH, 1 MEDIUM (ZWSP en name, trade-off documentado).
+
+- **Hallazgos de la nueva auditoría (vs la anterior):**
+  - 7.1 Prompt injection (5 payloads): 5/5 OK. El bot no filtra system prompt ni ejecuta instrucciones inyectadas.
+  - 7.2 Zero-width Unicode en body (4 bodies): 4/4 OK. En name: 1 MEDIUM (Supabase almacena literal, React renderiza no-op).
+  - 7.3 Bypass EMAIL_RE (7 cuerpos): 7/7 OK. Whitespace y newlines se trimean antes de aplicar EMAIL_RE, no se filtra email válido.
+  - 7.4 Bypass OPT_OUT_RE (6 cuerpos): 6/6 OK. STOP fullwidth NO se clasifica como opt_out (correcto: solo STOP ASCII dispara).
+  - 7.5 human_first override (7 intentos de drift): 7/7 OK. El override de PR #9 atrapa todos. "no me interesa" se clasifica opt_out por diseño (LFPDPPP).
+  - 7.6 human_first invariant (12 bodies fuzz): 12/12 OK. El invariante PR #10 se respeta sin importar el body.
+  - 7.7 Phone format (8 casos): 8/8 OK. `normalizePhone` maneja espacios, guiones, paréntesis, newlines, doble `+`, letras intercaladas.
+  - 7.8 Body truncation boundary (5 tamaños: 4095, 4096, 4097, 5000, 50000): 5/5 OK. Persistido siempre ≤ 4096.
+  - 7.9 Multi-turn prompt injection: 1/1 OK. ZWSP instruction + trigger no rompe el LLM.
+  - 7.10 Massive batch (50 leads paralelos): 1/1 OK. 50/50 fulfilled, 50 phones únicos, 538ms total.
+  - 7.11 Matrix ContextKeys (PR #10): 2/2 OK. 3 nuevos contextos presentes, total 350.
+
+- **Decisiones de diseño confirmadas:**
+  - `MAX_WHATSAPP_BODY_LENGTH = 4096` (límite oficial Meta WhatsApp Business API).
+  - `ALLOWED_HUMAN_FIRST_INTENTS = {opt_out, provide_email, question}` (3 valores, no 2).
+  - Force to `question` (no throw) en invariante violada — sigue siendo seguro, va al LLM.
+  - ZWSP en name: trade-off conocido, NO se corrige en este sprint. Documentado como MEDIUM. Cierre futuro opcional: `name.replace(/[\u200B-\u200D\uFEFF\u2060]/g, "")` en `createSyntheticLead` y `provide_name` persistence.
+
+- **Impacto en prod:** Ninguno visible para usuarios. Las defensas son silent (truncate, log, force-to-question). El bot sigue funcionando idéntico para bodies normales. Los leads con bodies >4096 chars ahora se persisten truncados (no falla). El invariante human_first no se violó en prod (no hay logs de "human_first invariant violated" en el periodo auditado).
+
+- **PR / commit:** `edfdea5 fix(bot): hardening PR #10 — body truncate + human_first invariant + matrix coverage` (mergeado a `main`, pusheado a `origin/main`).
+
+- **Siguiente sprint sugerido:** limpiar ZWSP en name (5 líneas en 2 archivos, MEDIUM documentado). O pasar al Sprint v0.10 con la siguiente fase del roadmap.
+
 ## 2026-07-12 ~21:30 Phoenix — Sprint fix-c4-c5-2026-07-12 (Cierra C-4 + C-5)
 
 - **Pregunta:** David pidió "Cierra todo lo que puedas de forma autónoma, revísalo, apruébalo, documéntalo en caso de que se requiera revertir pero óbelo cerrando." Tras el audit comprehensivo (`docs/AUDIT_GAPS_PROD_2026-07-12.md`) que cerró 11 gaps, los 2 únicos gaps activos auditables eran C-4 (UPSERT email NULL) y C-5 (race check-in).

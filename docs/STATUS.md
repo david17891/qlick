@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-12 19:30 Phoenix — **PR #26 mergeado a `main` (HEAD `89902e8`)**. 1320/1320 tests verde, type-check 0, lint 0/0, build OK. Sprint v0.9.x `human_first` cerrado en rama `feat/human-first-mode` (4 commits, no mergeado a main todavía — esperando review de David). Migration `20260714100000_leads_simulation_source.sql` aplicada a prod (status 201).
+> **Última actualización:** 2026-07-14 02:30 Phoenix — **PR #10 mergeado a `main` (HEAD `edfdea5`)**. 1327/1327 tests verde, type-check 0, lint 0/0, build OK. Sprint v0.9.x `human_first` hardening cerrado: body truncate a 4096 chars, invariante runtime de `human_first`, cobertura de 3 nuevos ContextKeys en massive-matrix-generator (350 situaciones). Audit profundo PR #10 (60 tests) agregado: 59/60 OK, 0 CRITICAL/HIGH, 1 MEDIUM documentado.
 >
 > **Body del doc (líneas debajo):** es archivo histórico de sprints cerrados. Para estado actual, ver este snapshot.
 
@@ -54,9 +54,40 @@
 - **Probar el simulador en modo Real** desde `/admin/bot` (pestaña "Laboratorio") → crear personas sintéticas, mandarles mensajes, ver el flow completo. El provider outbound fallará (esperado, phone no existe en Meta) pero el LLM corre y persiste.
 - **Limpiar las personas sintéticas** con un click desde la UI del simulador.
 
+---
+
+## Sprint v0.9.x PR #10 — Hardening `human_first` (2026-07-14 02:20 → 02:30)
+
+**Estado actual:** ✅ Cerrado y mergeado a `main` (commit `edfdea5`). 1327/1327 tests verde, type-check 0, lint 0/0. Sin migrations nuevas (cambios defensivos puro código + tests). 2 audits adversariales en verde.
+
+**3 cambios defensivos:**
+
+1. **Body truncation a 4096 chars** (`MAX_WHATSAPP_BODY_LENGTH`, límite oficial Meta): aplicado en `src/app/api/whatsapp/webhook/route.ts` (antes de persistir en `lead_whatsapp_conversations.body`) y defense-in-depth en `src/lib/whatsapp/bot-engine.ts`. Cierra el gap MEDIUM de DoS body 100k+ chars.
+
+2. **Invariante runtime de `human_first`** en `bot-engine.ts`: si por desvío futuro (nuevo path que setea intent, race condition, refactor) el intent NO está en `{opt_out, provide_email, question}`, se loguea con `errorLog` (incluye `leadId`, `unexpectedIntent`, `bodyPreview`) y se fuerza a `"question"`. Safety net sobre el override existente (PR #9).
+
+3. **Cobertura de `human_first` en massive-matrix-generator**: agregados 3 nuevos `ContextKey` (`human_first+free_masterclass`, `human_first+paid_course`, `human_first+no_active_event`). Matriz ahora 10 × 7 × 5 = 350 situaciones (era 200). Tests `bot-simulator-massive-matrix.test.mjs` actualizados: 350, 7 contextos, 35 por arquetipo.
+
+**Auditoría adversarial profunda (`scripts/adversarial-audit-pr10-deep.mjs`):** 60 tests en 11 categorías. **59/60 OK**, 0 CRITICAL/HIGH. Único MEDIUM documentado: ZWSP (zero-width space) en `leads.name` persiste como TEXT literal en Supabase. Trade-off conocido (el LLM no se confunde, React renderiza como no-op, UI no rompe). Si querés cerrar este gap, agregar `name.replace(/[\u200B-\u200D\uFEFF\u2060]/g, "")` en `createSyntheticLead` y en el path de `provide_name` persistence.
+
+**Categorías de la nueva auditoría (vs. la anterior de 15 tests):**
+- 7.1 Prompt injection en body (5 payloads).
+- 7.2 Zero-width Unicode smuggling en body y name.
+- 7.3 Bypass de `EMAIL_RE` con `@` fullwidth, whitespace, newlines.
+- 7.4 Bypass de `OPT_OUT_RE` con STOP fullwidth, whitespace, newlines.
+- 7.5 human_first intent drift (7 cuerpos que en modo normal dispararían otros flows).
+- 7.6 human_first invariant (12 bodies fuzz → siempre intent ∈ allowed set).
+- 7.7 Phone format edge cases (8 variantes: espacios, guiones, newlines, doble `+`, etc.).
+- 7.8 Body truncation boundary (5 tamaños: 4095, 4096, 4097, 5000, 50000 → todos ≤ 4096).
+- 7.9 Multi-turn prompt injection (ZWSP instruction + trigger en turn 2).
+- 7.10 Massive synthetic lead batch (50 leads en paralelo, todos únicos, 538ms total).
+- 7.11 Massive matrix ContextKeys (3 nuevos + total 350).
+
 **Riesgos identificados y mitigaciones aplicadas:**
 - Personas sintéticas en DB de prod: marcadas con `simulation_source='admin_lab'`, filtro SQL para excluirlas de stats.
 - Phone sintético en Meta: rechazado (status 400), loggeado en `lead_whatsapp_conversations.metadata.error_note`.
+- DoS body 100k+ chars: truncado a 4096 antes de persistir (PR #10).
+- Drift del invariante human_first: loggeado y forzado a `question` (PR #10).
 - Auto-desconexión del modo Real: 30 min sin actividad.
 - Doble confirmación de limpieza: `window.confirm()` + `{ confirm: true }` en el body.
 - Rate limit: 100 turnos/lead sintético.
