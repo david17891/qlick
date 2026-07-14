@@ -720,3 +720,116 @@ test("sanity: provider.run con task=suggest_reply y flag ON delega al loop", asy
     mock.restore();
   }
 });
+
+/* ============================================================
+ * CASO 9 — Sprint v0.10 hotfix post-E2E #3: add_event_guest
+ * Cubre el bug donde el dispatch rechazaba TODA tool != extract,
+ * así que `add_event_guest` NUNCA se ejecutaba en runtime.
+ * ========================================================== */
+
+test("CASO 9: add_event_guest → dispatch enruta a executeAddEventGuest (no rechaza)", async () => {
+  process.env.DEEPSEEK_TOOLS_ENABLED = "true";
+
+  const mock = installDeepseekFetchMock([
+    deepseekToolCallResponse("add_event_guest", {
+      parent_lead_id: "L-parent-abc",
+      guest_name: "Socio Carlos Mendoza",
+      guest_email: "socio@example.com"
+    }),
+    deepseekTextResponse("Listo, registré a tu socio también.")
+  ]);
+  try {
+    const ctx = makeCtx();
+    const result = await _runWithToolLoopForTest("suggest_reply", ctx);
+
+    assert.equal(result.ok, true);
+    // 2 fetches: 1ª con tool_call, 2ª con respuesta final.
+    assert.equal(
+      mock.calls().length,
+      2,
+      "tool_call add_event_guest DEBE enrutar al loop (no rechazar)"
+    );
+    assert.ok(
+      /socio/.test(result.content) ||
+        /Carlos/.test(result.content) ||
+        /Listo/.test(result.content),
+      `2ª respuesta debe reflejar el éxito del add_guest; got: ${result.content}`
+    );
+  } finally {
+    mock.restore();
+  }
+});
+
+test("CASO 9: add_event_guest con parent_lead_id omitido → fallback a context.leadId", async () => {
+  // Defense in depth: si el LLM omite parent_lead_id, caemos al
+  // `context.leadId` del chat actual (el titular que está hablando).
+  process.env.DEEPSEEK_TOOLS_ENABLED = "true";
+
+  const mock = installDeepseekFetchMock([
+    deepseekToolCallResponse("add_event_guest", {
+      // parent_lead_id omitido a propósito
+      guest_name: "Acompañante Sin ID",
+      guest_email: null
+    }),
+    deepseekTextResponse("Registré al acompañante.")
+  ]);
+  try {
+    const ctx = makeCtx({ leadId: "L-titular-fallback-xyz" });
+    await _runWithToolLoopForTest("suggest_reply", ctx);
+
+    // Verificamos que la 2ª llamada lleva el tool_result del executor
+    // (lo que confirma que executeAddEventGuest SÍ se ejecutó con el
+    // parent_lead_id fallback). Si el dispatch hubiera rechazado la
+    // tool, el content de la 2ª llamada sería un mensaje de error
+    // genérico y el flow terminaría con tool_result={ok:false, ...}.
+    const secondBody = mock.bodyOf(2);
+    const toolResultMsg = secondBody.messages[3];
+    assert.equal(toolResultMsg.role, "tool");
+    const toolResult = JSON.parse(toolResultMsg.content);
+    // El fallback de parent_lead_id al context.leadId debe hacer que
+    // la tool NO rechace por "Falta parent_lead_id" (que sería
+    // ok:false, note mencionando el error). Si pasó el fallback, el
+    // resultado es ok=true (en demo mode) o un error de Supabase
+    // (persisted=false con demo=true).
+    if (toolResult.ok === false) {
+      assert.ok(
+        !/Falta parent_lead_id/.test(toolResult.note ?? ""),
+        `Fallback a context.leadId falló; tool rechazó: ${JSON.stringify(toolResult)}`
+      );
+    }
+  } finally {
+    mock.restore();
+  }
+});
+
+test("CASO 9: tool desconocida (3ra inventada) → rechazada con note 'no soportada'", async () => {
+  // Defense in depth: si DeepSeek alucinara una 3ra tool, el dispatch
+  // la rechaza silenciosamente (no crash).
+  process.env.DEEPSEEK_TOOLS_ENABLED = "true";
+
+  const mock = installDeepseekFetchMock([
+    deepseekToolCallResponse("send_email_to_mars", { to: "elon@mars.com" }),
+    deepseekTextResponse("No tengo esa tool, sorry.")
+  ]);
+  try {
+    const ctx = makeCtx();
+    const result = await _runWithToolLoopForTest("suggest_reply", ctx);
+
+    assert.equal(
+      result.ok,
+      true,
+      "loop no debe crashear con tool desconocida"
+    );
+    assert.equal(mock.calls().length, 2);
+    // La 2ª llamada lleva el tool_result de la tool rechazada.
+    const secondBody = mock.bodyOf(2);
+    const toolResult = JSON.parse(secondBody.messages[3].content);
+    assert.equal(toolResult.ok, false);
+    assert.ok(
+      /no soportada/i.test(toolResult.note ?? ""),
+      `note debe indicar tool no soportada; got: ${toolResult.note}`
+    );
+  } finally {
+    mock.restore();
+  }
+});

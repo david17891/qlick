@@ -75,6 +75,7 @@ import {
 } from "./agent-prompts";
 import { getAgentTools } from "./agent-tools";
 import { executeExtractAndSaveContact } from "./tool-executors/extract-contact";
+import { executeAddEventGuest } from "./tool-executors/add-guest";
 import {
   readSystemSetting,
   KEY_DEEPSEEK_TOOLS_ENABLED,
@@ -598,7 +599,17 @@ async function runWithToolLoop(
   const tc = first.toolCall;
 
   // Parsear argumentos con defensiva. Si JSON inválido, ack con error.
-  let parsedArgs: { name?: string; email?: string } = {};
+  // FIX 2026-07-14 (Sprint v0.10 hotfix post-E2E #3): el type ahora
+  // incluye los campos de AMBAS tools (extract + add-guest). El JSON
+  // parseado puede traer campos de cualquier tool; nosotros solo leemos
+  // los que nos interesan en cada branch.
+  let parsedArgs: {
+    name?: string;
+    email?: string;
+    parent_lead_id?: string;
+    guest_name?: string;
+    guest_email?: string;
+  } = {};
   let parseOk = true;
   try {
     parsedArgs = JSON.parse(tc.function.arguments);
@@ -610,9 +621,16 @@ async function runWithToolLoop(
   // Si el executor rechaza (timeout, error de Supabase, args inválidos),
   // devolvemos un ack de error al LLM para que la 2ª vuelta redacte
   // una respuesta adaptativa.
+  // FIX 2026-07-14 (Sprint v0.10 hotfix post-E2E #3): el type ahora
+  // soporta AMBAS tools. Los campos `saved_name`/`saved_email` son
+  // específicos de `extract_and_save_contact_info`; `guest` es específico
+  // de `add_event_guest`. Los campos `error_name`/`error_email` los
+  // usan ambas. El código downstream solo consume `ok`/`persisted`/
+  // `demo`/`note` (comunes), así que el resto son opcionales.
   let toolResult: { ok: boolean; persisted: boolean; demo: boolean; note: string;
                      saved_name?: string; saved_email?: string;
-                     error_name?: string; error_email?: string };
+                     error_name?: string; error_email?: string;
+                     guest?: { id: string; name: string; email: string | null } };
   if (!parseOk) {
     toolResult = {
       ok: false,
@@ -620,17 +638,7 @@ async function runWithToolLoop(
       demo: false,
       note: "Tool arguments no son JSON valido."
     };
-  } else if (tc.function.name !== "extract_and_save_contact_info") {
-    // El LLM emitió una tool que no es la consolidada. Por la invariante
-    // del 2A solo se expone UNA tool, pero si DeepSeek alucinara otra,
-    // rechazamos silenciosamente.
-    toolResult = {
-      ok: false,
-      persisted: false,
-      demo: false,
-      note: `Tool '${tc.function.name}' no soportada por este provider.`
-    };
-  } else {
+  } else if (tc.function.name === "extract_and_save_contact_info") {
     try {
       toolResult = await runWithTimeout(
         executeExtractAndSaveContact(parsedArgs, {
@@ -659,6 +667,53 @@ async function runWithToolLoop(
           : `Tool execution error: ${note}`
       };
     }
+  } else if (tc.function.name === "add_event_guest") {
+    // FIX 2026-07-14 (Sprint v0.10 hotfix post-E2E #3): soporte explícito
+    // de la 2ª herramienta del sistema. Antes el dispatch rechazaba toda
+    // tool != extract_and_save_contact_info, así que si el LLM emitía
+    // `add_event_guest` (caso típico: "inscribe también a mi socio Carlos"),
+    // el acompañante NUNCA se guardaba en `event_attendees.guests`.
+    //
+    // Defense in depth: si el LLM omite `parent_lead_id` en los args,
+    // caemos al `context.leadId` del chat actual (el titular que está
+    // hablando). Es el comportamiento esperado en el 99% de los casos.
+    try {
+      toolResult = await runWithTimeout(
+        executeAddEventGuest(
+          {
+            parent_lead_id:
+              parsedArgs.parent_lead_id || context.leadId || "",
+            guest_name: parsedArgs.guest_name || "",
+            guest_email: parsedArgs.guest_email ?? null
+          },
+          {
+            supabase: context.supabase ?? null
+          }
+        ),
+        TOOL_EXEC_TIMEOUT_MS,
+        `tool_exec_timeout (${TOOL_EXEC_TIMEOUT_MS}ms)`
+      );
+    } catch (err) {
+      const note = err instanceof Error ? err.message : String(err);
+      toolResult = {
+        ok: false,
+        persisted: false,
+        demo: false,
+        note: note.includes("timeout")
+          ? `Tool execution excedio ${TOOL_EXEC_TIMEOUT_MS}ms.`
+          : `Tool execution error: ${note}`
+      };
+    }
+  } else {
+    // El LLM emitió una tool que no conocemos (no extract, no add-guest).
+    // Por la invariante del 2A solo se exponen 2 tools, pero si DeepSeek
+    // alucinara una tercera, rechazamos silenciosamente.
+    toolResult = {
+      ok: false,
+      persisted: false,
+      demo: false,
+      note: `Tool '${tc.function.name}' no soportada por este provider.`
+    };
   }
 
   // 2ª y ÚLTIMA llamada: sin tools, max_tokens=250, historial completo.
