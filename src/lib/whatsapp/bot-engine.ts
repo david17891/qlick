@@ -5055,6 +5055,34 @@ export async function processInboundMessage(
     }
   }
 
+  // FIX 2026-07-14 (auditoría adversarial post-merge): en modo
+  // `human_first`, los flows secuenciales (awaitingField, provide_name,
+  // nameEmailTogether, looksLikeNamePrompt, interactive_event_inscribir,
+  // wizard steps, survey_offer) NO deberían existir. El LLM controla
+  // TODO el flow conversacional, incluyendo la captura de nombre/email
+  // (que hace via la tool `extract_and_save_contact_info`).
+  //
+  // Sin este override final, en human_first un mensaje como "Hola test"
+  // de un lead nuevo caía a `intent = "greeting"` o `provide_name`
+  // por alguno de los paths de arriba, en vez de ir al LLM con
+  // `intent = "question"`. Eso rompe la decisión del PR #2.
+  //
+  // Solo respetamos `opt_out` y `provide_email` (los gates legales/
+  // de captura) en human_first. El resto va al LLM.
+  if (
+    isHumanFirstMode &&
+    intent !== "opt_out" &&
+    intent !== "provide_email"
+  ) {
+    if (OPT_OUT_RE.test(body)) {
+      intent = "opt_out";
+    } else if (EMAIL_RE.test(body)) {
+      intent = "provide_email";
+    } else {
+      intent = "question";
+    }
+  }
+
   // 4.5 FIX 2026-07-02 (Commit A): si el intent es provide_name, persistir
   // el nombre en `leads.name`. Lo hacemos ANTES de buildResponsePlan para
   // que el handler pueda usar el `lead.name` actualizado en mensajes
