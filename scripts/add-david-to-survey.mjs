@@ -24,7 +24,14 @@ const ref = process.env.SUPABASE_PROJECT_REF;
 const token = process.env.SUPABASE_ACCESS_TOKEN;
 const brevoKey = process.env.BREVO_API_KEY;
 const fromAddr = process.env.BREVO_FROM_ADDRESS ?? "Qlick <noreply@qlick.digital>";
-const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://qlick.digital";
+// FIX 2026-07-13: NEXT_PUBLIC_APP_URL en .env.local está vacío ("")
+// en este ambiente, y `??` solo fallback para null/undefined. Si llega
+// vacío, usamos la URL de producción explícita (qlick.digital). En Vercel
+// production el env está bien poblado, pero local/dev puede estar vacío.
+const baseUrl =
+  process.env.NEXT_PUBLIC_APP_URL && process.env.NEXT_PUBLIC_APP_URL.length > 0
+    ? process.env.NEXT_PUBLIC_APP_URL
+    : "https://qlick.digital";
 const ttlDays = 30;
 
 const EVENT_ID = "eeb2070e-9b64-4715-a684-b3c308e9d0b2";
