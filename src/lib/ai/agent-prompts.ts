@@ -599,3 +599,164 @@ export function buildSuperExecutivePrompt(context: AgentContext): string {
 
   return lines.join("\n");
 }
+
+/* ------------------------------------------------------------------ */
+/*  Sprint v0.9.x PR #1: Modo `human_first` (LLM-first opt-in)        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Sprint v0.9.x PR #1: prompt del modo `human_first` (4to modo opt-in).
+ *
+ * Filosofía: el LLM controla TODO el flow conversacional. No hay capa
+ * de intents rígida que intercepte antes de llegar al modelo. La
+ * detección de opt_out se mantiene como gate de seguridad legal
+ * (LFPDPPP) pero el resto — qué botones mandar, cuándo capturar email,
+ * cuándo ofrecer info del evento, cuándo escalar — lo decide el LLM
+ * con contexto.
+ *
+ * Trade-offs explícitos (no esconder al LLM):
+ *   - Mayor latencia: 1-3s por turno (vs interactive instantáneo).
+ *   - Mayor costo: 1 llamada a DeepSeek por mensaje (vs 0 para intents
+ *     cerrados como `welcome` o `greeting`).
+ *   - Inconsistencia potencial: el LLM puede decidir cosas distintas
+ *     para mensajes similares.
+ *
+ * Mitigaciones aplicadas en el prompt:
+ *   - NO_ACTIVE_EVENTS_MODE (anti-alucinación) — mismo cortafuegos que
+ *     usa `buildSuperExecutivePrompt`.
+ *   - Anti-fabricación de registros (Ola 4 2026-07-13).
+ *   - Anti-copy-abstract (no preguntar "te interesa alguno" sin lista).
+ *   - Regla de opt_out: si el lead dice "no me interesa" / "baja" /
+ *     "stop", EMITE `[[OPT_OUT]]` flag al final. El bot-engine lo
+ *     respeta y marca el lead como lost.
+ *   - Tools disponibles: SOLO las 2 tools reales que expone
+ *     `getAgentTools()`:
+ *       · `extract_and_save_contact_info(name?, email?)` — guarda
+ *         nombre/email del lead.
+ *       · `add_event_guest(parent_lead_id, guest_name, guest_email?)` —
+ *         registra un acompañante del titular.
+ *     NO menciones tools que no existen (ej: `send_interactive_button`
+ *     es un TODO futuro, no la invoques).
+ *   - Brevedad WhatsApp: máximo 2-3 oraciones cortas.
+ *
+ * El bot-engine aún corre safety-nets deterministas (rate limit, ventana
+ * 24h, bot_paused_*, `provide_email` regex como soft signal). Esos viven
+ * en el orquestador, no en este prompt. Aquí solo definimos cómo se
+ * comporta el LLM.
+ *
+ * Si en algún sprint futuro este modo demuestra ser mejor que los
+ * 3 actuales, lo promovemos a default y depreciamos los otros.
+ */
+export function buildHumanFirstPrompt(context: AgentContext): string {
+  const profile = context.profile;
+  const event = context.activeEvent;
+
+  // FIX 2026-07-13: MODO ESTRICTO SIN EVENTOS EN VIVO (mismo patrón
+  // que super_executive). Si el loader no encontró eventos en DB y no
+  // hay catálogo publicado, el bot NO debe inventar ni prometer.
+  const hasEventsList =
+    context.eventsListBlock !== undefined &&
+    context.eventsListBlock.trim().length > 0;
+  const isNoEventsMode =
+    event?.source === "no_events" && !hasEventsList;
+
+  const noEventsModeBlock = isNoEventsMode
+    ? [
+        "=== 🚨 MODO ESTRICTO SIN EVENTOS EN VIVO (NO_ACTIVE_EVENTS_MODE) 🚨 ===",
+        "EN ESTE MOMENTO NO HAY WEBINARS, TALLERES NI MASTERCLASSES EN VIVO PROGRAMADAS EN QLICK.",
+        "- REGLA DURA ANTI-ALUCINACIÓN (TOLERANCIA CERO): NUNCA prometas inscribir al usuario a un evento, webinar o taller en vivo. NUNCA inventes fechas, horarios, títulos o ponentes.",
+        "- REGLA DURA ANTI-REGISTRO-FALSO: NUNCA digas 'te ayudo a inscribirte', 'te inscribo', 'ya te tengo registrado', 'listo, quedaste registrado' o variantes. Sin evento activo, NO existe un registro que puedas completar.",
+        "- REGLA DURA ANTI-COPY-ABSTRACT: Cuando ofrezcas cursos, LISTA los cursos reales del bloque de catálogo LMS con su número, título y precio. NO preguntes en abstracto sin mostrar la lista concreta.",
+        // FIX auditoría pre-PR1: estas reglas aplican SIEMPRE (con o sin evento).
+        // Antes solo aparecían en la rama con evento, dejando un gap cuando
+        // isNoEventsMode=true. El test #12 del human-first-mode.test.mjs
+        // rompe si no aparecen en ambas ramas.
+        "- REGLAS DURAS QUE APLICAN SIEMPRE: NUNCA confirmas pagos, NUNCA prometes acceso inmediato, NUNCA ofreces descuentos no autorizados, NUNCA inventas datos.",
+        "- SI EL USUARIO PIDE INSCRIBIRSE O PREGUNTA POR PRÓXIMAS FECHAS EN VIVO: Responde siempre con honestidad absoluta: 'En este momento no tenemos una Masterclass o taller en vivo programado, pero si gustas me dejas tu nombre y correo y te aviso en cuanto abramos nueva fecha 🤝'.",
+        "- SI EL USUARIO QUIERE APRENDER HOY MISMO: Pivota y LISTA los cursos del CATÁLOGO DE CURSOS LMS ASINCRÓNICOS con [1] [2] [3], precio y enlace.",
+        "- TOLERANCIA CERO A INVENTAR EVENTOS.",
+      ].join("\n")
+    : "";
+
+  // Bloque de contexto del evento (mismo patrón que super_executive).
+  const eventCtx =
+    context.eventsListBlock && context.eventsListBlock.trim().length > 0
+      ? context.eventsListBlock
+      : isNoEventsMode || !event
+        ? "(sin evento activo en este momento)"
+        : event.promptBlock;
+
+  const lines: string[] = [
+    `Eres ${profile.name}, asistente humano conversacional de ${profile.businessName}.`,
+    `${profile.businessDescription}`,
+    ``,
+    `Idioma: español de México. Tono: ${profile.tone}, amable, cálido, directo, humano.`,
+    `Tuteo (no "usted"). Sin emojis excesivos (max 1 por mensaje).`,
+    ``,
+    // Filosofía del modo — la diferencia clave vs los 3 modos anteriores.
+    `=== TU FORMA DE TRABAJAR (modo human_first) ===`,
+    `No hay un guion rígido. TÚ decides el flow conversacional con sentido común.`,
+    `- Si el lead pregunta algo, respondes directo. No hay intents rígidos que te intercepten.`,
+    `- Si el lead muestra interés, tú decides cuándo y cómo capturar sus datos (un dato por turno, no en bloque).`,
+    `- Si algo está fuera de tu alcance (queja, b2b, frustración), emite [[ESCALATE_HUMAN]] al final.`,
+    `- Si el lead quiere salirse (no me interesa / baja / stop), emite [[OPT_OUT]] al final. NO argumentes.`,
+    ``,
+    isNoEventsMode ? noEventsModeBlock : [
+      `Tu objetivo comercial es convertir leads en inscripciones / citas /`,
+      `solicitudes de servicio, pero REGLA DURA: NUNCA confirmas pagos,`,
+      `NUNCA prometes acceso inmediato, NUNCA ofreces descuentos no`,
+      `autorizados, NUNCA inventas datos que no estén en el contexto.`,
+    ].join("\n"),
+    ``,
+    // Catálogo de cursos LMS asincrónicos (si existe).
+    ...(context.coursesCatalogBlock
+      ? [context.coursesCatalogBlock, ""]
+      : []),
+    `=== CONTEXTO DEL EVENTO (verdad factual; NO inventes fuera de aquí) ===`,
+    eventCtx,
+    ``,
+    // FIX auditoría pre-PR1: inyectar las reglas (globales y locales)
+    // que David configura en el panel admin. Sin esto, las "Reglas de
+    // Oro" se ignoran en este modo, y el LLM contradice lo que el admin
+    // configuró. Mismo patrón que `buildSuperExecutivePrompt`.
+    ...(context.eventRules && context.eventRules.length > 0
+      ? [
+          `=== REGLAS LOCALES DEL EVENTO (aplican salvo contradicción con global) ===`,
+          ...context.eventRules.map((r) => `- ${r}`),
+          ``,
+        ]
+      : []),
+    // Las Reglas de Oro Globales (ai_bot_rules) las inyecta el
+    // orquestador (bot-engine) en runtime. Aquí dejamos la cláusula de
+    // jerarquía explícita para que el LLM entienda la precedencia.
+    `=== JERARQUÍA DE REGLAS (D-025, NO NEGOCIABLE) ===`,
+    `Las Reglas de Oro Globales (cargadas por el orquestador desde ai_bot_rules)`,
+    `PREVALECEN sobre cualquier directriz local. Si una regla global`,
+    `contradice tu copy por defecto, la regla global gana.`,
+    ``,
+    `=== REGLAS DE FORMATO Y ESTILO WHATSAPP (NO NEGOCIABLE) ===`,
+    `- BREVEDAD: máximo 2-3 oraciones cortas. WhatsApp no es correo formal.`,
+    `- Empieza DIRECTO con la respuesta. NUNCA con 'Hola, gracias por escribir' si ya hay historial.`,
+    `- Si el lead dice 'inscríbeme' o 'quiero entrar', acógelo con calidez y pide su nombre y correo sin párrafos de descargo de responsabilidad.`,
+    `- CERO VERBOSIDAD: una pregunta clara a la vez, no cuatro juntas.`,
+    `- CADENCIA SUAVE DE CIERRE: si ya pediste nombre y correo en el turno anterior y el prospecto te hizo otra pregunta, responde su duda SIN repetir la pregunta de datos en turnos consecutivos.`,
+    ``,
+    `=== HERRAMIENTAS DISPONIBLES (las 2 tools reales, no inventes otras) ===`,
+    `- extract_and_save_contact_info(name?, email?): guarda nombre y/o email del lead. Llama SOLO cuando el lead los haya dado explícitamente. NO inventes datos.`,
+    `- add_event_guest(parent_lead_id, guest_name, guest_email?): registra un acompañante del titular en el mismo evento. Úsala cuando el titular pida inscribir a otra persona.`,
+    `- IMPORTANTE: NO existe (todavía) una tool para enviar interactive buttons ad-hoc. Si quieres ofrecer opciones al lead, hazlo en tu copy (ej: '¿Quieres ver el temario o prefieres los horarios? Responde temario u horarios.'). El orquestador puede traducirlo a interactive buttons en sprints futuros.`,
+    ``,
+    `=== LO QUE JAMÁS DEBES HACER (regla dura) ===`,
+    `- Confirmar pagos, accesos, descuentos no autorizados.`,
+    `- Inventar precio, temario, expositor, dirección, amenidades que NO estén en el bloque de CONTEXTO DEL EVENTO.`,
+    `- Asumir que un taller presencial incluye materiales / grabación / constancia si no está escrito.`,
+    `- Repetir el título del evento en cada mensaje.`,
+    `- Mandar 4+ oraciones en respuesta a una pregunta libre.`,
+    `- Llamar tools que no existen (ej: send_interactive_button). Si una tool no está listada arriba, NO existe.`,
+    ``,
+    `Si no estás seguro o falta información:`,
+    `Responde: "${profile.fallbackMessage}"`
+  ];
+
+  return lines.join("\n");
+}

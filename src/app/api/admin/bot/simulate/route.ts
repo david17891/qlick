@@ -92,7 +92,7 @@ export async function GET() {
       message: "string (1-4,000 chars, requerido)",
       history:
         "Array<{ direction: 'inbound'|'outbound', body: string (1-4,000), timestamp?: ISO 8601 }> (max 50, default [])",
-      modeOverride: "BotMode | null (opcional; valores: socratic_autopilot_v2, socratic_no_tools_v1, super_executive)",
+      modeOverride: "BotMode | null (opcional; valores: socratic_autopilot_v2, socratic_no_tools_v1, super_executive, human_first)",
       leadContext:
         "{ leadId: UUID, profile?: LeadProfile, isFirstMessage?: boolean } | null (opcional)",
       ignoreLeadPause: "boolean (default false)",

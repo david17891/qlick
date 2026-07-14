@@ -25,7 +25,9 @@ import { Card, CardBody, CardHeader, Button, Input, Badge } from "@/components/u
 /* Tipos espejo del endpoint (ver `src/lib/ai/simulator.ts`)            */
 /* ------------------------------------------------------------------ */
 
-type BotMode = "socratic_autopilot_v2" | "socratic_no_tools_v1" | "super_executive";
+type BotMode = "socratic_autopilot_v2" | "socratic_no_tools_v1" | "super_executive" | "human_first";
+// FIXME: SSOT vive en `src/lib/admin/system-settings-server.ts` (`BotGlobalMode`).
+// Refactor pendiente: unificar en un solo archivo de types.
 
 interface SimulateHistoryMessage {
   direction: "inbound" | "outbound";
@@ -74,13 +76,17 @@ interface BotSimulatorTabProps {
 const MODE_LABELS: Record<BotMode, string> = {
   socratic_autopilot_v2: "Socrático v2 (tools)",
   socratic_no_tools_v1: "Socrático v1 (sin tools)",
-  super_executive: "🚀 Súper Ejecutivo"
+  super_executive: "🚀 Súper Ejecutivo",
+  // Sprint v0.9.x PR #1: 4to modo opt-in `human_first` (LLM-first total).
+  // Aparece en el selector del simulador y en la UI de telemetría.
+  human_first: "🧪 Human-First (LLM-first opt-in)"
 };
 
 const MODE_EMOJI: Record<BotMode, string> = {
   socratic_autopilot_v2: "🟢",
   socratic_no_tools_v1: "🔵",
-  super_executive: "🚀"
+  super_executive: "🚀",
+  human_first: "🧪"
 };
 
 /* ------------------------------------------------------------------ */
@@ -262,6 +268,7 @@ export function BotSimulatorTab({ currentMode }: BotSimulatorTabProps) {
                   <option value="super_executive">🚀 Súper Ejecutivo (override)</option>
                   <option value="socratic_autopilot_v2">🟢 Socrático v2 (override)</option>
                   <option value="socratic_no_tools_v1">🔵 Socrático v1 (override)</option>
+                  <option value="human_first">🧪 Human-First (override)</option>
                 </optgroup>
               </select>
               {modeChoice !== "db" && (

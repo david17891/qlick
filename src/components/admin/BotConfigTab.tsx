@@ -30,7 +30,9 @@ import {
 /* Constantes y tipos                                                   */
 /* ------------------------------------------------------------------ */
 
-type BotMode = "socratic_autopilot_v2" | "socratic_no_tools_v1" | "super_executive";
+type BotMode = "socratic_autopilot_v2" | "socratic_no_tools_v1" | "super_executive" | "human_first";
+// FIXME: SSOT vive en `src/lib/admin/system-settings-server.ts` (`BotGlobalMode`).
+// Refactor pendiente: unificar en un solo archivo de types.
 
 interface BlockToggle {
   key: keyof ContextBlocks;
@@ -445,8 +447,8 @@ export function BotConfigTab() {
               <p className="text-sm text-ink-muted">
                 Cargando configuración activa desde base de datos…
               </p>
-              <div className="grid gap-3 md:grid-cols-3">
-                {[0, 1, 2].map((i) => (
+              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+                {[0, 1, 2, 3].map((i) => (
                   <div
                     key={i}
                     className="h-32 rounded-xl border border-slate-200 bg-slate-50 animate-pulse"
@@ -456,7 +458,7 @@ export function BotConfigTab() {
               </div>
             </div>
           ) : (
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
               <ModeTarjeta
                 icon="🟢"
                 titulo="Modo Socrático / Autopilot v2"
@@ -482,6 +484,15 @@ export function BotConfigTab() {
                 badge="⚡ LISTO / ACTIVO"
                 onClick={() => void onSelectMode("super_executive")}
               />
+              <ModeTarjeta
+                icon="🧪"
+                titulo="Modo Human-First (LLM-first opt-in)"
+                descripcion="El LLM controla todo el flow conversacional. Sin capa de intents rígida. Úsalo solo para experimentar — los 3 modos anteriores siguen siendo los modos de producción."
+                activo={mode === "human_first"}
+                disabled={modeSaving}
+                badge="🧪 EXPERIMENTO"
+                onClick={() => void onSelectMode("human_first")}
+              />
             </div>
           )}
         </CardBody>
@@ -498,9 +509,9 @@ export function BotConfigTab() {
       >
         <p className="font-semibold mb-1">ℹ️ Las Reglas de Oro y Bloques de Contexto aplican por igual</p>
         <p>
-          Estos ajustes alimentan a los 3 modos (Socrático v1, Socrático v2 y
-          Súper Ejecutivo). Cambiar de modo NO desactiva las reglas ni los
-          bloques que configures aquí.
+          Estos ajustes alimentan a los 4 modos (Socrático v1, Socrático v2,
+          Súper Ejecutivo y Human-First). Cambiar de modo NO desactiva las
+          reglas ni los bloques que configures aquí.
         </p>
       </div>
       <Card>

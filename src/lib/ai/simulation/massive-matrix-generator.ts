@@ -37,6 +37,11 @@ export type ContextKey =
   | "super_executive+paid_course"
   | "socratic_autopilot_v2+lms_course"
   | "fallback+no_active_event";
+// TODO Sprint v0.9.x PR #1: el modo `human_first` no está incluido en
+// esta matriz porque rompe el patrón de "modo × tipo de evento" (el
+// human_first es independiente del tipo de oferta). Si se quiere
+// cubrir en la matriz, agregar `human_first+free_masterclass`,
+// `human_first+paid_course`, `human_first+no_active_event`.
 
 export type Trajectory =
   | "quick_convert"
