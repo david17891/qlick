@@ -89,3 +89,38 @@ export function initials(name: string): string {
     .map((s) => s[0]?.toUpperCase())
     .join("");
 }
+
+/**
+ * Elimina caracteres Unicode invisibles de un string.
+ *
+ * Cubre los 5 chars que se usan típicamente para smuggling de texto
+ * invisible en campos visibles (nombres, comentarios, etc.):
+ *   - `\u200B` ZERO WIDTH SPACE (ZWSP)
+ *   - `\u200C` ZERO WIDTH NON-JOINER (ZWNJ)
+ *   - `\u200D` ZERO WIDTH JOINER (ZWJ)
+ *   - `\uFEFF` BYTE ORDER MARK / ZERO WIDTH NO-BREAK SPACE (BOM)
+ *   - `\u2060` WORD JOINER
+ *
+ * Caso de uso (Sprint v0.10 Bloque 1, audit PR #10 sección 7.2):
+ * `createSyntheticLead({ name: "Robert\u200B\u200BSmith" })` persistía
+ * el ZWSP literal en Supabase. Aunque React lo renderiza como no-op y
+ * el LLM no se confunde, es data hygiene sucio y abre la puerta a
+ * bypasses de validación (`"John Doe"` con ZWSP pasa check de "2+ words").
+ *
+ * Uso:
+ *   - Limpiar `contactName` entrante antes de persistir o pasar al LLM.
+ *   - Limpiar `name` en `createSyntheticLead` antes de INSERT.
+ *
+ * @param text String a sanitizar. Si es null/undefined, devuelve "".
+ * @returns Mismo string sin los chars invisibles listados arriba.
+ */
+export function stripInvisibleChars(text: string | null | undefined): string {
+  if (!text) return "";
+  // Regex con character class que cubre los 5 invisibles.
+  // Equivalente a /[\u200B\u200C\u200D\uFEFF\u2060]/g pero escrito con
+  // \uXXXX escapes para que sea legible al hacer grep/audit.
+  return text.replace(
+    /[\u200B\u200C\u200D\uFEFF\u2060]/g,
+    ""
+  );
+}

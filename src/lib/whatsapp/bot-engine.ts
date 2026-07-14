@@ -38,6 +38,7 @@ import { createHash, randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { debugLog, errorLog } from "../log";
+import { stripInvisibleChars } from "../utils";
 
 import type { Lead } from "@/types";
 import type { Database, Json } from "@/types/supabase";
@@ -1768,7 +1769,13 @@ async function createLeadFromWhatsApp(
   // lead.id=null (el flow entero queda roto). Ahora usamos un placeholder
   // que pasa el check. El handler provide_name lo actualiza al nombre
   // real cuando el lead lo da.
-  const safeName = contactName?.trim() || "WhatsApp Lead";
+  //
+  // FIX 2026-07-14 (Sprint v0.10 Bloque 1): stripInvisibleChars como
+  // defense in depth. El entry point de processInboundMessage ya
+  // sanitiza el contactName, pero si este helper es invocado por otro
+  // path en el futuro (refactor, test directo, admin tool), no debería
+  // persistir ZWSP/ZWNJ/ZWJ/BOM/word-joiner en `leads.name`.
+  const safeName = stripInvisibleChars(contactName).trim() || "WhatsApp Lead";
   const syntheticEmail = `wa.${createHash("sha256")
     .update(phoneNormalized)
     .digest("hex")
@@ -1852,7 +1859,8 @@ async function findOrCreateLead(
     return {
       lead: {
         id: `lead_demo_${phoneNormalized.slice(-6)}`,
-        name: contactName?.trim() || "",
+        // FIX 2026-07-14 (Sprint v0.10 Bloque 1): defense in depth.
+        name: stripInvisibleChars(contactName).trim() || "",
         email: "demo@placeholder.local",
         phone: phoneNormalized,
         status: "new",
@@ -3983,6 +3991,28 @@ export async function processInboundMessage(
     messageId: message.messageId,
     from: message.from
   });
+
+  // FIX 2026-07-14 (Sprint v0.10 Bloque 1): sanitizar contactName al
+  // entry point para que TODO el pipeline downstream (LLM, persist,
+  // demo mode, fallback) reciba texto limpio. Sin esto, un contactName
+  // con ZWSP/ZWNJ/ZWJ/BOM/word-joiner podría:
+  //   - Renderizarse confuso en la UI.
+  //   - Bypassear validaciones de "2+ palabras" (ZWSP splitte falsamente).
+  //   - Llegar crudo al LLM, que ya tiene filtros anti-injection pero
+  //     no anti-invisible.
+  // La sanitización es IN-PLACE sobre el objeto local porque message
+  // es un parámetro del handler, no un objeto compartido. Si el caller
+  // lo pasa por valor (caso típico: JSON deserializado del webhook), no
+  // hay efectos colaterales.
+  const originalContactName = message.contactName;
+  const cleanContactName = stripInvisibleChars(originalContactName);
+  if (originalContactName && cleanContactName !== originalContactName) {
+    debugLog("[whatsapp/bot] contactName sanitized (invisible chars stripped)", {
+      originalLength: originalContactName.length,
+      cleanedLength: cleanContactName.length
+    });
+    message.contactName = cleanContactName || undefined;
+  }
 
   const phoneNormalized = normalizePhone(message.from);
   // eslint-disable-next-line no-console

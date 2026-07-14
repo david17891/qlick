@@ -25,6 +25,7 @@
 
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { errorLog, infoLog } from "@/lib/log";
+import { stripInvisibleChars } from "@/lib/utils";
 
 /** Prefijo de phone para leads sintéticos.
  *
@@ -161,7 +162,14 @@ export async function createSyntheticLead(
 ): Promise<SyntheticLead> {
   const supabase = createSupabaseAdminClient();
   const phone = input.phone ?? generateSyntheticPhone();
-  const name = input.name ?? `Test Lab ${new Date().toISOString().slice(0, 19)}`;
+  // FIX 2026-07-14 (Sprint v0.10 Bloque 1): sanitizar input.name para
+  // no persistir ZWSP/ZWNJ/ZWJ/BOM/word-joiner en `leads.name`. El
+  // audit PR #10 sección 7.2 detectó que Supabase almacena el ZWSP
+  // literal, lo cual es data hygiene sucia y abre la puerta a
+  // bypasses de validación. Ver `stripInvisibleChars` en lib/utils.ts.
+  const name =
+    stripInvisibleChars(input.name).trim() ||
+    `Test Lab ${new Date().toISOString().slice(0, 19)}`;
   const email = generateSyntheticEmail();
   const sessionId = input.sessionId ?? null;
   const createdAt = new Date().toISOString();
