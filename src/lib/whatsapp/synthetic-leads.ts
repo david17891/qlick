@@ -96,7 +96,14 @@ function generateSyntheticPhone(): string {
   const chunk2 = parseInt(hex.slice(8, 16), 16);
   const chunk3 = parseInt(hex.slice(16, 24), 16);
   const chunk4 = parseInt(hex.slice(24, 32), 16);
-  const num = (chunk1 ^ chunk2 ^ chunk3 ^ chunk4) % 10_000_000_000;
+  // FIX bug post-merge 2026-07-14: en JS, el operador `%` preserva el
+  // signo del dividendo, así que si el XOR de los 4 chunks es
+  // negativo, el módulo es negativo. Eso causaba phones como
+  // `+52555555-1691567469` (con guión en medio), NO válidos.
+  // Math.abs() garantiza valor no-negativo antes del módulo.
+  // FIX 2026-07-14 (post-debug David): agregar Math.abs.
+  const num =
+    Math.abs(chunk1 ^ chunk2 ^ chunk3 ^ chunk4) % 10_000_000_000;
   return `${SYNTHETIC_PHONE_PREFIX}${num.toString().padStart(10, "0")}`;
 }
 

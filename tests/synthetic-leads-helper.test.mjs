@@ -177,7 +177,11 @@ test("REGRESIÓN #5: 1000 generaciones de phone no colisionan (10^10 combinacion
     const chunk2 = parseInt(hex.slice(8, 16), 16);
     const chunk3 = parseInt(hex.slice(16, 24), 16);
     const chunk4 = parseInt(hex.slice(24, 32), 16);
-    const num = (chunk1 ^ chunk2 ^ chunk3 ^ chunk4) % 10_000_000_000;
+    // FIX bug post-merge: Math.abs() para evitar phones negativos
+    // (XOR de unsigned ints puede ser negativo, y `%` en JS
+    // preserva el signo).
+    const num =
+      Math.abs(chunk1 ^ chunk2 ^ chunk3 ^ chunk4) % 10_000_000_000;
     phones.add(`+52555555${num.toString().padStart(10, "0")}`);
   }
   // Con 10^10 valores únicos y 1000 generaciones, la probabilidad
@@ -187,4 +191,30 @@ test("REGRESIÓN #5: 1000 generaciones de phone no colisionan (10^10 combinacion
     1000,
     `Esperaba 1000 phones únicos, obtuve ${phones.size}. Probable colisión en el algoritmo.`
   );
+});
+
+test("REGRESIÓN #6: phone generado es SIEMPRE E.164 válido (sin guión en medio)", () => {
+  // FIX bug post-merge 2026-07-14: el XOR de 4 chunks hex puede
+  // ser NEGATIVO en JS (los bits altos son interpretados como signo).
+  // El operador `%` en JS preserva el signo, así que un XOR negativo
+  // generaba phones como "+52555555-1691567469" (con guión).
+  // Fix: Math.abs() antes del módulo. El test genera 1000 phones
+  // y verifica que TODOS son E.164 estricto (sin guión).
+  const PHONE_RE = /^\+52555555\d{10}$/;
+  for (let i = 0; i < 1000; i++) {
+    const uuid = globalThis.crypto.randomUUID();
+    const hex = uuid.replace(/-/g, "");
+    const chunk1 = parseInt(hex.slice(0, 8), 16);
+    const chunk2 = parseInt(hex.slice(8, 16), 16);
+    const chunk3 = parseInt(hex.slice(16, 24), 16);
+    const chunk4 = parseInt(hex.slice(24, 32), 16);
+    const num =
+      Math.abs(chunk1 ^ chunk2 ^ chunk3 ^ chunk4) % 10_000_000_000;
+    const phone = `+52555555${num.toString().padStart(10, "0")}`;
+    assert.match(
+      phone,
+      PHONE_RE,
+      `Phone ${i} no es E.164: ${phone}`
+    );
+  }
 });
