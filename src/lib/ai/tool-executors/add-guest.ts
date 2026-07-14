@@ -1,18 +1,25 @@
 /**
- * Tool Executor: add_event_guest — Sprint v0.9.8 Mejora 1.
+ * Tool Executor: add_event_guest — Sprint v0.9.8 Mejora 1 + Sprint v0.11 multi-evento.
  *
  * Server-side implementation de la tool `add_event_guest` que el LLM
  * (Súper Ejecutivo) puede llamar durante `suggest_reply` cuando el
  * titular pide registrar a un acompañante (socio, hermano, amigo).
  *
- * Diseño:
- *   - Recibe `(parent_lead_id, guest_name, guest_email?)`.
- *   - Resuelve el evento activo del titular buscando en event_attendees
- *     (la fila del titular, donde se persiste checked_in_at, name, email).
- *   - Hace UPSERT/append en `event_attendees.guests` (JSONB array).
- *     Cada guest tiene `{ id, name, email?, added_at }`.
+ * Diseño (Sprint v0.11 multi-evento):
+ *   - Recibe `(parent_lead_id, guest_name, guest_email?)`. `parent_lead_id`
+ *     es el UUID del LEAD (no de la fila de event_attendees). Esto
+ *     desacopla el modelo: 1 lead puede tener N filas de event_attendees
+ *     (1 por evento), y los acompañantes se registran en la fila de la
+ *     inscripción más reciente.
+ *   - SELECT: busca la fila por `lead_id` (nuevo estándar, FK a leads)
+ *     OR `id` (back-compat con el workaround de v0.10). Toma la
+ *     inscripción más reciente por `checked_in_at` desc, limit 1.
+ *   - Hace UPSERT/append en `event_attendees.guests` (JSONB array) de
+ *     ESA fila. Cada guest tiene `{ id, name, email?, added_at }`.
  *   - Idempotente: si el LLM llama 2 veces con el mismo (lead, name),
  *     NO duplica el guest — actualiza el email/added_at del existente.
+ *   - UPDATE por `row.id` (PK de la fila encontrada), NO por
+ *     `parent_lead_id` (que es el lead, no la inscripción).
  *   - Modo demo: `ctx.supabase === null` → simula el append sin tocar DB.
  *
  * Por qué JSONB y no una tabla aparte:
@@ -226,10 +233,30 @@ export async function executeAddEventGuest(
   }
 
   // 5. Modo real: SELECT fila del titular → upsert en guests → UPDATE.
+  //
+  // FIX 2026-07-14 (Sprint v0.11 multi-evento): antes este executor
+  // hacía `.eq("id", input.parent_lead_id)`, asumiendo el acoplamiento
+  // 1:1 (event_attendees.id === lead.id) del sprint v0.10. Ese modelo
+  // prohibía multi-registro: un prospecto solo podía tener 1 fila de
+  // attendee en TODA la tabla, sin importar el evento. La migration
+  // `20260714120000_event_attendees_lead_id_fk.sql` agregó la columna
+  // `lead_id` con FK a `leads(id)`, así que ahora el modelo es
+  // multi-evento: 1 lead puede tener N filas de event_attendees, una
+  // por evento.
+  //
+  // Búsqueda: por `lead_id` (nuevo estándar) OR `id` (back-compat con
+  // el workaround de v0.10 que insertaba attendees con `id = leadId`).
+  // Tomamos la inscripción más reciente (`checked_in_at` desc, limit 1)
+  // porque el LLM no tiene por qué saber en qué evento está el lead
+  // actualmente; el admin ve al titular con todos sus acompañantes
+  // agrupados por evento, y nosotros queremos la inscripción más
+  // reciente para no contaminar inscripciones antiguas.
   const { data: row, error: selectError } = await ctx.supabase
     .from("event_attendees")
     .select("id, guests")
-    .eq("id", input.parent_lead_id)
+    .or(`lead_id.eq.${input.parent_lead_id},id.eq.${input.parent_lead_id}`)
+    .order("checked_in_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
   if (selectError) {
@@ -267,8 +294,17 @@ export async function executeAddEventGuest(
   const { error: updateError } = await ctx.supabase
     .from("event_attendees")
     // Mismo motivo que arriba: GuestRecord[] → Json requiere cast through unknown.
+    // FIX 2026-07-14 (Sprint v0.11 multi-evento): el UPDATE usa
+    // `row.id` (la PK de la fila encontrada por lead_id OR id en el
+    // SELECT de arriba), NO `input.parent_lead_id`. Esto es
+    // crítico: `parent_lead_id` es el UUID del LEAD, pero la fila
+    // de event_attendees ahora tiene su propio `id` independiente
+    // (migration `20260714120000`). Si pasáramos parent_lead_id al
+    // UPDATE, en el modelo multi-evento estaríamos actualizando una
+    // fila cuya `id` coincide con el `lead_id` SOLO en el caso
+    // legacy v0.10 (workaround). En el nuevo modelo fallaría.
     .update({ guests: updatedGuests as unknown as Json })
-    .eq("id", input.parent_lead_id);
+    .eq("id", row.id);
 
   if (updateError) {
     return {

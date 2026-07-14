@@ -167,6 +167,10 @@ const ADD_EVENT_GUEST_TOOL: AgentToolDefinition = {
       "`parent_lead_id` es OPCIONAL: si NO conoces el UUID del titular, " +
       "OMITE el campo — el sistema usa automáticamente el titular del chat " +
       "actual como parent. NO pidas el UUID al usuario, NO inventes uno. " +
+      "El SISTEMA RESUELVE EL EVENTO AUTOMÁTICAMENTE: toma la inscripción " +
+      "más reciente del titular (orden por checked_in_at desc, limit 1). " +
+      "NO preguntes al usuario '¿a cuál evento?' — el sistema decide por " +
+      "ti basándose en la inscripción más reciente. " +
       "NO llames esta tool si el titular solo está hablando de su propio " +
       "registro — para eso está extract_and_save_contact_info. " +
       "Tras la confirmación cálida, NO inventes datos: el ack del " +

@@ -562,14 +562,18 @@ export function buildSuperExecutivePrompt(context: AgentContext): string {
     // guest_name, guest_email?) y luego confirma con calidez.
     [
       "=== REGISTRO DE ACOMPAÑANTES (TOOL add_event_guest) ===",
-      // FIX 2026-07-14 (Sprint v0.10 post-E2E #4): antes la firma de la
-      // tool listaba `parent_lead_id` como si fuera obligatorio, lo
-      // que hacía al LLM conservador: si no tenía un UUID, prefería
-      // pedir más info al usuario en vez de llamar la tool. Ahora la
-      // firma indica `parent_lead_id` como opcional y se aclara que
-      // el sistema lo resuelve automáticamente del chat actual.
-      "- DISPONIBLE: Tu herramienta `add_event_guest` SÍ permite registrar un acompañante del titular (socio, hermano, amigo) en el mismo evento. Si el lead dice 'quiero inscribir a mi socio Carlos también' o 'inscribe también a mi hermano', LLAMA a add_event_guest(guest_name: 'Carlos Pérez', guest_email: 'carlos@x.com') — un objeto se agrega al array JSONB de guests del titular en event_attendees.",
+      // FIX 2026-07-14 (Sprint v0.10 post-E2E #4 + Sprint v0.11
+      // multi-evento): antes la firma de la tool listaba
+      // `parent_lead_id` como si fuera obligatorio, lo que hacía al
+      // LLM conservador: si no tenía un UUID, prefería pedir más
+      // info al usuario en vez de llamar la tool. Ahora la firma
+      // indica `parent_lead_id` como opcional y se aclara que el
+      // sistema lo resuelve automáticamente del chat actual. El
+      // SISTEMA TAMBIÉN RESUELVE EL EVENTO (la inscripción más
+      // reciente del lead, no la tienes que conocer).
+      "- DISPONIBLE: Tu herramienta `add_event_guest` SÍ permite registrar un acompañante del titular (socio, hermano, amigo). Si el lead dice 'quiero inscribir a mi socio Carlos también' o 'inscribe también a mi hermano', LLAMA a add_event_guest(guest_name: 'Carlos Pérez', guest_email: 'carlos@x.com') — un objeto se agrega al array JSONB de guests del titular en event_attendees.",
       "- `parent_lead_id` es OPCIONAL: NO lo pidas al usuario, NO lo inventes. Si lo omites, el sistema usa automáticamente el titular del chat actual como parent. Defense in depth en el dispatch del provider.",
+      "- **EL SISTEMA RESUELVE EL EVENTO AUTOMÁTICAMENTE** (Sprint v0.11 multi-evento): toma la inscripción más reciente del titular (orden por checked_in_at desc, limit 1). NO preguntes al usuario '¿a cuál evento?' — el sistema decide. Si el catálogo multi-evento te confunde, NO leas la lista de eventos: solo llama la tool y el sistema resuelve.",
       "- CONFIRMACIÓN CÁLIDA TRAS LA TOOL: Cuando la tool devuelva ok=true, confirma con entusiasmo honesto: '¡Perfecto! Quedas registrado tú y también tu socio Carlos como tu acompañante 🎯'. NO inventes datos: la respuesta de la tool indica si se guardó OK o si hubo error.",
       "- LIMITACIÓN: `add_event_guest` solo agrega al array JSONB. NO le mandamos email de confirmación al acompañante automáticamente (es solo registro interno para que el admin lo vea). Si el lead pregunta, acláralo: 'Listo, lo registro en la base. El día del evento tu socio pasa con su nombre y listo 🎯'."
     ].join("\n"),
@@ -750,12 +754,13 @@ export function buildHumanFirstPrompt(context: AgentContext): string {
     ``,
     `=== HERRAMIENTAS DISPONIBLES (las 2 tools reales, no inventes otras) ===`,
     `- extract_and_save_contact_info(name?, email?): guarda nombre y/o email del lead. Llama SOLO cuando el lead los haya dado explícitamente. NO inventes datos.`,
-    // FIX 2026-07-14 (Sprint v0.10 post-E2E #4): parent_lead_id es
-    // OPCIONAL. El LLM debe llamar la tool con solo guest_name +
-    // guest_email, y el sistema resuelve el titular del chat actual
-    // automáticamente. Esto destrabó el E2E con DeepSeek real donde el
-    // bot pedía confirmación al usuario en vez de emitir la tool.
-    `- add_event_guest(guest_name, guest_email?): registra un acompañante del titular en el mismo evento. Úsala cuando el titular pida inscribir a otra persona. NO incluyas \`parent_lead_id\` — el sistema lo resuelve del contexto del chat.`,
+    // FIX 2026-07-14 (Sprint v0.10 post-E2E #4 + Sprint v0.11
+    // multi-evento): parent_lead_id es OPCIONAL. El LLM debe llamar
+    // la tool con solo guest_name + guest_email, y el sistema
+    // resuelve el titular del chat actual Y el evento (inscripción
+    // más reciente) automáticamente. NO preguntes al usuario '¿a
+    // cuál evento?'.
+    `- add_event_guest(guest_name, guest_email?): registra un acompañante del titular en el mismo evento. Úsala cuando el titular pida inscribir a otra persona. NO incluyas \`parent_lead_id\` — el sistema lo resuelve del contexto del chat. NO preguntes el evento — el sistema usa la inscripción más reciente del titular.`,
     `- IMPORTANTE: NO existe (todavía) una tool para enviar interactive buttons ad-hoc. Si quieres ofrecer opciones al lead, hazlo en tu copy (ej: '¿Quieres ver el temario o prefieres los horarios? Responde temario u horarios.'). El orquestador puede traducirlo a interactive buttons en sprints futuros.`,
     ``,
     `=== LO QUE JAMÁS DEBES HACER (regla dura) ===`,

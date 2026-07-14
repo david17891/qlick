@@ -1,7 +1,13 @@
 /**
  * Proveedor WhatsApp MANUAL (wa.me / click-to-chat).
  *
- * Es el ÚNICO proveedor activo en el MVP.
+ * FIX housekeeping 2026-07-14 (G-16 collateral): el comentario anterior
+ * decía "Es el ÚNICO proveedor activo en el MVP". ESTO ES INCORRECTO.
+ * El provider activo en producción desde 2026-07-01 es `meta_cloud_api`
+ * (Meta WhatsApp Business Cloud API). Este provider MANUAL es el
+ * fallback histórico: se usa para construir enlaces wa.me en la UI pública
+ * (CTAs de "hablar por WhatsApp") y como referencia del contrato común.
+ * NO envía mensajes automatizados.
  *
  * Qué hace:
  * - Construye enlaces `https://wa.me/<número>?text=<mensaje>` a partir de las

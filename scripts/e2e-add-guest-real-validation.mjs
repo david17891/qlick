@@ -9,15 +9,17 @@
  * Pasos:
  *   1. Activa `human_first` en `system_settings` + tools.
  *   2. Crea un lead sintético con `createSyntheticLead`.
- *   3. Crea una fila en `event_attendees` con `id = leadId` (workaround
- *      para el diseño actual del executor: busca por `id`, no por
- *      `lead_id`).
+ *   3. Crea una fila en `event_attendees` con `lead_id = leadId` (modelo
+ *      multi-evento de Sprint v0.11, migration
+ *      `20260714120000_event_attendees_lead_id_fk.sql`). El `id` de
+ *      la fila es un PK independiente (gen_random_uuid()), no el UUID
+ *      del lead.
  *   4. Crea un evento si no existe (mínimo: 1 evento activo).
  *   5. Procesa UN turno con body "inscribe también a mi socio Carlos
  *      Mendoza, correo carlos.socio@example.com".
  *   6. Verifica que el LLM emitió `add_event_guest` y que el JSONB
  *      `guests` en event_attendees se actualizó.
- *   7. Limpia: borra la fila de event_attendees y el lead.
+ *   7. Limpia: borra la fila de event_attendees (por lead_id) y el lead.
  *
  * Nota: este script NO está pensado para correr en CI/CD — requiere
  * la DEEPSEEK_API_KEY real en process.env. Solo para verificación
@@ -151,15 +153,20 @@ async function main() {
     const event = await findOrCreateEvent(sb);
     record("Setup", "event OK", Boolean(event.id), `event.id=${event.id}, title=${event.title}`);
 
-    // Insertar attendee con `id = leadId` (workaround: el executor busca
-    // por event_attendees.id, no por lead_id). En prod habría que
-    // agregar una columna lead_id a event_attendees o cambiar la query
-    // del executor. Para este test, usamos el workaround.
+    // Insertar attendee con `lead_id = leadId` (Sprint v0.11 multi-evento).
+    // Ya NO usamos el workaround de v0.10 (id = leadId). Ahora el
+    // modelo es 1:N (1 lead puede tener N filas de event_attendees,
+    // una por evento), gracias a la migration
+    // `20260714120000_event_attendees_lead_id_fk.sql` que agregó
+    // la columna `lead_id` con FK a `leads(id)`. El executor
+    // `executeAddEventGuest` busca por `lead_id OR id` con
+    // `checked_in_at desc limit 1`, así que la inscripción más
+    // reciente del lead es la que recibe al acompañante.
     const { data: attendee, error: attErr } = await sb
       .from("event_attendees")
       .insert({
-        id: lead.id, // workaround
         event_id: event.id,
+        lead_id: lead.id, // multi-evento: FK a leads, no id = leadId
         confirmation_id: null,
         name: lead.name,
         email: lead.email,
@@ -168,7 +175,7 @@ async function main() {
         checked_in_by: "e2e-add-guest-script",
         source: "check_in"
       })
-      .select("id, name, guests")
+      .select("id, lead_id, name, guests")
       .maybeSingle();
     if (attErr) {
       record("Setup", "createAttendee OK", false, `error: ${attErr.message}`);
@@ -199,11 +206,14 @@ async function main() {
 
     section("Verificación final: event_attendees.guests debe tener a Carlos");
 
-    // Releer la fila del attendee.
+    // Releer la fila del attendee (Sprint v0.11 multi-evento: por
+    // lead_id, no por id).
     const { data: attendeeAfter, error: readErr } = await sb
       .from("event_attendees")
-      .select("id, guests")
-      .eq("id", lead.id)
+      .select("id, lead_id, guests")
+      .eq("lead_id", lead.id)
+      .order("checked_in_at", { ascending: false })
+      .limit(1)
       .maybeSingle();
     if (readErr) {
       record("Verify", "readAttendee OK", false, readErr.message);
@@ -251,11 +261,11 @@ async function main() {
 
     section("Cleanup: borrar attendee + lead sintético");
 
-    // Borrar attendee.
+    // Borrar attendee (Sprint v0.11 multi-evento: por lead_id).
     const { error: delAttErr } = await sb
       .from("event_attendees")
       .delete()
-      .eq("id", lead.id);
+      .eq("lead_id", lead.id);
     record("Cleanup", "deleteAttendee OK", !delAttErr,
       delAttErr ? `error: ${delAttErr.message}` : "attendee borrado");
 

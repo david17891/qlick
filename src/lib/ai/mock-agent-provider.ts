@@ -1,7 +1,16 @@
 /**
  * Proveedor de Agente IA MOCK.
  *
- * Es el ÚNICO proveedor activo en el MVP.
+ * FIX housekeeping 2026-07-14 (G-16 collateral): el comentario anterior
+ * decía "Es el ÚNICO proveedor activo en el MVP". ESTO ES INCORRECTO.
+ * El provider activo en producción desde 2026-07-08 es `deepseek`
+ * (DeepSeek Flash con switch automático a Pro si Flash falla o devuelve
+ * baja confidence, ver `src/lib/ai/deepseek-provider.ts`).
+ *
+ * Este provider MOCK es el FALLBACK que se activa cuando falta
+ * `DEEPSEEK_API_KEY` o cuando `AI_AGENT_PROVIDER=mock` se setea
+ * explícitamente. Sirve para tests, dev local sin API key, y demos
+ * de UI sin costo ni riesgo.
  *
  * No llama a ninguna API externa. Devuelve respuestas pre-escritas y
  * deterministas según la tarea y el contexto. Útil para demostrar el flujo del

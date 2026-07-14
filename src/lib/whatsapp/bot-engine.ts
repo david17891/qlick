@@ -3612,8 +3612,15 @@ case "interactive_event_inscribir": {
     }
     case "question":
     default: {
-      // Modo sugerencia: el agente sugiere, validamos guardrails,
-      // y mandamos texto libre (ventana 24h).
+      // Modo automático (FIX housekeeping 2026-07-14, G-16 collateral):
+      // el comentario anterior decía "Modo sugerencia: el agente sugiere,
+      // validamos guardrails, y mandamos texto libre". ESTÁ DESACTUALIZADO.
+      // Hoy el bot opera en modo automático: el LLM genera la respuesta,
+      // `validateAgentReply` filtra alucinaciones / commitments no
+      // autorizados (ver `src/lib/ai/guardrails.ts`), y se manda el texto
+      // libre al lead por la ventana de servicio de 24h de WhatsApp Cloud
+      // API. El "modo sugerencia" en sentido estricto solo aplica al
+      // laboratorio admin (`/admin/bot`), NO al flujo en producción.
       const profile = getAIAgentProfile();
       const agent = getActiveAgentProvider();
       // FIX 2026-07-02 (sesion David): bot multi-evento.

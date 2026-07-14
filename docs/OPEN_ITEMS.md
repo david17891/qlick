@@ -54,7 +54,7 @@
 | **A-5** | ~~`package.json` drift: `"version": "0.8.0"` pero release real era v0.9.9.~~ | ✅ **CERRADO** (sprint housekeeping 2026-07-12). Bumpeado a `"version": "0.9.9"`. | — |
 | **A-7** | `/api/dev/login` activo con `DEV_ADMIN_SECRET` como única barrera, sin rate limit ni audit log. | Agregar rate limit + audit log entry. ~20 min. |
 | **G-15** | Sweep comprehensivo de 9 docs históricos que mencionan `Resend` o `qlick.marketing` (HANDOFF_v0.7.1, SMTP_SETUP, FASE_5_PLAN, AUDIT_AND_PLAN, ASSESSMENT_PRODUCCION, PRE_MERGE_CHECKLIST, EVENTS_ADMIN_GUIDE, CONTACT_STRATEGY, TECHNICAL-REVIEW). | Agregar nota al inicio de cada doc explicando que es snapshot histórico válido. NO reescribir (regla del audit). |
-| **G-16** | 3 comentarios engañosos en código: `webhooks/handler.ts:1-13` dice "PLACEHOLDER SEGURO" pero persiste, `whatsapp-provider.ts:7-13` dice "manual_wa único activo" cuando `meta_cloud_api` está activo, `agent-provider.ts:7-9` dice "modo sugerencia" cuando responde auto. | Limpiar 3 comentarios para reflejar el estado real. |
+| **G-16** | 3 comentarios engañosos en código + 4 archivos collateral con la misma raíz. | ✅ **CERRADO** en Sprint v0.11 (sesión 2026-07-14). Cleanup completo: 7 archivos con nota "FIX housekeeping 2026-07-14 (G-16)" en cabecera. `mock-agent-provider.ts`, `src/lib/ai/index.ts`, `manual-wa-provider.ts`, `bot-engine.ts`, `webhooks/verify.ts`, `providers/whatsapp-provider.ts`, `webhooks/handler.ts` (ya estaba OK), `agent-provider.ts` (ya estaba OK). |
 | **G-17** | App fantasma Meta `2202427980234937` ("WA DevX Webhook Events 1P App") no se puede borrar (es 1P first-party). | No hacer. Workaround funciona (Meta prioriza Qlick_wb). |
 | **D** | Tests de integración contra DB real (los 3 bugs post-2026-07-07 no son detectables por `npm test` que mockea Supabase). | Setup CI matrix con `services: supabase:postgres:14` + fixtures. ~medio día + 2-3h tests. |
 | **E** | `as any` huérfanos post-typegen-refresh (32 ocurrencias, ~10 legítimos + ~7 legacy, resto compensan typegen stale). | Pasada selectiva removiendo innecesarios. ~2-3h en chunks. |
@@ -169,10 +169,10 @@ El cuerpo del doc (líneas debajo) preserva la trazabilidad completa de cada gap
 | **G-13** | 🟡 | ✅ **CERRADO** | `whatsapp_status`, `last_contacted_at`, `phone_normalized` existen en `leads`. Defensive code del bot es ahora innecesario (cleanup post-6 jul). |
 | **G-14** | 🟡 | ✅ **CERRADO** | Tests del webhook HTTP cubiertos por `tests/whatsapp-webhook-auth.test.mjs` (13 tests del gate HMAC + 503 hard-fail) + `tests/cron-auth.test.mjs` (9 tests Bearer) + `tests/api-rate-limit.test.mjs` (17 tests rate limiter). Sesión 2026-07-04. |
 | **G-15** | 🟡 | ✅ **CERRADO** | Scope limitado (STATUS.md refrescado, OPEN_ITEMS cerrado). Sweep comprehensivo de los 9 docs históricos queda para post-evento 10 jul. |
-| **G-16** | 🟡 | ⚠️ Pendiente | Inconsistencias código/docs. |
+| **G-16** | 🟡 | ✅ **CERRADO** | 3 comentarios engañosos en código (webhooks/handler, whatsapp-provider, agent-provider) + 4 archivos collateral (mock-agent-provider, index.ts, manual-wa-provider, bot-engine) arreglados en Sprint v0.11. |
 | **G-17** | 🟢 | ⚠️ Pendiente | App fantasma Meta no se puede borrar. |
 
-**Resumen:** 12 gaps cerrados (G-1, G-2, G-3, G-4, G-6, G-7, G-8, G-9, G-10, G-11, G-13, G-14, G-15). 4 pendientes (2 críticos: ninguno; 2 altos: G-5, G-12; 2 medios/bajos: G-16, G-17). Sesión 2026-07-04 ~16:30.
+**Resumen:** 13 gaps cerrados (G-1, G-2, G-3, G-4, G-6, G-7, G-8, G-9, G-10, G-11, G-13, G-14, G-15, G-16). 3 pendientes (2 críticos: ninguno; 2 altos: G-5, G-12; 1 medio/bajo: G-17). Sesión 2026-07-14 ~05:30 (Phoenix, Sprint v0.11).
 
 ### 0.6. Sesión 2026-07-11 — Desbloqueo de Supabase via Management API ✅
 
@@ -467,10 +467,18 @@ Ambos pasaron: type-check ✓ · lint ✓ · 726/726 tests verde · build ✓.
 - **Estado al 2026-07-04 ~15:45:** ✅ **CERRADO con scope limitado** (STATUS.md refrescado, OPEN_ITEMS cerrado). Sweep comprehensivo de los otros 9 docs queda pendiente post-evento 10 jul — son snapshots históricos válidos (HANDOFF_*, AUDIT_*, ASSESSMENT_*, FASE_*) que NO deberían reescribirse sin contexto histórico explícito.
 - **Pendiente menor (sub-item, no estaba en audit 17):** 3 archivos de código siguen diciendo "Resend" en comentarios/logs después de la migration de env vars Resend→Brevo: `src/lib/email/event-qr-pass.ts:6,11`; `src/lib/email/event-reminder.ts:6,11`; `event_reminder_log.resend_message_id` (column name). Cambiar por "Brevo" / "brevo_message_id" → 4-6 cambios de string, scope 5 min. No bloquea.
 
-#### G-16 · Inconsistencias entre código y docs
+#### G-16 · Inconsistencias entre código y docs ✅ CERRADO 2026-07-14
 
-- **Casos:** `webhooks/handler.ts:1-13` dice "PLACEHOLDER SEGURO" pero el route handler SÍ persiste y dispara bot. `whatsapp-provider.ts:7-13` dice "manual_wa es único activo" cuando `meta_cloud_api` está activo. `agent-provider.ts:7-9` dice "modo sugerencia" cuando el bot responde automático.
-- **Severidad:** 🟡 Media — confunde a quien lee por primera vez.
+- **Casos (cerrados 2026-07-14, Sprint v0.11):**
+  - `src/lib/whatsapp/webhooks/handler.ts`: ya estaba OK al cierre del sprint housekeeping del 2026-07-12 (FIX housekeeping note en cabecera). El comentario actual explica el flujo de persistencia correctamente.
+  - `src/lib/whatsapp/providers/whatsapp-provider.ts`: ya estaba OK al cierre del sprint housekeeping del 2026-07-12 (FIX housekeeping note en cabecera). El comentario actual declara que `meta_cloud_api` es el provider activo en producción desde 2026-07-01.
+  - `src/lib/ai/agent-provider.ts`: ya estaba OK. El comentario actual dice "modo AUTOMÁTICO con guardrails".
+  - **4 archivos collateral encontrados en esta pasada** (Sprint v0.11, G-16 housekeeping completo):
+    - `src/lib/ai/mock-agent-provider.ts`: "Es el ÚNICO proveedor activo en el MVP" → corregido: deepseek es el activo, mock es fallback.
+    - `src/lib/ai/index.ts`: "MODO SUGERENCIA: el bot opera en modo sugerencia" → corregido: explica los 2 modos (automático en prod + admin/laboratorio).
+    - `src/lib/whatsapp/providers/manual-wa-provider.ts`: "Es el ÚNICO proveedor activo en el MVP" → corregido: meta_cloud_api es el activo, manual_wa es fallback.
+    - `src/lib/whatsapp/bot-engine.ts:3615`: "Modo sugerencia: el agente sugiere, validamos guardrails" → corregido: "Modo automático: el LLM genera la respuesta, validateAgentReply filtra".
+- **Severidad original:** 🟡 Media. Cerrado por housekeeping completo, no por código de producto.
 
 #### G-17 · `app fantasma 2202427980234937` no se puede borrar
 
