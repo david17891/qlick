@@ -221,6 +221,20 @@ for (const c of confs) {
     subject,
     htmlContent: html,
     textContent: text,
+    // FIX 2026-07-13 (David bug report): deshabilitar click tracking.
+    // Sin esto, Brevo wrappea TODOS los links del HTML con
+    // `sendibt2.com/tr/cl/<encrypted>` para trackear clicks. Kaspersky
+    // Plus (y varios AVs europeos) marca ese tracker como
+    // "data leak" → false positive → el recipient ve un 404 default
+    // de Sendinblue y no llega a la encuesta. El link real
+    // (qlick.digital/encuesta/<token>) responde HTTP 200 OK, pero
+    // el redirect via tracker es lo que se rompe. Disable click
+    // tracking = el link viaja directo. Open tracking se mantiene
+    // (es invisible, no rompe nada).
+    tracking: {
+      click: false,
+      open: true,
+    },
   };
 
   const brevoRes = await fetch("https://api.brevo.com/v3/smtp/email", {
