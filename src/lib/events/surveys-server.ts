@@ -366,9 +366,37 @@ export async function createSurvey(
             // Row existe → UPDATE solo checked_in_at (preserva source).
             // Idempotente: si ya estaba checkeado, sigue siendo now() (mismo
             // segundo aprox, no afecta métricas).
+            //
+            // FIX 2026-07-13 (bug report David): también poblamos `name`
+            // si el row actual lo tiene null y ahora tenemos confirmation
+            // linkeada. Sin esto, el cert action
+            // (`issueCertificateAction:800`) rechaza con "Attendee sin
+            // nombre real; no se puede emitir cert".
+            const { data: existingRow } = await supabase2
+              .from("event_attendees")
+              .select("name, confirmation_id")
+              .eq("id" as never, existingAttendeeId)
+              .maybeSingle();
+            const updatePayload: Record<string, unknown> = {
+              checked_in_at: nowIso,
+            };
+            if (
+              input.confirmationId &&
+              (!existingRow ||
+                !(existingRow as { name: string | null }).name ||
+                (existingRow as { name: string | null }).name?.trim() === "")
+            ) {
+              const { data: confRow } = await supabase2
+                .from("event_confirmations")
+                .select("name")
+                .eq("id" as never, input.confirmationId)
+                .maybeSingle();
+              const confName = (confRow as { name: string } | null)?.name;
+              if (confName) updatePayload.name = confName;
+            }
             const { error: updErr } = await supabase2
               .from("event_attendees")
-              .update({ checked_in_at: nowIso } as never)
+              .update(updatePayload as never)
               .eq("id" as never, existingAttendeeId);
             if (updErr) {
               // eslint-disable-next-line no-console
@@ -385,12 +413,30 @@ export async function createSurvey(
             // Race condition: si otro proceso inserta entre el lookup y
             // el INSERT, choca por UNIQUE(event_id, email) si email viene.
             // Manejamos 23505 (unique violation) re-leyendo.
+            //
+            // FIX 2026-07-13 (bug report David): jalamos el `name` desde
+            // `event_confirmations` (linkeado por confirmationId). Sin
+            // esto, el cert action
+            // (`issueCertificateAction:800`) rechaza con "Attendee sin
+            // nombre real; no se puede emitir cert". El form de encuesta
+            // no pide nombre (fricción mínima), pero el confirmation
+            // previo al evento ya lo tiene.
+            let confirmationName: string | null = null;
+            if (input.confirmationId) {
+              const { data: confRow } = await supabase2
+                .from("event_confirmations")
+                .select("name")
+                .eq("id" as never, input.confirmationId)
+                .maybeSingle();
+              confirmationName =
+                (confRow as { name: string } | null)?.name ?? null;
+            }
             const { error: insErr } = await supabase2
               .from("event_attendees")
               .insert({
                 event_id: input.eventId,
                 confirmation_id: input.confirmationId ?? null,
-                name: null, // el survey no tiene campo nombre; queda null
+                name: confirmationName,
                 email: emailLower,
                 phone_normalized: input.phoneNormalized ?? null,
                 source: "survey_attended",
