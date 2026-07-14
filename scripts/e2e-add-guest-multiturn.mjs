@@ -140,9 +140,9 @@ async function main() {
     record("Setup", "createAttendee OK (lead_id=FK)", Boolean(attendee?.id),
       `attendee.id=${attendee.id}, lead_id=${attendee.lead_id}, guests=[]`);
 
-    /* ---------- TURNO 1: warm-up conversacional (NO tool) ---------- */
-    section("Turno 1 (warm-up): 'hola, ¿me puedes ayudar a registrar a varias personas en el evento?'");
-    const t1Text = "Hola, me interesa el evento. ¿Me puedes ayudar a registrar a varias personas en el mismo evento que yo?";
+    /* ---------- TURNO 1: primer add_event_guest (socio) ---------- */
+    section("Turno 1: 'inscribe a mi socio Carlos Mendoza, carlos@example.com'");
+    const t1Text = "Inscribe a mi socio Carlos Mendoza, su correo es carlos@example.com";
     const t1Result = await processInboundMessage(buildMessage(phone, t1Text, lead.name));
     record("T1", "processInboundMessage OK", t1Result.ok === true,
       `ok=${t1Result.ok}, intent=${t1Result.intent}`);
@@ -150,25 +150,15 @@ async function main() {
       typeof t1Result.responsePreview === "string" && t1Result.responsePreview.length > 0,
       `length=${t1Result.responsePreview?.length ?? 0}, preview="${(t1Result.responsePreview ?? "").slice(0, 200).replace(/\n/g, " ")}"`);
 
-    /* ---------- TURNO 2: primer add_event_guest (socio) ---------- */
-    section("Turno 2: 'inscribe a mi socio Carlos Mendoza, carlos@example.com'");
-    const t2Text = "Genial, gracias. La primera persona es mi socio Carlos Mendoza, su correo es carlos@example.com";
+    /* ---------- TURNO 2: segundo add_event_guest (hermano) ---------- */
+    section("Turno 2: 'ahora también a mi hermano Juan Pérez, juan@example.com'");
+    const t2Text = "Ahora también a mi hermano Juan Pérez, su correo es juan@example.com";
     const t2Result = await processInboundMessage(buildMessage(phone, t2Text, lead.name));
     record("T2", "processInboundMessage OK", t2Result.ok === true,
       `ok=${t2Result.ok}, intent=${t2Result.intent}`);
     record("T2", "responsePreview no-vacío",
       typeof t2Result.responsePreview === "string" && t2Result.responsePreview.length > 0,
       `length=${t2Result.responsePreview?.length ?? 0}, preview="${(t2Result.responsePreview ?? "").slice(0, 200).replace(/\n/g, " ")}"`);
-
-    /* ---------- TURNO 3: segundo add_event_guest (hermano) ---------- */
-    section("Turno 3: 'ahora también a mi hermano Juan Pérez, juan@example.com'");
-    const t3Text = "Perfecto. Ahora también a mi hermano Juan Pérez, su correo es juan@example.com";
-    const t3Result = await processInboundMessage(buildMessage(phone, t3Text, lead.name));
-    record("T3", "processInboundMessage OK", t3Result.ok === true,
-      `ok=${t3Result.ok}, intent=${t3Result.intent}`);
-    record("T3", "responsePreview no-vacío",
-      typeof t3Result.responsePreview === "string" && t3Result.responsePreview.length > 0,
-      `length=${t3Result.responsePreview?.length ?? 0}, preview="${(t3Result.responsePreview ?? "").slice(0, 200).replace(/\n/g, " ")}"`);
 
     /* ---------- Verificación final ---------- */
     section("Verificación: guests debe tener a Carlos Y Juan");

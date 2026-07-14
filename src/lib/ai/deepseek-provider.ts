@@ -589,9 +589,20 @@ async function runWithToolLoop(
   const userPrompt = buildTaskPrompt(task, context);
   const tools = noToolsMode ? [] : getAgentTools();
 
-  // 1ª vuelta: Pro (porque suggest_reply es PRO_PRIORITY). Con tools.
+  // 1ª vuelta: tier configurable vía env var. Default "pro" (PRO_PRIORITY)
+  // para prod. En E2E tests con deepseek real, setear
+  // DEEPSEEK_TOOL_LOOP_TIER=flash para ahorrar saldo (deepseek-v4-flash
+  // es ~10x más barato que deepseek-v4-pro y suficiente para validar
+  // function calling).
+  // FIX 2026-07-14 (Sprint v0.12): permite usar flash en tests sin
+  // tocar la lógica de producción. Si la env var es inválida,
+  // default a "pro" (más seguro para prod).
+  const toolLoopTier =
+    (process.env.DEEPSEEK_TOOL_LOOP_TIER === "flash" ? "flash" : "pro") as
+      | "flash"
+      | "pro";
   const first = await callDeepSeekChat({
-    tier: "pro",
+    tier: toolLoopTier,
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt }
@@ -733,7 +744,7 @@ async function runWithToolLoop(
   // Si DeepSeek respondiera con otro tool_call (no debería porque NO le
   // pasamos `tools`), lo descartamos silenciosamente — solo usamos `content`.
   const second = await callDeepSeekChat({
-    tier: "pro",
+    tier: toolLoopTier,
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
