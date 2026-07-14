@@ -170,3 +170,74 @@ console.log(JSON.stringify(ctx, null, 2));
 - **Latencia**: agregar 2 queries a Supabase al procesar cada mensaje. Mitigado con `Promise.all`. Si DB estÃ¡ lenta, fallback graceful a `undefined`.
 - **Costo LLM**: prompts mÃ¡s largos = mÃ¡s tokens. Mitigado por guardrails y ventana de 8 mensajes (no 50).
 - **Stale context**: si un evento se actualiza, el bot no se entera hasta el siguiente mensaje. Aceptable para MVP.
+
+## Sprint v0.9.x (2026-07-14) — Cuarto modo human_first (LLM-first opt-in)
+
+### Resumen
+
+Se agregó un 4to modo opt-in al bot: human_first. Cuando está activo, el LLM controla todo el flow conversacional (sin capa de intents rígida que intercepte). Se mantienen opt_out (LFPDPPP) y provide_email (captura de datos) como gates deterministas.
+
+### Diferencia vs los 3 modos anteriores
+
+| Modo | System prompt | Tools | Capa de intents |
+|------|---------------|-------|-----------------|
+| socratic_autopilot_v2 | uildSystemPrompt | Sí | Activa (welcome/greeting/register/opt_out/provide_email/question) |
+| socratic_no_tools_v1 | uildSystemPrompt | **No** | Activa |
+| super_executive | uildSuperExecutivePrompt | Sí | Activa |
+| human_first (NUEVO) | uildHumanFirstPrompt | Sí | **Bypaseada** (solo opt_out + provide_email como gates) |
+
+### Flujo del modo human_first
+
+`
+Lead escribe mensaje
+  ?
+bot-engine.ts: processInboundMessage()
+  ?
+Check bot_paused_global ? abort
+  ?
+Check bot_paused_for_lead ? abort
+  ?
+Check mustEscalateToHuman ? escalate a humano
+  ?
+Lee bot_global_mode (caché 30s)
+  ?
+resolveIntent(body, isFirstMessage, isHumanFirstMode)
+  ?
+Si human_first=true:
+  - OPT_OUT_RE.test(body) ? opt_out (gate legal, sin LLM)
+  - EMAIL_RE.test(body) ? provide_email (gate de captura, sin LLM)
+  - cualquier otra cosa ? question (LLM con buildHumanFirstPrompt + tools)
+Si human_first=false:
+  - detectIntent() original (regresión 0)
+  ?
+case "question" ? LLM responde con buildHumanFirstPrompt
+  ?
+Tool loop: extract_and_save_contact_info, add_event_guest
+  ?
+Provider intenta mandar a WhatsApp
+  ?
+Persiste en lead_whatsapp_conversations
+`
+
+### Pérdida esperada en human_first
+
+- **No hay interactive buttons** de welcome/greeting/register. El LLM responde con texto plano.
+- El LLM no puede enviar interactive buttons ad-hoc (no existe la tool send_interactive_button).
+- Trade-off documentado en uildHumanFirstPrompt.
+
+### Cómo activar el modo
+
+1. Ir a /admin/bot, sección "Modo del Bot".
+2. Click en la tarjeta "?? Modo Human-First (LLM-first opt-in)".
+3. Esperar 30 segundos (caché del provider).
+4. Los nuevos mensajes del lead bypasean los interactive buttons.
+
+### Simulador modo Real (paridad 1-a-1 con producción)
+
+El simulador en /admin/bot (pestaña "Laboratorio") ahora tiene un toggle Sandbox/Real. En modo Real:
+- Creas una persona sintética (phone +52555555XX, email qlick.test).
+- Le mandas mensajes ? el simulador ejecuta processInboundMessage directamente.
+- El provider outbound falla (phone no existe en Meta) — eso es esperado.
+- Auto-desconexión a los 30 min sin actividad.
+
+Ver docs/STATUS.md y data/PROJECT-LOG.md (entries 2026-07-14) para más detalle.
