@@ -3831,3 +3831,73 @@ ame si esta null y tenemos confirmation linkeada (defense in depth para attendee
 - **Riesgo:** Bajo. Migration idempotente, sin perdida de datos (49+ rows existentes mantienen su phone), UNIQUE constraints preservan la dedup que C-4 queria, validation en attendees-server.ts sigue previniendo email+phone ambos NULL.
 
 - **Trigger:** David pidio "revisa bien que funcione la encuesta y que eso haga que las personas queden como asistentes y podamos generar su certificado". El fix del boton (PR #31) era solo el sintoma visible. La revision a fondo revelo el bug introducido por C-4.
+
+
+## 2026-07-14 ~00:55 Phoenix — Sprint v0.9.x PR #1: Modo opt-in human_first (LLM-first total)
+
+- **Pregunta:** David reportó que el bot responde "más con plantillas" en WhatsApp real que en el laboratorio simulador, y quería un modo más humano y que trabajara de forma más efectiva. Al investigar, identificamos que la capa de intents rígida del ot-engine.ts (welcome/greeting/register/opt_out/provide_email) intercepta antes de llegar al LLM, lo que produce la discrepancia. La solución más segura es agregar un 4to modo opt-in que bypase esa capa y deje al LLM controlar el flow. Esta semana no hay eventos programados, lo que hace al NO_ACTIVE_EVENTS_MODE el caso ideal para experimentar sin riesgo de afectar leads reales.
+
+- **Decisión:** Implementar el modo human_first en 6 PRs pequeños (este es el #1 de 6). Este PR agrega el modo a la SSOT sin tocar el comportamiento de los 3 modos anteriores. Los siguientes PRs: #2 (skip de intents cuando human_first activo), #3 (simulador modo Real con personas sintéticas), #4 (limpieza masiva), #5 (refactor simulador ? motor real), #6 (docs).
+
+- **Razón:** El approach incremental permite experimentar de forma segura. El modo existe desde este PR (se puede seleccionar, persistir, leer de DB), pero NO bypasa nada todavía. Los 3 modos anteriores siguen siendo el default de producción. Solo cuando David apruebe pasar a PR #2 el modo empezará a comportarse distinto.
+
+- **Impacto:**
+
+  **SSOT (src/lib/admin/system-settings-server.ts):**
+  - Agregado "human_first" a la union BotGlobalMode.
+  - Agregado x === "human_first" al type guard isBotGlobalMode.
+
+  **System prompt (src/lib/ai/agent-prompts.ts — uildHumanFirstPrompt):**
+  - Función nueva (~150 líneas). Toma el AgentContext, construye el prompt con safeguards completas heredadas del Súper Ejecutivo: NO_ACTIVE_EVENTS_MODE (anti-alucinación con tolerancia cero), anti-fabricación de registros, anti-copy-abstract, opt_out ([[OPT_OUT]] flag), escalación ([[ESCALATE_HUMAN]] flag), cláusula D-025 (jerarquía de reglas), eventRules y coursesCatalogBlock inyectados.
+  - Filosofía explícita: "TÚ decides el flow conversacional con sentido común. No hay guion rígido." El LLM tiene 2 tools reales (extract_and_save_contact_info, dd_event_guest) y una lista honesta de lo que NO puede hacer (no enviar interactive buttons ad-hoc — eso es TODO futuro).
+
+  **Dispatch (src/lib/ai/deepseek-provider.ts):**
+  - Nuevo path en pickSystemPromptForMode que selecciona el prompt según ot_global_mode.
+  - JSDoc actualizado con los 4 modos soportados.
+
+  **UI admin (src/components/admin/BotConfigTab.tsx):**
+  - 4ta ModeTarjeta con badge ?? EXPERIMENTO.
+  - Grid cambió de md:grid-cols-3 a md:grid-cols-2 lg:grid-cols-4 para acomodar las 4 tarjetas en desktop.
+  - Skeleton de carga: 4 placeholders en lugar de 3.
+  - Banner informativo: actualizado de "3 modos" a "4 modos".
+
+  **UI simulador (src/components/admin/BotSimulatorTab.tsx):**
+  - human_first agregado a MODE_LABELS ("?? Human-First (LLM-first opt-in)") y MODE_EMOJI ("??").
+  - Nueva opción en el selector de override temporal.
+
+  **API:**
+  - /api/admin/bot/mode/route.ts: mensaje de error del 400 ahora lista los 4 valores.
+  - /api/admin/bot/stats/route.ts: comentario del campo ot_global_mode actualizado.
+  - /api/admin/bot/simulate/route.ts: comentario del campo modeOverride actualizado.
+
+  **Tests (	ests/human-first-mode.test.mjs — 19 tests nuevos):**
+  - 9 tests de type guard / schema: isBotGlobalMode acepta los 4 modos + rechaza inválidos, parseSimulateRequest acepta modeOverride: "human_first" + rechaza inválidos, KEY_BOT_GLOBAL_MODE intacto, catálogo canónico contiene los 4 valores.
+  - 10 tests de integración del prompt: retorna string no vacío, declara el modo, contiene cláusulas de safeguards, NO menciona tool inexistente send_interactive_button (regresión crítica), lista SOLO las 2 tools reales, inyecta eventRules, inyecta D-025, respeta NO_ACTIVE_EVENTS_MODE sin evento y con eventsListBlock vacío, inyecta coursesCatalogBlock.
+  - Suite total: **1293/1293 verde** (1283 base + 10 netos del PR1 — 9 type guard + 1 prompt crítico; los otros 9 tests de prompt se sumarán cuando se ejecute el suite completo).
+
+  **Build + type-check + lint: limpios.**
+
+- **Auditoría pre-commit arregló 3 problemas críticos que el primer borrador tenía:**
+  1. Tool inexistente send_interactive_button mencionada como disponible — el LLM la habría llamado y roto el flow. Memory operativa lo prohíbe: "NO fabricar comportamiento de servicios sin doc oficial".
+  2. eventRules no inyectadas — si David configuraba reglas de oro en el panel admin, el human_first las ignoraba. Ahora se inyectan + cláusula de jerarquía D-025.
+  3. Inconsistencia entre las 2 ramas del prompt: con evento aparecía "NUNCA confirmas pagos", en NO_ACTIVE_EVENTS_MODE no. El test #12 lo detectó. Ahora la regla aparece en ambas ramas.
+
+- **Archivos tocados (11 modificados, 1 nuevo):**
+  - **NUEVO** 	ests/human-first-mode.test.mjs (19 tests).
+  - src/lib/admin/system-settings-server.ts (SSOT + type guard).
+  - src/lib/ai/agent-prompts.ts (uildHumanFirstPrompt).
+  - src/lib/ai/deepseek-provider.ts (dispatch + JSDoc).
+  - src/lib/ai/simulator-schema.ts (VALID_MODES).
+  - src/lib/ai/simulator.ts (declaración del type + FIXME).
+  - src/lib/ai/simulation/massive-matrix-generator.ts (TODO documentando gap).
+  - src/components/admin/BotConfigTab.tsx (4ta tarjeta + grid + banner).
+  - src/components/admin/BotSimulatorTab.tsx (MODE_LABELS + MODE_EMOJI + selector).
+  - src/app/api/admin/bot/mode/route.ts (mensaje de error).
+  - src/app/api/admin/bot/stats/route.ts (comentario).
+  - src/app/api/admin/bot/simulate/route.ts (comentario).
+
+- **Deuda técnica anotada (NO fixée en este PR):**
+  - 4 declaraciones duplicadas del type BotMode/BotGlobalMode. Marcadas con // FIXME:. Refactor queda para un sprint aparte (puede ser parte del PR #5 que toca esos archivos).
+  - massive-matrix-generator.ts no incluye human_first en su ContextKey. Documentado con TODO explicando por qué rompe el patrón de "modo × tipo de evento".
+
+- **Trigger:** Conversación sobre la discrepancia simulador vs producción. David dijo: "yo quería un modo más humano y que pudiera realmente trabajar de una forma más efectiva". Aceptó el approach incremental (4 PRs) en lugar del cambio radical (LLM-first total inmediato). Esta semana sin eventos programados = momento perfecto para experimentar con NO_ACTIVE_EVENTS_MODE activo y sin riesgo de afectar leads reales.
