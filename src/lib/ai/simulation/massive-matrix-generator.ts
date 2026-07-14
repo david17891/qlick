@@ -2,8 +2,8 @@
  * Sprint v0.9.9 / v17-4 — Massive Matrix Generator (Arnés de Simulación).
  *
  * Genera la matriz cartesiana completa de situaciones de prueba para el
- * Laboratorio IA: `10 arquetipos de prospecto × 4 contextos de modo/oferta
- * × 5 trayectorias de embudo = 200 situaciones únicas documentadas`.
+ * Laboratorio IA: `10 arquetipos de prospecto × 7 contextos de modo/oferta
+ * × 5 trayectorias de embudo = 350 situaciones únicas documentadas`.
  *
  * Cada `SimulationSituation` es un escenario de conversación predefinido:
  *   - arquetipo (quién es el lead).
@@ -14,7 +14,7 @@
  *
  * Pure function: NO toca DB, NO hace fetch, NO lee Supabase. La idea es
  * que `generateMassiveMatrix()` se ejecute en <100ms y el arnés (en
- * `matrix-auditor.ts`) corra las 200 situaciones contra un mock del
+ * `matrix-auditor.ts`) corra las 350 situaciones contra un mock del
  * provider para validar las 5 métricas de calidad.
  *
  * @server
@@ -36,12 +36,17 @@ export type ContextKey =
   | "super_executive+free_masterclass"
   | "super_executive+paid_course"
   | "socratic_autopilot_v2+lms_course"
-  | "fallback+no_active_event";
-// TODO Sprint v0.9.x PR #1: el modo `human_first` no está incluido en
-// esta matriz porque rompe el patrón de "modo × tipo de evento" (el
-// human_first es independiente del tipo de oferta). Si se quiere
-// cubrir en la matriz, agregar `human_first+free_masterclass`,
-// `human_first+paid_course`, `human_first+no_active_event`.
+  | "fallback+no_active_event"
+  | "human_first+free_masterclass"
+  | "human_first+paid_course"
+  | "human_first+no_active_event";
+// FIX 2026-07-14 (Sprint v0.9.x PR #10 hardening): el modo `human_first`
+// se cubre en la matriz con 3 combinaciones (free_masterclass,
+// paid_course, no_active_event). El LLM controla TODO el flow en
+// human_first, por lo que los 3 contextos comparten el mismo set de
+// arquetipos/trayectorias, pero la matriz debe validar que el invariante
+// "intent ∈ {opt_out, provide_email, question}" (PR #10) se respeta
+// en cada combinación de oferta.
 
 export type Trajectory =
   | "quick_convert"
@@ -103,7 +108,10 @@ const ALL_CONTEXTS: ContextKey[] = [
   "super_executive+free_masterclass",
   "super_executive+paid_course",
   "socratic_autopilot_v2+lms_course",
-  "fallback+no_active_event"
+  "fallback+no_active_event",
+  "human_first+free_masterclass",
+  "human_first+paid_course",
+  "human_first+no_active_event"
 ];
 
 /* ------------------------------------------------------------------ */
@@ -222,7 +230,7 @@ const ARCHETYPES: Record<LeadArchetype, ArchetypeDescriptor> = {
  * Genera la matriz cartesiana completa. Por cada (arquetipo, contexto,
  * trayectoria) genera UNA situación con sus turns.
  *
- * @returns Array de SimulationSituation. `length === 10 × 4 × 5 = 200`.
+ * @returns Array de SimulationSituation. `length === 10 × 7 × 5 = 350`.
  */
 export function generateMassiveMatrix(): SimulationSituation[] {
   const situations: SimulationSituation[] = [];

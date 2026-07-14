@@ -1,7 +1,7 @@
 /**
  * Sprint v0.9.9 / v17-4 — Matrix Auditor (Arnés de Simulación Masiva).
  *
- * Ejecuta las 200 situaciones de `generateMassiveMatrix()` contra un mock
+ * Ejecuta las 350 situaciones de `generateMassiveMatrix()` contra un mock
  * determinístico del provider de IA y evalúa 5 métricas de calidad:
  *
  *   1. `isBrief` — respuestas con ≤ 3 oraciones.
@@ -320,7 +320,7 @@ function auditSituation(situation: SimulationSituation): SituationAudit {
 /* ------------------------------------------------------------------ */
 
 /**
- * Audita las 200 situaciones y devuelve el reporte agregado.
+ * Audita las 350 situaciones y devuelve el reporte agregado.
  *
  * @param matrixOverride opcional. Si se omite, genera la matriz
  *                          con `generateMassiveMatrix()`.

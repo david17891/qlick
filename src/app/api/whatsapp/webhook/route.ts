@@ -240,6 +240,23 @@ async function persistInboundIfPossible(
   // - Si ya existe: ON CONFLICT DO NOTHING → no devuelve nada (kind='duplicate')
   // Esto le permite al webhook distinguir 'Meta reentrega el mismo webhook'
   // (skip bot) de 'mensaje nuevo' (correr bot).
+  //
+  // FIX Sprint v0.9.x PR #10 (hardening, 2026-07-14): truncar el body
+  // a MAX_WHATSAPP_BODY_LENGTH (4096, límite oficial de Meta) antes
+  // de persistir. Defense in depth contra:
+  //   - DoS por body gigante (un atacante puede inflar la DB con bodies
+  //     de 100k+ chars; el truncate los recorta a 4096).
+  //   - Costos de storage y latencia de queries grandes.
+  // El truncate aplica a text plano, captions de media, buttonTitle
+  // y button payloads — todos llegan vía `msg.text` (handler los normaliza).
+  const MAX_WHATSAPP_BODY_LENGTH = 4096;
+  const rawBody = msg.text ?? null;
+  const sanitizedBody = rawBody === null
+    ? null
+    : rawBody.length > MAX_WHATSAPP_BODY_LENGTH
+      ? rawBody.slice(0, MAX_WHATSAPP_BODY_LENGTH)
+      : rawBody;
+
   const { data, error } = await supabase
     .from("lead_whatsapp_conversations" as never)
     .upsert(
@@ -250,9 +267,8 @@ async function persistInboundIfPossible(
         message_type: VALID_INBOUND_TYPES.has(msg.type)
           ? msg.type
           : "interactive",
-        // body ya viene con caption (si lo hubo) porque el handler.ts
-        // hace text = msg.text?.body ?? msg.image?.caption ?? ...
-        body: msg.text ?? null,
+        // body truncado a MAX_WHATSAPP_BODY_LENGTH (defense in depth).
+        body: sanitizedBody,
         whatsapp_message_id: msg.messageId,
         metadata: {
           timestamp: msg.timestamp,

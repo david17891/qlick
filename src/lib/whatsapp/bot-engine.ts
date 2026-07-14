@@ -4010,11 +4010,24 @@ export async function processInboundMessage(
   // completo del evento (buttonId, ej. "evt_info_ia-marketing-primeros-pasos")
   // se guarda en metadata.buttonId para que el findEventInConversation
   // y futuros analytics tengan la referencia EXACTA, no el titulo truncado.
-  const body = (
+  //
+  // FIX Sprint v0.9.x PR #10 (hardening, 2026-07-14): defense in depth
+  // contra DoS. Truncar el body a MAX_WHATSAPP_BODY_LENGTH (4096, límite
+  // oficial de Meta) antes de procesarlo. El webhook ya trunca en la
+  // persistencia, pero el bot-engine también debe truncar para evitar
+  // que un payload enorme (e.g. texto de 100k chars enviado al LLM)
+  // cause latencia excesiva o costo de tokens innecesario. Aplicar el
+  // truncate DESPUÉS de la selección de buttonTitle (los buttonTitle
+  // de Meta tienen <=24 chars, así que el truncate no los afecta).
+  const MAX_WHATSAPP_BODY_LENGTH = 4096;
+  const rawBody = (
     message.type === "interactive" && message.buttonTitle
       ? message.buttonTitle
       : message.text ?? ""
   ).trim();
+  const body = rawBody.length > MAX_WHATSAPP_BODY_LENGTH
+    ? rawBody.slice(0, MAX_WHATSAPP_BODY_LENGTH)
+    : rawBody;
   // Capturamos el buttonId (que incluye el slug del evento) para usarlo
   // en metadata. buttonId es opcional en IncomingWhatsAppMessage.
   const buttonId = message.buttonId ?? null;
@@ -5081,6 +5094,32 @@ export async function processInboundMessage(
     } else {
       intent = "question";
     }
+  }
+
+  // FIX 2026-07-14 (PR #10 hardening): invariante defensivo de runtime.
+  // En `human_first` el intent SOLO puede ser uno de 3 valores:
+  // `opt_out` (gate legal LFPDPPP), `provide_email` (captura
+  // determinista) o `question` (todo lo demás va al LLM). Si por un
+  // desvío futuro (nuevo path que setea intent, race condition, refactor
+  // que rompe el override de arriba) el intent resulta ser OTRO valor,
+  // logueamos y forzamos a `question` para que vaya al LLM y NO se
+  // cuele en un flow secuencial. Es un safety net de último recurso:
+  // la lógica de arriba YA debería garantizar el invariante, pero si
+  // algo se rompe, el bot sigue siendo seguro (pregunta al LLM, no
+  // ejecuta un flow de captura que no toca en human_first).
+  const ALLOWED_HUMAN_FIRST_INTENTS = new Set<string>([
+    "opt_out",
+    "provide_email",
+    "question"
+  ]);
+  if (isHumanFirstMode && !ALLOWED_HUMAN_FIRST_INTENTS.has(intent)) {
+    errorLog("[whatsapp/bot] human_first invariant violated", {
+      leadId: lead.id,
+      unexpectedIntent: intent,
+      forcedTo: "question",
+      bodyPreview: body.slice(0, 100)
+    });
+    intent = "question";
   }
 
   // 4.5 FIX 2026-07-02 (Commit A): si el intent es provide_name, persistir
