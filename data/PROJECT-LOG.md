@@ -4304,3 +4304,61 @@ ame si esta null y tenemos confirmation linkeada (defense in depth para attendee
 
 - **Lección operativa (a guardar en memory):** "Cuando un test 'debería pasar' sigue fallando después de un fix, debuggear capa por capa con console.log hasta encontrar dónde se rompe la cadena. No asumir que el primer fix es suficiente. Un bug que se manifiesta tras varios fixes generalmente es una pila de bugs, cada uno en su propia capa."
 
+## 2026-07-14 ~05:30 Phoenix — Sprint v0.11: multi-evento lead_id + G-16 housekeeping
+
+- **Pregunta:** David pidió 3 tareas: (1) migration aditiva de `event_attendees.lead_id` con FK a leads + backfill + index, (2) refactor del executor `executeAddEventGuest` para usar el nuevo `lead_id` con busqueda por `lead_id OR id` y `order checked_in_at desc limit 1`, (3) limpieza de los 3 comentarios engañosos de G-16.
+
+- **Decisión:** Ejecutar las 3 tareas en 1 commit atómico (`4070ca3`) con autonomia total. El refactor del executor cambio el modelo de 1:1 (1 lead = 1 attendee) a 1:N (1 lead = N attendees, uno por evento), con back-compat para filas legacy v0.10 que tenian `id = leadId` como workaround. Ademas, durante la limpieza de G-16 encontre 4 archivos collateral con la misma raiz de comentarios misleading que el sprint housekeeping del 2026-07-12 no habia cubierto — los actualice tambien.
+
+- **Razón:** El acoplamiento 1:1 era un bloqueador de producto: un prospecto que se inscribia a una masterclass no podia inscribirse a otra (la PK `id` colisionaba). El workaround temporal de v0.10 (insertar attendees con `id = leadId`) funcionaba pero limitaba el diseño. La migration aditiva con FK nullable permite la transicion sin tocar las 58 filas existentes. El backfill por id (workaround v0.10) y por `phone_normalized` recupera 54/58 (4 huerfanos preservados como NULL, documentados en el comment de la columna).
+
+- **Tarea 1 — Migration aditiva:**
+  - `supabase/migrations/20260714120000_event_attendees_lead_id_fk.sql`:
+    - `ALTER TABLE public.event_attendees ADD COLUMN IF NOT EXISTS lead_id uuid REFERENCES public.leads(id) ON DELETE SET NULL;`
+    - Backfill: `UPDATE event_attendees SET lead_id = id WHERE lead_id IS NULL AND EXISTS (SELECT 1 FROM leads WHERE id = event_attendees.id);` (workaround v0.10) + segundo UPDATE por `phone_normalized`.
+    - `CREATE INDEX IF NOT EXISTS idx_event_attendees_lead_id ON public.event_attendees(lead_id);`.
+    - `COMMENT ON COLUMN event_attendees.lead_id IS '...'` para visibilidad en el dashboard de Supabase.
+  - Aplicada via Management API con `scripts/apply-migration-management.mjs`, status 201. Verificada con `scripts/verify-schema-event-attendees.mjs`: 54/58 con `lead_id`, 4 NULL (huerfanos preservados).
+  - `src/types/supabase.ts`: anadido `lead_id: string | null` en Row/Insert/Update + Relacion FK a leads.
+  - **Pitfall encontrado:** el archivo `src/types/supabase.ts` esta guardado como UTF-16 LE con BOM (`ff fe`), NO UTF-8. El `Edit` tool y `fs.readFileSync(path, "utf8")` fallan silenciosamente. El script `scripts/patch-supabase-types-lead-id.mjs` detecta el BOM y usa `"utf16le"` explicito.
+
+- **Tarea 2 — Refactor add-guest.ts:**
+  - SELECT: `.or(`lead_id.eq.${parent_lead_id},id.eq.${parent_lead_id}`).order("checked_in_at", { ascending: false }).limit(1).maybeSingle()`. Back-compat con workaround v0.10 (`id = leadId`) + nueva busqueda por FK (`lead_id`).
+  - UPDATE: `.eq("id", row.id)` (PK de la fila encontrada), NO `.eq("id", parent_lead_id)` (que era el UUID del LEAD, no de la inscripcion). CRITICO: en el modelo multi-evento, pasar `parent_lead_id` al UPDATE actualizaria la fila incorrecta.
+  - agent-tools.ts: description de `add_event_guest` declara explicitamente "El SISTEMA RESUELVE EL EVENTO AUTOMATICAMENTE: toma la inscripcion mas reciente del titular (orden por checked_in_at desc, limit 1). NO preguntes al usuario 'a cual evento?' — el sistema decide por ti". Esto destrabo el E2E.
+  - agent-prompts.ts: misma regla en las secciones REGISTRO DE ACOMPAÑANTES (super_executive) y HERRAMIENTAS DISPONIBLES (human_first).
+
+- **Tarea 3 — G-16 housekeeping completo:**
+  - Los 3 archivos originales del OPEN_ITEMS (`webhooks/handler.ts`, `whatsapp-provider.ts`, `agent-provider.ts`) ya estaban OK desde el sprint housekeeping del 2026-07-12.
+  - 4 archivos collateral encontrados en esta pasada: `src/lib/ai/mock-agent-provider.ts`, `src/lib/ai/index.ts`, `src/lib/whatsapp/providers/manual-wa-provider.ts`, `src/lib/whatsapp/bot-engine.ts:3615`. Todos actualizados con nota "FIX housekeeping 2026-07-14 (G-16)" en cabecera.
+  - OPEN_ITEMS.md actualizado: G-16 marcado como `CERRADO`, summary count 13/16 (de 12/16), seccion detallada con lista de los 4 archivos collateral.
+
+- **Verificacion:**
+  - `npm run type-check`: 0 errores.
+  - `npm run lint`: 0 warnings.
+  - `npm test`: 1365/1365 verde (3 tests nuevos: A13 SELECT con .or + order + limit, A14 UPDATE por row.id, A15 back-compat caso legacy v0.10).
+  - E2E con deepseek real: 15/15 PASS. Guest 'Carlos Mendoza' persistido en `event_attendees.guests` JSONB. Attendee insertado con `lead_id = FK` (no `id = leadId`).
+  - `scripts/adversarial-audit-pr10-deep.mjs`: 60/60 verde (regresion OK).
+  - `scripts/e2e-bot-journey-real-validation.mjs`: 39/39 verde (regresion OK).
+
+- **Archivos tocados (15 en total):**
+  - 1 migration nueva (`20260714120000_event_attendees_lead_id_fk.sql`, +67 lineas).
+  - 1 typegen patch (script idempotente `patch-supabase-types-lead-id.mjs` que detecta UTF-16 BOM).
+  - 7 archivos de codigo: 
+    - `src/lib/ai/tool-executors/add-guest.ts` (+54/-8) — refactor multi-evento.
+    - `src/lib/ai/agent-tools.ts` (+4) — description sistema resuelve evento.
+    - `src/lib/ai/agent-prompts.ts` (+16/-15) — secciones REGISTRO/HERRAMIENTAS.
+    - `src/lib/ai/mock-agent-provider.ts` (+11/-1) — housekeeping G-16 collateral.
+    - `src/lib/ai/index.ts` (+25/-1) — housekeeping G-16 collateral.
+    - `src/lib/whatsapp/providers/manual-wa-provider.ts` (+8/-1) — housekeeping.
+    - `src/lib/whatsapp/bot-engine.ts` (+11/-1) — housekeeping G-16 collateral.
+  - 2 scripts de verificacion: `verify-schema-event-attendees.mjs`, `verify-timestamp-columns.mjs`.
+  - 1 script idempotente: `close-g16-open-items.mjs`.
+  - 1 test file: `tests/add_event_guest.test.mjs` (+164 tests A13-A15).
+  - 1 doc: `docs/OPEN_ITEMS.md` (+22/-22).
+  - 1 e2e script: `scripts/e2e-add-guest-real-validation.mjs` (sin workaround id=leadId, ahora con lead_id=leadId).
+
+- **Trigger:** David pidio el sprint en sesion 2026-07-14 con el mensaje 'ahora vamos a ejecutar de forma 100% autonoma un sprint de robustez arquitectonica y limpieza (Sprint multi-evento lead_id + G-16 housekeeping)'. El sprint cerro los 3 pendientes que el Sprint v0.10 dejo documentados: (1) el acoplamiento 1:1 de event_attendees.id con leads.id, (2) el workaround de v0.10 (insertar attendees con id=leadId), (3) la limpieza G-16 que el sprint housekeeping del 2026-07-12 habia dejado a medias (3 archivos OK, 4 collateral con la misma raiz pendientes).
+
+- **Lección operativa (a guardar en memory):** "Cuando una tool tiene un parametro resuelto por el sistema (no por el LLM), declararlo en la description Y en la prompt. No basta con que el dispatch tenga el fallback — el LLM necesita saber que NO debe pedirle el dato al usuario. Caso real: el LLM con el modelo multi-evento empezo a preguntar 'a cual evento?' aunque el executor ya resolvia el evento por checked_in_at desc. El fix fue explicitar en description + prompt que el sistema decide."
+
