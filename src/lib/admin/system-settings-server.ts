@@ -75,7 +75,12 @@ export const KEY_BOT_DAILY_OUTBOUND_LIMIT = "bot_daily_outbound_limit" as const;
 export type BotGlobalMode =
   | "socratic_autopilot_v2"
   | "socratic_no_tools_v1"
-  | "super_executive";
+  | "super_executive"
+  // Sprint v0.9.x (PR #1 modo `human_first`): 4to modo opt-in para
+  // experimentar con LLM-first total (sin capa de intents rígida).
+  // Mantener alineado con `BotMode` en `src/components/admin/BotConfigTab.tsx`
+  // y con los 4 system prompts en `src/lib/ai/agent-prompts.ts`.
+  | "human_first";
 
 /**
  * Type guard runtime: ¿es `x` un `BotGlobalMode` válido?
@@ -88,7 +93,8 @@ export function isBotGlobalMode(x: unknown): x is BotGlobalMode {
   return (
     x === "socratic_autopilot_v2" ||
     x === "socratic_no_tools_v1" ||
-    x === "super_executive"
+    x === "super_executive" ||
+    x === "human_first"
   );
 }
 

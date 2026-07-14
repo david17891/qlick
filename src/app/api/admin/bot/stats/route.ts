@@ -6,7 +6,7 @@
  *   - total_bot_messages_24h / 7d: conteo de outbound con auto_sent_source = 'bot'.
  *   - paused_leads_count: leads con bot_paused = true.
  *   - pause_reasons: desglose por bot_paused_reason (keyword/semantic/manual).
- *   - bot_global_mode: modo activo actual (socratic_autopilot_v2 / socratic_no_tools_v1).
+ *   - bot_global_mode: modo activo actual (socratic_autopilot_v2 / socratic_no_tools_v1 / super_executive / human_first).
  *   - bot_max_active_rules: top N reglas inyectadas por turno.
  *
  * Sprint v16 PR #2.2 — Radar de Costos (M5/R3/M6):

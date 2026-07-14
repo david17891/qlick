@@ -8,9 +8,69 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-12 19:30 Phoenix — **PR #26 mergeado a `main` (HEAD `89902e8`)**. Sprint v0.9.8 + v0.9.9 cerrado. 1262/1262 tests verde, type-check 0, lint 0/0, build ✓. Vercel auto-deploy disparado. Bot Súper Ejecutivo en producción usando tool `add_event_guest` para registrar acompañantes. Cluster de housekeeping v0.9.10 en curso (rama `feat/housekeeping-2026-07-12`).
+> **Última actualización:** 2026-07-12 19:30 Phoenix — **PR #26 mergeado a `main` (HEAD `89902e8`)**. 1320/1320 tests verde, type-check 0, lint 0/0, build OK. Sprint v0.9.x `human_first` cerrado en rama `feat/human-first-mode` (4 commits, no mergeado a main todavía — esperando review de David). Migration `20260714100000_leads_simulation_source.sql` aplicada a prod (status 201).
 >
 > **Body del doc (líneas debajo):** es archivo histórico de sprints cerrados. Para estado actual, ver este snapshot.
+
+---
+
+## Sprint v0.9.x — `human_first` mode + simulador Real (2026-07-14 00:30 → 02:30)
+
+**Estado actual:** ✅ Cerrado en rama `feat/human-first-mode` (no mergeado a main). 4 PRs atómicos. 1320/1320 tests verde. Migration aplicada a prod. Sprint documentado en `data/PROJECT-LOG.md` y `docs/HANDOFF_v0.9.x_human-first.md`.
+
+**Resumen de los 4 PRs:**
+
+1. **PR #1 — Modo opt-in `human_first` aislado** (commit `e0b07f4`):
+   - SSOT (`BotGlobalMode` + `isBotGlobalMode` en `system-settings-server.ts`) extendido con el 4to valor `"human_first"`.
+   - System prompt nuevo: `buildHumanFirstPrompt` en `agent-prompts.ts` (~150 líneas) con safeguards completas heredadas del Súper Ejecutivo (NO_ACTIVE_EVENTS_MODE, anti-alucinación, D-025, opt_out `[[OPT_OUT]]`, escalación `[[ESCALATE_HUMAN]]`).
+   - Dispatch en `pickSystemPromptForMode` del deepseek-provider.
+   - UI admin: 4ta `ModeTarjeta` con badge `🧪 EXPERIMENTO` en `BotConfigTab`.
+   - UI simulador: opción `human_first` en `MODE_LABELS`, `MODE_EMOJI`, selector de override.
+   - API: validación actualizada en `/api/admin/bot/mode`.
+   - 19 tests nuevos en `tests/human-first-mode.test.mjs` (9 type guard + 10 integración del prompt).
+   - Auditoría arregló 2 problemas críticos: tool inexistente `send_interactive_button` removida del prompt + `eventRules` y D-025 ahora se inyectan.
+
+2. **PR #2 — Skip de intents cuando `human_first`** (commit `ff3a367`):
+   - Helper `resolveIntent(body, isFirstMessage, isHumanFirstMode)` (sync, pure) en `bot-engine.ts`.
+   - `human_first=true` → solo `opt_out`, `provide_email`, o `question` (LLM).
+   - `human_first=false` → comportamiento IDÉNTICO al de los 3 modos anteriores (regresión 0).
+   - 4 call sites de `detectIntent` reemplazados por `resolveIntent`.
+   - 8 tests nuevos (regresión + skip welcome/greeting/register + gates mantenidos).
+
+3. **PR #3 — Simulador modo Real con personas sintéticas** (commit `45503f5`):
+   - Migration `20260714100000_leads_simulation_source.sql`: 2 columnas nuevas en `leads` (`simulation_source`, `simulation_metadata`) + CHECK + index parcial + NOTIFY pgrst.
+   - Helper `src/lib/whatsapp/synthetic-leads.ts`: `createSyntheticLead`, `listSyntheticLeads`, `deleteAllSyntheticLeads`. Phone sintético `+52555555XX` (Meta rechaza), email `qlick.test` (RFC 2606).
+   - Endpoint `POST/GET/DELETE /api/admin/bot/synthetic-leads` con auth admin y `{ confirm: true }` obligatorio para DELETE.
+   - Endpoint `POST /api/admin/bot/simulate/real` que ejecuta `processInboundMessage` con el lead sintético. Rate limit 100 turnos/lead.
+   - UI: toggle Sandbox/Real, banner rojo persistente con auto-timeout 30 min, lista de sintéticos, botones Crear/Limpiar todo.
+   - 8 tests nuevos en `tests/synthetic-leads-helper.test.mjs`.
+
+4. **PR #4 — Tests E2E + docs del modo Real** (commit `38128d5`):
+   - 11 tests en `tests/api-admin-bot-simulate-real.test.mjs` que validan el contrato del endpoint (auth, validación, shape, rate limit, paridad con producción) y documentan el flujo end-to-end (13 pasos).
+
+**Lo que el admin puede hacer AHORA con este sprint:**
+
+- **Activar el modo `human_first`** desde `/admin/bot` → el bot bypasea los interactive buttons y deja al LLM controlar el flow. Mantiene `opt_out` y `provide_email` como gates.
+- **Probar el simulador en modo Real** desde `/admin/bot` (pestaña "Laboratorio") → crear personas sintéticas, mandarles mensajes, ver el flow completo. El provider outbound fallará (esperado, phone no existe en Meta) pero el LLM corre y persiste.
+- **Limpiar las personas sintéticas** con un click desde la UI del simulador.
+
+**Riesgos identificados y mitigaciones aplicadas:**
+- Personas sintéticas en DB de prod: marcadas con `simulation_source='admin_lab'`, filtro SQL para excluirlas de stats.
+- Phone sintético en Meta: rechazado (status 400), loggeado en `lead_whatsapp_conversations.metadata.error_note`.
+- Auto-desconexión del modo Real: 30 min sin actividad.
+- Doble confirmación de limpieza: `window.confirm()` + `{ confirm: true }` en el body.
+- Rate limit: 100 turnos/lead sintético.
+- Authorization: `requireAdmin` en todos los endpoints.
+
+**Deuda técnica anotada (NO fixée en este sprint):**
+- 4 declaraciones duplicadas del type `BotMode`/`BotGlobalMode`. Marcadas con `// FIXME:`. Refactor queda para sprint aparte.
+- `massive-matrix-generator.ts` no incluye `human_first` en su `ContextKey`. Documentado con TODO.
+
+**Próximos pasos sugeridos (sprint siguiente):**
+- Review + merge a `main` de la rama `feat/human-first-mode`.
+- Promover `human_first` a default si los resultados de la experimentación son buenos.
+- Implementar la tool `send_interactive_button` (TODOs del prompt `human_first`) si David quiere que el modo también pueda mandar interactive buttons.
+- Refactor de la duplicación de types (`src/lib/ai/bot-mode.ts` SSOT).
 
 ---
 

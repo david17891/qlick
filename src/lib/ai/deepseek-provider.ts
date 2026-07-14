@@ -69,6 +69,8 @@ import type { ActiveEventContext } from "./event-context-loader";
 import {
   buildSystemPrompt,
   buildSuperExecutivePrompt,
+  // Sprint v0.9.x PR #1: 4to modo opt-in `human_first` (LLM-first total).
+  buildHumanFirstPrompt,
   buildTaskPrompt
 } from "./agent-prompts";
 import { getAgentTools } from "./agent-tools";
@@ -823,6 +825,9 @@ function wrapRawAsAgentResult(
  *   - "socratic_autopilot_v2":  socrático con tools. Default histórico.
  *   - "socratic_no_tools_v1":   socrático SIN tools (forzado abajo).
  *   - "super_executive":        prompt Súper Ejecutivo (PR #2).
+ *   - "human_first":            LLM-first opt-in (Sprint v0.9.x PR #1).
+ *                               Bypasea la capa de intents rígida;
+ *                               el LLM controla todo el flow.
  *
  * El modo se lee con `readSystemSetting(KEY_BOT_GLOBAL_MODE)` (caché
  * 30s in-memory). Si la DB falla o devuelve null, cae al default
@@ -857,6 +862,12 @@ export async function pickSystemPromptForMode(
 
   if (mode === "super_executive") {
     return buildSuperExecutivePrompt(context);
+  }
+  // Sprint v0.9.x PR #1: 4to modo opt-in `human_first`. LLM-first total,
+  // sin capa de intents rígida. Ver `buildHumanFirstPrompt` en
+  // `src/lib/ai/agent-prompts.ts` para la spec completa.
+  if (mode === "human_first") {
+    return buildHumanFirstPrompt(context);
   }
   // Modo socrático (cualquier variante).
   const isFirstMessage =

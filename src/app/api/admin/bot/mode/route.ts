@@ -5,7 +5,7 @@
  *   (caller decide fallback a env var o default).
  *
  * POST /api/admin/bot/mode
- *   Body: { mode: "socratic_autopilot_v2" | "socratic_no_tools_v1" | "super_executive" }
+ *   Body: { mode: "socratic_autopilot_v2" | "socratic_no_tools_v1" | "super_executive" | "human_first" }
  *   UPSERT en system_settings. Idempotente. Invalida la caché in-memory del
  *   provider deepseek (TTL 30s) al escribir.
  *
@@ -77,8 +77,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
+        // Sprint v0.9.x (PR #1 modo `human_first`): agregamos el 4to
+        // valor al mensaje de error. El type guard `isBotGlobalMode`
+        // en system-settings-server.ts es la SSOT; este mensaje solo
+        // es legible para el admin.
         error:
-          "'mode' debe ser uno de: socratic_autopilot_v2, socratic_no_tools_v1, super_executive.",
+          "'mode' debe ser uno de: socratic_autopilot_v2, socratic_no_tools_v1, super_executive, human_first.",
       },
       { status: 400 }
     );

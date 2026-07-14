@@ -1,6 +1,7 @@
 "use client";
 /**
  * Sprint v0.9.6 — BotSimulatorTab: Laboratorio IA / Simulador de WhatsApp.
+ * Sprint v0.9.x PR #3 — Modo "Real" con personas sintéticas.
  *
  * UI en pantalla dividida:
  *   - Izquierda: chat sandbox (burbujas, input con Enter, limpiar historial).
@@ -9,13 +10,21 @@
  *     reglas inyectadas, evento activo.
  *
  * Controles superiores:
+ *   - Selector de Modo de Simulación: Sandbox (solo LLM, no toca nada) vs
+ *     Real (ejecuta el flow completo contra un lead sintético).
+ *   - Si Real: lista de personas sintéticas, botón "Crear nueva", banner
+ *     de seguridad con auto-timeout (30 min).
  *   - Selector de Lead (Ficticio Sandbox / Lead del CRM).
- *   - Selector de Modo (Modo BD Actual / Override: Súper Ejecutivo, v2, v1).
+ *   - Selector de Modo del Bot (Modo BD Actual / Override).
  *   - Checkbox "Ignorar pausa per-lead".
  *
  * Aislamiento: este componente NUNCA toca Meta / Supabase directamente.
- * Toda la lógica de simulación pasa por `POST /api/admin/bot/simulate`,
- * que es el ÚNICO punto de contacto con el backend.
+ * Toda la lógica de simulación pasa por:
+ *   - `POST /api/admin/bot/simulate` (Sandbox, solo LLM)
+ *   - `POST /api/admin/bot/simulate/real` (Real, flow completo)
+ *   - `POST /api/admin/bot/synthetic-leads` (crear persona)
+ *   - `GET  /api/admin/bot/synthetic-leads` (listar)
+ *   - `DELETE /api/admin/bot/synthetic-leads` (limpiar)
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -25,7 +34,9 @@ import { Card, CardBody, CardHeader, Button, Input, Badge } from "@/components/u
 /* Tipos espejo del endpoint (ver `src/lib/ai/simulator.ts`)            */
 /* ------------------------------------------------------------------ */
 
-type BotMode = "socratic_autopilot_v2" | "socratic_no_tools_v1" | "super_executive";
+type BotMode = "socratic_autopilot_v2" | "socratic_no_tools_v1" | "super_executive" | "human_first";
+// FIXME: SSOT vive en `src/lib/admin/system-settings-server.ts` (`BotGlobalMode`).
+// Refactor pendiente: unificar en un solo archivo de types.
 
 interface SimulateHistoryMessage {
   direction: "inbound" | "outbound";
@@ -74,14 +85,38 @@ interface BotSimulatorTabProps {
 const MODE_LABELS: Record<BotMode, string> = {
   socratic_autopilot_v2: "Socrático v2 (tools)",
   socratic_no_tools_v1: "Socrático v1 (sin tools)",
-  super_executive: "🚀 Súper Ejecutivo"
+  super_executive: "🚀 Súper Ejecutivo",
+  // Sprint v0.9.x PR #1: 4to modo opt-in `human_first` (LLM-first total).
+  // Aparece en el selector del simulador y en la UI de telemetría.
+  human_first: "🧪 Human-First (LLM-first opt-in)"
 };
 
 const MODE_EMOJI: Record<BotMode, string> = {
   socratic_autopilot_v2: "🟢",
   socratic_no_tools_v1: "🔵",
-  super_executive: "🚀"
+  super_executive: "🚀",
+  human_first: "🧪"
 };
+
+/* ------------------------------------------------------------------ */
+/*  Sprint v0.9.x PR #3: tipos espejo del endpoint de sintéticos       */
+/* ------------------------------------------------------------------ */
+
+interface SyntheticLeadSummary {
+  id: string;
+  phoneNormalized: string;
+  name: string;
+  email: string;
+  createdAt: string;
+  createdBy: string;
+  sessionId: string | null;
+}
+
+/** Modo de simulación: Sandbox (solo LLM) o Real (flow completo). */
+type SimulationMode = "sandbox" | "real";
+
+/** Auto-timeout del modo Real: 30 min desde que se activa. */
+const REAL_MODE_TIMEOUT_MS = 30 * 60 * 1000;
 
 /* ------------------------------------------------------------------ */
 /* Componente                                                          */
@@ -111,6 +146,17 @@ export function BotSimulatorTab({ currentMode }: BotSimulatorTabProps) {
     "default"
   );
 
+  // Sprint v0.9.x PR #3: modo Real con personas sintéticas.
+  const [simulationMode, setSimulationMode] = useState<SimulationMode>("sandbox");
+  const [syntheticLeads, setSyntheticLeads] = useState<SyntheticLeadSummary[]>([]);
+  const [selectedSyntheticLeadId, setSelectedSyntheticLeadId] = useState<string>("");
+  // Timestamp (ms) en que se activó el modo Real. Si pasan 30 min sin
+  // actividad, auto-desconectamos para evitar dejar el modo peligroso
+  // activo por accidente.
+  const [realModeStartedAt, setRealModeStartedAt] = useState<number | null>(null);
+  const [creatingSynthetic, setCreatingSynthetic] = useState(false);
+  const [cleaningSynthetic, setCleaningSynthetic] = useState(false);
+
   // Acumulador de telemetría (necesario para los "Rayos X").
   const [rulesOpen, setRulesOpen] = useState(false);
   const [eventOpen, setEventOpen] = useState(false);
@@ -118,11 +164,90 @@ export function BotSimulatorTab({ currentMode }: BotSimulatorTabProps) {
   // Ref para auto-scroll del chat al último mensaje.
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
+  // FIX auditoría 2026-07-14: AbortController para cancelar fetches en
+  // unmount, evitando el warning de React "state update on unmounted
+  // component". También para el setInterval del auto-timeout.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  /**
+   * Sprint v0.9.x PR #3: carga la lista de leads sintéticos desde el
+   * endpoint. Si la lista está vacía, el admin debe crear uno.
+   * Declarado ANTES de los useEffect que lo usan para evitar
+   * "used before declaration" de TS.
+   *
+   * FIX auditoría 2026-07-14: usa AbortController para cancelar el
+   * fetch si el componente se desmonta durante el await.
+   */
+  const loadSyntheticLeads = useCallback(async () => {
+    const controller = new AbortController();
+    try {
+      const r = await fetch("/api/admin/bot/synthetic-leads", {
+        cache: "no-store",
+        signal: controller.signal
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = (await r.json()) as { ok: boolean; leads?: SyntheticLeadSummary[]; error?: string };
+      if (mountedRef.current && j.ok && j.leads) {
+        setSyntheticLeads(j.leads);
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") return;
+      if (mountedRef.current) {
+        setError(
+          `No se pudo cargar leads sintéticos: ${err instanceof Error ? err.message : String(err)}`
+        );
+      }
+    }
+    return () => controller.abort();
+  }, []);
+
   useEffect(() => {
     if (chatScrollRef.current) {
       chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
     }
   }, [history]);
+
+  // Sprint v0.9.x PR #3: cuando se activa el modo Real, cargar la lista
+  // de leads sintéticos. Al desactivar, limpiar el seleccionado.
+  useEffect(() => {
+    if (simulationMode === "real") {
+      void loadSyntheticLeads();
+      setRealModeStartedAt(Date.now());
+    } else {
+      setSelectedSyntheticLeadId("");
+      setRealModeStartedAt(null);
+    }
+  }, [simulationMode, loadSyntheticLeads]);
+
+  // Sprint v0.9.x PR #3: auto-timeout del modo Real (30 min sin actividad).
+  // Si pasaron 30 min desde `realModeStartedAt`, desconectamos el modo.
+  // FIX auditoría 2026-07-14: usa `mountedRef` para evitar setState en
+  // componente desmontado (warning de React).
+  useEffect(() => {
+    if (simulationMode !== "real" || realModeStartedAt === null) return;
+    const interval = setInterval(() => {
+      if (!mountedRef.current) return;
+      if (Date.now() - realModeStartedAt > REAL_MODE_TIMEOUT_MS) {
+        setSimulationMode("sandbox");
+        setError(
+          "Modo Real auto-desconectado por inactividad (30 min). Vuelve a activarlo para continuar."
+        );
+      }
+    }, 60_000); // chequeo cada minuto
+    return () => clearInterval(interval);
+  }, [simulationMode, realModeStartedAt]);
+
+  /**
+   * Sprint v0.9.x PR #3: carga la lista de leads sintéticos desde el
+   * endpoint. Si la lista está vacía, el admin debe crear uno.
+   * (Declarado arriba, antes de los useEffect que lo usan.)
+   */
 
   const effectiveMode: BotMode = useMemo(() => {
     return modeChoice === "db" ? currentMode : modeChoice;
@@ -132,6 +257,14 @@ export function BotSimulatorTab({ currentMode }: BotSimulatorTabProps) {
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed || sending) return;
+
+      // Sprint v0.9.x PR #3: en modo Real, requerimos un leadId seleccionado.
+      if (simulationMode === "real" && !selectedSyntheticLeadId) {
+        setError(
+          "Modo Real: selecciona una persona sintética o crea una nueva antes de mandar mensajes."
+        );
+        return;
+      }
 
       const userMsg: SimulateHistoryMessage = {
         direction: "inbound",
@@ -144,47 +277,101 @@ export function BotSimulatorTab({ currentMode }: BotSimulatorTabProps) {
       setSending(true);
       setError(null);
 
-      const payload = {
-        message: trimmed,
-        history: newHistory,
-        modeOverride: modeChoice === "db" ? null : modeChoice,
-        leadContext: useRealLead && realLeadId.trim() !== ""
-          ? { leadId: realLeadId.trim() }
-          : null,
-        ignoreLeadPause,
-        // Sprint v0.9.7 (Switch Flash/Pro): "default" → null (provider
-        // decide). "flash" / "pro" → override explícito.
-        tierOverride: tierChoice === "default" ? null : tierChoice
-      };
-
       try {
-        const r = await fetch("/api/admin/bot/simulate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-        if (!r.ok) {
-          const j = (await r.json().catch(() => ({}))) as { error?: string };
-          throw new Error(j.error ?? `HTTP ${r.status}`);
-        }
-        const result = (await r.json()) as SimulateResponse;
-        setLastResponse(result);
-
-        // Inyectar la respuesta del bot al historial para mantener el
-        // contexto conversacional (es lo que se manda en la próxima
-        // request como parte de `history`).
-        if (result.ok && result.reply) {
+        if (simulationMode === "real") {
+          // Modo Real: ejecutar el flow completo contra el lead sintético.
+          // FIX 2026-07-14: este path NO usa `lastResponse` (SimulateResponse)
+          // porque el endpoint Real devuelve un shape distinto (SimulateRealResponse).
+          // Mostramos un output sintético en el chat con el preview del bot.
+          const r = await fetch("/api/admin/bot/simulate/real", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              leadId: selectedSyntheticLeadId,
+              body: trimmed
+            })
+          });
+          if (!r.ok) {
+            const j = (await r.json().catch(() => ({}))) as { error?: string };
+            throw new Error(j.error ?? `HTTP ${r.status}`);
+          }
+          const result = (await r.json()) as {
+            ok: boolean;
+            botResult: {
+              intent: string | null;
+              responseKind: string;
+              responsePreview: string | null;
+              note: string;
+            };
+            providerAttempt: { attempted: boolean; errorMessage: string | null };
+            latencyMs: number;
+          };
+          // Mostrar el preview en el chat como si fuera respuesta del bot.
+          const preview = result.botResult.responsePreview ??
+            `(intent=${result.botResult.intent ?? "?"}, responseKind=${result.botResult.responseKind})`;
           setHistory((h) => [
             ...h,
             {
               direction: "outbound",
-              body: result.reply,
+              body: preview,
               timestamp: new Date().toISOString()
             }
           ]);
+          // Construir un SimulateResponse mínimo para la telemetría.
+          setLastResponse({
+            ok: result.ok && result.botResult.responseKind !== "none",
+            reply: preview,
+            telemetry: {
+              modeUsed: effectiveMode,
+              intent: result.botResult.intent ?? "?",
+              toolsCalled: [],
+              injectedRules: [],
+              eventContext: null,
+              usage: {
+                promptTokens: 0,
+                completionTokens: 0,
+                totalTokens: 0,
+                estimatedCostCents: 0,
+                model: "real-mode"
+              }
+            },
+            note: `Modo Real · intent=${result.botResult.intent ?? "?"} · ${result.latencyMs}ms · provider ${result.providerAttempt.errorMessage ? "falló (esperado)" : "OK"}`
+          });
+        } else {
+          // Modo Sandbox: solo LLM con system prompt override.
+          const payload = {
+            message: trimmed,
+            history: newHistory,
+            modeOverride: modeChoice === "db" ? null : modeChoice,
+            leadContext: useRealLead && realLeadId.trim() !== ""
+              ? { leadId: realLeadId.trim() }
+              : null,
+            ignoreLeadPause,
+            tierOverride: tierChoice === "default" ? null : tierChoice
+          };
+          const r = await fetch("/api/admin/bot/simulate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+          if (!r.ok) {
+            const j = (await r.json().catch(() => ({}))) as { error?: string };
+            throw new Error(j.error ?? `HTTP ${r.status}`);
+          }
+          const result = (await r.json()) as SimulateResponse;
+          setLastResponse(result);
+          if (result.ok && result.reply) {
+            setHistory((h) => [
+              ...h,
+              {
+                direction: "outbound",
+                body: result.reply,
+                timestamp: new Date().toISOString()
+              }
+            ]);
+          }
+          setSessionCostCents((c) => c + (result.telemetry.usage.estimatedCostCents ?? 0));
         }
-
-        setSessionCostCents((c) => c + (result.telemetry.usage.estimatedCostCents ?? 0));
         setSessionTurns((t) => t + 1);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -192,8 +379,95 @@ export function BotSimulatorTab({ currentMode }: BotSimulatorTabProps) {
         setSending(false);
       }
     },
-    [history, modeChoice, useRealLead, realLeadId, ignoreLeadPause, tierChoice, sending]
+    [
+      history,
+      modeChoice,
+      useRealLead,
+      realLeadId,
+      ignoreLeadPause,
+      tierChoice,
+      sending,
+      simulationMode,
+      selectedSyntheticLeadId,
+      effectiveMode
+    ]
   );
+
+  /**
+   * Sprint v0.9.x PR #3: crea un lead sintético y lo selecciona.
+   */
+  const createSyntheticLeadAndSelect = useCallback(async () => {
+    setCreatingSynthetic(true);
+    setError(null);
+    try {
+      const r = await fetch("/api/admin/bot/synthetic-leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({})
+      });
+      if (!r.ok) {
+        const j = (await r.json().catch(() => ({}))) as { error?: string };
+        throw new Error(j.error ?? `HTTP ${r.status}`);
+      }
+      const j = (await r.json()) as { ok: boolean; lead?: SyntheticLeadSummary };
+      if (j.ok && j.lead) {
+        setSyntheticLeads((prev) => [j.lead!, ...prev]);
+        setSelectedSyntheticLeadId(j.lead!.id);
+      }
+    } catch (err) {
+      setError(
+        `No se pudo crear el lead sintético: ${err instanceof Error ? err.message : String(err)}`
+      );
+    } finally {
+      setCreatingSynthetic(false);
+    }
+  }, []);
+
+  /**
+   * Sprint v0.9.x PR #3: borra TODOS los leads sintéticos. Requiere
+   * doble confirmación (handled por el browser confirm()).
+   */
+  const cleanAllSyntheticLeads = useCallback(async () => {
+    if (
+      !window.confirm(
+        "¿Borrar TODAS las personas sintéticas? Esto eliminará todos los leads de prueba y sus conversaciones (cascade). No se puede deshacer."
+      )
+    ) {
+      return;
+    }
+    setCleaningSynthetic(true);
+    setError(null);
+    try {
+      const r = await fetch("/api/admin/bot/synthetic-leads", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: true })
+      });
+      if (!r.ok) {
+        const j = (await r.json().catch(() => ({}))) as { error?: string };
+        throw new Error(j.error ?? `HTTP ${r.status}`);
+      }
+      const j = (await r.json()) as {
+        ok: boolean;
+        deletedLeads: number;
+        deletedConversations: number;
+        note?: string;
+      };
+      setSyntheticLeads([]);
+      setSelectedSyntheticLeadId("");
+      // Mostrar feedback breve como "error" positivo (color distinto
+      // sería ideal, pero el sistema actual usa `error` para feedback).
+      setError(
+        `✅ Limpieza OK: ${j.deletedLeads} leads + ${j.deletedConversations} conversations borradas.`
+      );
+    } catch (err) {
+      setError(
+        `No se pudo limpiar: ${err instanceof Error ? err.message : String(err)}`
+      );
+    } finally {
+      setCleaningSynthetic(false);
+    }
+  }, []);
 
   const clearHistory = useCallback(() => {
     setHistory([]);
@@ -223,6 +497,114 @@ export function BotSimulatorTab({ currentMode }: BotSimulatorTabProps) {
       {/* Controles superiores */}
       <Card>
         <CardBody className="space-y-3">
+          {/* Sprint v0.9.x PR #3: selector de Modo de Simulación + panel Real */}
+          <div className="space-y-2">
+            <label className="text-xs font-semibold text-ink-muted">
+              🧪 Modo de Simulación
+            </label>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                onClick={() => setSimulationMode("sandbox")}
+                disabled={sending}
+                className={
+                  simulationMode === "sandbox"
+                    ? "flex-1 bg-brand-500 text-white"
+                    : "flex-1 bg-white border border-brand-200 text-ink"
+                }
+                aria-pressed={simulationMode === "sandbox"}
+              >
+                ⚡ Sandbox (solo LLM)
+              </Button>
+              <Button
+                type="button"
+                onClick={() => setSimulationMode("real")}
+                disabled={sending}
+                className={
+                  simulationMode === "real"
+                    ? "flex-1 bg-red-600 text-white"
+                    : "flex-1 bg-white border border-red-200 text-red-700"
+                }
+                aria-pressed={simulationMode === "real"}
+              >
+                🔴 Real (flow completo)
+              </Button>
+            </div>
+            {simulationMode === "real" && (
+              <div
+                className="rounded-lg border-2 border-red-500 bg-red-50 p-3 text-sm"
+                role="alert"
+              >
+                <p className="font-bold text-red-800">
+                  ⚠️ MODO REAL ACTIVO
+                </p>
+                <p className="text-red-700 mt-1">
+                  Los mensajes se ejecutan contra el bot-engine completo
+                  contra una persona sintética (marcada con{" "}
+                  <code className="bg-white px-1 rounded">
+                    simulation_source=&quot;admin_lab&quot;
+                  </code>
+                  ). El phone no existe en Meta, así que el provider
+                  outbound fallará (esperado). Auto-desconexión: 30 min sin
+                  actividad.
+                </p>
+              </div>
+            )}
+            {simulationMode === "real" && (
+              <div className="space-y-2 border border-red-100 rounded-lg p-3 bg-red-50/30">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-ink-muted">
+                    Personas sintéticas ({syntheticLeads.length})
+                  </label>
+                  <div className="flex gap-1">
+                    <Button
+                      type="button"
+                      onClick={() => void createSyntheticLeadAndSelect()}
+                      disabled={creatingSynthetic || sending}
+                      className="text-xs px-2 py-1 bg-brand-500 text-white rounded"
+                    >
+                      {creatingSynthetic ? "⏳" : "➕"} Crear
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => void cleanAllSyntheticLeads()}
+                      disabled={
+                        cleaningSynthetic ||
+                        sending ||
+                        syntheticLeads.length === 0
+                      }
+                      className="text-xs px-2 py-1 bg-red-600 text-white rounded"
+                    >
+                      {cleaningSynthetic ? "⏳" : "🗑️"} Limpiar todo
+                    </Button>
+                  </div>
+                </div>
+                {syntheticLeads.length === 0 ? (
+                  <p className="text-xs text-ink-muted italic">
+                    No hay personas sintéticas. Crea una para empezar.
+                  </p>
+                ) : (
+                  <select
+                    className="w-full p-2 border border-red-200 rounded-md text-xs"
+                    value={selectedSyntheticLeadId}
+                    onChange={(e) =>
+                      setSelectedSyntheticLeadId(e.target.value)
+                    }
+                    disabled={sending}
+                  >
+                    <option value="">— Selecciona una persona —</option>
+                    {syntheticLeads.map((sl) => (
+                      <option key={sl.id} value={sl.id}>
+                        {sl.name} · {sl.phoneNormalized} ·{" "}
+                        {sl.createdBy}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
             {/* Selector de Motor IA (Sprint v0.9.7 Switch Flash/Pro) */}
             <div className="space-y-1">
@@ -262,6 +644,7 @@ export function BotSimulatorTab({ currentMode }: BotSimulatorTabProps) {
                   <option value="super_executive">🚀 Súper Ejecutivo (override)</option>
                   <option value="socratic_autopilot_v2">🟢 Socrático v2 (override)</option>
                   <option value="socratic_no_tools_v1">🔵 Socrático v1 (override)</option>
+                  <option value="human_first">🧪 Human-First (override)</option>
                 </optgroup>
               </select>
               {modeChoice !== "db" && (
