@@ -86,7 +86,7 @@ export function EncuestaClient({
     }
     // Email es required (lo pide el endpoint)
     if (!email.trim()) {
-      return "Por favor escribí tu correo.";
+      return "Por favor escribe tu correo.";
     }
     return null;
   }
@@ -278,10 +278,16 @@ export function EncuestaClient({
         </div>
       )}
 
-      {/* Submit */}
+      {/* Submit.
+          FIX 2026-07-13 (David bug report): antes el botón estaba
+          `disabled={state === "filling"}` que es el estado inicial,
+          entonces NUNCA se podía clickear al cargar. El state pasa a
+          "submitting"/"error"/"success" después de tocar submit, así
+          que el botón siempre arrancaba bloqueado. Ahora el form no
+          se renderiza durante "submitting" o "success" (early return
+          arriba), entonces no necesitamos disabled en absoluto. */}
       <button
         type="submit"
-        disabled={state === "filling"}
         className="w-full px-4 py-3 rounded-lg bg-violet-600 text-white font-semibold hover:bg-violet-700 disabled:opacity-50"
       >
         {state === "error" ? "Reintentar" : "Enviar mi feedback"}
