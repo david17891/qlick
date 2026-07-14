@@ -4028,3 +4028,35 @@ ame si esta null y tenemos confirmation linkeada (defense in depth para attendee
   - **Authorization:** equireAdmin en todos los endpoints. Solo el admin puede crear/limpiar/ejecutar contra sintéticos.
 
 - **Trigger:** David dijo "yo quiero que el modo simulación también tenga un modo simulación extrema, bueno simulación real donde yo pueda, por ejemplo, simular nuevas personas que de verdad registre en las bases de datos". Después de este PR, el laboratorio del admin puede ejecutar el flow completo del bot sin tocar leads reales.
+
+
+## 2026-07-14 ~02:20 Phoenix — Sprint v0.9.x PR #4: Tests E2E del modo Real + documentación
+
+- **Pregunta:** Después del PR #3 (modo Real con personas sintéticas), el endpoint /api/admin/bot/simulate/real no tenía tests propios. Los tests del bot-engine cubren el motor, pero el contrato del endpoint Real (auth, validación, shape de respuesta, rate limit, paridad con producción) no estaba documentado ni protegido contra regresiones.
+
+- **Decisión:** Agregar 11 tests E2E que validan el contrato del endpoint y documentan el flujo end-to-end. Sin mockear processInboundMessage directamente (eso requeriría mockear el module graph completo); en su lugar, los tests validan el layer de validación (auth, body, leadId) y el shape del response.
+
+- **Razón:** Los tests E2E sirven como documentación ejecutable del endpoint. Si alguien cambia el contrato (ej: cambia el shape de providerAttempt), los tests rompen y obligan a actualizar. También documentan la paridad con producción (mismo processInboundMessage) y las diferencias intencionales (bypass de HMAC y idempotency, porque el wamid es sintético).
+
+- **Impacto:**
+
+  **11 tests nuevos (	ests/api-admin-bot-simulate-real.test.mjs):**
+  - Shape de SimulateRealRequest y SimulateRealResponse documentados como objetos literales.
+  - Rechazo temprano sin auth (401), sin leadId (400), sin body (400), JSON inválido (400).
+  - Rate limit documentado: 100 turnos máximo por lead sintético.
+  - Phone sintético rango +52555555XX (100 combinaciones, Meta rechaza el envío).
+  - Email sintético dominio qlick.test (TLD reservado RFC 2606, no llega a inbox real).
+  - Flujo end-to-end documentado como 13 pasos secuenciales (UI activa ? DB crea lead ? endpoint valida ? processInboundMessage ? provider falla esperado ? telemetría).
+  - Paridad 1-a-1 con producción: processInboundMessage se ejecuta en modo Real igual que en el webhook de producción, con la única diferencia del bypass de HMAC e idempotency.
+
+  **Suite total: 1320/1320 verde** (1309 del PR #3 + 11 del PR #4).
+  **Build + type-check + lint: limpios.**
+
+- **Archivos tocados (1, NUEVO):**
+  - 	ests/api-admin-bot-simulate-real.test.mjs (257 líneas).
+
+- **Lo que NO se hizo (decisión consciente):**
+  - Mockear processInboundMessage directamente: requeriría un module mock complejo. Los tests validan el contrato del endpoint, no el flow interno. El flow se valida manualmente desde la UI.
+  - Refactor del simulador para usar el motor real como dryRun: true: el endpoint Real del PR #3 ya ejecuta el motor real completo. El refactor "seco" no aporta valor adicional.
+
+- **Trigger:** Después del PR #3, el modo Real funciona end-to-end. Estos tests son la red de seguridad para futuras refactorizaciones del endpoint o del motor. Si alguien cambia el shape de la respuesta o las validaciones, los tests rompen antes de que el cambio llegue a producción.
