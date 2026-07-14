@@ -26,11 +26,24 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { errorLog, infoLog } from "@/lib/log";
 
-/** Prefijo de phone para leads sintéticos. 555 no existe en México real. */
-const SYNTHETIC_PHONE_PREFIX = "+52555555";
+/** Prefijo de phone para leads sintéticos.
+ *
+ * FIX bug post-merge 2026-07-14 (segundo): el prefijo original era
+ * `+52555555` (9 chars, 6 dígitos extra después del +52). Combinado
+ * con 10 dígitos random, el phone tenía 19 chars. `normalizePhone`
+ * solo acepta 8-15 dígitos, por lo que el phone NO matcheaba el
+ * formato mexicano estándar y el bot-engine descartaba el mensaje.
+ *
+ * Solución: prefijo `+5255555` (8 chars, 5 dígitos extra después
+ * del +52). Combinado con 5 dígitos random, el phone tiene 13
+ * chars (`+52` + 10 dígitos = E.164 MX estricto). Matchea
+ * `normalizePhone` (12 dígitos con `+`). Combinaciones únicas:
+ * 10^5 = 100,000. Suficiente para testing.
+ */
+const SYNTHETIC_PHONE_PREFIX = "+5255555";
 
-/** Sufijo random (2 dígitos) → 100 combinaciones. */
-const SYNTHETIC_PHONE_SUFFIX_RANGE = 100;
+/** Sufijo random (5 dígitos) → 100,000 combinaciones. */
+const SYNTHETIC_PHONE_SUFFIX_RANGE = 100_000;
 
 /** Email ficticio: usa TLD .test (RFC 2606 reservado). */
 const SYNTHETIC_EMAIL_DOMAIN = "qlick.test";
@@ -101,10 +114,14 @@ function generateSyntheticPhone(): string {
   // negativo, el módulo es negativo. Eso causaba phones como
   // `+52555555-1691567469` (con guión en medio), NO válidos.
   // Math.abs() garantiza valor no-negativo antes del módulo.
-  // FIX 2026-07-14 (post-debug David): agregar Math.abs.
+  // FIX bug post-merge 2026-07-14 (segundo): prefijo cambiado a
+  // `+5255555` (8 chars) y rango a 100,000 (5 dígitos random) para
+  // que el phone tenga 13 chars y matchee `normalizePhone` (E.164
+  // MX: +52 + 10 dígitos).
   const num =
-    Math.abs(chunk1 ^ chunk2 ^ chunk3 ^ chunk4) % 10_000_000_000;
-  return `${SYNTHETIC_PHONE_PREFIX}${num.toString().padStart(10, "0")}`;
+    Math.abs(chunk1 ^ chunk2 ^ chunk3 ^ chunk4) %
+    SYNTHETIC_PHONE_SUFFIX_RANGE;
+  return `${SYNTHETIC_PHONE_PREFIX}${num.toString().padStart(5, "0")}`;
 }
 
 /** Genera un email sintético único. */

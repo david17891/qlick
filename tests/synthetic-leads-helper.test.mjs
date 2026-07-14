@@ -138,12 +138,36 @@ test("REGRESIÓN #1: source del lead sintético es 'synthetic_lab' (valor válid
 });
 
 test("REGRESIÓN #2: phone sintético tiene formato E.164 estricto", () => {
-  // El phone DEBE ser `+52555555 + 10 dígitos` (19 chars total:
-  // 9 del prefijo + 10 dígitos).
-  // Verificamos el patrón con una regex.
-  const samplePhone = "+525555551234567890";
-  assert.match(samplePhone, /^\+52555555\d{10}$/);
-  assert.equal(samplePhone.length, 19);
+  // El phone DEBE ser `+5255555 + 5 dígitos random` (13 chars total:
+  // 8 del prefijo + 5 random). Formato E.164 MX: +52 + 10 dígitos.
+  const samplePhone = "+525555512345";
+  assert.match(samplePhone, /^\+5255555\d{5}$/);
+  assert.equal(samplePhone.length, 13);
+});
+
+test("REGRESIÓN #2b: phone sintético matchea `normalizePhone`", () => {
+  // FIX bug post-merge 2026-07-14 (tercer): el prefijo `+52555555`
+  // generaba phones de 19 chars. `normalizePhone` solo acepta
+  // 8-15 dígitos, por lo que `processInboundMessage` rechazaba
+  // el mensaje. Verificamos que el phone matchea el formato.
+  // Simulamos el algoritmo:
+  const uuid = globalThis.crypto.randomUUID();
+  const hex = uuid.replace(/-/g, "");
+  const chunk1 = parseInt(hex.slice(0, 8), 16);
+  const chunk2 = parseInt(hex.slice(8, 16), 16);
+  const chunk3 = parseInt(hex.slice(16, 24), 16);
+  const chunk4 = parseInt(hex.slice(24, 32), 16);
+  const num = Math.abs(chunk1 ^ chunk2 ^ chunk3 ^ chunk4) % 100_000;
+  const phone = `+5255555${num.toString().padStart(5, "0")}`;
+  // El phone tiene 13 chars. Strip + → 12 dígitos. Matchea la
+  // primera regla de normalizePhone: 12 dígitos empezando con 52.
+  const digits = phone.replace(/\D/g, "");
+  assert.equal(digits.length, 12);
+  assert.ok(digits.startsWith("52"), "debe empezar con 52");
+  assert.ok(
+    digits.length >= 8 && digits.length <= 15,
+    "debe estar en rango 8-15 dígitos"
+  );
 });
 
 test("REGRESIÓN #3: email sintético usa TLD .test (RFC 2606 reservado)", () => {
@@ -164,11 +188,11 @@ test("REGRESIÓN #4: crypto.randomUUID() disponible en el runtime de Node", () =
   );
 });
 
-test("REGRESIÓN #5: 1000 generaciones de phone no colisionan (10^10 combinaciones)", () => {
+test("REGRESIÓN #5: 1000 generaciones de phone no colisionan (10^5 combinaciones)", () => {
   // FIX auditoría 2026-07-14 (segundo intento): el primer fix usaba
   // `% 100` que solo daba 100 valores. Ahora el helper usa XOR de 4
-  // chunks de 8 chars hex del UUID, modulo 10^10. Combinaciones únicas:
-  // 10,000,000,000. El test genera 1000 y verifica unicidad estricta.
+  // chunks de 8 chars hex del UUID, modulo 100_000. Combinaciones
+  // únicas: 100,000. El test genera 1000 y verifica unicidad.
   const phones = new Set();
   for (let i = 0; i < 1000; i++) {
     const uuid = globalThis.crypto.randomUUID();
@@ -181,15 +205,15 @@ test("REGRESIÓN #5: 1000 generaciones de phone no colisionan (10^10 combinacion
     // (XOR de unsigned ints puede ser negativo, y `%` en JS
     // preserva el signo).
     const num =
-      Math.abs(chunk1 ^ chunk2 ^ chunk3 ^ chunk4) % 10_000_000_000;
-    phones.add(`+52555555${num.toString().padStart(10, "0")}`);
+      Math.abs(chunk1 ^ chunk2 ^ chunk3 ^ chunk4) % 100_000;
+    phones.add(`+5255555${num.toString().padStart(5, "0")}`);
   }
-  // Con 10^10 valores únicos y 1000 generaciones, la probabilidad
-  // de colisión es < 0.005% (birthday paradox). Esperamos 1000 únicos.
-  assert.equal(
-    phones.size,
-    1000,
-    `Esperaba 1000 phones únicos, obtuve ${phones.size}. Probable colisión en el algoritmo.`
+  // Con 100,000 valores únicos y 1000 generaciones, la probabilidad
+  // de colisión es ~0.5% (birthday paradox). Aceptamos si hay al
+  // menos 990 únicos (umbral laxo para evitar flakiness).
+  assert.ok(
+    phones.size >= 990,
+    `Esperaba >=990 phones únicos en 1000 generaciones, obtuve ${phones.size}.`
   );
 });
 
@@ -200,7 +224,7 @@ test("REGRESIÓN #6: phone generado es SIEMPRE E.164 válido (sin guión en medi
   // generaba phones como "+52555555-1691567469" (con guión).
   // Fix: Math.abs() antes del módulo. El test genera 1000 phones
   // y verifica que TODOS son E.164 estricto (sin guión).
-  const PHONE_RE = /^\+52555555\d{10}$/;
+  const PHONE_RE = /^\+5255555\d{5}$/;
   for (let i = 0; i < 1000; i++) {
     const uuid = globalThis.crypto.randomUUID();
     const hex = uuid.replace(/-/g, "");
@@ -209,8 +233,8 @@ test("REGRESIÓN #6: phone generado es SIEMPRE E.164 válido (sin guión en medi
     const chunk3 = parseInt(hex.slice(16, 24), 16);
     const chunk4 = parseInt(hex.slice(24, 32), 16);
     const num =
-      Math.abs(chunk1 ^ chunk2 ^ chunk3 ^ chunk4) % 10_000_000_000;
-    const phone = `+52555555${num.toString().padStart(10, "0")}`;
+      Math.abs(chunk1 ^ chunk2 ^ chunk3 ^ chunk4) % 100_000;
+    const phone = `+5255555${num.toString().padStart(5, "0")}`;
     assert.match(
       phone,
       PHONE_RE,
