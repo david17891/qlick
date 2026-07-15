@@ -6029,7 +6029,7 @@ export async function processInboundMessage(
                 );
               }
 
-              // FIX sprint 2026-07-15d: crear event_access al
+              // FIX sprint 2026-07-15d + 2026-07-15f: crear event_access al
               // confirmar la inscripcion (no al pagar). El QR da
               // acceso al evento independiente del estado de pago
               // (David: 50-80% paga en puerta). El staff cobra en
@@ -6037,12 +6037,18 @@ export async function processInboundMessage(
               // check-in. `event_pay_at_door` es el source nuevo en
               // `event-entitlements.ts` para distinguir esto del
               // acceso por Stripe.
+              //
+              // FIX 2026-07-15f: userId es null (lead no es auth user)
+              // y pasamos confirmationId para que la idempotencia del
+              // grant funcione (sino GRANT no encuentra el access
+              // existente si se llama 2 veces).
               try {
                 const { grantEventAccess } = await import(
                   "../lms/event-entitlements"
                 );
                 await grantEventAccess({
-                  userId: lead.id,
+                  userId: null,
+                  confirmationId: confirmResult.confirmation.id,
                   eventId: evtForPayment?.id ?? "",
                   source: "event_pay_at_door",
                   grantedReason: "confirmation_whatsapp_bot",

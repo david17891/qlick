@@ -72,6 +72,12 @@ export interface EventAccess {
   accessStatus: EventAccessStatus;
   accessSource: EventAccessSource;
   paymentId: string | null;
+  /**
+   * FK a `event_confirmations.id` cuando el access viene del bot de
+   * WhatsApp / pago mixto (sprint 2026-07-15). Nullable para grants
+   * historicos (Stripe con auth user) o admin grants sin confirmation.
+   */
+  confirmationId: string | null;
   startsAt: string;
   expiresAt: string | null;
   grantedReason: string | null;
@@ -93,6 +99,7 @@ interface EventAccessRow {
   access_status: string;
   access_source: string;
   payment_id: string | null;
+  confirmation_id: string | null;
   starts_at: string;
   expires_at: string | null;
   granted_reason: string | null;
@@ -117,6 +124,7 @@ function mapEventAccessRow(row: EventAccessRow): EventAccess {
     accessStatus: row.access_status as EventAccessStatus,
     accessSource: row.access_source as EventAccessSource,
     paymentId: row.payment_id,
+    confirmationId: row.confirmation_id,
     startsAt: row.starts_at,
     expiresAt: row.expires_at,
     grantedReason: row.granted_reason,
@@ -267,12 +275,21 @@ export async function checkEventPaidAccess(
  * - Simulator dev (Fase 7+): source='simulated_event_payment'.
  * - Admin manual: source='manual_event_admin'.
  * - Cupón 100%: source='coupon'.
+ * - Bot WhatsApp confirmando inscripcion (sprint 2026-07-15d):
+ *   source='event_pay_at_door' con confirmationId y userId=null
+ *   (el lead no tiene auth.user, es solo lead).
+ *
+ * FIX sprint 2026-07-15f: acepta `userId: null` cuando el grant
+ * viene del bot (lead sin auth user). La idempotencia se busca
+ * por (confirmationId, eventId) si confirmationId esta presente,
+ * o por (userId, eventId) si userId esta presente.
  */
 export async function grantEventAccess(params: {
-  userId: string;
+  userId: string | null;
   eventId: string;
   source: EventAccessSource;
   paymentId?: string | null;
+  confirmationId?: string | null;
   expiresAt?: Date | null;
   grantedReason: string;
 }): Promise<EventAccess> {
@@ -283,27 +300,59 @@ export async function grantEventAccess(params: {
     );
   }
 
+  // Validacion: al menos uno de userId o confirmationId debe estar.
+  if (!params.userId && !params.confirmationId) {
+    throw new Error(
+      "[event-entitlements] grantEventAccess: userId o confirmationId requerido"
+    );
+  }
+
   const supabase = createSupabaseAdminClient();
   const now = new Date().toISOString();
 
-  // 1. Buscar si ya hay access active para (user, event).
-  const { data: existing } = await supabase
-    .from("event_access")
-    .select("id")
-    .eq("user_id", params.userId)
-    .eq("event_id", params.eventId)
-    .eq("access_status", "active")
-    .maybeSingle();
+  // 1. Buscar si ya hay access active. Prioridad:
+  //    a) por confirmation_id (sprint pago mixto)
+  //    b) por user_id (sprint Stripe con auth user)
+  let existingId: string | null = null;
 
-  if (existing) {
-    // Idempotencia: refrescar reason.
+  if (params.confirmationId) {
+    // @ts-ignore — event_access.confirmation_id agregado en
+    // migration 20260715131000 (auditoria 2026-07-15f). El typegen
+    // local no lo incluye todavia. Regenerar typegen en sprint
+    // futuro (ver memory MEMORY: A-2 Regenerar typegen).
+    const { data: byConf } = await supabase
+      .from("event_access")
+      .select("id")
+      .eq("confirmation_id" as never, params.confirmationId as never)
+      .eq("event_id", params.eventId)
+      .eq("access_status", "active")
+      .maybeSingle();
+    existingId = (byConf as unknown as { id: string } | null)?.id ?? null;
+  }
+
+  if (!existingId && params.userId) {
+    const { data: byUser } = await supabase
+      .from("event_access")
+      .select("id")
+      .eq("user_id", params.userId)
+      .eq("event_id", params.eventId)
+      .eq("access_status", "active")
+      .maybeSingle();
+    existingId = (byUser as unknown as { id: string } | null)?.id ?? null;
+  }
+
+  if (existingId) {
+    // Idempotencia: refrescar reason (y source si cambio: bot->stripe).
     const { data: refreshed, error: updError } = await supabase
       .from("event_access")
       .update({
         granted_reason: params.grantedReason,
-        // No tocamos starts_at ni expires_at: respetamos el original.
+        // Si venia del bot y ahora pago Stripe, promovemos el source.
+        access_source: params.source,
+        // Linkear el payment_id si ahora lo tenemos.
+        payment_id: params.paymentId ?? null,
       })
-      .eq("id", existing.id)
+      .eq("id", existingId)
       .select("*")
       .single();
 
@@ -322,14 +371,18 @@ export async function grantEventAccess(params: {
     access_status: "active",
     access_source: params.source,
     payment_id: params.paymentId ?? null,
+    // @ts-ignore — event_access.confirmation_id agregado en
+    // migration 20260715131000 (auditoria 2026-07-15f). Typegen stale.
+    confirmation_id: params.confirmationId ?? null,
     starts_at: now,
     expires_at: params.expiresAt ? params.expiresAt.toISOString() : null,
     granted_reason: params.grantedReason,
   };
 
+  // @ts-ignore — typegen stale (mismo motivo que arriba).
   const { data: created, error: insError } = await supabase
     .from("event_access")
-    .insert(insertPayload)
+    .insert(insertPayload as never)
     .select("*")
     .single();
 

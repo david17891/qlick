@@ -493,13 +493,26 @@ async function handleCheckoutCompleted(
     });
   } else {
     // event | masterclass → grantEventAccess.
-    // FIX sprint 2026-07-15d: el bot-engine ya crea el event_access
-    // con source='event_pay_at_door' al confirmar la inscripcion
-    // (commit 2). grantEventAccess es idempotente (UPDATE si existe,
-    // INSERT si no) y actualiza el source a 'event_purchase' para
-    // distinguir pago-en-linea de pago-en-puerta.
+    // FIX sprint 2026-07-15d + 2026-07-15f: el bot-engine ya crea el
+    // event_access con source='event_pay_at_door' al confirmar la
+    // inscripcion (commit 2). Aqui en el webhook promovemos el access
+    // a 'event_purchase' (pago online confirmado). Pasamos
+    // confirmationId para que la idempotencia matchee el access del
+    // bot (sino GRANT busca por userId y como el bot dejo userId=null
+    // no encontraria el access existente).
+    //
+    // FIX 2026-07-15f (auditoria): tambien necesitamos el
+    // confirmationId aqui. Lo buscamos por (event_id + payment metadata
+    // o por (event_id + lead via user_id)). En la mayoria de los
+    // casos viene del checkout que SI tiene userId, asi que pasamos
+    // ambos y el lookup prioriza confirmationId.
+    const confLookup = await findConfirmationIdForEvent({
+      eventId: productRef.id,
+      leadId: userId,
+    }).catch(() => null);
     await grantEventAccess({
       userId,
+      confirmationId: confLookup,
       eventId: productRef.id,
       source: "event_purchase",
       paymentId: payment.id,
@@ -537,6 +550,55 @@ async function handleCheckoutCompleted(
       access_granted: true,
     },
   };
+}
+
+/**
+ * FIX sprint 2026-07-15f (auditoria): busca el confirmationId del
+ * lead para un evento. Se usa en el webhook de Stripe para que el
+ * grantEventAccess pueda matchear el access existente del bot
+ * (sino busca por userId y como el bot dejo userId=null no
+ * encontraria el access).
+ *
+ * Estrategia:
+ * 1. JOIN leads con event_confirmations por phone_normalized.
+ * 2. Fallback: por email.
+ * 3. Fallback: el mas reciente del evento (puede haber mas de 1
+ *    confirmation por lead si se inscribio 2 veces — pero el
+ *    checkout es 1 a 1).
+ */
+async function findConfirmationIdForEvent(args: {
+  eventId: string;
+  leadId: string;
+}): Promise<string | null> {
+  const supabase = createSupabaseAdminClient();
+  // 1) Traer el lead.
+  const { data: lead } = await supabase
+    .from("leads")
+    .select("id, phone_normalized, email")
+    .eq("id", args.leadId)
+    .maybeSingle();
+  if (!lead) return null;
+  const leadPhone = (lead as { phone_normalized?: string | null })
+    .phone_normalized;
+  const leadEmail = (lead as { email?: string | null }).email;
+
+  // 2) Buscar confirmation por phone o email (la mas reciente).
+  let q = supabase
+    .from("event_confirmations")
+    .select("id, phone_normalized, email, confirmed_at")
+    .eq("event_id", args.eventId)
+    .order("confirmed_at", { ascending: false })
+    .limit(10);
+  if (leadPhone) {
+    q = q.eq("phone_normalized", leadPhone);
+  } else if (leadEmail) {
+    q = q.eq("email", leadEmail);
+  }
+  const { data: rows } = await q;
+  if (rows && rows.length > 0) {
+    return (rows[0] as unknown as { id: string }).id;
+  }
+  return null;
 }
 
 /**
