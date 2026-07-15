@@ -3425,10 +3425,12 @@ Type: deploy-relevant
   1. **DDL** (supabase/migrations/20260711140000_bot_control_tower_v15.sql): CREATE TYPE ot_pause_reason + CREATE TABLE i_bot_rules + ALTER TABLE leads ADD COLUMN ot_paused_reason + CHECK constraint + INSERTs de 2 modos. Aplicada via scripts/apply-migration-management.mjs (Management API) en ~30s.
   2. **Typegen**: el regen autom�tico genera Json & Record<string, unknown> (intersecci�n) que rompe 6 l�neas en c�digo viejo con Record<string, unknown> casts. Decisi�n: restaurar typegen viejo (66KB) y agregar manualmente solo i_bot_rules (Row/Insert/Update) + ot_pause_reason enum + leads.bot_paused_reason. Costo: 1 sesi�n de typegen manual; beneficio: cero s never en c�digo nuevo y cero falsos positivos en c�digo viejo.
   3. **Server lib** (src/lib/ai/ai-bot-rules-server.ts): CRUD con cach� 30s + validaci�n alidateRuleMetadata (discount_percent?valid_until) + isRuleActiveAt.
-  4. **Server actions** (src/lib/ai/ai-bot-rules-actions.ts): createBotRuleAction/updateBotRuleAction/deleteBotRuleAction/	oggleBotRuleAction/etchActiveRulesAction, todas con equireAdmin() excepto fetch.
+  4. **Server actions** (src/lib/ai/ai-bot-rules-actions.ts): createBotRuleAction/updateBotRuleAction/deleteBotRuleAction/	oggleBotRuleAction/etchActiveRulesAction, todas con 
+equireAdmin() excepto fetch.
   5. **UI Admin** (src/components/admin/BotConfigTab.tsx, ~600 l�neas, Client Component): banner PR #1, 3 tarjetas de modo (la tercera ??), 6 toggles de bloques, tabla CRUD con modal de nueva regla, 4 tarjetas m�tricas consumiendo /api/admin/bot/stats, acorde�n "Detalles T�cnicos".
   6. **UI CRM** (src/components/crm/LeadDetailDrawer.tsx + src/components/crm/CRMView.tsx): badges de pausa coloreados seg�n raz�n (?? keyword / ?? semantic / ?? manual) y nuevo <AIBotFeedbackSection /> montado debajo del historial de chat en modo real.
-  7. **API m�tricas** (src/app/api/admin/bot/stats/route.ts): 	otal_bot_messages_24h/7d, paused_leads_count, pause_reasons agrupado, ot_global_mode, ot_max_active_rules. Protegido con equireAdmin().
+  7. **API m�tricas** (src/app/api/admin/bot/stats/route.ts): 	otal_bot_messages_24h/7d, paused_leads_count, pause_reasons agrupado, ot_global_mode, ot_max_active_rules. Protegido con 
+equireAdmin().
   8. **Legacy** (src/app/admin/system/bot-v2/page.tsx): redirect 307 a /admin?tab=bot para que URLs viejas sigan funcionando.
   9. **EventDrawer** (src/components/events/EventDrawer.tsx): <fieldset> ? <details> colapsado, copy veraz "Reglas Locales Espec�ficas de este Evento (Opcionales � Complementan la Torre de Control y est�n sujetas a las Reglas de Oro Globales)".
 
@@ -3961,17 +3963,20 @@ ame si esta null y tenemos confirmation linkeada (defense in depth para attendee
 
 - **Impacto:**
 
-  **Helper esolveIntent (sync, pure):**
+  **Helper 
+esolveIntent (sync, pure):**
   - Wrapper sobre detectIntent que recibe isHumanFirstMode como par�metro.
   - Si isHumanFirstMode=false ? llama a detectIntent original (regresi�n 0).
   - Si isHumanFirstMode=true ? solo opt_out, provide_email, o question.
 
   **Lectura del modo una vez por mensaje:**
-  - eadSystemSetting(KEY_BOT_GLOBAL_MODE) con cach� 30s. Se hace UNA vez al inicio de processInboundMessage (despu�s de los gates ot_paused_* y mustEscalateToHuman, antes de detectIntent).
+  - 
+eadSystemSetting(KEY_BOT_GLOBAL_MODE) con cach� 30s. Se hace UNA vez al inicio de processInboundMessage (despu�s de los gates ot_paused_* y mustEscalateToHuman, antes de detectIntent).
   - Agregado KEY_BOT_GLOBAL_MODE al import desde system-settings-server.ts.
 
   **4 call sites reemplazados:**
-  - Las 4 invocaciones de detectIntent(body, isFirstMessage) dentro de processInboundMessage (flujo normal + wizard de encuesta step 4 + provide_name fallback) ahora pasan por esolveIntent(body, isFirstMessage, isHumanFirstMode).
+  - Las 4 invocaciones de detectIntent(body, isFirstMessage) dentro de processInboundMessage (flujo normal + wizard de encuesta step 4 + provide_name fallback) ahora pasan por 
+esolveIntent(body, isFirstMessage, isHumanFirstMode).
   - detectIntent sigue exportado para tests legacy (	ests/whatsapp-bot.test.mjs lo usa directo).
 
   **Tests (8 nuevos, total 1301/1301 verde):**
@@ -3992,7 +3997,8 @@ ame si esta null y tenemos confirmation linkeada (defense in depth para attendee
   - Es un trade-off expl�cito del modo. Si en sprints futuros queremos interactive buttons, agregamos la tool send_interactive_button (no existe hoy).
 
 - **Archivos tocados (2):**
-  - src/lib/whatsapp/bot-engine.ts (helper esolveIntent + lectura de modo + 4 call sites reemplazados).
+  - src/lib/whatsapp/bot-engine.ts (helper 
+esolveIntent + lectura de modo + 4 call sites reemplazados).
   - 	ests/human-first-mode.test.mjs (8 tests nuevos).
 
 - **Trigger:** PR #1 dej� el modo opt-in funcional pero inerte. PR #2 lo activa. Con este PR, el modo human_first ya es usable de verdad: si David lo activa en /admin/bot, el bot bypasea los intents r�gidos y deja al LLM controlar el flow conversacional. Los gates de seguridad (opt_out + provide_email + bot_paused_* + escalaci�n) se mantienen.
@@ -4022,7 +4028,8 @@ ame si esta null y tenemos confirmation linkeada (defense in depth para attendee
   - deleteAllSyntheticLeads(): borra todos con CASCADE autom�tico a lead_whatsapp_conversations, lead_event_links, event_attendees, etc.
 
   **Endpoint POST/GET/DELETE /api/admin/bot/synthetic-leads:**
-  - Auth: equireAdmin (mismo patr�n que el resto de endpoints admin).
+  - Auth: 
+equireAdmin (mismo patr�n que el resto de endpoints admin).
   - DELETE requiere { confirm: true } en el body (defense in depth contra borrados accidentales).
   - Retorna conteos de filas afectadas para feedback en la UI.
 
@@ -4038,7 +4045,8 @@ ame si esta null y tenemos confirmation linkeada (defense in depth para attendee
   - Cuando Real: banner rojo persistente con auto-timeout de 30 min.
   - Lista de personas sint�ticas con bot�n "Crear" y "Limpiar todo" (con window.confirm doble).
   - Cuando el admin manda un mensaje, el simulador llama al endpoint Real en lugar del endpoint Sandbox.
-  - Telemetr�a muestra: intent detectado, esponseKind, latencyMs, provider.errorMessage (esperado: "phone no existe en Meta").
+  - Telemetr�a muestra: intent detectado, 
+esponseKind, latencyMs, provider.errorMessage (esperado: "phone no existe en Meta").
 
   **Tests (8 nuevos, total 1309/1309 verde):**
   - SIMULATION_SOURCE_ADMIN_LAB === "admin_lab" (constante can�nica).
@@ -4073,7 +4081,8 @@ ame si esta null y tenemos confirmation linkeada (defense in depth para attendee
   - **Auto-desconexi�n:** 30 min sin actividad ? vuelve a Sandbox. Imposible dejarlo activo por accidente.
   - **Doble confirmaci�n de limpieza:** window.confirm() en UI + { confirm: true } en el body del DELETE.
   - **Rate limit por sesi�n:** 100 turnos/lead sint�tico. Defense in depth contra loops accidentales.
-  - **Authorization:** equireAdmin en todos los endpoints. Solo el admin puede crear/limpiar/ejecutar contra sint�ticos.
+  - **Authorization:** 
+equireAdmin en todos los endpoints. Solo el admin puede crear/limpiar/ejecutar contra sint�ticos.
 
 - **Trigger:** David dijo "yo quiero que el modo simulaci�n tambi�n tenga un modo simulaci�n extrema, bueno simulaci�n real donde yo pueda, por ejemplo, simular nuevas personas que de verdad registre en las bases de datos". Despu�s de este PR, el laboratorio del admin puede ejecutar el flow completo del bot sin tocar leads reales.
 
@@ -4536,3 +4545,28 @@ pm run build → OK (compila todas las rutas).
 - **Deploy:** Vercel build OK, alias set a qlick.digital (deployment qlick-2ym23qobe).
 
 - **Gap residual conocido:** el server en :3000 esta tomado por el proyecto partidos (otro agente), asi que el E2E del endpoint HTTP no se pudo correr local. Cubierto por el E2E SQL (valida las 3 capas de DB que el endpoint toca).
+
+## 2026-07-15 07:25 Phoenix — Auditoria 2026-07-15f parte 2: badge visual de pago + notificaciones mark-paid
+
+- **Pregunta:** David pidio segunda pasada + dijo que se puede trabajar en produccion sin problemas.
+
+- **E2E HTTP test 1 (con server local en :3001):** POST /api/check-in/[token] con QR `G2PbbLS2tRhNodQctXZ30FjzTDD12IXQ` (lead David, CANACA, pending) → **403 con toda la info correcta**: `payment_status=pending`, `requires_action=collect_payment_door`, `confirmation_id`, `mark_paid_endpoint`. El flow del check-in funciona end-to-end.
+
+- **Gap 4 (UX, no critico pero molesto):** el email del QR pass no mostraba visualmente si el asistente ya pago o no. El reenvio del email (admin o webhook Stripe o staff mark-paid) quedaba sin badge, solo cambiaba el texto del bloque de pago.
+  - Fix template: nuevo `paymentStatus` en `EventQrPassInput`. Render de 4 badges con colores semaforo (verde PAGADO / amarillo PENDIENTE / azul EN VERIFICACION / rojo REVOCADO). El CTA al checkout solo se muestra para `pending` o undefined.
+  - Fix helper `sendQrPassForConfirmation`: lee el `payment_status` del confirmation via SELECT y lo pasa al template. Typegen stale (cast `as never` en SELECT, `as unknown` en result).
+  - Fix endpoint admin `/api/admin/events/[id]/send-qr-pass`: tambien lee el `payment_status` y lo pasa al template, para que el boton "Reenviar email" muestre el badge correcto.
+  - Fix endpoint staff `/api/staff/check-in/mark-paid`: despues de marcar `paid_manual` + crear `event_payments` + check-in, dispara 2 fire-and-forget (antes NO notificaba al asistente):
+    1) Re-envia el email del QR con badge PAGADO via `sendQrPassForConfirmation`.
+    2) Manda WhatsApp al lead confirmando el pago en puerta.
+
+- **Tests:** 7 tests nuevos del badge visual (cubre los 6 estados del CHECK + undefined legacy). **1379/1379 unit** (subio de 1372), lint OK, type-check OK.
+
+- **Typegen stale:** event_confirmations.payment_status no regenerado. Cast via 'as never' / 'as unknown'. Pendiente regenerar typegen en sprint futuro (MEMORY: A-2).
+
+- **Gap conocido:** el mark-paid endpoint dispara email + WhatsApp pero no se pudo testear el flow completo con auth (DEV_ADMIN_SECRET vacio en .env.local). Cubierto por: 7 tests del template + DB E2E + 403 test del check-in. David probara manualmente desde el scanner.
+
+- **Commit:** c307fff.
+
+- **Deploy:** Vercel build OK, alias a qlick.digital (deployment qlick-njbxempg0).
+
