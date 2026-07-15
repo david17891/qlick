@@ -4005,7 +4005,6 @@ case "interactive_event_inscribir": {
             phone_normalized: phoneNormalized,
           },
           body: body ?? "",
-          content: content ?? "",
           activeEvent: {
             id: activeEvent.id,
             slug: activeEvent.slug,
@@ -4046,21 +4045,24 @@ case "interactive_event_inscribir": {
  * NUNCA se crea. Esto miente al usuario y bloquea el email de bienvenida
  * + el flujo de pago manual.
  *
- * Safety net: después de que el LLM responde, si su copy contiene
- * "quedaste registrado" / "ya te inscribi" / "listo, te aparte" y el
- * ultimo mensaje del lead tiene formato "Nombre y email@x.com",
- * extraemos los datos y creamos la confirmation directamente via
- * createConfirmation. Fire-and-forget: no bloquea el response.
+ * Safety net: después de que el LLM responde, si el último mensaje del
+ * lead tiene formato "Nombre + email@x.com" (regex en NAME_AND_EMAIL_RE)
+ * Y el activeEvent está cargado, extraemos los datos y creamos la
+ * confirmation directamente via createConfirmation. Fire-and-forget: no
+ * bloquea el response.
  *
  * Pre-condiciones para disparar:
  *   1. activeEvent existe (source='db').
- *   2. lead existe.
+ *   2. lead existe (id presente).
  *   3. El body del lead matchea regex de "nombre + email".
- *   4. La respuesta del LLM matchea regex de "registrado".
- *   5. NO hay confirmation reciente (<60s) para este lead+evento.
+ *   4. NO hay confirmation reciente (<120s) para este phone+evento.
+ *
+ * Sprint 2026-07-15b: el regex de "registrado" en la respuesta del LLM
+ * se elimino. Era fragil: si el LLM decia "perfecto, listo" sin la
+ * palabra "registrado", el safety net no disparaba aunque el body
+ * tuviera nombre+email. Ahora la unica condicion es que el body del
+ * lead tenga el formato, lo que es mucho mas robusto.
  */
-const REGISTRATION_AFFIRMATION_RE =
-  /(quedaste|quedas|registrad[oa]|inscrit[oa]|te\s+inscrib[ií]|te\s+apart[eé]|listo[,.]?\s+(te\s+)?(tengo|tenemos|apart[eé]))/i;
 const NAME_AND_EMAIL_RE =
   /^([A-ZÁÉÍÓÚÑa-záéíóúñ][A-ZÁÉÍÓÚÑa-záéíóúñ'.-]+(?:\s+[A-ZÁÉÍÓÚÑa-záéíóúñ'.-]+){1,4})[\s,]+([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})$/i;
 
@@ -4068,51 +4070,73 @@ interface RegistrationSafetyNetArgs {
   supabase: SupabaseClient<Database> | null;
   lead: { id: string; name?: string | null; email?: string | null; phone_normalized?: string | null };
   body: string;
-  content: string;
   activeEvent: { id: string; slug?: string; title?: string } | undefined;
 }
 
 async function registrationSafetyNet(args: RegistrationSafetyNetArgs): Promise<void> {
   try {
-    if (!args.supabase) return;
-    if (!args.activeEvent || !args.activeEvent.id) return;
+    if (!args.supabase) {
+      infoLog("[bot/safety-net] skip: supabase null", { leadId: args.lead?.id });
+      return;
+    }
+    if (!args.activeEvent || !args.activeEvent.id) {
+      infoLog("[bot/safety-net] skip: activeEvent null", { leadId: args.lead?.id });
+      return;
+    }
     if (!args.lead?.id) return;
-    if (!args.body) return;
-    if (!args.content) return;
+    if (!args.body) {
+      infoLog("[bot/safety-net] skip: body vacio", { leadId: args.lead.id });
+      return;
+    }
+    if (!args.lead.phone_normalized) {
+      infoLog("[bot/safety-net] skip: lead sin phone_normalized", {
+        leadId: args.lead.id,
+      });
+      return;
+    }
 
-    // 1. La respuesta del LLM debe ser de "registrado".
-    if (!REGISTRATION_AFFIRMATION_RE.test(args.content)) return;
-
-    // 2. El body del lead debe matchear "Nombre + email".
+    // 1. El body del lead debe matchear "Nombre + email".
     const m = args.body.trim().match(NAME_AND_EMAIL_RE);
-    if (!m) return;
+    if (!m) {
+      infoLog("[bot/safety-net] skip: body no matchea Nombre+email", {
+        leadId: args.lead.id,
+        bodyPreview: args.body.slice(0, 80),
+      });
+      return;
+    }
     const extractedName = m[1].trim();
     const extractedEmail = m[2].trim().toLowerCase();
+    infoLog("[bot/safety-net] match detectado, verificando duplicados", {
+      leadId: args.lead.id,
+      eventId: args.activeEvent.id,
+      extractedName,
+      extractedEmail,
+    });
 
-    // 3. Verificar que NO haya confirmation reciente (últimos 60s) para
-    //    este lead+evento. Si ya existe, no duplicamos.
-    const recentCutoff = new Date(Date.now() - 60_000).toISOString();
+    // 2. Verificar que NO haya confirmation reciente (últimos 120s) para
+    //    este phone+evento. Si ya existe, no duplicamos.
+    const recentCutoff = new Date(Date.now() - 120_000).toISOString();
     const { data: existing, error: existingErr } = await args.supabase
       .from("event_confirmations")
       .select("id")
       .eq("event_id", args.activeEvent.id)
-      .eq("phone_normalized", args.lead.phone_normalized ?? "")
+      .eq("phone_normalized", args.lead.phone_normalized)
       .gte("confirmed_at", recentCutoff)
       .limit(1);
     if (existingErr) {
-      debugLog("[bot/safety-net] check existing confirmation error", {
+      infoLog("[bot/safety-net] check existing fallo (no fatal)", {
         error: existingErr.message,
       });
       return;
     }
     if (existing && existing.length > 0) {
-      debugLog("[bot/safety-net] confirmation reciente ya existe, no duplicamos", {
+      infoLog("[bot/safety-net] skip: confirmation reciente ya existe", {
         confirmationId: existing[0].id,
       });
       return;
     }
 
-    // 4. Crear la confirmation via createConfirmation (mismo path que
+    // 3. Crear la confirmation via createConfirmation (mismo path que
     //    el form público /eventos/[slug]). Si falla, loggeamos pero
     //    no rompemos el flow.
     const { createConfirmation } = await import("../events/confirmations-server");
@@ -4120,12 +4144,12 @@ async function registrationSafetyNet(args: RegistrationSafetyNetArgs): Promise<v
       eventId: args.activeEvent.id,
       name: extractedName,
       email: extractedEmail,
-      phoneRaw: args.lead.phone_normalized ?? null,
+      phoneRaw: args.lead.phone_normalized,
       source: "whatsapp_safety_net",
     });
 
     if (result.ok) {
-      infoLog("[bot/safety-net] confirmation creada por safety net", {
+      infoLog("[bot/safety-net] OK: confirmation creada", {
         leadId: args.lead.id,
         eventId: args.activeEvent.id,
         confirmationId: result.confirmation?.id,
@@ -4133,14 +4157,14 @@ async function registrationSafetyNet(args: RegistrationSafetyNetArgs): Promise<v
         extractedEmail,
       });
     } else {
-      infoLog("[bot/safety-net] createConfirmation fallo (no fatal)", {
+      infoLog("[bot/safety-net] FAIL: createConfirmation rechazo", {
         leadId: args.lead.id,
         eventId: args.activeEvent.id,
         note: result.note,
       });
     }
   } catch (err) {
-    infoLog("[bot/safety-net] exception (no fatal)", {
+    infoLog("[bot/safety-net] EXCEPTION (no fatal)", {
       error: err instanceof Error ? err.message : String(err),
     });
   }
