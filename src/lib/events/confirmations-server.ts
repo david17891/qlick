@@ -162,7 +162,7 @@ export async function createConfirmation(
         email,
         phone_raw: input.phoneRaw?.trim() || null,
         phone_normalized: phoneNormalized,
-        source: input.source ?? "imported_excel",
+        source: (input.source ?? "imported_excel") as never,
         import_batch_id: input.importBatchId ?? null,
       },
       { onConflict: "event_id,email", ignoreDuplicates: true },

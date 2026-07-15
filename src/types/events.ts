@@ -44,7 +44,12 @@ export type EventConfirmationSource =
   | "imported_excel"
   | "public_form"
   | "manual"
-  | "whatsapp_bot";
+  | "whatsapp_bot"
+  /** FIX 2026-07-15: safety net del bot-engine cuando el LLM en
+   * human_first mintio con "quedaste registrado" sin haber llamado a
+   * la tool. El bot-engine extrae nombre+email del body del lead y
+   * crea la confirmation via createConfirmation. */
+  | "whatsapp_safety_net";
 
 /** Cómo se registró la asistencia (auditoría). */
 export type EventAttendeeSource =
