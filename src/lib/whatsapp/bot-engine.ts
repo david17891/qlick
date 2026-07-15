@@ -5866,15 +5866,24 @@ export async function processInboundMessage(
       }
     }
 
-    // 4.8 FIX 2026-07-03 (sesion David, "metodo de pago por implementar"):
-    // si el evento al que el lead quiere inscribirse es DE PAGO y AUN
-    // NO está registrado, NO generamos QR ni enviamos email todavia.
-    // El bot le avisa que su lugar está apartado pero el método de pago
-    // está por implementar, y le ofrece escribir a hola@qlick.marketing
-    // si quiere acelerar.
+    // 4.8 FIX sprint 2026-07-15c (sesion David, "tu lugar esta apartado
+    // pero no se registro"): el flow del bot para eventos de pago
+    // tenia un copy placeholder del sprint 04-jul ("Metodo de pago
+    // por implementar") que NUNCA se actualizo cuando se integro
+    // Stripe. El bot decia "tu lugar esta apartado" pero la fila en
+    // event_confirmations NO se creaba.
     //
-    // Detección de evento de pago: parseamos el description buscando un
-    // patron `Costo: $NNN` (o cualquier `$NNN` antes de MXN/USD).
+    // Fix: el flow ahora hace el mismo path que el form publico
+    // /eventos/[slug] y el flow provide_email:
+    //   1. createConfirmation con source='whatsapp_bot' y
+    //      payment_status='pending' (default).
+    //   2. sendQrPassForConfirmation para mandar el email de
+    //      bienvenida con el bloque de pago (CTA al checkout).
+    //   3. Responder al lead con copy HONESTO + link al checkout
+    //      publico (NO "por implementar" — ya esta implementado).
+    //
+    // Deteccion de evento de pago: parseamos el description buscando
+    // un patron `Costo: $NNN` (o cualquier `$NNN` antes de MXN/USD).
     // Conservadora: si no matchea, asumimos gratis.
     if (
       intent === "interactive_event_inscribir" &&
@@ -5912,13 +5921,91 @@ export async function processInboundMessage(
             // registro para que el lead pueda continuar la conversación
             // por código, no por título ambiguo.
             const evtCodeLabel = evtForPayment?.shortCode ? ` (código ${evtForPayment.shortCode})` : "";
+
+            // 1. Crear la confirmation via createConfirmation (mismo
+            //    path que provide_email y que el form publico).
+            //    createConfirmation es idempotente (dedup por
+            //    event_id+email/phone) y crea la fila con
+            //    payment_status='pending' por default.
+            const confirmResult = await createConfirmation({
+              eventId: evtForPayment?.id ?? "",
+              name: lead.name?.trim() || "Asistente",
+              email: lead.email ?? null,
+              phoneRaw: phoneNormalized,
+              source: "whatsapp_bot",
+            }).catch((err) => {
+              errorLog("[whatsapp/bot] pending_payment: createConfirmation throw", {
+                leadId: lead.id,
+                error: err instanceof Error ? err.message : String(err),
+              });
+              return null;
+            });
+
+            if (!confirmResult || !confirmResult.ok || !confirmResult.confirmation) {
+              errorLog("[whatsapp/bot] pending_payment: createConfirmation fallo", {
+                leadId: lead.id,
+                eventSlug: targetSlug,
+                note: confirmResult?.note,
+              });
+              // Caemos al copy viejo (defensa: si no se puede crear la
+              // fila, al menos avisamos al lead con honesty).
+              const fallbackText =
+                `Tuve un problema registrando tu lugar. Escríbenos a ` +
+                `hola@qlick.marketing y lo arreglamos.`;
+              const provider = getActiveWhatsAppProvider();
+              try {
+                await provider.send({ to: phoneNormalized, body: fallbackText });
+              } catch {
+                /* swallow */
+              }
+              return {
+                ok: false,
+                intent,
+                leadId: lead.id,
+                responseKind: "text",
+                responsePreview: fallbackText,
+                note: `pending_payment_failed: ${targetSlug}`,
+              };
+            }
+
+            const confirmationId = confirmResult.confirmation.id;
+
+            // 2. Mandar email de bienvenida con bloque de pago (vía el
+            //    helper sendQrPassForConfirmation que ya usa el form
+            //    publico). Fire-and-forget: no bloquea el response.
+            if (lead.email && evtForPayment) {
+              void (async () => {
+                try {
+                  const { sendQrPassForConfirmation } = await import(
+                    "../email/event-qr-pass"
+                  );
+                  await sendQrPassForConfirmation({
+                    confirmationId,
+                    event: evtForPayment as unknown as Parameters<
+                      typeof sendQrPassForConfirmation
+                    >[0]["event"],
+                  });
+                } catch (err) {
+                  errorLog("[whatsapp/bot] pending_payment: email fallo", {
+                    leadId: lead.id,
+                    confirmationId,
+                    error: err instanceof Error ? err.message : String(err),
+                  });
+                }
+              })();
+            }
+
+            // 3. Responder al lead con copy HONESTO + link al checkout.
+            const baseUrl = appBaseUrl();
+            const checkoutUrl = `${baseUrl}/pagar/evento/${targetSlug}?confirmation=${confirmationId}`;
             const clean = cleanFirstName(lead.name);
             const saludo = clean ? `¡Listo ${clean}!` : "¡Listo!";
             const bodyText =
-              `${saludo} Tu lugar para *${evtName}*${evtCodeLabel} (${priceDisplay}) está apartado. ` +
-              `\n\n⚠️ *Método de pago por implementar.* Te avisamos por aquí cuando ` +
-              `esté listo para que completes el registro.` +
-`\n\nSi quieres acelerar, escríbenos a hola@qlick.marketing.`;
+              `${saludo} Tu lugar para *${evtName}*${evtCodeLabel} (${priceDisplay}) está apartado.\n\n` +
+              `Para confirmar tu lugar, completa el pago aquí:\n${checkoutUrl}\n\n` +
+              `Aceptamos tarjeta, OXXO, SPEI y transferencia. Si pagas en ` +
+              `efectivo en puerta, avísanos y lo registramos a mano.`;
+
             const provider = getActiveWhatsAppProvider();
             let sendResult: { ok: boolean; externalId?: string; demo?: boolean } = {
               ok: false
@@ -5929,7 +6016,7 @@ export async function processInboundMessage(
             } catch (err) {
               errorLog("[whatsapp/bot] pending_payment: send falló", {
                 leadId: lead.id,
-                error: err instanceof Error ? err.message : String(err)
+                error: err instanceof Error ? err.message : String(err),
               });
             }
             // FIX 2026-07-04 (auditoria nocturna): no persistir si el send falló.
@@ -5948,7 +6035,9 @@ export async function processInboundMessage(
                   demo: sendResult.demo ?? false,
                   pending_payment: true,
                   pending_event_slug: targetSlug,
-                  pending_event_price: priceDisplay
+                  pending_event_price: priceDisplay,
+                  confirmation_id: confirmationId,
+                  checkout_url: checkoutUrl
                 }
               });
             }
@@ -5959,7 +6048,7 @@ export async function processInboundMessage(
               responseKind: "text",
               responsePreview: bodyText,
               demo: sendResult.demo,
-              note: `pending_payment: ${targetSlug} ${priceDisplay}`
+              note: `pending_payment_registered: ${targetSlug} ${priceDisplay} confirmationId=${confirmationId}`
             };
           }
         }
