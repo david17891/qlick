@@ -5926,7 +5926,17 @@ export async function processInboundMessage(
             //    path que provide_email y que el form publico).
             //    createConfirmation es idempotente (dedup por
             //    event_id+email/phone) y crea la fila con
-            //    payment_status='pending' por default.
+            //    payment_status='not_required' por default.
+            //
+            //    FIX 2026-07-15c (sesion David "el supervendedor SI me
+            //    registro pero payment_status quedo en not_required"):
+            //    el createConfirmation del bot-engine NO actualizaba
+            //    payment_status a 'pending' para eventos de pago. El
+            //    form publico SI lo hace (actions.ts) via UPDATE
+            //    post-INSERT. Aqui hacemos lo mismo: despues del
+            //    createConfirmation, si el evento es de pago y la fila
+            //    se creo (o se encontro via dedup), forzamos
+            //    payment_status='pending' via UPDATE.
             const confirmResult = await createConfirmation({
               eventId: evtForPayment?.id ?? "",
               name: lead.name?.trim() || "Asistente",
@@ -5940,6 +5950,32 @@ export async function processInboundMessage(
               });
               return null;
             });
+
+            // 1.1 FIX: forzar payment_status='pending' para eventos
+            //      de pago (mismo path que /eventos/[slug]/actions.ts).
+            //      createConfirmation pone el default 'not_required';
+            //      nosotros lo sobreescribimos para que el admin de
+            //      pagos manuales pueda registrar el pago despues.
+            if (confirmResult?.ok && confirmResult.confirmation) {
+              try {
+                await supabase
+                  .from("event_confirmations")
+                  .update({ payment_status: "pending" } as never)
+                  .eq("id", confirmResult.confirmation.id);
+              } catch (updErr) {
+                errorLog(
+                  "[whatsapp/bot] pending_payment: payment_status update fallo (no fatal)",
+                  {
+                    leadId: lead.id,
+                    confirmationId: confirmResult.confirmation.id,
+                    error:
+                      updErr instanceof Error
+                        ? updErr.message
+                        : String(updErr),
+                  },
+                );
+              }
+            }
 
             if (!confirmResult || !confirmResult.ok || !confirmResult.confirmation) {
               errorLog("[whatsapp/bot] pending_payment: createConfirmation fallo", {
