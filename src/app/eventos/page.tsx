@@ -179,9 +179,42 @@ function EventCard({
             )}
           </div>
         </div>
+        {/*
+          Bloque de precio (sprint 2026-07-15). Mismo patron visual que
+          CourseCard: precio grande y visible abajo de la card, "Gratis"
+          si priceMXN es 0/undefined, formato MXN. Asi el usuario ve
+          inmediatamente si el evento es de pago o no, sin tener que
+          entrar al detalle.
+        */}
+        <div className="mt-auto px-5 pb-5 pt-3 border-t border-brand-50">
+          {event.priceMXN == null || event.priceMXN <= 0 ? (
+            <span className="text-lg font-bold text-emerald-600">Gratis</span>
+          ) : (
+            <div className="flex items-baseline gap-2">
+              <span className="text-lg font-bold text-ink">
+                {formatMXN(event.priceMXN)}
+              </span>
+              <span className="text-xs text-ink-muted">MXN</span>
+            </div>
+          )}
+        </div>
       </Card>
     </Link>
   );
+}
+
+/**
+ * Formato MXN con separador de miles y 2 decimales. Mismo helper que
+ * usa CourseCard — si existe en lib/utils, importarlo de ahi en sprint
+ * futuro (sprint 2026-07-15: lo duplico localmente para no acoplarme).
+ */
+function formatMXN(value: number): string {
+  return new Intl.NumberFormat("es-MX", {
+    style: "currency",
+    currency: "MXN",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value);
 }
 
 function EmptyState() {
