@@ -4503,3 +4503,36 @@ pm run build → OK (compila todas las rutas).
   - Vercel redeploy + alias set a qlick.digital.
   - E2E manual: registrar una nueva asistencia al evento de prueba (marketing-ia-para-emprendedores-pago), confirmar que llega el email CON bloque de pago, y que el payment_status queda en 'pending' en la DB.
   - Reenviar email desde admin al mismo attendee, confirmar que el email re-enviado también incluye el bloque de pago.
+
+## 2026-07-15 06:50 Phoenix — Auditoria post-sprint pago-en-puerta (commit 224843c)
+
+- **Pregunta:** David pidio auditoria completa de todo lo hecho en el sprint pago-en-puerta (\"mucha gente pagara efectivo\"), arreglar lo posible, hacer test E2E.
+
+- **Bug 1 (critico):** event_access.access_source CHECK no incluye 'event_pay_at_door'. El bot-engine del sprint (commit c9d620d) llama grantEventAccess({ source: 'event_pay_at_door' }) → el INSERT revienta con 23514 silenciosamente (try/catch 'no fatal' en el bot). Resultado: 0 event_access creados en prod, todos los leads del CANACA sin QR valido. **No detectado en E2E previo** porque el check-in publico solo valida el token, no el event_access.
+  - Fix: migration 20260715131000 extiende el CHECK + agrega columna confirmation_id (nullable, FK a event_confirmations) para que el lookup de idempotencia funcione cuando user_id es null (lead sin auth user).
+
+- **Bug 2 (critico):** event_confirmations.payment_status CHECK (migration 20260715014706) solo permitia not_required/pending/paid/revoked. El sprint pagos-manuales introdujo 'paid_manual' y 'pending_verification' en codigo y types, pero NO extendio el CHECK.
+  - Fix: migration 20260715130000 extiende el CHECK a la lista completa (idempotente via DO block).
+
+- **Bug 3 (residual):** event_payments tabla (migration 20260715120000) — la migration original del sprint pagos-manuales NO se commiteo (quedo en working tree). La cree via SQL directo contra prod pero el archivo nunca entro al repo. Tambien: el endpoint /api/staff/check-in/mark-paid (commit 2098d33) hacia INSERT ahi pero la tabla no existia.
+  - Fix: commiteo el archivo de migration que faltaba.
+
+- **Codigo:**
+  - event-entitlements.ts: grantEventAccess acepta userId: string | null Y confirmationId opcional. Lookup de idempotencia prioriza confirmation_id, fallback a user_id. Promotion de access_source cuando pasa de event_pay_at_door (bot) a event_purchase (webhook Stripe).
+  - bot-engine.ts: llama grantEventAccess con userId: null + confirmationId (lead del WhatsApp no es auth user).
+  - webhooks/stripe/route.ts: nuevo helper findConfirmationIdForEvent (busca por phone/email del lead via userId de payment). grantEventAccess pasa confirmationId para que la promocion del source funcione.
+
+- **Test E2E SQL (confirmacion 65183388 del CANACA, lead David +52 653 293 5492):**
+  - INSERT event_access con event_pay_at_door: OK
+  - UPDATE event_confirmations.payment_status=paid_manual: OK
+  - INSERT event_payments con method=cash status=paid_manual: OK
+  - Idempotencia con idempotency_key: 2da corrida falla con 23505 (UNIQUE violation) ← correcto
+  - Cleanup: rollback completo, confirmation vuelve a pending.
+
+- **Typegen stale:** event_access.confirmation_id no esta en src/types/supabase.ts todavia. Fix con @ts-ignore inline. Regenerar typegen en sprint futuro (MEMORY: A-2).
+
+- **Tests:** 1372/1372 unit (subio de 1365, tests nuevos del sprint), lint OK, type-check OK.
+
+- **Deploy:** Vercel build OK, alias set a qlick.digital (deployment qlick-2ym23qobe).
+
+- **Gap residual conocido:** el server en :3000 esta tomado por el proyecto partidos (otro agente), asi que el E2E del endpoint HTTP no se pudo correr local. Cubierto por el E2E SQL (valida las 3 capas de DB que el endpoint toca).
