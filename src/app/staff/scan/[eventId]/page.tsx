@@ -116,6 +116,11 @@ export default function StaffScanPage() {
   const [lastFeedback, setLastFeedback] = useState<{
     type: "ok" | "warning" | "error";
     msg: string;
+    payment_pending?: {
+      confirmation_id: string;
+      attendee_name?: string;
+      event_title?: string;
+    };
   } | null>(null);
   const [manualToken, setManualToken] = useState("");
   const [cameraStarted, setCameraStarted] = useState(false);
@@ -268,7 +273,45 @@ export default function StaffScanPage() {
         error?: string;
         crossEvent?: boolean;
         qrEventTitle?: string;
+        payment_status?: string;
+        requires_action?: string;
+        confirmation_id?: string;
+        mark_paid_endpoint?: string;
       };
+      // FIX sprint 2026-07-15e: si el backend devuelve 403 con
+      // requires_action='collect_payment_door', mostramos el feedback
+      // con boton "Cobrar y registrar" que llama a mark-paid.
+      if (
+        res.status === 403 &&
+        data.requires_action === "collect_payment_door" &&
+        data.confirmation_id
+      ) {
+        const pendingMsg = data.attendee
+          ? `⚠ ${data.attendee.name} — pago pendiente. Cobra en caja y registra.`
+          : "⚠ Pago pendiente. Cobra en caja y registra.";
+        setLastFeedback({
+          type: "warning",
+          msg: pendingMsg,
+          // Pasamos la info al feedback para que el render muestre
+          // el boton. Ver renderFeedback() abajo.
+          payment_pending: {
+            confirmation_id: data.confirmation_id,
+            attendee_name: data.attendee?.name,
+            event_title: data.attendee?.event_title,
+          },
+        });
+        return;
+      }
+      if (
+        res.status === 403 &&
+        data.requires_action === "manual_refund_review"
+      ) {
+        setLastFeedback({
+          type: "error",
+          msg: `✗ ${data.error ?? "Pago revocado. No puede entrar."}`,
+        });
+        return;
+      }
       if (data.ok) {
         // FIX 2026-07-03 (sesion David "ya lo estaba registrando"): el
         // backend es idempotente y devuelve `alreadyCheckedIn: true` +
@@ -453,6 +496,38 @@ export default function StaffScanPage() {
             }`}
           >
             {lastFeedback.msg}
+            {lastFeedback.payment_pending && (
+              <MarkPaidAction
+                confirmationId={
+                  lastFeedback.payment_pending.confirmation_id
+                }
+                attendeeName={lastFeedback.payment_pending.attendee_name}
+                eventTitle={lastFeedback.payment_pending.event_title}
+                onSuccess={() => {
+                  setLastFeedback({
+                    type: "ok",
+                    msg: `✓ Pago en puerta registrado y check-in OK${
+                      lastFeedback.payment_pending?.attendee_name
+                        ? ` — ${lastFeedback.payment_pending.attendee_name}`
+                        : ""
+                    }`,
+                  });
+                  setRecentCheckIns((prev) =>
+                    [
+                      {
+                        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                        name: lastFeedback.payment_pending?.attendee_name ?? "(pago en puerta)",
+                        eventTitle:
+                          lastFeedback.payment_pending?.event_title ?? "",
+                        at: new Date().toISOString(),
+                        ok: true,
+                      },
+                      ...prev,
+                    ].slice(0, 5),
+                  );
+                }}
+              />
+            )}
           </div>
         )}
 
@@ -729,6 +804,100 @@ function WalkInForm({
         </div>
       )}
     </form>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// MarkPaidAction — boton inline "Cobrar y registrar" que aparece
+// cuando el staff escanea un QR de un asistente con pago pendiente.
+// Llama a POST /api/staff/check-in/mark-paid con el confirmation_id
+// del feedback. Sprint 2026-07-15e (sesion David, "mucha gente
+// pagara efectivo").
+// ─────────────────────────────────────────────────────────
+
+function MarkPaidAction({
+  confirmationId,
+  attendeeName,
+  eventTitle,
+  onSuccess,
+}: {
+  confirmationId: string;
+  attendeeName?: string;
+  eventTitle?: string;
+  onSuccess: () => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [method, setMethod] = useState<"cash" | "card_manual" | "transfer" | "other">(
+    "cash",
+  );
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleMarkPaid() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/staff/check-in/mark-paid", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          confirmation_id: confirmationId,
+          payment_method: method,
+        }),
+      });
+      const data = (await res.json()) as {
+        ok: boolean;
+        error?: string;
+      };
+      if (data.ok) {
+        onSuccess();
+      } else {
+        setError(data.error ?? "Error al registrar el pago.");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      <p className="text-xs font-normal text-amber-800">
+        {attendeeName
+          ? `${attendeeName} aún no ha pagado. Cobra en caja y registra el pago:`
+          : "Aún no ha pagado. Cobra en caja y registra el pago:"}
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          aria-label="Método de pago"
+          value={method}
+          onChange={(e) => setMethod(e.target.value as typeof method)}
+          disabled={loading}
+          className="text-xs rounded border border-amber-300 bg-white px-2 py-1"
+        >
+          <option value="cash">Efectivo</option>
+          <option value="card_manual">Tarjeta (datáfono)</option>
+          <option value="transfer">Transferencia</option>
+          <option value="other">Otro</option>
+        </select>
+        <button
+          type="button"
+          onClick={handleMarkPaid}
+          disabled={loading}
+          className="rounded bg-emerald-600 text-white text-xs font-semibold px-3 py-1.5 hover:bg-emerald-700 disabled:opacity-50"
+        >
+          {loading ? "Registrando..." : "💵 Cobrar y registrar"}
+        </button>
+      </div>
+      {error && (
+        <p className="text-xs font-normal text-rose-700">{error}</p>
+      )}
+      {eventTitle && (
+        <p className="text-xs font-normal text-amber-700 opacity-70">
+          {eventTitle}
+        </p>
+      )}
+    </div>
   );
 }
 
