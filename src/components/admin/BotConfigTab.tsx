@@ -16,6 +16,7 @@
 import { useState, useTransition, useEffect, useCallback } from "react";
 import { Card, CardBody, CardHeader, Button, Badge, Input } from "@/components/ui";
 import { BotSimulatorTab } from "@/components/admin/BotSimulatorTab";
+import { ResetTestLeadButton } from "@/components/admin/ResetTestLeadButton";
 import {
   createBotRuleAction,
   updateBotRuleAction,
@@ -421,6 +422,9 @@ export function BotConfigTab() {
         <BotSimulatorTab currentMode={mode} />
       ) : (
         <>
+      {/* 0. Reset Lead de Testing (sprint 2026-07-15) */}
+      <ResetTestLeadButton />
+
       {/* 1. Selector de Modos */}
       <Card>
         <CardHeader>
