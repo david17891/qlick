@@ -102,6 +102,9 @@ export function normalizeEventRules(
 export function mapEventConfirmationRowToEventConfirmation(
   row: EventConfirmationRow,
 ): EventConfirmation {
+  // payment_status existe en DB desde la migration 20260715014706 pero
+  // el typegen de Supabase no lo incluye. Cast defensivo del row.
+  const payStatus = (row as Record<string, unknown>).payment_status;
   return {
     id: row.id,
     eventId: row.event_id,
@@ -112,6 +115,14 @@ export function mapEventConfirmationRowToEventConfirmation(
     source: row.source,
     confirmedAt: row.confirmed_at,
     importBatchId: row.import_batch_id ?? undefined,
+    paymentStatus:
+      payStatus === "pending" ||
+      payStatus === "pending_verification" ||
+      payStatus === "paid" ||
+      payStatus === "revoked" ||
+      payStatus === "not_required"
+        ? payStatus
+        : "not_required",
   };
 }
 

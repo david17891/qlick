@@ -320,6 +320,27 @@ export interface EventConfirmation {
   confirmedAt: string;
   /** Agrupa filas del mismo import (rollback por batch). */
   importBatchId?: string;
+  /**
+   * Estado de pago del confirmado (migration 20260715014706):
+   *   - 'not_required'        -> evento free (legacy, no se cobra).
+   *   - 'pending'             -> evento de pago, sin pago aun.
+   *   - 'pending_verification' -> admin marco un pago manual pero
+   *                               el voucher/PI no se valido contra
+   *                               Stripe API; queda esperando confirmacion.
+   *   - 'paid'                -> pago confirmado (via Stripe webhook,
+   *                               via validacion contra Stripe API, o via
+   *                               admin puro con cash/transfer).
+   *   - 'revoked'             -> admin revoco (voucher expiro, devolucion).
+   *
+   * El admin UI consume este flag en la tabla de confirmados y en el
+   * tab 'payments' del evento.
+   */
+  paymentStatus?:
+    | "not_required"
+    | "pending"
+    | "pending_verification"
+    | "paid"
+    | "revoked";
 }
 
 /* ------------------------------------------------------------------ */

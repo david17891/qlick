@@ -4424,3 +4424,51 @@ ame si esta null y tenemos confirmation linkeada (defense in depth para attendee
   restricciones CHECK/UNIQUE desconocidos y validar el schema con
   `information_schema.columns` + `pg_constraint` antes de culpar al fix."
 
+
+## 2026-07-14 23:55 Phoenix — Sprint cobro de entrada a eventos (migration 20260714230000)
+
+- **Pregunta:** David intentó crear un evento desde cero y descubrió que el form admin no tenía campo de precio. La integración de pagos (ProductRefEvent, stripe-provider, webhook) ya estaba cableada, pero el admin no tenía cómo asignarle precio. Gap visible para el socio que quiere vender entradas.
+
+- **Decisión:** Cerrar el gap end-to-end en 1 sprint atómico, con la regla operativa de no pisar lo ya funcionando (refactor mínimo de create-checkout + simulate-webhook para soportar productKind=event, conservando el path de curso intacto).
+
+- **Razón:** Era el único fleco pendiente para que el admin de eventos pudiera vender entradas. Hacerlo incremental (1 tipo de producto a la vez) o generalizando (un solo endpoint con dispatch interno) eran las 2 opciones. Elegí dispatch interno + ruta separada (/pagar/evento/[slug]/ vs /pagar/[courseSlug]/) porque:
+  1. Las URLs de curso activas no se rompen (regla inquebrantable: nunca romper URL que ya compartiste con clientes).
+  2. Next.js no permite 2 dynamic segments al mismo nivel ([courseSlug] y [eventSlug]), pero sí permite uno dinámico bajo un segmento estático (evento/[slug]).
+  3. El dispatch interno es chico (3 ramas de if/else, ~80 líneas en total entre create-checkout y simulate-webhook) y queda documentado en cabecera.
+
+- **Cambios concretos:**
+  - supabase/migrations/20260714230000_events_price.sql (nuevo): ALTER TABLE events ADD price_mxn numeric(10,2) NOT NULL DEFAULT 0 + currency text NOT NULL DEFAULT 'MXN' + partial index events_paid_idx WHERE price_mxn > 0.
+  - src/types/events.ts: Event.priceMXN + Event.currency (opcionales; el mapper devuelve currency='MXN' si la row no lo trae).
+  - src/lib/crm/ops-client.ts: EventFormInput.priceMXN + currency.
+  - src/lib/events/events-server.ts: CreateEventInput + UpdateEventInput + INSERT/UPDATE persisten los nuevos campos con clamp a >=0 (defense in depth).
+  - src/lib/events/event-mapper.ts: lectura robusta con typegen stale (typeof checks por string|number).
+  - src/components/events/EventDrawer.tsx: fieldset 'Pago' (patrón visual ya usado para Modalidad/streaming) con Input numérico + currency + banner contextual que cambia según el valor (verde si >0, brand-50 si 0).
+  - src/app/api/admin/events/route.ts: propaga priceMXN + currency al createEvent. (PATCH ya propaga body completo, sin cambio.)
+  - src/app/api/payments/create-checkout/route.ts: detecta productKind=event y dispatcha entre curso (checkCourseAccess + grantAccess) y evento (checkEventAccess + grantEventAccess). Default course para compat con callers existentes. Refactor del SCOPE header.
+  - src/app/api/dev/simulate-webhook/route.ts: mismo dispatch + grantEventAccess con source='simulated_event_payment' para distinguir de 'event_purchase' (Stripe real) en queries de auditoría. El idempotency_key incluye el prefijo 'sim_event_' para evitar colisiones con cursos.
+  - src/app/pagar/evento/[slug]/page.tsx (nuevo): Server Component análogo a /pagar/[courseSlug]/. Lee evento con getEventBySlug, redirige a /eventos/[slug] si priceMXN===0, chequea checkEventAccess para evitar doble cobro, renderiza SimulatorForm (mock) o CheckoutButton (real) según NEXT_PUBLIC_PAYMENT_PROVIDER.
+  - src/app/pagar/evento/[slug]/CheckoutButton.tsx (nuevo): Client Component que envía {slug, productKind:'event', method} al endpoint. Redirige a /eventos/[slug]?paid=X en mock/OK/cancelled, o a checkout.stripe.com en real.
+  - src/app/pagar/evento/[slug]/SimulatorForm.tsx (nuevo): 3 botones (éxito/fallo/pendiente) que llaman a /api/dev/simulate-webhook con productKind='event'. Redirect post-pago a /eventos/[slug]?paid=ok.
+  - src/app/pagar/evento/[slug]/exito/page.tsx (nuevo): Server Component que verifica status del pago via provider.getStatus + checkEventAccess, renderiza feedback (success/warning) con CTA al evento público. Misma estructura que el exito de curso pero apuntando a /eventos/[slug] en vez de /dashboard.
+  - src/app/admin/eventos/[id]/page.tsx: banner condicional con CTA 'Probar checkout' (verde, visible si priceMXN > 0 && status='published') + banner brand-50 si es gratuito (informa al admin que no hay checkout configurado).
+  - scripts/_check-events-price-cols.mjs: script de verificación temporal (borrado con mavis-trash post-deploy).
+
+- **Verificación:**
+  - 
+pm run type-check → 0 errores.
+  - 
+pm run lint → 0 warnings/errors.
+  - 
+pm test → 1365/1365 ✅.
+  - 
+pm run build → 27 static pages + 2 rutas de pago (/pagar/[courseSlug] y /pagar/evento/[slug]) compilando. Build OK.
+  - Migration aplicada a Supabase via Management API; verificado con query directo a information_schema (columnas price_mxn numeric + currency text, índice creado, evento existente backfilleado a 0/MXN).
+
+- **Commit:** 897e61c (feat(events), 14 archivos, 1314 insertions, 83 deletions).
+
+- **Próximo paso (David en próxima sesión o ahora):**
+  1. Pegar sk_test_... en .env.local línea 17 (con la sk_ ya disponible del dashboard Stripe).
+  2. Instalar Stripe CLI (rew install stripe/stripe-cli/stripe o https://stripe.com/docs/stripe-cli) + login con stripe login.
+  3. Forwardear webhooks: stripe listen --forward-to localhost:3000/api/webhooks/stripe. El CLI devuelve un whsec_... que pegas en .env.local línea 18 (STRIPE_WEBHOOK_SECRET).
+  4. Reiniciar dev server. Crear evento en /admin/eventos con precio > 0, publicarlo, click 'Probar checkout' en el banner verde, pagar con tarjeta 4242 4242 4242 4242. Verificar que el access grant se dispara y aparece en event_access. Tras validar, switch a mock en .env.local para no gastar API calls en pruebas futuras.
+

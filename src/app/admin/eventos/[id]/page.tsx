@@ -43,6 +43,8 @@ import { SendSurveyLinkButton } from "./_components/SendSurveyLinkButton";
 import { ResendQrPassButton } from "./_components/ResendQrPassButton";
 import { EditConfirmationButton } from "./_components/EditConfirmationButton";
 import { TriggerReminderButton } from "./_components/TriggerReminderButton";
+import { PaymentStatusActions } from "./_components/PaymentStatusActions";
+import { getEventPaymentsSnapshot } from "@/lib/payments/event-payments-server";
 import { formatSurveyResponses } from "@/lib/events/survey-display";
 import { SurveyEditor } from "@/components/events/SurveyEditor";
 import { getDefaultSurveyConfig } from "@/lib/events/survey-config-validator";
@@ -91,7 +93,8 @@ type EventDetailTab =
   | "leads"
   | "campaigns"
   | "checkin"
-  | "survey-editor";
+  | "survey-editor"
+  | "payments";
 const VALID_TABS: readonly EventDetailTab[] = [
   "confirmations",
   "attendees",
@@ -100,6 +103,7 @@ const VALID_TABS: readonly EventDetailTab[] = [
   "campaigns",
   "checkin",
   "survey-editor",
+  "payments",
 ] as const;
 const DEFAULT_TAB: EventDetailTab = "confirmations";
 
@@ -207,6 +211,16 @@ export default async function AdminEventoDetailPage({
     getRespondedSurveySets(params.id),
   ]);
 
+  // Sprint pagos-manuales (2026-07-15): foto de pagos del evento. Solo
+  // si el evento existe. Si no, queda vacio (el early return de abajo
+  // maneja el 404).
+  const paymentsSnapshot = event
+    ? await getEventPaymentsSnapshot(
+        event.id,
+        event.priceMXN ?? 0,
+      )
+    : null;
+
   if (!event) {
     notFound();
   }
@@ -296,6 +310,17 @@ export default async function AdminEventoDetailPage({
       label: "Editor",
       icon: "📋",
       count: event.surveyConfig?.questions.length ?? 0,
+    },
+    // Sprint pagos-manuales (2026-07-15). count = confirmados pendientes
+    // (los que requieren accion del admin). 0 si el evento es free.
+    {
+      id: "payments",
+      label: "Pagos",
+      icon: "💳",
+      count: paymentsSnapshot
+        ? paymentsSnapshot.stats.totalPending +
+          paymentsSnapshot.stats.totalPendingVerification
+        : 0,
     },
   ];
 
@@ -863,6 +888,19 @@ export default async function AdminEventoDetailPage({
                               attendeePhone={c.phoneNormalized ?? c.phoneRaw ?? null}
                               attendeeName={c.name}
                             />
+                            {/* Sprint pagos-manuales (2026-07-15): badge +
+                                acciones de pago segun payment_status. Solo
+                                se renderiza si el evento es de pago
+                                (defaultAmount > 0). */}
+                            {event.priceMXN != null && event.priceMXN > 0 && (
+                              <PaymentStatusActions
+                                eventId={event.id}
+                                confirmationId={c.id}
+                                confirmationName={c.name}
+                                defaultAmount={event.priceMXN}
+                                paymentStatus={c.paymentStatus}
+                              />
+                            )}
                             <DeleteRowButton
                               action={deleteConfirmationAction.bind(null, null)}
                               itemId={c.id}
@@ -1303,6 +1341,197 @@ export default async function AdminEventoDetailPage({
               />
             </Card>
           )}
+
+          {/* Sprint pagos-manuales (2026-07-15): tab "Pagos" con stats
+              agregados + lista de confirmados pendientes + tabla de pagos
+              confirmados (manual + stripe). */}
+          {activeTab === "payments" &&
+            paymentsSnapshot &&
+            (() => {
+              const { stats, payments, pendingConfirmations } =
+                paymentsSnapshot;
+              const fmtMoney = (centavos: number) =>
+                `$${(centavos / 100).toFixed(2)} MXN`;
+              return (
+                <Section
+                  title="Pagos"
+                  subtitle={`Foto completa del cobro del evento. Total cobrado ${fmtMoney(stats.totalCollectedCentavos)}; pendiente ${fmtMoney(stats.totalPendingCentavos)} (${stats.totalPending + stats.totalPendingVerification} confirmados).`}
+                >
+                  {/* Stats cards: 4 columnas con los KPIs principales. */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-5 border-b border-brand-50">
+                    <Stat
+                      label="Cobrado"
+                      value={fmtMoney(stats.totalCollectedCentavos)}
+                      tone="emerald"
+                    />
+                    <Stat
+                      label="Pendiente"
+                      value={fmtMoney(stats.totalPendingCentavos)}
+                      hint={`${stats.totalPending + stats.totalPendingVerification} confirmados`}
+                      tone="amber"
+                    />
+                    <Stat
+                      label="Pagados"
+                      value={stats.totalPaid}
+                      tone="emerald"
+                    />
+                    <Stat
+                      label="Revocados"
+                      value={stats.totalRevoked}
+                      hint={stats.totalRevoked > 0 ? "requieren atencion" : ""}
+                      tone={stats.totalRevoked > 0 ? "amber" : "neutral"}
+                    />
+                  </div>
+
+                  {/* Breakdown por metodo. Mini-barras con count + monto. */}
+                  {Object.keys(stats.byMethod).length > 0 && (
+                    <div className="p-5 border-b border-brand-50 bg-brand-50/20">
+                      <p className="text-xs font-semibold uppercase text-ink-muted mb-2">
+                        Por metodo de pago
+                      </p>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                        {Object.entries(stats.byMethod)
+                          .sort(([, a], [, b]) => b.count - a.count)
+                          .map(([method, info]) => (
+                            <div
+                              key={method}
+                              className="rounded-lg bg-white border border-brand-100 px-3 py-2"
+                            >
+                              <p className="font-semibold text-ink capitalize">
+                                {method}
+                              </p>
+                              <p className="text-ink-muted text-[10px]">
+                                {info.count} pago{info.count !== 1 ? "s" : ""} ·{" "}
+                                {fmtMoney(info.centavos)}
+                              </p>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Tabla de confirmados pendientes (los que el admin
+                      tiene que revisar para cobrar). Boton "Confirmar
+                      pagado" por cada fila (reuse PaymentStatusActions). */}
+                  <div className="p-5 border-b border-brand-50">
+                    <p className="text-sm font-semibold text-ink mb-2">
+                      Pendientes de pago ({pendingConfirmations.length})
+                    </p>
+                    {pendingConfirmations.length === 0 ? (
+                      <p className="text-xs text-ink-muted italic">
+                        {stats.totalConfirmed > 0
+                          ? "Todos los confirmados de eventos de pago ya estan al dia."
+                          : "Sin confirmados pendientes. Cuando alguien se inscriba y el evento sea de pago, aparecera aca."}
+                      </p>
+                    ) : (
+                      <Table
+                        headers={[
+                          "Nombre",
+                          "Email",
+                          "Confirmo",
+                          "Estado",
+                          "Accion",
+                        ]}
+                      >
+                        {pendingConfirmations.map((c) => (
+                          <tr key={c.id} className="hover:bg-brand-50/30">
+                            <td className="px-5 py-3 font-medium text-ink">
+                              {c.name}
+                            </td>
+                            <td className="px-5 py-3 text-ink-muted">
+                              {c.email ?? "—"}
+                            </td>
+                            <td className="px-5 py-3 text-ink-muted text-xs">
+                              {new Date(c.confirmedAt).toLocaleDateString(
+                                "es-MX",
+                              )}
+                            </td>
+                            <td className="px-5 py-3 text-xs">
+                              {c.paymentStatus === "pending_verification" ? (
+                                <Badge tone="warning">⏳ Pendiente verificacion</Badge>
+                              ) : (
+                                <Badge tone="neutral">⏳ Pendiente</Badge>
+                              )}
+                            </td>
+                            <td className="px-5 py-3">
+                              <PaymentStatusActions
+                                eventId={event.id}
+                                confirmationId={c.id}
+                                confirmationName={c.name}
+                                defaultAmount={event.priceMXN ?? 0}
+                                paymentStatus={c.paymentStatus}
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </Table>
+                    )}
+                  </div>
+
+                  {/* Tabla de pagos confirmados (manual + stripe). */}
+                  <div className="p-5">
+                    <p className="text-sm font-semibold text-ink mb-2">
+                      Pagos confirmados ({payments.length})
+                    </p>
+                    {payments.length === 0 ? (
+                      <p className="text-xs text-ink-muted italic">
+                        Aun no hay pagos confirmados para este evento.
+                      </p>
+                    ) : (
+                      <Table
+                        headers={[
+                          "Nombre",
+                          "Metodo",
+                          "Monto",
+                          "Provider",
+                          "Verificado",
+                          "Fecha",
+                          "Notas",
+                        ]}
+                      >
+                        {payments.map((p) => (
+                          <tr key={p.paymentId} className="hover:bg-brand-50/30">
+                            <td className="px-5 py-3 font-medium text-ink">
+                              {p.confirmationName}
+                            </td>
+                            <td className="px-5 py-3 text-ink-muted capitalize text-xs">
+                              {p.method}
+                            </td>
+                            <td className="px-5 py-3 text-ink font-semibold text-xs">
+                              {fmtMoney(p.amountCentavos)}
+                            </td>
+                            <td className="px-5 py-3 text-xs">
+                              {p.isManual ? (
+                                <Badge tone="brand">manual_admin</Badge>
+                              ) : (
+                                <Badge tone="info">stripe</Badge>
+                              )}
+                            </td>
+                            <td className="px-5 py-3 text-xs">
+                              {p.isManual ? (
+                                p.stripeVerified ? (
+                                  <Badge tone="success">✓ Stripe API</Badge>
+                                ) : (
+                                  <Badge tone="warning">admin</Badge>
+                                )
+                              ) : (
+                                <span className="text-ink-muted">—</span>
+                              )}
+                            </td>
+                            <td className="px-5 py-3 text-ink-muted text-xs">
+                              {new Date(p.createdAt).toLocaleDateString("es-MX")}
+                            </td>
+                            <td className="px-5 py-3 text-ink-muted text-[10px] italic max-w-[200px] truncate">
+                              {p.notes ?? "—"}
+                            </td>
+                          </tr>
+                        ))}
+                      </Table>
+                    )}
+                  </div>
+                </Section>
+              );
+            })()}
 
           {/* Vista Pipeline (Kanban 5 columnas). Solo se renderiza cuando
               ?view=pipeline. Display-only por ahora: cada card muestra
