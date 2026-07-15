@@ -388,11 +388,39 @@ const VALID_INBOUND_MESSAGE_TYPES: ReadonlySet<string> = new Set([
  * FIX 2026-07-06: export para tests. Si el nombre del lead es un placeholder
  * (e.g. "Por", "Asistente", "test"), devolvemos "" para que el bot NO lo
  * use en saludos ni en el system prompt del LLM.
+ *
+ * FIX 2026-07-15 (sesion David, "bot llamó a Carlos 'Quiero'"): el bug
+ * era que el pushname de WhatsApp del lead era "Quiero más información"
+ * (texto de intención, no un nombre real) y se persistía en
+ * `leads.name`. `PLACEHOLDER_NAMES` no lo cubría (es un string
+ * legítimo, no un placeholder obvio). Ahora filtramos también frases
+ * de intención al inicio o si contienen palabras clave tipo "más
+ * información" / "me interesa" / "inscribirme" / "registrarme" /
+ * "apartar lugar" / "reservar" / "dime" / "buenos días" / "buenas
+ * tardes" / "saludos" + cualquier string de más de 5 palabras. El
+ * abridor dirá "¡Hola!" genérico y el LLM verá `leadName=""` (no un
+ * "Quiero" contaminado).
  */
+const INTENT_PHRASE_RE = /^(?:quiero|dime|me\s+interesa|inscríbeme|inscribeme|registrame|regístrate|apartar|reservar|saludos?|buen[oa]?\s+d[ií]a|buenas?\s+(?:tardes|noches))/i;
+const INTENT_HAS_INFO_RE = /(?:m[áa]s\s+informaci[óo]n|m[áa]s\s+info|me\s+interesa|inscribirme|inscribime|registrarme|apartar\s+(?:mi\s+)?lugar|reservar\s+(?:mi\s+)?lugar)/i;
+const TOO_MANY_WORDS = 10;
+
 export function cleanFirstName(rawName: string | null | undefined): string {
-  const name = (rawName ?? "").toLowerCase().trim();
+  const trimmed = (rawName ?? "").trim();
+  if (!trimmed) return "";
+  const name = trimmed.toLowerCase();
   if (PLACEHOLDER_NAMES.has(name)) return "";
-  return rawName?.trim() ?? "";
+  // FIX 2026-07-15: rechazar frases de intención persistidas como
+  // nombre (e.g. "Quiero más información", "Hola, me interesa el
+  // evento").
+  if (INTENT_PHRASE_RE.test(trimmed)) return "";
+  if (INTENT_HAS_INFO_RE.test(trimmed)) return "";
+  // FIX 2026-07-15: nombres con > 10 palabras son prácticamente
+  // imposibles en español (push name de WhatsApp <= 25 chars) y
+  // matchearían con texto de intención largo. Si alguien tiene un
+  // nombre real de 10+ palabras, podemos ajustar el límite.
+  if (trimmed.split(/\s+/).filter(Boolean).length > TOO_MANY_WORDS) return "";
+  return trimmed;
 }
 
 /**

@@ -158,15 +158,20 @@ export async function POST(req: NextRequest) {
       processedNew++;
       queued.push(result.wamid ?? msg.messageId);
     }
-    // Bloqueamos la respuesta hasta 8s para que el bot termine de mandar
-    // el reply por la API de Meta antes de devolver 200. Margen < 10s
-    // (umbral de retry de Meta).
-    //
-    // Es preferible a `void` porque con `void` Vercel mata el container
-    // post-response y el usuario nunca recibe respuesta.
+    // Bloqueamos la respuesta hasta 25s para que el bot termine de
+    // mandar el reply por la API de Meta antes de devolver 200. Margen
+    // < 30s (Vercel hobby function timeout). Subido de 8s → 25s en
+    // sprint 2026-07-15: el LLM en human_first + DeepSeek estaba
+    // tardando >8s con frecuencia, y el race-timeout cortaba el
+    // container de Vercel antes de que el reply saliera, así que el
+    // usuario quedaba sin respuesta. Meta NO reintenta (la respuesta
+    // HTTP ya salió) — el bot sigue corriendo hasta los 25s intentando
+    // mandar. Si el LLM tarda >25s, Vercel mata la función y el reply
+    // se pierde (en ese caso el usuario verá el template más tarde si
+    // hay un cron de retry, o nunca si no).
     await Promise.race([
       processInboundSafely(msg),
-      new Promise<unknown>((resolve) => setTimeout(resolve, 8000))
+      new Promise<unknown>((resolve) => setTimeout(resolve, 25000))
     ]);
   }
 

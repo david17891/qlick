@@ -493,6 +493,15 @@ export async function loadAllActiveEvents(): Promise<ActiveEventContext[]> {
         "id, slug, short_code, title, description, starts_at, ends_at, location, status, requires_name, event_rules, format, streaming_url, streaming_provider, streaming_access_note"
       )
       .eq("status", "published")
+      // FIX 2026-07-15 (sesion David, E2E human_first): el catálogo
+      // multi-evento debe respetar el mismo grace de 6h que
+      // `loadActiveEventContext`. Sin este filtro, eventos ya
+      // vencidos (e.g. el "Marketing + IA" del 11 de julio) seguían
+      // apareciendo en el `eventsListBlock` que el LLM ve, y el LLM
+      // los recomendaba en vez del próximo evento activo del 17 de
+      // julio. Mismo grace: `now - 6h` (cubre eventos en curso o con
+      // delay leve).
+      .gte("starts_at", new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString())
       .order("starts_at", { ascending: true });
 
     if (error || !data || data.length === 0) {
