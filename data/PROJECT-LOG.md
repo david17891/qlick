@@ -4472,3 +4472,34 @@ pm run build → 27 static pages + 2 rutas de pago (/pagar/[courseSlug] y /pagar
   3. Forwardear webhooks: stripe listen --forward-to localhost:3000/api/webhooks/stripe. El CLI devuelve un whsec_... que pegas en .env.local línea 18 (STRIPE_WEBHOOK_SECRET).
   4. Reiniciar dev server. Crear evento en /admin/eventos con precio > 0, publicarlo, click 'Probar checkout' en el banner verde, pagar con tarjeta 4242 4242 4242 4242. Verificar que el access grant se dispara y aparece en event_access. Tras validar, switch a mock en .env.local para no gastar API calls en pruebas futuras.
 
+
+## 2026-07-15 03:05 Phoenix — Fix 3 bugs E2E sprint pagos-manuales
+
+- **Pregunta:** David encontró 3 bugs durante el E2E en producción del sprint pagos-manuales: (1) email de bienvenida no llega al confirmar asistencia en /eventos/[slug], (2) payment_status='not_required' en confirmaciones de eventos de pago, (3) bot kill-switch (50/50) + modo human_first. Además: el botón admin 'Reenviar email' tampoco incluía el bloque de pago en el email re-enviado.
+
+- **Decisión:** Cerrar los 3 bugs + la mejora en UN commit atómico (781ea5f). Bot reset via SQL directo (no requiere commit).
+
+- **Razón:** Los 3 son bugs detectados en producción, no se pueden reproducir en dev. El bot reset es operacional (límite y modo, no código), así que va por SQL directo al Supabase Management API. La mejora del botón admin es colateral al bug 1 (mismo template, mismo fix de pasar priceMXN+paymentUrl).
+
+- **Cambios concretos:**
+  - src/lib/email/event-qr-pass.ts: helper público sendQrPassForConfirmation que arma el email del pase digital para una confirmation recién creada (lookup, crear/reusar QR token, generar QR data URL, mandar email con bloque de pago si priceMXN > 0).
+  - src/lib/email/templates/event-qr-pass.ts: campos priceMXN + paymentUrl en EventQrPassInput, bloque HTML condicional naranja con CTA 'Pagar entrada →'.
+  - src/app/eventos/[slug]/actions.ts: import del helper, UPDATE payment_status='pending' si priceMXN > 0, llamada fire-and-forget al helper.
+  - src/app/api/admin/events/[id]/send-qr-pass/route.ts: pasar priceMXN + paymentUrl al sendEventQrPassEmail para que el botón 'Reenviar email' también incluya el bloque de pago.
+  - Bot reset SQL (scripts/_tmp-bot-reset-20260715.sql, después borrado): bot_daily_outbound_limit 50→200, bot_global_mode human_first→socratic_autopilot_v2, bot_usage_daily del día en 0.
+
+- **Verificación:**
+  - 
+pm run type-check → 0 errores.
+  - 
+pm run lint → 0 warnings/errors.
+  - 
+pm test → 1371/1371 OK.
+  - 
+pm run build → OK (compila todas las rutas).
+  - SQL verificado: bot_daily_outbound_limit='200', bot_global_mode='socratic_autopilot_v2', bot_usage_today=0.
+
+- **Pendiente post-deploy:**
+  - Vercel redeploy + alias set a qlick.digital.
+  - E2E manual: registrar una nueva asistencia al evento de prueba (marketing-ia-para-emprendedores-pago), confirmar que llega el email CON bloque de pago, y que el payment_status queda en 'pending' en la DB.
+  - Reenviar email desde admin al mismo attendee, confirmar que el email re-enviado también incluye el bloque de pago.
