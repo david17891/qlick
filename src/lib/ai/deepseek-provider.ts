@@ -84,6 +84,7 @@ import {
 // FIX 2026-07-12 (Sprint v16 PR #2.1, M5): helper de UPSERT en
 // bot_usage_daily (acumulador diario de tokens + costo DeepSeek).
 import { calculateDeepseekCostUsdCents, recordDeepseekUsage } from "./deepseek-cost";
+import { debugLog } from "@/lib/log";
 
 // ---------------------------------------------------------------------------
 // Configuracion
@@ -846,6 +847,80 @@ function buildAgentUsage(raw: CallDeepSeekRawResult): AgentUsage | undefined {
   return { promptTokens: prompt, completionTokens: completion, totalTokens: total, costCents, model };
 }
 
+/**
+ * Safety net de runtime para el modo `human_first` (Sprint 2026-07-14).
+ *
+ * El LLM tiene un bias muy fuerte hacia "conversar" en este modo y los
+ * cambios de prompt (reglas explícitas, few-shot examples, recetario de
+ * 3 pasos) no rompieron el patrón. Este helper detecta cuando:
+ *   1. El modo activo es `human_first`.
+ *   2. Hay un evento activo cargado en el context.
+ *   3. El último mensaje del lead mostraba interés (regex de keywords).
+ *   4. El reply del LLM NO contiene ya un cierre de inscripción.
+ *
+ * Si todas las condiciones se cumplen, agrega el cierre al final del
+ * reply. NO interfiere con:
+ *   - Modos distintos a human_first (return early).
+ *   - Eventos no válidos (source="no_events") (return early).
+ *   - Replies vacíos o fallidos (return early).
+ *   - Replies que ya contienen cierre (return early).
+ *   - Mensajes del lead que NO muestran interés (return early — el LLM
+ *     puede seguir conversando si el lead solo preguntó algo).
+ *
+ * El helper es best-effort: cualquier excepción se loggea y se retorna
+ * el `result` original sin modificar.
+ */
+async function applyHumanFirstSaleGuard(
+  result: AgentResult,
+  context: AgentContext
+): Promise<AgentResult> {
+  try {
+    // 1. Solo en human_first.
+    const mode = await readSystemSetting(KEY_BOT_GLOBAL_MODE).catch(() => null);
+    if (mode !== "human_first") return result;
+
+    // 2. Solo si hay evento activo válido.
+    const event = context.activeEvent;
+    if (!event || event.source === "no_events") return result;
+
+    // 3. Solo si el resultado es OK y tiene contenido.
+    if (!result.ok || !result.content || result.content.length === 0) {
+      return result;
+    }
+
+    // 4. Si el LLM ya cerró con inscripción, no hacer nada.
+    const alreadyClosedRe = /\b(mándame\s+(tu\s+)?nombre|dame\s+(tu\s+)?nombre|te\s+(apunto|registro|inscribo)|manda\s+tu\s+correo|apunto\s+tu\s+lugar)\b/i;
+    if (alreadyClosedRe.test(result.content)) return result;
+
+    // 5. Si el lead NO mostraba interés, no forzar.
+    const body = (context.lastIncomingMessage ?? "").trim();
+    if (!body) return result;
+    // Regex de palabras de interés. Cobertura amplia:
+    //   - Interés explícito: "me interesa", "quiero", "entrar", "inscríb",
+    //     "anoto", "cómo me apunto", "me gustaría", "suena bien".
+    //   - Info práctica del evento: "a qué hora", "dónde", "cuándo",
+    //     "cuánto", "horario", "temario", "ponente", "precio",
+    //     "qué incluye", "qué es", "link", "url".
+    //   - Confirmación de inscripción: "registrar", "apartar",
+    //     "inscripción", "registro".
+    // IMPORTANTE: NO matchear "gracias", "ok", "listo" u otras
+    // confirmaciones de turnos anteriores (esos no son interés nuevo).
+    const interestRe = /\b(me\s+interesa|quiero|entrar|inscr[ií]b|apuntar|anoto|suena\s+bien|c[oó]mo\s+me\s+apunto|me\s+gustar[ií]a|me\s+encanta|cu[aá]ndo(\s+es)?|cu[aá]nto(\s+cuesta)?|horario|ponente|temario|precio|inscripci[oó]n|registrar|apartar|registro|me\s+apunto|me\s+anoto|a\s+qu[eé]\s+hora|d[oó]nde|qu[eé]\s+incluye|qu[eé]\s+es|link|url)\b/i;
+    if (!interestRe.test(body)) return result;
+
+    // 6. Si llegamos aquí, agregar el cierre.
+    const closingLine = "Si quieres tu lugar, mándame tu nombre y correo y te lo aparto.";
+    return {
+      ...result,
+      content: `${result.content.trim()}\n\n${closingLine}`,
+      note: `${result.note ?? ""} [human_first sale guard]`.trim(),
+    };
+  } catch (err) {
+    // best-effort: si algo falla, devolvemos el result original.
+    return result;
+  }
+}
+
 function wrapRawAsAgentResult(
   raw: CallDeepSeekRawResult,
   task: AgentTask,
@@ -1113,6 +1188,34 @@ export const deepseekAgentProvider: AIAgentProvider = {
 
     if (currentTier === "flash" && !result.note.includes("tier=") && !result.note.includes("[1C]") && !result.note.includes("[2C]")) {
       result.note = `[tier=flash] ${result.note}`;
+    }
+
+    // FIX 2026-07-14 (sesión David, sprint tuning human_first): safety net
+    // de runtime para garantizar que el bot venda cuando hay evento activo.
+    // El LLM tiene un bias fuerte hacia "conversar" en human_first y los
+    // cambios de prompt no fueron suficientes para romperlo. Este safety
+    // net detecta:
+    //   1. Modo = human_first.
+    //   2. Hay evento activo (no source="no_events").
+    //   3. El último mensaje del lead mostraba interés (regex de palabras
+    //      clave: "me interesa", "quiero", "entrar", "inscríb", "apuntar",
+    //      "anoto", "suena bien", "cómo me apunto", "me gustaría",
+    //      "cuándo es", "cuánto cuesta", "horario", etc.).
+    //   4. El reply del LLM NO contiene ya un cierre de inscripción.
+    // Si todas las condiciones se cumplen, agrega el cierre al final del
+    // reply: "Si quieres tu lugar, mándame tu nombre y correo y te lo
+    // aparto." Esto NO rompe la regla anti-alucinación (el evento SÍ es
+    // real, está validado por el loader) y NO interfiere con opt_out /
+    // provide_email (esos se manejan ANTES en el bot-engine).
+    const saleGuard = await applyHumanFirstSaleGuard(result, context);
+    if (saleGuard !== result) {
+      debugLog("[ai/deepseek] human_first sale guard applied", {
+        task,
+        tier: currentTier,
+        originalContentLength: result.content.length,
+        guardedContentLength: saleGuard.content.length,
+      });
+      result = saleGuard;
     }
 
     // Sprint v16 (PR #2.1, M5): acumular tokens en bot_usage_daily.

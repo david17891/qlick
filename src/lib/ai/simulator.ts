@@ -358,6 +358,14 @@ export async function simulateConversationTurn(
     conversationWindow,
     coursesCatalogBlock,
     ...(leadProfile ? { leadProfile } : {}),
+    // FIX 2026-07-14 (safety net human_first): el simulador debe pasar
+    // el activeEvent al context del provider (no solo embebido en el
+    // system prompt), porque el safety net de runtime
+    // `applyHumanFirstSaleGuard` lo lee de `context.activeEvent` para
+    // decidir si agrega el cierre de inscripción. Antes el simulador
+    // solo inyectaba el evento en el system prompt, dejando al provider
+    // sin acceso estructurado al evento. Esto rompía el safety net.
+    ...(activeEvent ? { activeEvent } : {}),
     // Override del system prompt (clave del aislamiento de modo).
     systemPromptOverride: systemPrompt,
     // Sprint v0.9.7 (Switch Flash/Pro): propagamos el override del tier
