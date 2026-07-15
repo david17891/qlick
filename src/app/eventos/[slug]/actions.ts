@@ -25,6 +25,8 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { normalizePhone } from "@/lib/crm/phone-utils";
 import { appBaseUrl } from "@/lib/utils";
+import { sendQrPassForConfirmation } from "@/lib/email/event-qr-pass";
+import { infoLog } from "@/lib/log";
 import type { EventConfirmationSource } from "@/types/events";
 
 /**
@@ -204,6 +206,31 @@ export async function submitEventRegistration(
     };
   }
 
+  // Sprint pagos-manuales 2026-07-15: si el evento es de cobro (priceMXN > 0)
+  // y la confirmation es nueva (created === true), seteamos
+  // payment_status='pending' para que el admin pueda registrar el pago
+  // desde el panel. Sin esto, las confirmaciones de eventos de pago
+  // quedan con el default 'not_required' (bug detectado en E2E).
+  if (
+    result.created &&
+    result.confirmation &&
+    typeof event.priceMXN === "number" &&
+    event.priceMXN > 0
+  ) {
+    try {
+      const supabase = createSupabaseAdminClient();
+      await supabase
+        .from("event_confirmations" as never)
+        .update({ payment_status: "pending" } as never)
+        .eq("id", result.confirmation.id);
+    } catch (updErr) {
+      infoLog(
+        "[eventos/actions] payment_status update fallo (no fatal)",
+        updErr instanceof Error ? { error: updErr.message } : {},
+      );
+    }
+  }
+
   // Si el evento es virtual o híbrido (migration 20260707000000),
   // generamos un QR token ad-hoc para que el visitante pueda usar el
   // gate "SÍ, VOY" desde la página pública (sin esperar el email).
@@ -217,6 +244,26 @@ export async function submitEventRegistration(
       attendeeName: name,
       attendeeEmail: email ?? null,
       attendeePhoneRaw: phone ?? null,
+    });
+  }
+
+  // FIX 2026-07-15: disparar email de bienvenida (pase digital) cuando
+  // se crea una confirmation nueva. Antes SOLO lo disparaba el botón
+  // "Reenviar email" del admin — el form público quedaba en silencio
+  // (Luz Elena / biheca8075@buloan.com confirmado a las 09:51, sin email).
+  //
+  // Best-effort: el helper ya tiene try/catch interno y loggea en
+  // event_email_log. Si falla, NO rompe el flow. Fire-and-forget con
+  // `void` para no bloquear el response del form.
+  if (result.created && result.confirmation && email) {
+    void sendQrPassForConfirmation({
+      confirmationId: result.confirmation.id,
+      event,
+    }).catch((err) => {
+      infoLog(
+        "[eventos/actions] sendQrPassForConfirmation fallo (no fatal)",
+        err instanceof Error ? { error: err.message } : {},
+      );
     });
   }
 

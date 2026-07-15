@@ -226,6 +226,16 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       ? `${baseUrl}/api/event-gate/${encodeURIComponent(qrToken.token)}/click`
       : undefined;
 
+  // FIX 2026-07-15 (sprint pagos-manuales): si el evento es de cobro,
+  // pasamos el bloque de pago al template para que el email re-enviado
+  // también incluya el CTA al checkout (mismo comportamiento que el
+  // form público). Sin esto, el botón "Reenviar email" mostraba el
+  // email SIN el bloque de pago aunque el evento costara.
+  const paymentUrl =
+    event.priceMXN && event.priceMXN > 0
+      ? `${baseUrl}/pagar/evento/${event.slug}?confirmation=${confirmation.id}`
+      : undefined;
+
   let emailResult: {
     ok: boolean;
     mode: "dev" | "prod";
@@ -245,6 +255,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         format: event.format ?? "in_person",
         gateUrl,
         streamingAccessNote: event.streamingAccessNote ?? undefined,
+        priceMXN: event.priceMXN,
+        paymentUrl,
       },
       { eventId: event.id, eventQrTokenId: null },
     );

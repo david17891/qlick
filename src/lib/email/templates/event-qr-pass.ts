@@ -59,6 +59,20 @@ export interface EventQrPassInput {
    */
   streamingUrl?: string;
   /**
+   * Precio del evento en MXN (sprint pagos-manuales 2026-07-15). Si es
+   * > 0, el email agrega un bloque "Esta entrada cuesta $X" + botón al
+   * checkout publico. Si es 0 o undefined, no se muestra nada (evento
+   * gratis, no aplica).
+   */
+  priceMXN?: number;
+  /**
+   * URL publica del checkout del evento (sprint 2026-07-15). Apunta a
+   * `/pagar/evento/[slug]?confirmation=[id]` para que el pago quede
+   * linkeado al confirmado correcto. Solo se muestra si `priceMXN > 0`
+   * y si `paymentUrl` esta set.
+   */
+  paymentUrl?: string;
+  /**
    * Nota visible al asistente sobre el acceso al streaming
    * (ej: "el link se desbloquea 10 min antes").
    */
@@ -219,6 +233,48 @@ export function renderEventQrPassEmail(
                           : `Gracias por registrarte a <strong>"${eventTitle}"</strong>. Tu pase digital está aquí. Muéstralo en la entrada — el staff lo escanea y listo.`
                 }
               </p>
+
+              ${
+                /*
+                  Bloque de pago (sprint pagos-manuales 2026-07-15). Solo
+                  se muestra si el evento es de cobro (priceMXN > 0) y si
+                  el caller paso `paymentUrl`. CTA: boton al checkout
+                  publico. Copy: cuanto cuesta + aclaracion "tu lugar
+                  queda reservado al pagar".
+                */
+                input.priceMXN && input.priceMXN > 0 && input.paymentUrl
+                  ? `
+              <!-- Pago requerido -->
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;margin-bottom:24px;">
+                <tr>
+                  <td style="padding:20px;">
+                    <p style="margin:0 0 8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#c2410c;">
+                      Pago requerido para confirmar tu lugar
+                    </p>
+                    <p style="margin:0 0 12px;font-size:22px;font-weight:700;color:#1a1a1a;">
+                      $${input.priceMXN.toLocaleString("es-MX")} MXN
+                    </p>
+                    <p style="margin:0 0 16px;font-size:13px;line-height:1.5;color:#7c2d12;">
+                      Tu lugar queda <strong>reservado provisionalmente</strong> al confirmar asistencia. Para que el admin marque el pago como confirmado, completa el pago por tarjeta, OXXO, SPEI o transferencia.
+                    </p>
+                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto;">
+                      <tr>
+                        <td align="center" style="background:#c2410c;border-radius:8px;">
+                          <a href="${esc(input.paymentUrl)}" target="_blank" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+                            Pagar entrada →
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+                    <p style="margin:12px 0 0;font-size:11px;color:#9a9a9a;">
+                      Si prefieres pagar en efectivo en puerta o por transferencia, avísale al equipo de Qlick y te registramos el pago a mano.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+              `
+                  : ""
+              }
 
               ${
                 /* Bloque QR: in_person, hybrid, o virtual SIN link. */
