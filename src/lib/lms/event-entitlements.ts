@@ -56,7 +56,14 @@ export type EventAccessSource =
   | "simulated_event_payment"
   | "manual_event_admin"
   | "coupon"
-  | "free_rsvp";
+  | "free_rsvp"
+  /** FIX sprint 2026-07-15: lead se inscribio a un evento de pago
+   * via WhatsApp y va a pagar en puerta el dia del evento (50-80%
+   * de los casos segun David). El access se crea al confirmar la
+   * inscripcion (no al pagar), para que el QR de acceso funcione
+   * independiente del estado de pago. El staff cobra en caja si
+   * el `payment_status` sigue en `pending` al hacer check-in. */
+  | "event_pay_at_door";
 
 export interface EventAccess {
   id: string;
@@ -239,6 +246,10 @@ export async function checkEventPaidAccess(
   eventId: string
 ): Promise<EventAccessResult> {
   const base = await checkEventAccess(userId, eventId);
+  // FIX sprint 2026-07-15: event_pay_at_door NO cuenta como "pago
+  // confirmado" todavia (el staff cobra en puerta). El staff scan
+  // debe distinguir entre pagado-en-linea y pendiente-de-pago-en-puerta
+  // y cobrarle al lead en el momento.
   if (!base.hasAccess) return base;
   if (base.source === "free_rsvp") {
     return { hasAccess: false, reason: "no_access" };

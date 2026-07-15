@@ -6028,6 +6028,38 @@ export async function processInboundMessage(
                   },
                 );
               }
+
+              // FIX sprint 2026-07-15d: crear event_access al
+              // confirmar la inscripcion (no al pagar). El QR da
+              // acceso al evento independiente del estado de pago
+              // (David: 50-80% paga en puerta). El staff cobra en
+              // caja si `payment_status` sigue en `pending` al hacer
+              // check-in. `event_pay_at_door` es el source nuevo en
+              // `event-entitlements.ts` para distinguir esto del
+              // acceso por Stripe.
+              try {
+                const { grantEventAccess } = await import(
+                  "../lms/event-entitlements"
+                );
+                await grantEventAccess({
+                  userId: lead.id,
+                  eventId: evtForPayment?.id ?? "",
+                  source: "event_pay_at_door",
+                  grantedReason: "confirmation_whatsapp_bot",
+                });
+              } catch (accErr) {
+                errorLog(
+                  "[whatsapp/bot] pending_payment: grantEventAccess fallo (no fatal)",
+                  {
+                    leadId: lead.id,
+                    confirmationId: confirmResult.confirmation.id,
+                    error:
+                      accErr instanceof Error
+                        ? accErr.message
+                        : String(accErr),
+                  },
+                );
+              }
             }
 
             if (!confirmResult || !confirmResult.ok || !confirmResult.confirmation) {
