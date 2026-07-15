@@ -570,6 +570,27 @@ console.log(`Evento: ${event.id} (slug=${event.slug})`);
 console.log(`Phones usados: +5255550{01|02|03}${RUN_ID.slice(-4)}`);
 console.log(`Emails usados: sim+{mql|hot|cold}+${RUN_ID}@example.com`);
 
+// FIX 2026-07-15 (sesion David, "eventos del simulador aparecen en prod"):
+// el smoke de GitHub Actions corre este script contra la DB de prod. Antes
+// el evento creado quedaba como `status='published'` y aparecía en el bot
+// como "Masterclass Funnels 2026", contaminando el admin y el LLM. Ahora
+// borramos el evento al final. Si el script falla a media corrida, el
+// cleanup NO se ejecuta y el evento queda — David puede archivarlo
+// manualmente desde /admin/eventos.
+try {
+  const { error: delEvtErr } = await supabase
+    .from("events")
+    .delete()
+    .eq("id", event.id);
+  if (delEvtErr) {
+    console.warn(`  ⚠️ cleanup event fallo: ${delEvtErr.message}`);
+  } else {
+    console.log(`  🧹 cleanup OK: evento ${event.id} (slug=${event.slug}) borrado`);
+  }
+} catch (cleanupErr) {
+  console.warn(`  ⚠️ cleanup exception: ${cleanupErr.message}`);
+}
+
 console.log(`\n📌 Cleanup opcional (manual):`);
 console.log(`   node scripts/reset-test-lead.mjs --phone=+525555001${RUN_ID.slice(-4)}`);
 console.log(`   node scripts/reset-test-lead.mjs --phone=+525555002${RUN_ID.slice(-4)}`);

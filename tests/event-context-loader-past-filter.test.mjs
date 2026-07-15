@@ -42,6 +42,7 @@ function buildMockClient() {
   const query = {
     eq: null,
     gte: null,
+    not: [],
     order: null,
     limit: null
   };
@@ -55,6 +56,10 @@ function buildMockClient() {
     },
     gte(...args) {
       query.gte = args;
+      return builder;
+    },
+    not(...args) {
+      query.not.push(args);
       return builder;
     },
     order(...args) {
@@ -126,6 +131,29 @@ test("E1: sin slug, eventos pasados son filtrados (no se inyectan al bot)", asyn
   assert.equal(ctx.slug, "_no_events");
 });
 
+test("E1.5: FIX 2026-07-15, sin slug, excluye slugs del simulador (audit-funnel-/sim-funnel-)", async () => {
+  rowsToReturn = [];
+  lastQuery = null;
+
+  const { loadActiveEventContext } = await import(LOADER_URL);
+  await loadActiveEventContext();
+
+  assert.ok(lastQuery, "la query debe haberse construido");
+  assert.ok(Array.isArray(lastQuery.not), "lastQuery.not debe ser array");
+  // Debe excluir ambos prefijos del simulador (smoke de GitHub Actions
+  // crea eventos `audit-funnel-${ts}` y `sim-funnel-${ts}` y los deja
+  // en prod sin limpiar).
+  const notClauses = lastQuery.not.map(([col, op, pattern]) => `${col} ${op} ${pattern}`);
+  assert.ok(
+    notClauses.some((c) => c.includes("slug") && c.includes("audit-funnel")),
+    `debe excluir audit-funnel-*: got [${notClauses.join(", ")}]`
+  );
+  assert.ok(
+    notClauses.some((c) => c.includes("slug") && c.includes("sim-funnel")),
+    `debe excluir sim-funnel-*: got [${notClauses.join(", ")}]`
+  );
+});
+
 test("E2: con slug, NO se aplica el filtro de fecha (override explícito del admin)", async () => {
   rowsToReturn = [];
   lastQuery = null;
@@ -142,6 +170,14 @@ test("E2: con slug, NO se aplica el filtro de fecha (override explícito del adm
   assert.ok(lastQuery.eq, "la query con slug debe tener .eq('slug', ...)");
   assert.equal(lastQuery.eq[0], "slug");
   assert.equal(lastQuery.eq[1], "mi-evento-pasado");
+  // FIX 2026-07-15: con slug específico, NO excluimos los prefijos del
+  // simulador (puede ser un admin/debug que quiere ver un evento
+  // específico por su slug).
+  assert.equal(
+    lastQuery.not.length,
+    0,
+    "con slug NO debe aplicar exclusion de slugs del simulador"
+  );
 });
 
 test("E3: el query por defecto (sin slug) ordena por starts_at ASC y limita a 1", async () => {

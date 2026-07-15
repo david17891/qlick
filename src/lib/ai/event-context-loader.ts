@@ -367,9 +367,21 @@ export async function loadActiveEventContext(
     // ofreciera cursos pasados. Ahora pedimos solo eventos que inician
     // en el futuro o hace menos de 6h (margen de gracia por si el
     // webinar está en curso o tuvo un delay).
+    //
+    // FIX 2026-07-15 (sesion David, "los eventos Audit Masterclass /
+    // Masterclass Funnels aparecen en el bot"): el smoke de GitHub
+    // Actions (.github/workflows/smoke.yml) corre scratch/audit-edge-cases
+    // y scratch/simulate-scenarios contra la DB de prod. Esos scripts
+    // crean eventos con slug `audit-funnel-${Date.now()}` o
+    // `sim-funnel-${Date.now()}` y NO los borran al final, dejando
+    // basura. Defense en profundidad: excluimos esos prefijos del query
+    // para que el bot nunca los ofrezca aunque vuelvan a aparecer. El
+    // fix de raíz va en los scripts (cleanup al final) — esta defense
+    // es el segundo candado.
     const graceStartIso = new Date(
       Date.now() - 6 * 60 * 60 * 1000
     ).toISOString();
+    const SIMULATOR_SLUG_PREFIXES = ["audit-funnel-", "sim-funnel-"];
     const { data, error } = slug
       ? await supabase
           .from("events")
@@ -378,6 +390,8 @@ export async function loadActiveEventContext(
           )
           .eq("status", "published")
           .eq("slug", slug)
+          // No excluimos prefijos del simulador si el caller pidió un
+          // slug específico (puede ser un admin/debug).
           .limit(1)
           .maybeSingle()
       : await supabase
@@ -387,9 +401,15 @@ export async function loadActiveEventContext(
           )
           .eq("status", "published")
           .gte("starts_at", graceStartIso)
+          // Defense: excluir slugs del simulador de matriz de auditoría.
+          .not("slug", "like", "audit-funnel-%")
+          .not("slug", "like", "sim-funnel-%")
           .order("starts_at", { ascending: true })
           .limit(1)
           .maybeSingle();
+    // Referencia para que TypeScript no marque unused y para que
+    // conste en el bundle que la constante existe (en caso de refactor).
+    void SIMULATOR_SLUG_PREFIXES;
 
     if (error || !data) {
       return fallbackNoEvents();
@@ -502,6 +522,13 @@ export async function loadAllActiveEvents(): Promise<ActiveEventContext[]> {
       // julio. Mismo grace: `now - 6h` (cubre eventos en curso o con
       // delay leve).
       .gte("starts_at", new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString())
+      // FIX 2026-07-15 (mismo fix que en loadActiveEventContext):
+      // defense contra slugs del simulador de auditoría. El smoke de
+      // GitHub Actions crea eventos con prefijo `audit-funnel-` o
+      // `sim-funnel-` y los deja en prod. Esta defense evita que el
+      // LLM los vea en el catálogo multi-evento.
+      .not("slug", "like", "audit-funnel-%")
+      .not("slug", "like", "sim-funnel-%")
       .order("starts_at", { ascending: true });
 
     if (error || !data || data.length === 0) {

@@ -492,6 +492,34 @@ if (fails.length > 0) {
 console.log(`\nRun ID: ${RUN_ID}`);
 console.log(`Evento: ${event.id} (slug=${event.slug})`);
 
+// FIX 2026-07-15 (sesion David, "eventos del simulador aparecen en prod"):
+// el smoke de GitHub Actions corre este script contra la DB de prod. Antes
+// el evento creado quedaba como `status='published'` y aparecía en el bot
+// como "Audit Masterclass 2026", contaminando el admin y el LLM. Ahora
+// borramos el evento (y el survey asociado) al final. Si el script falla
+// a media corrida, el cleanup NO se ejecuta y el evento queda — David
+// puede archivarlo manualmente desde /admin/eventos.
+try {
+  const { error: delSurveyErr } = await supabase
+    .from("event_surveys")
+    .delete()
+    .eq("event_id", event.id);
+  if (delSurveyErr) {
+    console.warn(`  ⚠️ cleanup event_surveys fallo: ${delSurveyErr.message}`);
+  }
+  const { error: delEvtErr } = await supabase
+    .from("events")
+    .delete()
+    .eq("id", event.id);
+  if (delEvtErr) {
+    console.warn(`  ⚠️ cleanup event fallo: ${delEvtErr.message}`);
+  } else {
+    console.log(`  🧹 cleanup OK: evento ${event.id} (slug=${event.slug}) borrado`);
+  }
+} catch (cleanupErr) {
+  console.warn(`  ⚠️ cleanup exception: ${cleanupErr.message}`);
+}
+
 if (failCount > 0) {
   console.log(`\n❌ Auditoría con discrepancias — exit 1`);
   process.exit(1);
