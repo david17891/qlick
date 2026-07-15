@@ -5866,30 +5866,44 @@ export async function processInboundMessage(
       }
     }
 
-    // 4.8 FIX sprint 2026-07-15c (sesion David, "tu lugar esta apartado
-    // pero no se registro"): el flow del bot para eventos de pago
-    // tenia un copy placeholder del sprint 04-jul ("Metodo de pago
-    // por implementar") que NUNCA se actualizo cuando se integro
-    // Stripe. El bot decia "tu lugar esta apartado" pero la fila en
-    // event_confirmations NO se creaba.
+    // 4.8 FIX sprint 2026-07-15d (sesion David, "no le pidio nombre
+    // ni correo"): el flow del bot para eventos de pago creaba la
+    // confirmation con placeholders ('WhatsApp Lead' /
+    // 'wa.XXX@placeholder.local') si el lead no tenia nombre o
+    // email. El bot asumia que el lead ya existia con datos
+    // reales, pero un reset reciente (o un nuevo webhook sin
+    // push name) dejaba el lead con placeholders. Resultado: la
+    // confirmation tenia datos falsos y el email del QR rebotaba.
     //
-    // Fix: el flow ahora hace el mismo path que el form publico
-    // /eventos/[slug] y el flow provide_email:
-    //   1. createConfirmation con source='whatsapp_bot' y
-    //      payment_status='pending' (default).
-    //   2. sendQrPassForConfirmation para mandar el email de
-    //      bienvenida con el bloque de pago (CTA al checkout).
-    //   3. Responder al lead con copy HONESTO + link al checkout
-    //      publico (NO "por implementar" — ya esta implementado).
+    // Sprint 2026-07-15: el bot ahora captura nombre+email ANTES
+    // de crear la confirmation (igual que el flow secuencial de
+    // provide_name -> provide_email que ya existe para eventos
+    // gratis). Si el lead no tiene nombre valido (placeholder)
+    // o no tiene email, redirigimos al flow de captura con
+    // `awaiting_field` apropiado. Solo creamos la confirmation
+    // cuando tenemos los 2 datos.
     //
-    // Deteccion de evento de pago: parseamos el description buscando
-    // un patron `Costo: $NNN` (o cualquier `$NNN` antes de MXN/USD).
-    // Conservadora: si no matchea, asumimos gratis.
+    // 4.8b FIX sprint 2026-07-15d: ademas, la instruction de pago
+    // ahora es MIXTA (online + puerta). David: 50-80% paga en
+    // puerta el dia del evento. El bot le dice al lead que puede
+    // pagar en linea (tarjeta/OXXO/SPEI) o en puerta, y el QR
+    // se manda igual (independiente del pago). El staff cobra en
+    // caja si no pago en linea.
     if (
       intent === "interactive_event_inscribir" &&
       supabase &&
       lead.id
     ) {
+      // 4.8.0 FIX: validar que el lead tenga nombre y email validos
+      // ANTES de crear la confirmation. Si falta, redirigir al
+      // flow de captura (igual que en eventos gratis).
+      const cleanLeadName = cleanFirstName(lead.name);
+      const leadEmailRaw = lead.email?.trim().toLowerCase() ?? null;
+      const isPlaceholderEmail =
+        !leadEmailRaw || /@placeholder\.local$/i.test(leadEmailRaw);
+
+      // Determinar targetSlug ANTES de los guards de captura (lo
+      // necesitamos para el copy si redirigimos al flow de captura).
       let targetSlug: string | null = requestedEventSlug;
       if (!targetSlug && buttonId?.startsWith("evt_inscribir_")) {
         targetSlug = buttonId.slice("evt_inscribir_".length);
@@ -5897,6 +5911,45 @@ export async function processInboundMessage(
       if (!targetSlug) {
         const activeEvt = await loadActiveEventContext().catch(() => null);
         targetSlug = activeEvt?.slug ?? null;
+      }
+      const localProvider = getActiveWhatsAppProvider();
+
+      if (!cleanLeadName) {
+        // Sin nombre valido. Pedir nombre.
+        const evtForName = targetSlug
+          ? await loadActiveEventContext(targetSlug).catch(() => null)
+          : null;
+        const evtFallback = getActiveEvent();
+        const evtName = evtForName?.title ?? evtFallback.name;
+        const bodyText =
+          `Para inscribirte al taller *${evtName}* necesito tu ` +
+          `nombre completo (asi queda en tu constancia de asistencia). ` +
+          `¿Me lo pasas? Ej: "Juan Pérez".`;
+        const plan: OutboundPlan = {
+          kind: "text",
+          body: bodyText,
+          metadata: { awaiting_field: "name" },
+          send: () =>
+            localProvider.send({ to: phoneNormalized, body: bodyText }),
+        };
+        // El case retorna BotProcessResult por un return del codigo
+        // pre-existente; matcheamos el shape con un cast.
+        return plan as never;
+      }
+
+      if (isPlaceholderEmail) {
+        // Sin email real. Pedir email.
+        const bodyText =
+          `Gracias ${cleanLeadName}. Ahora mándame tu email y te ` +
+          `paso el QR + el link de pago.`;
+        const plan: OutboundPlan = {
+          kind: "text",
+          body: bodyText,
+          metadata: { awaiting_field: "email" },
+          send: () =>
+            localProvider.send({ to: phoneNormalized, body: bodyText }),
+        };
+        return plan as never;
       }
       if (targetSlug) {
         // No generamos QR de pago si el lead ya está registrado (4.7 ya
