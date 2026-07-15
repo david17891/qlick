@@ -28,14 +28,22 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentStudent } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { grantAccess } from "@/lib/lms/entitlements";
+import { grantEventAccess } from "@/lib/lms/event-entitlements";
 import { enrollUserInCourse } from "@/lib/lms/enrollments-server";
 import { getCourseBySlug } from "@/lib/lms/courses-server";
+import { getEventBySlug } from "@/lib/events/events-server";
 
 type SimulateEvent = "paid" | "failed" | "pending";
 type PaymentMethod = "card" | "oxxo" | "spei" | "wallet" | "free";
+type SimulateProductKind = "course" | "event";
 
 interface SimulateRequest {
-  courseSlug: string;
+  /** Slug del curso (compat: default `productKind="course"`). */
+  courseSlug?: string;
+  /** Slug del evento (usar con `productKind: "event"`). */
+  eventSlug?: string;
+  /** Tipo de producto. Default "course" si no se pasa. */
+  productKind?: SimulateProductKind;
   event: SimulateEvent;
   method?: PaymentMethod;
   amountMxn?: number;
@@ -133,9 +141,21 @@ export async function POST(req: NextRequest) {
     effectiveUserId = session.userId;
   }
 
-  if (!body.courseSlug || typeof body.courseSlug !== "string") {
+  // Resolvemos el producto según productKind. Default "course" para
+  // mantener compat con callers que ya existían antes del soporte de
+  // eventos (migration 20260714230000).
+  const productKind: SimulateProductKind =
+    body.productKind === "event" ? "event" : "course";
+  const slug = productKind === "event" ? body.eventSlug : body.courseSlug;
+  if (!slug || typeof slug !== "string") {
     return NextResponse.json(
-      { ok: false, message: "Falta courseSlug." },
+      {
+        ok: false,
+        message:
+          productKind === "event"
+            ? "Falta eventSlug (o productKind='event' sin eventSlug)."
+            : "Falta courseSlug.",
+      },
       { status: 400 },
     );
   }
@@ -150,30 +170,67 @@ export async function POST(req: NextRequest) {
   }
   const method: PaymentMethod = isValidMethod(body.method) ? body.method : "card";
 
-  // 3. Cargar el curso.
-  const course = await getCourseBySlug(body.courseSlug);
-  if (!course) {
-    return NextResponse.json(
-      { ok: false, message: `Curso '${body.courseSlug}' no existe.` },
-      { status: 404 },
-    );
+  // 3. Cargar el producto (curso o evento).
+  let productId: string;
+  let productLabel: string;
+  let productTitle: string;
+  let defaultAmountMxn: number;
+  if (productKind === "event") {
+    const event = await getEventBySlug(slug);
+    if (!event) {
+      return NextResponse.json(
+        { ok: false, message: `Evento '${slug}' no existe.` },
+        { status: 404 },
+      );
+    }
+    if (!event.priceMXN || event.priceMXN <= 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          message: `El evento '${slug}' es gratuito. El simulador solo aplica a eventos con cobro.`,
+        },
+        { status: 400 },
+      );
+    }
+    productId = event.id;
+    productLabel = "event";
+    productTitle = event.title;
+    defaultAmountMxn = event.priceMXN;
+  } else {
+    const course = await getCourseBySlug(slug);
+    if (!course) {
+      return NextResponse.json(
+        { ok: false, message: `Curso '${slug}' no existe.` },
+        { status: 404 },
+      );
+    }
+    productId = course.id;
+    productLabel = "course";
+    productTitle = course.title;
+    defaultAmountMxn = course.priceMXN ?? 0;
   }
 
   // 4. Crear o encontrar el payment (idempotencia).
-  //    Usamos un idempotency_key determinístico basado en user+course+method+event
-  //    para que el simulador sea idempotente.
-  const idempotencyKey = `sim_${effectiveUserId}_${course.id}_${method}_${body.event}`;
+  //    Usamos un idempotency_key determinístico basado en user+product+method+event
+  //    para que el simulador sea idempotente. El prefijo "course_" o "event_"
+  //    evita colisión entre cursos y eventos con el mismo id (no debería
+  //    pasar porque son tablas separadas, pero defense in depth).
+  const idempotencyKey = `sim_${productLabel}_${effectiveUserId}_${productId}_${method}_${body.event}`;
   const newStatus = mapEventToStatus(body.event);
-  const amountMxn = body.amountMxn ?? course.priceMXN ?? 0;
+  const amountMxn = body.amountMxn ?? defaultAmountMxn;
 
   const supabase = createSupabaseAdminClient();
 
   // Buscar si ya existe un payment con esta idempotency_key.
+  // El filtro por idempotency_key ya garantiza unicidad (incluye
+  // productLabel + productId, así que no choca con cursos o eventos
+  // distintos del mismo user). Para eventos, NO filtramos por
+  // course_id porque la tabla payments no tiene event_id y para
+  // eventos queda null.
   const { data: existing } = await supabase
     .from("payments")
     .select("id, status")
     .eq("user_id", effectiveUserId)
-    .eq("course_id", course.id)
     .eq("idempotency_key", idempotencyKey)
     .maybeSingle();
 
@@ -192,12 +249,14 @@ export async function POST(req: NextRequest) {
     }
     paymentId = existing.id;
   } else {
-    // Crear nuevo.
+    // Crear nuevo. Para eventos, course_id queda null (la tabla
+    // payments no tiene columna event_id; la referencia al evento
+    // vive en event_access.payment_id, que se crea en el grant abajo).
     const { data: created, error: insErr } = await supabase
       .from("payments")
       .insert({
         user_id: effectiveUserId,
-        course_id: course.id,
+        course_id: productKind === "course" ? productId : null,
         provider: "mock",
         external_reference: `MOCK-${idempotencyKey}`,
         amount_mxn: amountMxn,
@@ -206,7 +265,12 @@ export async function POST(req: NextRequest) {
         status: newStatus,
         method,
         idempotency_key: idempotencyKey,
-      })
+        metadata: {
+          product_kind: productKind,
+          product_id: productId,
+          product_title: productTitle,
+        },
+      } as never)
       .select("id")
       .single();
     if (insErr || !created) {
@@ -218,35 +282,49 @@ export async function POST(req: NextRequest) {
     paymentId = created.id;
   }
 
-  // 5. Si event='paid', activar acceso.
+  // 5. Si event='paid', activar acceso (course_access o event_access).
   let accessGranted = false;
   if (body.event === "paid") {
     try {
-      await grantAccess({
-        userId: effectiveUserId,
-        courseId: course.id,
-        source: "simulated_payment",
-        paymentId,
-        grantedReason: `paid_via_sim_${new Date().toISOString().slice(0, 16)}`,
-      });
-      // También creamos/actualizamos el enrollment para que el dashboard
-      // muestre el curso. enrollments-server maneja idempotencia
-      // (no duplica si ya hay uno).
-      //
-      // source=null: la atribución del pago está en `course_access.access_source`
-      // (vía grantAccess arriba con `"simulated_payment"`). `enrollments.source`
-      // es para el ORIGEN del enrollment (qr/organic/referral/campaign), no el
-      // método de pago, así que null es correcto.
-      const enrollResult = await enrollUserInCourse(
-        effectiveUserId,
-        course.id,
-        null,
-      );
-      if (!enrollResult.ok) {
-        // eslint-disable-next-line no-console
-        console.error("[simulate-webhook] enrollUserInCourse falló", {
-          note: enrollResult.note,
+      if (productKind === "event") {
+        // Evento: grantEventAccess (migration 20260707100000).
+        // El access_source es 'simulated_event_payment' para distinguir
+        // de 'event_purchase' (Stripe real) en queries/auditoría.
+        await grantEventAccess({
+          userId: effectiveUserId,
+          eventId: productId,
+          source: "simulated_event_payment",
+          paymentId,
+          grantedReason: `paid_via_sim_${new Date().toISOString().slice(0, 16)}`,
         });
+      } else {
+        // Curso: grantAccess + enrollUserInCourse (comportamiento legacy).
+        await grantAccess({
+          userId: effectiveUserId,
+          courseId: productId,
+          source: "simulated_payment",
+          paymentId,
+          grantedReason: `paid_via_sim_${new Date().toISOString().slice(0, 16)}`,
+        });
+        // También creamos/actualizamos el enrollment para que el dashboard
+        // muestre el curso. enrollments-server maneja idempotencia
+        // (no duplica si ya hay uno).
+        //
+        // source=null: la atribución del pago está en `course_access.access_source`
+        // (vía grantAccess arriba con `"simulated_payment"`). `enrollments.source`
+        // es para el ORIGEN del enrollment (qr/organic/referral/campaign), no el
+        // método de pago, así que null es correcto.
+        const enrollResult = await enrollUserInCourse(
+          effectiveUserId,
+          productId,
+          null,
+        );
+        if (!enrollResult.ok) {
+          // eslint-disable-next-line no-console
+          console.error("[simulate-webhook] enrollUserInCourse falló", {
+            note: enrollResult.note,
+          });
+        }
       }
       accessGranted = true;
     } catch (err) {

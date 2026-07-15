@@ -75,6 +75,18 @@ export interface CreateEventInput {
   streamingUrl?: string;
   streamingProvider?: import("@/types/events").EventStreamingProvider;
   streamingAccessNote?: string;
+  /**
+   * Precio de la entrada en MXN (migration 20260714230000). Default 0
+   * = evento gratuito. El server clampea valores negativos a 0
+   * (defense in depth: el form admin ya valida, pero si alguien
+   * llama el API directo no queremos insertar -100).
+   */
+  priceMXN?: number;
+  /**
+   * Codigo de moneda ISO-4217 (default 'MXN'). Si llega vacio o
+   * undefined, el server aplica 'MXN' antes del INSERT.
+   */
+  currency?: string;
 }
 
 /** Input para editar un evento (admin). Todos los campos opcionales salvo los requeridos. */
@@ -91,6 +103,13 @@ export interface UpdateEventInput {
   streamingUrl?: string | null;
   streamingProvider?: import("@/types/events").EventStreamingProvider | null;
   streamingAccessNote?: string | null;
+  /**
+   * Precio de la entrada en MXN (migration 20260714230000). Mismas
+   * reglas que en `CreateEventInput`: el server clampea a >=0.
+   */
+  priceMXN?: number | null;
+  /** Codigo de moneda ISO-4217. Default 'MXN' si llega vacio. */
+  currency?: string | null;
 }
 
 /** Resultado de operaciones admin sobre eventos. */
@@ -348,6 +367,7 @@ export async function createEvent(
   // short_code), asi que casteamos el payload a `as never` igual que
   // hace el código legacy con event_rules. La columna existe en la DB
   // (migration 20260705120000) y la pasará al INSERT.
+  // Mismo caso para price_mxn y currency (migration 20260714230000).
   const insertPayload: Record<string, unknown> = {
     slug: input.slug.trim().toLowerCase(),
     title: input.title.trim(),
@@ -364,6 +384,13 @@ export async function createEvent(
     streaming_url: input.streamingUrl?.trim() || null,
     streaming_provider: input.streamingProvider ?? null,
     streaming_access_note: input.streamingAccessNote?.trim() || null,
+    // Pago (migration 20260714230000). Clampeamos a >=0 para que un
+    // caller malicioso no inserte precio negativo. Default 0 (gratis).
+    price_mxn:
+      typeof input.priceMXN === "number" && Number.isFinite(input.priceMXN)
+        ? Math.max(0, input.priceMXN)
+        : 0,
+    currency: input.currency?.trim() || "MXN",
   };
   // Solo agregar short_code si el generador devolvió algo válido.
   if (shortCode) insertPayload.short_code = shortCode;
@@ -394,6 +421,12 @@ export async function createEvent(
       streaming_url: input.streamingUrl?.trim() || null,
       streaming_provider: input.streamingProvider ?? null,
       streaming_access_note: input.streamingAccessNote?.trim() || null,
+      // Pago (migration 20260714230000). Mismo clamp que en el primer INSERT.
+      price_mxn:
+        typeof input.priceMXN === "number" && Number.isFinite(input.priceMXN)
+          ? Math.max(0, input.priceMXN)
+          : 0,
+      currency: input.currency?.trim() || "MXN",
       short_code: retryCode
     };
     const retry = await supabase
@@ -483,6 +516,10 @@ export async function updateEvent(
     streaming_url?: string | null;
     streaming_provider?: string | null;
     streaming_access_note?: string | null;
+    // Pago (migration 20260714230000). Mismo caso: cast seguro al
+    // typegen stale. price_mxn y currency son las nuevas columnas.
+    price_mxn?: number;
+    currency?: string;
   } = {};
   // Patch se construye arriba; al final hacemos `as never` para el .update().
   const changes: Record<string, { from: string | null; to: string | null }> = {};
@@ -532,6 +569,17 @@ export async function updateEvent(
   }
   if (input.streamingAccessNote !== undefined) {
     patch.streaming_access_note = input.streamingAccessNote?.trim() || null;
+  }
+  // Pago (migration 20260714230000). Clamp a >=0 para precio, default
+  // 'MXN' para currency si llega vacio. null explícito = limpiar.
+  if (input.priceMXN !== undefined) {
+    patch.price_mxn =
+      typeof input.priceMXN === "number" && Number.isFinite(input.priceMXN)
+        ? Math.max(0, input.priceMXN)
+        : 0;
+  }
+  if (input.currency !== undefined) {
+    patch.currency = input.currency?.trim() || "MXN";
   }
 
   if (Object.keys(patch).length === 0) {

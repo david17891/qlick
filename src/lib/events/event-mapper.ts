@@ -58,6 +58,20 @@ export function mapEventRowToEvent(row: EventRow): Event {
     streamingProvider: row.streaming_provider ?? undefined,
     streamingAccessNote: row.streaming_access_note ?? undefined,
     coverImageUrl: row.cover_image_url ?? undefined,
+    // Pago (migration 20260714230000). Typegen puede estar stale (las
+    // columnas son nuevas), asi que casteamos el row a `Record<string,
+    // unknown>` y leemos con fallback. Si la columna no esta, queda
+    // undefined → evento se trata como gratuito por default.
+    priceMXN:
+      typeof (row as Record<string, unknown>).price_mxn === "string"
+        ? Number((row as Record<string, unknown>).price_mxn)
+        : typeof (row as Record<string, unknown>).price_mxn === "number"
+          ? ((row as Record<string, unknown>).price_mxn as number)
+          : undefined,
+    currency:
+      typeof (row as Record<string, unknown>).currency === "string"
+        ? ((row as Record<string, unknown>).currency as string)
+        : "MXN",
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

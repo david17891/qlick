@@ -39,9 +39,12 @@
  * confirmarse el pago. El grant del access lo hace el webhook, no este
  * endpoint — este solo inicia el checkout.
  *
- * SCOPE: solo cursos en esta versión. Eventos/masterclass requieren agregar
- * `price_mxn` a la tabla `events` (migration pendiente) antes de poder usar
- * este endpoint.
+ * SCOPE (2026-07-14): acepta `productKind: "course" | "event"`. Default
+ * "course" para compat con callers que ya existían. Para eventos, el
+ * caller manda `productKind: "event"` y el mismo `slug` (event slug).
+ * La migration 20260714230000 agregó `price_mxn` y `currency` a `events`
+ * para destrabar este flujo. Masterclass queda fuera de scope (sprint
+ * futuro con su propia ruta `/pagar/masterclass/[slug]`).
  *
  * DEV/PROD: este endpoint NO está bajo /api/dev/ — el provider "mock" lo usa
  * también pero el endpoint es legítimo en prod (es solo que el provider
@@ -52,6 +55,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentStudent } from "@/lib/auth/session";
 import { getCourseBySlug } from "@/lib/lms/courses-server";
 import { checkCourseAccess, grantAccess } from "@/lib/lms/entitlements";
+import { getEventBySlug } from "@/lib/events/events-server";
+import { checkEventAccess, grantEventAccess } from "@/lib/lms/event-entitlements";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getPaymentProvider } from "@/lib/payments";
 import type { ProductRef } from "@/lib/payments/payment-provider";
@@ -63,7 +68,20 @@ export const dynamic = "force-dynamic";
 
 interface CreateCheckoutBody {
   slug?: unknown;
+  /**
+   * Tipo de producto a cobrar. Default "course" (compat con callers
+   * que ya existían antes del soporte de eventos, migration
+   * 20260714230000). Para eventos: "event".
+   */
+  productKind?: unknown;
   method?: unknown;
+}
+
+type SupportedProductKind = "course" | "event";
+
+function parseProductKind(v: unknown): SupportedProductKind {
+  if (v === "event") return "event";
+  return "course";
 }
 
 const VALID_METHODS: PaymentMethod[] = ["card", "oxxo", "spei"];
@@ -94,50 +112,106 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const productKind = parseProductKind(body.productKind);
   const method: PaymentMethod = isValidMethod(body.method) ? body.method : "card";
 
-  // 3. Resolver el curso por slug.
-  const course = await getCourseBySlug(body.slug);
-  if (!course) {
-    return NextResponse.json(
-      { ok: false, error: `Curso '${body.slug}' no existe o no está publicado.` },
-      { status: 404 },
-    );
-  }
-  if (course.accessType !== "paid") {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: `El curso '${body.slug}' es gratuito. Usá /inscripcion/${body.slug} en su lugar.`,
-      },
-      { status: 400 },
-    );
-  }
-
-// Idempotencia: si ya tiene access activo y hay sesión, no dejamos pagar
-  // dos veces. Sin sesión (guest) no podemos chequear, así que dejamos que
-  // el webhook detecte duplicados via metadata.user_id cuando se resuelva.
-  if (session) {
-    const access = await checkCourseAccess(session.userId, course.id);
-    if (access.hasAccess) {
+  // 3. Resolver el producto por slug + kind. Cada branch construye su
+  //    propio `productRef` con el shape correcto para que el provider
+  //    (Stripe, mock, etc.) pueda procesarlo. El path común de
+  //    provider.createCheckout + response va DESPUÉS de este bloque.
+  let productRef: ProductRef;
+  if (productKind === "event") {
+    // 3a. EVENTO (migration 20260714230000 — price_mxn + currency).
+    const event = await getEventBySlug(body.slug);
+    if (!event) {
+      return NextResponse.json(
+        { ok: false, error: `Evento '${body.slug}' no existe.` },
+        { status: 404 },
+      );
+    }
+    if (event.status !== "published") {
       return NextResponse.json(
         {
           ok: false,
-          error: "Ya tienes acceso a este curso.",
-          alreadyPaid: true,
+          error: `El evento '${body.slug}' no está publicado. Publicá primero el evento desde /admin/eventos.`,
         },
-        { status: 409 }
+        { status: 400 },
       );
     }
+    if (!event.priceMXN || event.priceMXN <= 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `El evento '${body.slug}' es gratuito. El asistente va directo a la confirmación (no requiere pago).`,
+        },
+        { status: 400 },
+      );
+    }
+    // Idempotencia: si ya tiene access activo y hay sesión, no dejamos
+    // pagar dos veces. Sin sesión (guest) no podemos chequear — dejamos
+    // que el webhook detecte duplicados via metadata.user_id.
+    if (session) {
+      const access = await checkEventAccess(session.userId, event.id);
+      if (access.hasAccess && access.source !== "free_rsvp") {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Ya tienes acceso a este evento.",
+            alreadyPaid: true,
+          },
+          { status: 409 },
+        );
+      }
+    }
+    productRef = {
+      kind: "event",
+      id: event.id,
+      slug: event.slug,
+      title: event.title,
+      priceMXN: event.priceMXN,
+      startsAt: event.startsAt,
+    };
+  } else {
+    // 3b. CURSO (path original, intacto).
+    const course = await getCourseBySlug(body.slug);
+    if (!course) {
+      return NextResponse.json(
+        { ok: false, error: `Curso '${body.slug}' no existe o no está publicado.` },
+        { status: 404 },
+      );
+    }
+    if (course.accessType !== "paid") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `El curso '${body.slug}' es gratuito. Usá /inscripcion/${body.slug} en su lugar.`,
+        },
+        { status: 400 },
+      );
+    }
+    // Idempotencia: si ya tiene access activo y hay sesión, no dejamos
+    // pagar dos veces. Sin sesión (guest) no podemos chequear.
+    if (session) {
+      const access = await checkCourseAccess(session.userId, course.id);
+      if (access.hasAccess) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Ya tienes acceso a este curso.",
+            alreadyPaid: true,
+          },
+          { status: 409 },
+        );
+      }
+    }
+    productRef = {
+      kind: "course",
+      id: course.id,
+      slug: course.slug,
+      title: course.title,
+      priceMXN: course.priceMXN ?? 0,
+    };
   }
-
-  const productRef: ProductRef = {
-    kind: "course",
-    id: course.id,
-    slug: course.slug,
-    title: course.title,
-    priceMXN: course.priceMXN ?? 0,
-  };
 
   // 4. Crear el checkout en el provider activo.
   const provider = getPaymentProvider();

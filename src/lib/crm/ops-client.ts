@@ -278,6 +278,18 @@ export interface EventFormInput {
    * En update: `null` lo limpia, undefined lo deja igual.
    */
   streamingAccessNote?: string | null;
+  /**
+   * Precio de la entrada en MXN (migration 20260714230000). Default 0
+   * = evento gratuito (no muestra checkout, va directo a confirmacion).
+   * El form admin lo envia como string (input type=number) y el server
+   * lo parsea + clampea a >=0.
+   */
+  priceMXN?: number | null;
+  /**
+   * Codigo de moneda ISO-4217 (default 'MXN'). El server aplica default
+   * 'MXN' si llega vacio o undefined.
+   */
+  currency?: string | null;
 }
 
 /** POST /api/admin/events → crea un evento. */

@@ -62,8 +62,9 @@ export async function POST(req: NextRequest) {
   // solo pasábamos 8 legacy — los 5 nuevos (eventRules, format,
   // streamingUrl, streamingProvider, streamingAccessNote) llegaban
   // acá pero se descartaban, dejando el evento incompleto en DB.
-  // El lib server ya tiene defaults seguros para cada uno, así que
-  // podemos pasar el body completo sin filtrar manualmente.
+  // FIX 2026-07-14: también priceMXN y currency (migration 20260714230000)
+  // — antes no existían en el form admin, ahora sí. Misma lógica:
+  // propagar todo el body, el lib server aplica defaults seguros.
   const result = await createEvent(
     {
       slug: body.slug,
@@ -80,6 +81,9 @@ export async function POST(req: NextRequest) {
       streamingUrl: body.streamingUrl,
       streamingProvider: body.streamingProvider,
       streamingAccessNote: body.streamingAccessNote,
+      // Pago (migration 20260714230000):
+      priceMXN: body.priceMXN,
+      currency: body.currency,
     },
     admin.email,
   );

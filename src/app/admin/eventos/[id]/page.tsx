@@ -367,6 +367,51 @@ export default async function AdminEventoDetailPage({
             </div>
           </Card>
 
+          {/* Migration 20260714230000: banner de cobro (visible solo si
+              el evento está publicado y tiene precio > 0). CTA al flow
+              de pago público para probar end-to-end. */}
+          {event.priceMXN != null &&
+            event.priceMXN > 0 &&
+            event.status === "published" && (
+              <Card className="p-4 mb-6 bg-emerald-50/60 border-emerald-200">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-emerald-900">
+                      💳 Cobro configurado · ${event.priceMXN} {event.currency ?? "MXN"}
+                    </p>
+                    <p className="text-xs text-emerald-800 mt-0.5">
+                      Probá el flow de pago end-to-end como si fueras un
+                      asistente real (tarjeta test 4242 con Stripe, o
+                      simulador con mock provider).
+                    </p>
+                  </div>
+                  <a
+                    href={`/pagar/evento/${event.slug}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm font-semibold hover:bg-emerald-600 transition shadow-sm shrink-0"
+                  >
+                    Probar checkout →
+                  </a>
+                </div>
+              </Card>
+            )}
+          {/* Si el evento es gratuito (priceMXN === 0) y está publicado,
+              informamos al admin que no hay checkout configurado. */}
+          {event.status === "published" &&
+            (event.priceMXN == null || event.priceMXN <= 0) && (
+              <Card className="p-4 mb-6 bg-brand-50/40 border-brand-200">
+                <div className="flex flex-wrap items-center gap-3">
+                  <p className="text-sm text-brand-800">
+                    🎁 <strong>Evento gratuito</strong> · no hay checkout
+                    configurado. Los asistentes van directo al form de
+                    confirmación. Si querés cobrarle entrada, editá el
+                    evento y poné un precio mayor a 0.
+                  </p>
+                </div>
+              </Card>
+            )}
+
           {/* Sub-bloque 1C: Metricas de conversion del evento.
               Tasas reales del funnel (no counts): asistencia, consent,
               conversion a lead, overall. Si el denominador es 0,

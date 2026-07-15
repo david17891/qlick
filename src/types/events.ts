@@ -263,6 +263,20 @@ export interface Event {
    * Nota visible al asistente (ej: "el link se desbloquea 10 min antes").
    */
   streamingAccessNote?: string;
+  /**
+   * Precio de la entrada en MXN (migration 20260714230000).
+   * `0` o `undefined` = evento gratuito (no muestra checkout, va
+   * directo al form de confirmacion). Para eventos cobrados, el
+   * flow de pago usa `ProductRefEvent.priceMXN`
+   * (ver `src/lib/payments/payment-provider.ts`).
+   */
+  priceMXN?: number;
+  /**
+   * Codigo de moneda ISO-4217 (default 'MXN'). El provider de pago
+   * lo usa para construir el Checkout Session de Stripe. Sprint
+   * futuro podria soportar USD para eventos online internacionales.
+   */
+  currency?: string;
   /** URL de la imagen de portada. */
   coverImageUrl?: string;
   /** Estado de publicación. Solo `published` es lectura pública. */

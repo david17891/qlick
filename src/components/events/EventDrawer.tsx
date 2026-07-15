@@ -63,6 +63,19 @@ interface FormState {
   streamingProvider: EventStreamingProvider;
   /** Nota visible para el asistente (ej: "el link se abre 10 min antes"). */
   streamingAccessNote: string;
+  /**
+   * Precio de la entrada en MXN (migration 20260714230000). "" = sin
+   * precio seteado (el server aplica 0 = gratis). El admin lo ve
+   * en un fieldset "Pago" después de Modalidad y antes de Portada.
+   */
+  priceMXN: string;
+  /**
+   * Codigo de moneda ISO-4217. Default 'MXN'. Hoy no se permite
+   * cambiar desde la UI (Qlick opera 100% en Mexico), pero el
+   * campo existe para que el server sepa que el admin es consciente
+   * de la moneda.
+   */
+  currency: string;
 }
 
 function eventToForm(e: Event): FormState {
@@ -94,6 +107,15 @@ function eventToForm(e: Event): FormState {
     streamingUrl: e.streamingUrl ?? "",
     streamingProvider: (e.streamingProvider ?? "other") as EventStreamingProvider,
     streamingAccessNote: e.streamingAccessNote ?? "",
+    // Pago (migration 20260714230000). Si priceMXN es undefined o 0,
+    // el input queda vacio (el admin ve "0" como default y entiende
+    // que es gratis). Si es > 0, lo mostramos con 2 decimales para
+    // que se vea como precio (ej. "499" o "499.50").
+    priceMXN:
+      typeof e.priceMXN === "number" && e.priceMXN > 0
+        ? e.priceMXN.toString()
+        : "",
+    currency: e.currency ?? "MXN",
   };
 }
 
@@ -116,6 +138,11 @@ function emptyForm(): FormState {
     streamingUrl: "",
     streamingProvider: "youtube_live",
     streamingAccessNote: "",
+    // Pago (migration 20260714230000). Default vacio = el admin
+    // debe escribir explicitamente "0" si quiere confirmar que es
+    // gratis, o el numero si quiere cobrar. Currency default 'MXN'.
+    priceMXN: "",
+    currency: "MXN",
   };
 }
 
@@ -305,6 +332,16 @@ export function EventDrawer({
             form.format !== "in_person" && form.streamingAccessNote.trim()
               ? form.streamingAccessNote.trim()
               : undefined,
+          // Pago (migration 20260714230000). Parseamos el string del input
+          // a number; vacio o no numerico = 0 (gratis). El server vuelve
+          // a clampear a >=0 por defense in depth.
+          priceMXN: (() => {
+            const raw = form.priceMXN.trim();
+            if (!raw) return 0;
+            const n = Number(raw);
+            return Number.isFinite(n) ? Math.max(0, n) : 0;
+          })(),
+          currency: form.currency.trim() || "MXN",
         });
         setSuccess("Evento creado.");
         onSaved(created);
@@ -329,6 +366,14 @@ export function EventDrawer({
             form.format !== "in_person" && form.streamingAccessNote.trim()
               ? form.streamingAccessNote.trim()
               : null,
+          // Pago (migration 20260714230000). Misma logica que en create.
+          priceMXN: (() => {
+            const raw = form.priceMXN.trim();
+            if (!raw) return 0;
+            const n = Number(raw);
+            return Number.isFinite(n) ? Math.max(0, n) : 0;
+          })(),
+          currency: form.currency.trim() || "MXN",
         });
         setSuccess("Cambios guardados.");
         onSaved(updated);
@@ -702,6 +747,74 @@ export function EventDrawer({
                 </div>
               </>
             )}
+          </fieldset>
+
+          {/* ────── Pago (migration 20260714230000) ────── */}
+          <fieldset className="border-t border-brand-100 pt-4 mt-2 space-y-3">
+            <legend className="text-xs font-bold uppercase tracking-wider text-brand-600 px-2">
+              💳 Pago
+            </legend>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-2">
+                <Field
+                  label="Precio (MXN)"
+                  htmlFor="evt-price"
+                  hint="0 o vacío = evento gratuito (no muestra checkout, va directo a confirmación). Cualquier valor > 0 activa el flow de Stripe / mock provider según NEXT_PUBLIC_PAYMENT_PROVIDER."
+                  error={fieldErrors.priceMXN}
+                >
+                  <Input
+                    id="evt-price"
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="0.50"
+                    value={form.priceMXN}
+                    onChange={(e) => set("priceMXN", e.target.value)}
+                    placeholder="0"
+                    disabled={saving}
+                  />
+                </Field>
+              </div>
+              <Field
+                label="Moneda"
+                htmlFor="evt-currency"
+                hint="Default MXN. Qlick opera solo en México por ahora."
+              >
+                <Input
+                  id="evt-currency"
+                  value={form.currency}
+                  onChange={(e) => set("currency", e.target.value.toUpperCase().slice(0, 3))}
+                  placeholder="MXN"
+                  maxLength={3}
+                  disabled={saving}
+                />
+              </Field>
+            </div>
+            {/* Banner contextual según el valor: ayuda al admin a
+                entender qué va a pasar al guardar. */}
+            {(() => {
+              const raw = form.priceMXN.trim();
+              const n = raw ? Number(raw) : 0;
+              if (raw && Number.isFinite(n) && n > 0) {
+                return (
+                  <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-800">
+                    💚 <strong>Cobro activado:</strong> al guardar, el admin
+                    del evento va a poder probar el checkout en{" "}
+                    <code className="bg-emerald-100 px-1.5 py-0.5 rounded">
+                      /pagar/{form.slug || "<slug>"}
+                    </code>{" "}
+                    con tarjeta test 4242 (si Stripe está activo) o el
+                    simulador mock (si no).
+                  </div>
+                );
+              }
+              return (
+                <div className="rounded-lg bg-brand-50 border border-brand-100 px-3 py-2 text-xs text-brand-800">
+                  🎁 <strong>Evento gratuito:</strong> no se muestra checkout
+                  al asistente. Va directo al form de confirmación.
+                </div>
+              );
+            })()}
           </fieldset>
 
           <Field label="Imagen de portada (URL)" htmlFor="evt-cover" hint="Opcional. Se mostrará en la card del admin.">
