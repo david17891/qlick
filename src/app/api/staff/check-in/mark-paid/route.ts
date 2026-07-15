@@ -316,6 +316,93 @@ export async function POST(req: NextRequest) {
       adminEmail: admin.email,
     });
 
+    // FIX auditoria 2026-07-15f: notificar al asistente que su pago se
+    // confirmo en puerta. Fire-and-forget para no bloquear el response
+    // del scanner.
+    //
+    // 1) Re-enviar el email del QR con el badge "PAGADO" (mismo helper
+    //    que el webhook de Stripe usa). El template ahora muestra el
+    //    badge verde porque paymentStatus=paid_manual.
+    // 2) Mandar WhatsApp al lead (si tiene phone) confirmando el pago.
+    //    Patron espejado de `notifyLeadPaymentConfirmed` en el webhook
+    //    de Stripe. Fire-and-forget: si falla, el lead igual ve el
+    //    badge verde en su email y el staff ya le cobró.
+    const attendeeEmail = (confRow as { email?: string | null }).email;
+    const attendeePhone = (confRow as { phone_normalized?: string | null })
+      .phone_normalized;
+    const eventId = (confRow as unknown as { event_id: string }).event_id;
+    if (attendeeEmail) {
+      void (async () => {
+        try {
+          const { sendQrPassForConfirmation } = await import(
+            "@/lib/email/event-qr-pass"
+          );
+          // Re-leemos el evento desde la DB (es solo 1 row, vale el round-trip).
+          const { getEventById } = await import(
+            "@/lib/events/events-server"
+          );
+          const evt = await getEventById(eventId);
+          if (evt) {
+            await sendQrPassForConfirmation({
+              confirmationId: body.confirmation_id,
+              event: evt,
+            });
+            infoLog(
+              "[staff/mark-paid] email re-enviado con badge PAGADO",
+              {
+                confirmationId: body.confirmation_id,
+                email: attendeeEmail,
+              },
+            );
+          }
+        } catch (emailErr) {
+          errorLog("[staff/mark-paid] email fallo (no fatal)", {
+            error:
+              emailErr instanceof Error
+                ? emailErr.message
+                : String(emailErr),
+          });
+        }
+      })();
+    }
+    if (attendeePhone) {
+      void (async () => {
+        try {
+          const { getActiveWhatsAppProvider } = await import(
+            "@/lib/whatsapp"
+          );
+          const provider = getActiveWhatsAppProvider();
+          if (provider) {
+            const { getEventById } = await import(
+              "@/lib/events/events-server"
+            );
+            const evt = await getEventById(eventId);
+            const eventTitle = evt?.title ?? "el evento";
+            const message =
+              `✅ Tu pago en puerta quedó registrado. ` +
+              `Te esperamos el día del evento. ` +
+              `Pase digital: te lo re-enviamos al correo por si lo necesitas.`;
+            await provider.send({
+              to: attendeePhone,
+              body: message,
+            });
+            infoLog(
+              "[staff/mark-paid] WhatsApp confirmacion enviado",
+              {
+                phone: attendeePhone,
+                eventTitle,
+              },
+            );
+          }
+        } catch (waErr) {
+          errorLog("[staff/mark-paid] WhatsApp fallo (no fatal)", {
+            error:
+              waErr instanceof Error ? waErr.message : String(waErr),
+          });
+        }
+      })();
+    }
+
     return NextResponse.json(
       {
         ok: true,

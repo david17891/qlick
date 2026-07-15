@@ -115,19 +115,38 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   const supabase = createSupabaseAdminClient();
 
   // 1. Buscar confirmation del attendee en este evento.
+  // FIX auditoria 2026-07-15f: tambien leemos payment_status para
+  // que el email re-enviado muestre el badge correcto. El typegen
+  // de event_confirmations no incluye payment_status todavia
+  // (migration 20260715014706 + typegen stale). Usamos cast via
+  // `as never` en el select y `as unknown` en el resultado, mismo
+  // patron que el resto del codigo. Regenerar typegen en sprint
+  // futuro (MEMORY: A-2).
   let confirmationQuery = supabase
-    .from("event_confirmations")
-    .select("id, name, email, phone_normalized")
-    .eq("event_id", event.id);
+    .from("event_confirmations" as never)
+    .select("id, name, email, phone_normalized, payment_status" as never)
+    .eq("event_id" as never, event.id as never);
   if (targetEmail) {
-    confirmationQuery = confirmationQuery.ilike("email", targetEmail);
+    confirmationQuery = confirmationQuery.ilike("email" as never, targetEmail);
   } else if (targetPhone) {
-    confirmationQuery = confirmationQuery.eq("phone_normalized", targetPhone);
+    confirmationQuery = confirmationQuery.eq(
+      "phone_normalized" as never,
+      targetPhone,
+    );
   }
-  const { data: confirmation, error: confErr } = await confirmationQuery
-    .order("confirmed_at", { ascending: false })
+  const { data: confirmation, error: confErr } = (await confirmationQuery
+    .order("confirmed_at" as never, { ascending: false } as never)
     .limit(1)
-    .maybeSingle();
+    .maybeSingle()) as {
+    data: {
+      id: string;
+      name: string | null;
+      email: string | null;
+      phone_normalized: string | null;
+      payment_status?: string | null;
+    } | null;
+    error: { message: string } | null;
+  };
   if (confErr) {
     return NextResponse.json(
       { ok: false, error: `Confirmation lookup falló: ${confErr.message}` },
@@ -173,7 +192,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       .insert({
         event_id: event.id,
         attendee_phone_normalized: phoneSentinel,
-        attendee_name: confirmation.name,
+        attendee_name: confirmation.name ?? "Asistente",
         attendee_email: confirmation.email,
         token,
         expires_at: expiresAt.toISOString(),
@@ -236,6 +255,15 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       ? `${baseUrl}/pagar/evento/${event.slug}?confirmation=${confirmation.id}`
       : undefined;
 
+  // FIX auditoria 2026-07-15f: paymentStatus del confirmation para que
+  // el email muestre el badge correcto. Si el admin reenvía el email
+  // despues de cobrar en puerta, el badge debe decir "Pago confirmado"
+  // (no "Pago pendiente"). El typegen de event_confirmations no
+  // incluye payment_status todavia; leemos via cast.
+  const paymentStatus =
+    (confirmation as unknown as { payment_status?: string | null })
+      .payment_status ?? null;
+
   let emailResult: {
     ok: boolean;
     mode: "dev" | "prod";
@@ -257,6 +285,14 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         streamingAccessNote: event.streamingAccessNote ?? undefined,
         priceMXN: event.priceMXN,
         paymentUrl,
+        paymentStatus: paymentStatus as
+          | "not_required"
+          | "pending"
+          | "paid"
+          | "paid_manual"
+          | "pending_verification"
+          | "revoked"
+          | null,
       },
       { eventId: event.id, eventQrTokenId: null },
     );

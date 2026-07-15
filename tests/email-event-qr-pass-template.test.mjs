@@ -147,3 +147,163 @@ test("renderEventQrPassEmail: degradación segura con eventStartsAt inválido", 
   });
   assert.doesNotMatch(result.html, /Invalid Date/);
 });
+
+// =====================================================================
+// FIX auditoria 2026-07-15f: badge visual de estado de pago.
+// El email debe mostrar claramente si el asistente ya pago o no,
+// para reducir confusion en puerta y al reenviar el correo.
+// =====================================================================
+
+test("renderEventQrPassEmail: badge PAGADO cuando paymentStatus=paid y oculta CTA", async () => {
+  const { renderEventQrPassEmail } = await import(
+    "../src/lib/email/templates/event-qr-pass.ts"
+  );
+  const result = renderEventQrPassEmail({
+    attendeeName: "David",
+    attendeeEmail: "d@example.com",
+    eventTitle: "Evento Pago",
+    eventStartsAt: "2026-07-17T18:00:00.000Z",
+    eventLocation: "CANACA",
+    qrImageUrl: "https://qlick.digital/api/qr/test.png",
+    checkInUrl: "https://qlick.mx/check-in/x",
+    priceMXN: 1000,
+    paymentUrl: "https://qlick.mx/pagar/evento/foo?confirmation=abc",
+    paymentStatus: "paid",
+  });
+  // Badge verde "Pago confirmado" presente.
+  assert.match(result.html, /Pago confirmado/);
+  assert.match(result.html, /#15803d/); // verde
+  // CTA "Pagar entrada" NO debe aparecer (ya pago).
+  assert.doesNotMatch(result.html, /Pagar entrada/);
+});
+
+test("renderEventQrPassEmail: badge PAGADO MANUAL cuando paymentStatus=paid_manual", async () => {
+  const { renderEventQrPassEmail } = await import(
+    "../src/lib/email/templates/event-qr-pass.ts"
+  );
+  const result = renderEventQrPassEmail({
+    attendeeName: "David",
+    attendeeEmail: "d@example.com",
+    eventTitle: "Evento Pago",
+    eventStartsAt: "2026-07-17T18:00:00.000Z",
+    eventLocation: "CANACA",
+    qrImageUrl: "https://qlick.digital/api/qr/test.png",
+    checkInUrl: "https://qlick.mx/check-in/x",
+    priceMXN: 1000,
+    paymentUrl: "https://qlick.mx/pagar/evento/foo?confirmation=abc",
+    paymentStatus: "paid_manual",
+  });
+  // El copy debe mencionar que fue registrado en puerta.
+  assert.match(result.html, /pago fue registrado en puerta/);
+  assert.doesNotMatch(result.html, /Pagar entrada/);
+});
+
+test("renderEventQrPassEmail: badge PENDIENTE cuando paymentStatus=pending y mantiene CTA", async () => {
+  const { renderEventQrPassEmail } = await import(
+    "../src/lib/email/templates/event-qr-pass.ts"
+  );
+  const result = renderEventQrPassEmail({
+    attendeeName: "David",
+    attendeeEmail: "d@example.com",
+    eventTitle: "Evento Pago",
+    eventStartsAt: "2026-07-17T18:00:00.000Z",
+    eventLocation: "CANACA",
+    qrImageUrl: "https://qlick.digital/api/qr/test.png",
+    checkInUrl: "https://qlick.mx/check-in/x",
+    priceMXN: 1000,
+    paymentUrl: "https://qlick.mx/pagar/evento/foo?confirmation=abc",
+    paymentStatus: "pending",
+  });
+  // Badge amarillo "Pago pendiente" presente.
+  assert.match(result.html, /Pago pendiente/);
+  assert.match(result.html, /#b45309/); // amarillo
+  // CTA "Pagar entrada" SI debe aparecer.
+  assert.match(result.html, /Pagar entrada/);
+});
+
+test("renderEventQrPassEmail: badge EN VERIFICACIÓN cuando paymentStatus=pending_verification", async () => {
+  const { renderEventQrPassEmail } = await import(
+    "../src/lib/email/templates/event-qr-pass.ts"
+  );
+  const result = renderEventQrPassEmail({
+    attendeeName: "David",
+    attendeeEmail: "d@example.com",
+    eventTitle: "Evento Pago",
+    eventStartsAt: "2026-07-17T18:00:00.000Z",
+    eventLocation: "CANACA",
+    qrImageUrl: "https://qlick.digital/api/qr/test.png",
+    checkInUrl: "https://qlick.mx/check-in/x",
+    priceMXN: 1000,
+    paymentUrl: "https://qlick.mx/pagar/evento/foo?confirmation=abc",
+    paymentStatus: "pending_verification",
+  });
+  assert.match(result.html, /Pago en verificación/);
+  // Sin CTA porque ya se hizo el intento de pago.
+  assert.doesNotMatch(result.html, /Pagar entrada/);
+});
+
+test("renderEventQrPassEmail: badge REVOCADO cuando paymentStatus=revoked", async () => {
+  const { renderEventQrPassEmail } = await import(
+    "../src/lib/email/templates/event-qr-pass.ts"
+  );
+  const result = renderEventQrPassEmail({
+    attendeeName: "David",
+    attendeeEmail: "d@example.com",
+    eventTitle: "Evento Pago",
+    eventStartsAt: "2026-07-17T18:00:00.000Z",
+    eventLocation: "CANACA",
+    qrImageUrl: "https://qlick.digital/api/qr/test.png",
+    checkInUrl: "https://qlick.mx/check-in/x",
+    priceMXN: 1000,
+    paymentUrl: "https://qlick.mx/pagar/evento/foo?confirmation=abc",
+    paymentStatus: "revoked",
+  });
+  assert.match(result.html, /Pago revocado/);
+  assert.match(result.html, /#b91c1c/); // rojo
+  assert.doesNotMatch(result.html, /Pagar entrada/);
+});
+
+test("renderEventQrPassEmail: NO badge cuando paymentStatus=not_required", async () => {
+  const { renderEventQrPassEmail } = await import(
+    "../src/lib/email/templates/event-qr-pass.ts"
+  );
+  const result = renderEventQrPassEmail({
+    attendeeName: "David",
+    attendeeEmail: "d@example.com",
+    eventTitle: "Evento Pago",
+    eventStartsAt: "2026-07-17T18:00:00.000Z",
+    eventLocation: "CANACA",
+    qrImageUrl: "https://qlick.digital/api/qr/test.png",
+    checkInUrl: "https://qlick.mx/check-in/x",
+    priceMXN: 1000,
+    paymentUrl: "https://qlick.mx/pagar/evento/foo?confirmation=abc",
+    paymentStatus: "not_required",
+  });
+  // not_required: evento gratis, no debe haber CTA ni badge.
+  assert.doesNotMatch(result.html, /Pago confirmado/);
+  assert.doesNotMatch(result.html, /Pago pendiente/);
+  assert.doesNotMatch(result.html, /Pagar entrada/);
+});
+
+test("renderEventQrPassEmail: NO badge cuando paymentStatus=undefined (legacy)", async () => {
+  const { renderEventQrPassEmail } = await import(
+    "../src/lib/email/templates/event-qr-pass.ts"
+  );
+  const result = renderEventQrPassEmail({
+    attendeeName: "David",
+    attendeeEmail: "d@example.com",
+    eventTitle: "Evento Pago",
+    eventStartsAt: "2026-07-17T18:00:00.000Z",
+    eventLocation: "CANACA",
+    qrImageUrl: "https://qlick.digital/api/qr/test.png",
+    checkInUrl: "https://qlick.mx/check-in/x",
+    priceMXN: 1000,
+    paymentUrl: "https://qlick.mx/pagar/evento/foo?confirmation=abc",
+  });
+  // Sin paymentStatus: el bloque de pago se muestra (legacy compat)
+  // pero no hay badge de estado.
+  assert.match(result.html, /Pagar entrada/);
+  assert.doesNotMatch(result.html, /Pago confirmado/);
+  assert.doesNotMatch(result.html, /Pago pendiente/);
+});
+

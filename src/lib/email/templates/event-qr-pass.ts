@@ -73,6 +73,21 @@ export interface EventQrPassInput {
    */
   paymentUrl?: string;
   /**
+   * Estado de pago actual del confirmation (sprint pagos-en-puerta
+   * 2026-07-15). Si viene, el email muestra un BADGE visual grande
+   * arriba del QR con colores semaforo:
+   *   - 'paid' / 'paid_manual' → verde "PAGADO" + oculta el CTA de pago
+   *   - 'pending' → amarillo "PAGO PENDIENTE" + mantiene el CTA
+   *   - 'pending_verification' → azul "EN VERIFICACIÓN" (transferencia/SPEI)
+   *   - 'revoked' → rojo "PAGO REVOCADO" + texto contactar al admin
+   *   - 'not_required' / undefined → no se muestra (evento gratis o legacy)
+   *
+   * FIX auditoria 2026-07-15f: sin este badge, el asistente no sabe
+   * si ya pago o no. El reenvio de email (despues de cobrar en puerta
+   * o despues del webhook de Stripe) ahora se ve claramente.
+   */
+  paymentStatus?: "not_required" | "pending" | "paid" | "paid_manual" | "pending_verification" | "revoked" | null;
+  /**
    * Nota visible al asistente sobre el acceso al streaming
    * (ej: "el link se desbloquea 10 min antes").
    */
@@ -236,13 +251,111 @@ export function renderEventQrPassEmail(
 
               ${
                 /*
-                  Bloque de pago (sprint pagos-manuales 2026-07-15). Solo
-                  se muestra si el evento es de cobro (priceMXN > 0) y si
-                  el caller paso `paymentUrl`. CTA: boton al checkout
-                  publico. Copy: cuanto cuesta + aclaracion "tu lugar
-                  queda reservado al pagar".
+                  FIX auditoria 2026-07-15f: badge visual de estado de pago.
+                  Se muestra solo si el caller paso `paymentStatus` Y el evento
+                  es de pago (priceMXN > 0). Para 'paid' / 'paid_manual' /
+                  'pending_verification' se oculta el CTA de pago porque no
+                  tiene caso. Para 'pending' se mantiene el CTA. Para
+                  'revoked' se muestra warning prominente.
                 */
-                input.priceMXN && input.priceMXN > 0 && input.paymentUrl
+                input.priceMXN && input.priceMXN > 0 && input.paymentStatus
+                  ? (() => {
+                      const ps = input.paymentStatus;
+                      if (ps === "paid" || ps === "paid_manual") {
+                        return `
+              <!-- Badge: PAGADO -->
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:linear-gradient(135deg,#dcfce7 0%,#bbf7d0 100%);border:2px solid #16a34a;border-radius:12px;margin-bottom:24px;">
+                <tr>
+                  <td align="center" style="padding:20px;">
+                    <p style="margin:0 0 6px;font-size:32px;">✅</p>
+                    <p style="margin:0;font-size:18px;font-weight:800;letter-spacing:1px;color:#15803d;text-transform:uppercase;">
+                      Pago confirmado
+                    </p>
+                    <p style="margin:8px 0 0;font-size:13px;color:#166534;">
+                      ${ps === "paid_manual"
+                        ? "Tu pago fue registrado en puerta por el equipo de Qlick. Tu lugar está confirmado."
+                        : "Tu pago en línea fue confirmado. Tu lugar está confirmado."}
+                    </p>
+                  </td>
+                </tr>
+              </table>
+                        `;
+                      }
+                      if (ps === "pending") {
+                        return `
+              <!-- Badge: PENDIENTE -->
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:linear-gradient(135deg,#fef3c7 0%,#fde68a 100%);border:2px solid #f59e0b;border-radius:12px;margin-bottom:24px;">
+                <tr>
+                  <td align="center" style="padding:20px;">
+                    <p style="margin:0 0 6px;font-size:32px;">⏳</p>
+                    <p style="margin:0;font-size:18px;font-weight:800;letter-spacing:1px;color:#b45309;text-transform:uppercase;">
+                      Pago pendiente
+                    </p>
+                    <p style="margin:8px 0 0;font-size:13px;color:#92400e;">
+                      Tu lugar está <strong>reservado provisionalmente</strong>. Confirma tu pago en línea o avísale al equipo si vas a pagar en puerta.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+                        `;
+                      }
+                      if (ps === "pending_verification") {
+                        return `
+              <!-- Badge: EN VERIFICACIÓN -->
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:linear-gradient(135deg,#dbeafe 0%,#bfdbfe 100%);border:2px solid #3b82f6;border-radius:12px;margin-bottom:24px;">
+                <tr>
+                  <td align="center" style="padding:20px;">
+                    <p style="margin:0 0 6px;font-size:32px;">🔄</p>
+                    <p style="margin:0;font-size:18px;font-weight:800;letter-spacing:1px;color:#1d4ed8;text-transform:uppercase;">
+                      Pago en verificación
+                    </p>
+                    <p style="margin:8px 0 0;font-size:13px;color:#1e40af;">
+                      Tu transferencia o SPEI está en proceso de verificación (1-2 días hábiles). Te avisamos por correo cuando se confirme.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+                        `;
+                      }
+                      if (ps === "revoked") {
+                        return `
+              <!-- Badge: REVOCADO -->
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:linear-gradient(135deg,#fee2e2 0%,#fecaca 100%);border:2px solid #dc2626;border-radius:12px;margin-bottom:24px;">
+                <tr>
+                  <td align="center" style="padding:20px;">
+                    <p style="margin:0 0 6px;font-size:32px;">⚠️</p>
+                    <p style="margin:0;font-size:18px;font-weight:800;letter-spacing:1px;color:#b91c1c;text-transform:uppercase;">
+                      Pago revocado
+                    </p>
+                    <p style="margin:8px 0 0;font-size:13px;color:#991b1b;">
+                      Tu pago fue revocado. Contacta al equipo de Qlick (responde este correo) para resolver.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+                        `;
+                      }
+                      return ""; // not_required u otros: no badge
+                    })()
+                  : ""
+              }
+
+              ${
+                /*
+                  Bloque de pago (sprint pagos-manuales 2026-07-15). Solo
+                  se muestra si el evento es de cobro (priceMXN > 0), si
+                  el caller paso `paymentUrl` Y si el pago NO está ya
+                  confirmado/revocado/en verificación/not_required (sino
+                  el CTA no tiene sentido y confunde al asistente).
+
+                  FIX auditoria 2026-07-15f: si paymentStatus está en
+                  paid/paid_manual/pending_verification/revoked/not_required,
+                  ocultamos este bloque. El badge de arriba ya muestra el
+                  estado. Solo se muestra para 'pending' (o undefined,
+                  legacy — que no tenía badge).
+                */
+                input.priceMXN && input.priceMXN > 0 && input.paymentUrl &&
+                (!input.paymentStatus || input.paymentStatus === "pending")
                   ? `
               <!-- Pago requerido -->
               <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;margin-bottom:24px;">

@@ -153,10 +153,15 @@ export async function sendQrPassForConfirmation(args: {
     name: string;
     email: string | null;
     phone_normalized: string | null;
+    // FIX auditoria 2026-07-15f: payment_status para que el email
+    // muestre el badge visual correcto. El typegen de event_confirmations
+    // no incluye payment_status todavia (migration 20260715014706 +
+    // typegen stale), asi que casteamos via `as never`.
+    payment_status?: "not_required" | "pending" | "paid" | "paid_manual" | "pending_verification" | "revoked" | null;
   };
   const { data: confRaw } = await supabase
     .from("event_confirmations")
-    .select("id, event_id, name, email, phone_normalized")
+    .select("id, event_id, name, email, phone_normalized, payment_status")
     .eq("id", args.confirmationId)
     .maybeSingle();
   const conf = confRaw as unknown as ConfLocal | null;
@@ -241,6 +246,10 @@ export async function sendQrPassForConfirmation(args: {
       ? `${baseUrl}/pagar/evento/${args.event.slug}?confirmation=${conf.id}`
       : undefined;
 
+  // FIX auditoria 2026-07-15f: paymentStatus se pasa al template para
+  // que muestre el badge visual correspondiente.
+  const paymentStatus = conf.payment_status ?? null;
+
   // 5. Renderizar y mandar.
   return await sendEventQrPassEmail(
     {
@@ -254,6 +263,7 @@ export async function sendQrPassForConfirmation(args: {
       format: args.event.format,
       priceMXN: args.event.priceMXN,
       paymentUrl,
+      paymentStatus,
       // Si el evento es virtual/hybrid, gateUrl lo arma el caller
       // (submitEventRegistration ya genera uno ad-hoc en
       // generateGateUrlForConfirmation). Si lo recibimos via un canal
