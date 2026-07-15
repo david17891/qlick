@@ -228,6 +228,73 @@ export async function POST(
   const supabase = createSupabaseAdminClient();
   const nowIso = new Date().toISOString();
 
+  // FIX sprint 2026-07-15d: validar el estado de pago antes de
+  // check-in. El QR da acceso al evento (event_access active=true
+  // se crea con la confirmation en el bot), pero si el evento es
+  // de pago y el payment_status sigue en 'pending', el staff debe
+  // cobrar en caja antes de dejarlo entrar. El endpoint devuelve
+  // 403 con la info de pago para que el scanner del staff muestre
+  // el warning + opcion de "marcar como pagado en puerta" via
+  // /api/staff/check-in/[token]/mark-paid.
+  //
+  // - 'paid' / 'pending_verification' (OXXO/SPEI) / 'paid_manual' /
+  //   'not_required' (gratis): OK, check-in.
+  // - 'pending' (evento de pago sin pagar): 403 con info de pago.
+  // - 'revoked' (pago devuelto): 403, NO permitir.
+  //
+  // El `confirmation_id` del QR se lookupa via `resolveConfirmationIdForCheckIn`
+  // que ya está implementado. Si no hay, el token NO está linkeado a
+  // una confirmation (caso raro, no deberia pasar), pero el check-in
+  // sigue siendo valido (evento gratis, walk-in, etc).
+  const resolvedConfId = await resolveConfirmationIdForCheckIn(
+    supabase,
+    found.row.event_id,
+    found.row.attendee_phone_normalized,
+  ).catch(() => null);
+  if (resolvedConfId) {
+    const { data: confRow, error: confErr } = await supabase
+      .from("event_confirmations")
+      .select("id, payment_status, name, email, phone_normalized")
+      .eq("id", resolvedConfId)
+      .maybeSingle();
+    if (!confErr && confRow) {
+      const ps = (confRow as { payment_status?: string | null })
+        .payment_status;
+      if (ps === "revoked") {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Pago revocado. Este asistente no puede entrar.",
+            payment_status: "revoked",
+            requires_action: "manual_refund_review",
+          },
+          { status: 403 },
+        );
+      }
+      if (ps === "pending") {
+        // 403 con la info de pago. El scanner del staff puede
+        // usar POST /api/staff/check-in/mark-paid para registrar
+        // el pago en puerta y hacer check-in en un solo paso.
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Pago pendiente. Cobrar en caja antes de entrar y luego marcar como pagado en puerta.",
+            payment_status: "pending",
+            requires_action: "collect_payment_door",
+            attendee: {
+              name: (confRow as { name?: string | null }).name,
+              event_title: found.event.title,
+            },
+            confirmation_id: resolvedConfId,
+            mark_paid_endpoint: `/api/staff/check-in/mark-paid?confirmation_id=${resolvedConfId}`,
+          },
+          { status: 403 },
+        );
+      }
+    }
+  }
+
   // Idempotente: si ya estaba checked-in, devolvemos su timestamp.
   if (found.row.checked_in_at) {
     return NextResponse.json({
