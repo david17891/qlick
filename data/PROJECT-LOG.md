@@ -4864,3 +4864,97 @@ pm run build → OK (compila todas las rutas).
   - El typegen de Supabase sigue stale (no incluye `event_payments`, no incluye `event_access.lead_id`). Esto lo arreglamos con el workaround `as never` en el código, pero es frágil. Regenerar typegen en una sesión futura.
 
 - **Lección aprendida (regla preventiva):** Antes de usar una columna en código, verificar que EXISTE en la migration correspondiente, no asumir que el modelo es coherente entre tablas. La regla de memory "Migration en repo ≠ aplicada a prod; verificar en DB" también aplica para "columna en código ≠ columna en DB; verificar en migration".
+
+
+## 2026-07-16 04:20 Phoenix — Sprint 4 AUDITORIA: 5 fixes prioritarios del flow cobro-en-puerta
+
+- **Pregunta:** David pidio "haz una auditoria de todo el proceso de lo que va a fallar ... verifica que todo este cableado" antes de volver a intentar el cobro manual en puerta. Sospechaba que podia haber mas bugs escondidos (no solo el del mark-paid 'lead_id does not exist' que ya arreglamos).
+
+- **Decision:** Auditoria completa del flow end-to-end + 5 fixes prioritarios en 1 commit. Commit: `acaefa7 fix(payments): refactor notify + grant event_access + UNIQUE idempotency`.
+
+- **Auditoria — que se reviso:**
+  1. Migrations aplicadas a prod (queries SQL via service role): CHECK constraints permiten 'paid_manual' en event_confirmations y event_payments; tablas event_payments y event_access existen (0 rows porque David nunca pudo cobrar antes).
+  2. Frontend MarkPaidAction: pasa qr_token, payment_method, staff_email correctamente. Render del feedback esta bien.
+  3. Endpoint check-in (que detecta pago pendiente y dispara el flow): la logica de 403 con requires_action='collect_payment_door' funciona OK.
+  4. Endpoint mark-paid: idempotencia, validaciones, event_payments, event_attendees, event_access, notify, audit log.
+  5. notify-lead-payment-confirmed: SELECT, UPDATE, email, WhatsApp.
+  6. getEventById y sendQrPassForConfirmation (lo que el notify usa internamente).
+  7. grantEventAccess (entitlements) y manual-payment (admin flow hermano, para comparar consistencia).
+  8. Los 3 callers del notify helper (webhook Stripe, simulator dev, mark-paid).
+  9. Idempotencia del mark-paid ante doble click.
+  10. Logging en admin_audit_log.
+
+- **Hallazgos (6 bugs):**
+
+  **Bug 1 (CRITICO) — notify-lead-payment-confirmed ROTO en path mark-paid.**
+  `mark-paid` linea 401: `const effectiveLeadId = attendeePhone ?? eventId;` — pasaba el **phone** como leadId al helper. El helper hacia `SELECT * FROM leads WHERE id = "+521653..."` (no es UUID, no matcheaba), retornaba con "lead no existe" y saltaba la notificacion. Resultado: David cobra en puerta, ve "OK" en el scanner, pero el asistente NO recibia ni email con QR ni WhatsApp de confirmacion. Silencioso.
+
+  **Bug 2 (CRITICO) — Doble UPDATE de payment_status.**
+  `mark-paid` linea 247: UPDATE event_confirmations SET payment_status='paid_manual'.
+  `notify-lead-payment-confirmed` linea 96: UPDATE event_confirmations SET payment_status=ps (que es 'paid_manual').
+  Redundante. Race condition si los 2 corren concurrentes (segundo UPDATE sobreescribe al primero, pero con valor identico = no-op de facto).
+
+  **Bug 3 (IMPORTANTE) — mark-paid no crea event_access.**
+  El endpoint hermano `manual-payment` (admin flow) SI crea el access via `get_user_id_by_email` RPC + `grantEventAccess`. `mark-paid` (staff flow) NO. Inconsistencia: para el mismo escenario (pago en puerta), un path crea el access y el otro no. Si el evento tiene post-recordings o LMS, el asistente no tendra acceso.
+
+  **Bug 4 (IMPORTANTE) — notify-lead-payment-confirmed hace filtro JS ineficiente.**
+  `SELECT * FROM event_confirmations WHERE event_id=? LIMIT 20` + filtro en memoria por phone/email. Para eventos con muchos confirmados, es lento y propenso a matchear la confirmation incorrecta.
+
+  **Bug 5 (MENOR) — Race condition en doble click del mark-paid.**
+  El SELECT de existingPayments antes del INSERT tiene un gap <100ms. Si el staff hace clic 2 veces rapido, pueden crearse 2 rows de event_payments.
+
+  **Bug 6 (MENOR) — qr_token persistente.**
+  El qr_token no se "gasta". Si un atacante lo intercepta, puede llamar a mark-paid. Bajo riesgo (192 bits entropia = no realista), no urgente.
+
+- **Fixes aplicados (1 commit, 5 archivos, +308/-160 lineas):**
+
+  **Fix 1+4: refactor notify-lead-payment-confirmed.**
+  Cambia la firma de `NotifyLeadPaymentConfirmedArgs`: `leadId: string` + `eventId: string` eliminados. Ahora: `confirmationId: string` REQUERIDO, `eventId?: string` opcional (se infiere de la confirmation). Hace SELECT por PK (no filtro JS). Back-compat rota intencionalmente (3 callers internos, faciles de actualizar).
+  Archivo: `src/lib/payments/notify-lead-payment-confirmed.ts`.
+
+  **Fix 2: eliminar doble UPDATE.**
+  El notify ya no hace UPDATE de payment_status. El caller (mark-paid, manual-payment, etc) lo hace antes de llamar al notify. Comentario explicativo en el header del helper.
+
+  **Fix 3: mark-paid crea event_access.**
+  Despues del event_payments, llama a `grantEventAccess({ userId: null, confirmationId, eventId, source: 'manual_event_admin', paymentId, grantedReason: 'staff_pay_at_door_{method}_{ISO date}' })`. grantEventAccess es idempotente (busca por confirmationId + eventId, si existe refresca source y reason). Best-effort: si falla, loguea pero no aborta. Comentario: "El staff ya cobro, el payment ya esta creado, el check-in se hace igual. El event_access se puede reconciliar despues."
+  Archivo: `src/app/api/staff/check-in/mark-paid/route.ts`.
+
+  **Fix 5: idempotency_key + UNIQUE race-safe.**
+  El mark-paid genera `idempotencyKey = "manual:{confirmation_id}:{method}"` y lo pasa al INSERT. La UNIQUE constraint `event_payments_manual_idempotency(confirmation_id, method, idempotency_key) WHERE idempotency_key IS NOT NULL` (migration 20260715120000) ya existia. Si el INSERT revienta con 23505, hacemos SELECT para obtener el id del ganador de la race.
+
+  **Refactor adicional: findConfirmationIdForEvent a helper compartido.**
+  La funcion estaba local en `app/api/webhooks/stripe/route.ts` (definida inline). La movi a `src/lib/events/find-confirmation-id.ts` para que el simulator dev y futuros callers la reusen sin duplicar. El webhook de Stripe ahora la importa del helper (sin wrapper).
+
+  **Callers actualizados (3):**
+  - `src/app/api/staff/check-in/mark-paid/route.ts`: pasa `confirmationId: body.confirmation_id`, `eventId: confRow.event_id`.
+  - `src/app/api/webhooks/stripe/route.ts`: pasa `confirmationId: confLookup` (ya lo tenia via findConfirmationIdForEvent).
+  - `src/app/api/dev/simulate-webhook/route.ts`: busca el confirmationId via findConfirmationIdForEvent({eventId, leadId: effectiveUserId}) y lo pasa.
+
+- **Verificacion:**
+  - `npm run type-check` → 0 errores.
+  - `npm run lint` → 0 warnings/errors.
+  - `npm test` → 1405/1405 verde. (No agregue tests nuevos porque el path del notify es fire-and-forget; los tests E2E reales requieren Supabase live + email provider + WhatsApp provider, fuera del scope de node --test.)
+  - `npm run build` → ✓ Compiled, 27/27 paginas.
+  - Deploy: `qlick-ly3m5mxk7` Ready en 54s.
+  - Alias: `qlick.digital` → `qlick-ly3m5mxk7` ✓.
+
+- **Para David:** Ahora si puedes volver a probar el flujo cobro-en-puerta. Lo que va a pasar diferente vs antes:
+  1. El bot ya no dice Zoom para presencial (Sprint 4) y el reset limpia TODO (Sprint 4).
+  2. El mark-paid NO revienta con 'column event_confirmations.lead_id does not exist' (hotfix anterior).
+  3. El mark-paid crea el event_access (antes no lo hacia).
+  4. El mark-paid es idempotente ante doble click (UNIQUE constraint).
+  5. El asistente recibe email con QR + WhatsApp de confirmacion despues de cobrar (antes NO los recibia por el bug del leadId).
+
+- **Lecciones aprendidas (reglas preventivas):**
+  1. **Verify FULL data path antes de "feature works":** el staff veia "OK" en el scanner, pero el asistente NO recibia notificacion. El path completo incluye email + WhatsApp. Si solo verificas el response del endpoint, te pierdes los side-effects fire-and-forget.
+  2. **Anti-invention: NO inventar nombres de columnas:** event_confirmations.lead_id NO existe. Asumi que si por error. Antes de usar una columna, verificar la migration.
+  3. **try/catch "no fatal" es peligroso:** el notify helper tiene un try/catch que loguea y sigue. Si falla, el caller (mark-paid) retorna "OK" y el staff cree que todo salio bien. El bug del leadId (Bug 1) se mantuvo silencioso durante DIAS porque el error estaba logueado pero no era visible para David.
+  4. **Migration UNIQUE constraint = deduplicacion atomica:** cuando un endpoint es idempotente, usa UNIQUE constraints en lugar de check-then-act. Postgres resuelve la race condition atómicamente, no necesitas locks ni transactions.
+  5. **Typegen stale requiere `as never`:** event_payments y event_access.lead_id no estan en el Database typegen. Ya use `as never` en el codigo (patron del mark-paid original). Regenerar typegen en sprint futuro.
+  6. **fire-and-forget sin observabilidad = bug invisible:** el notify helper es fire-and-forget. Si falla, nadie se entera (solo el log). Para David es importante tener un dashboard de "pagos confirmados pero no notificados" o similar. Sprint futuro.
+
+- **Riesgos restantes / proximos pasos:**
+  - Bug 6 (qr_token persistente): bajo riesgo, no urgente.
+  - Regenerar typegen de Supabase: `supabase gen types typescript` en una sesion futura. Resolveria el `as never` de event_payments y event_access.lead_id.
+  - Dashboard de "pagos confirmados no notificados" para detectar fallos del fire-and-forget.
+  - Tests E2E reales del mark-paid con Supabase live (los tests actuales son regex match del codigo fuente).
