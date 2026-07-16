@@ -2432,7 +2432,33 @@ case "interactive_event_inscribir": {
         ? args.buttonId.slice("evt_inscribir_".length)
         : null;
       const targetEventSlug = evtSlugFromBtn ?? args.requestedEventSlug ?? null;
-      const evtReal = await loadActiveEventContext(targetEventSlug ?? undefined).catch(() => null);
+      // DEBUG auditoria 2026-07-15f (E2E #2 "Inscribirme sigue sin
+      // responder"): log a stderr (vía errorLog) para que aparezca
+      // en el dev-err.log. Si esto no se loggea, significa que el
+      // case del switch NI SE EJECUTA.
+      errorLog("[whatsapp/bot] interactive_event_inscribir START", {
+        leadId: lead.id,
+        buttonId: args.buttonId,
+        evtSlugFromBtn,
+        targetEventSlug,
+        leadName: lead.name,
+        firstName,
+        hasSupabase: !!supabase,
+        phoneNormalized,
+      });
+      const evtReal = await loadActiveEventContext(targetEventSlug ?? undefined).catch((err) => {
+        errorLog("[whatsapp/bot] interactive_event_inscribir: loadActiveEventContext throw", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return null;
+      });
+      errorLog("[whatsapp/bot] interactive_event_inscribir: evtReal loaded", {
+        targetEventSlug,
+        evtRealTitle: evtReal?.title ?? null,
+        evtRealSource: evtReal?.source ?? null,
+        evtRealSlug: evtReal?.slug ?? null,
+        evtRealId: evtReal?.id ?? null,
+      });
       // FIX 2026-07-07 (audit David "bot presenta evento fantasma"):
       // si NO hay evento real (slug invalido o env vars no seteadas),
       // respondemos con copy honesto en vez de comprometer al lead con
@@ -2461,12 +2487,31 @@ case "interactive_event_inscribir": {
       // anterior y vuelve a hacer click en "Inscribirme".
       if (supabase && lead.id && evtReal?.id) {
         try {
+          errorLog("[whatsapp/bot] interactive_event_inscribir: checking existingToken", {
+            leadId: lead.id,
+            eventId: evtReal.id,
+            eventSlug: evtReal.slug,
+            phoneNormalized,
+          });
+          // FIX auditoria 2026-07-15f (E2E #2): pasar evtReal.slug
+          // (no evtReal.id) — la firma de findActiveQrTokenForLead
+          // espera el slug y hace `eq("slug", ...)` internamente.
+          // Antes pasaba evtReal.id (UUID) y la query no matcheaba,
+          // devolviendo null, y caia al flow de "pedir email".
+          // Por eso el bot parecia "no responder" (si David veia
+          // que SI responde pidiendo email, era este bug).
           const existingToken = await findActiveQrTokenForLead(
             supabase,
             lead.id,
             phoneNormalized,
-            evtReal.id,
+            evtReal.slug ?? "",
           );
+          errorLog("[whatsapp/bot] interactive_event_inscribir: existingToken result", {
+            leadId: lead.id,
+            eventId: evtReal.id,
+            hasToken: !!existingToken,
+            tokenUrl: existingToken?.url,
+          });
           if (existingToken) {
             const evtCodeLabel = evtReal.shortCode ? ` (código ${evtReal.shortCode})` : "";
             const cleanAlready = cleanFirstName(firstName);
@@ -2474,6 +2519,10 @@ case "interactive_event_inscribir": {
             const bodyText =
               `${saludoAlready} Ya estás registrado en *${evtName}*${evtCodeLabel}. ` +
               `Tu pase (link de check-in) es:\n\n${existingToken.url}`;
+            errorLog("[whatsapp/bot] interactive_event_inscribir: returning already_registered plan", {
+              leadId: lead.id,
+              bodyText: bodyText.slice(0, 100),
+            });
             return {
               kind: "text",
               body: bodyText,
@@ -2487,6 +2536,12 @@ case "interactive_event_inscribir": {
           });
         }
       }
+      errorLog("[whatsapp/bot] interactive_event_inscribir: NO existing token, falling through to email/name prompt", {
+        leadId: lead.id,
+        supabaseNull: !supabase,
+        leadIdNull: !lead.id,
+        evtRealIdNull: !evtReal?.id,
+      });
 
       // FIX 2026-07-02: filtrar firstName de placeholders.
       const clean = cleanFirstName(firstName);
