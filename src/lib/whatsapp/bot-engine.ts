@@ -4861,6 +4861,15 @@ export async function processInboundMessage(
   // 3. Detectar intent. Si el usuario clickeó un botón (Fase 7a), el
   // intent se deriva del buttonId en vez de regex sobre el texto.
   let intent: BotIntent;
+  // DEBUG auditoria 2026-07-15f (E2E #2): log ANTES de detectar intent
+  // para ver qué llega del webhook.
+  errorLog("[whatsapp/bot] pre-intent-detection", {
+    leadId: lead.id,
+    messageType: message.type,
+    messageButtonId: message.buttonId ?? null,
+    messageBody: (body ?? "").slice(0, 60),
+    hasInteractive: !!message.interactive,
+  });
   // FIX 2026-07-02 (sesion David, "Si tras pregunta cerrada"): slug del
   // evento que el bot preguntó cerrar (ej. "¿Te gustaría apartar tu
   // lugar en IA y Marketing?"). Se setea en la rama `else` (texto libre)
