@@ -4727,3 +4727,36 @@ pm run build → OK (compila todas las rutas).
 - **Deploy:** alias a qlick.digital -> qlick-8ldgpnclp. Listo para que David pruebe end-to-end con el evento del 17 de julio.
 
 - **Aplica a:** cualquier proyecto con bot que necesite el precio del producto en su state machine. Patron: "el precio en la descripcion es fragil; usa el campo `price_mxn` directo y propaga por el type chain al promptBlock y al handler de close".
+
+
+## 2026-07-16 10:05 Phoenix — fix(staff): cobro-en-puerta desde scanner público (auth via qr_token) + QR desplegable de pago digital
+
+- **Sintoma (sesion David 2026-07-16 02:33):** David reporto 2 problemas del staff scanner en su celular:
+  1. "La persona que cobra debe poder actualizar, que en efecto pago en efectivo en ese momento" — el staff escaneaba un QR de un asistente con pago pendiente, veia el banner amarillo de "pago pendiente" y el boton verde "Cobrar y registrar", pero al hacer click obtenia "No admin session" en rojo y el cobro NO se registraba.
+  2. "En la parte de abajo, se agregara un QR que me mande al link de pago del evento por si quiere pagar digital, en pestana escondida, desplegable, todo rehusable para nuevos eventos."
+
+- **Causa raiz:** el sprint cobro-en-puerta (2026-07-15e, commit 5d4094c) implemento el flow completo: `mark-paid` endpoint, `paid_manual` payment_status, UI del panel admin. Pero el endpoint requeria `requireAdmin` (sesion admin en el panel). El scanner del staff (`/staff/scan/[eventId]`) es PUBLICO (no login, el qr_token del QR es la autorizacion, 192 bits entropia). El sprint NO actualizo el endpoint para soportar el path del scanner. Resultado: el flow cobro-en-puerta solo funcionaba desde el panel admin (laptop), no desde el scanner del celular.
+
+- **FIX (3 archivos):**
+  1. `src/app/api/staff/check-in/mark-paid/route.ts`: auth cambiada de "solo requireAdmin" a "admin OR qr_token valid". El scanner publico pasa el qr_token que acaba de escanear; el backend lo valida contra event_qr_tokens (existe, no expirado) y verifica que corresponde al mismo event_id que la confirmation (defense in depth). Si ninguno, 401. Si qr_token y confirmation son de eventos distintos, 403. Back-compat: si el caller tiene sesion admin, sigue funcionando (panel admin). Body acepta qr_token (requerido si no hay admin) y staff_email (opcional, para audit log). El actorEmail del audit log ahora usa "staff:<email>" o "staff:qr:<token_prefix>" cuando el path es qr_token, en vez de admin.email que no aplica.
+  2. `src/app/staff/scan/[eventId]/page.tsx`:
+     - MarkPaidAction ahora recibe qrToken y staffEmail como props. Pasa qr_token + staff_email al body del fetch.
+     - El scanner guarda el ultimo qr_token en lastQrTokenRef (no se resetea con el throttle de 2.5s) para pasarlo al MarkPaidAction cuando aparece el banner de pago pendiente.
+     - Nuevo componente CheckoutQrBlock: <details> desplegable al final del scanner que genera client-side (lib qrcode, ya en package.json) un QR apuntando a `{window.location.origin}/pagar/evento/{slug}`. El staff lo muestra al asistente que prefiere pagar digital. Rehusable: el slug viene del eventId del URL del scanner, no hardcodeado. Cubre los 2 casos de David: walk-in sin registro (crea confirmation al pagar) y asistente registrado sin link (dedupe por email en el webhook de Stripe).
+  3. `tests/staff-mark-paid-qr-token.test.mjs` (5 tests, regex match en el source). El test E2E del endpoint requiere next dev o un test runner con runtime de Next.js, fuera del scope de node:test. Si en el futuro se monta Playwright E2E para el scanner, este test se reemplaza por uno de integracion.
+
+- **Verificacion:**
+  - `npm run type-check` OK.
+  - `npm run lint` OK.
+  - `npm test` -> 1396/1396 (5 nuevos).
+  - `npm run build` OK.
+
+- **Lo que NO se hace (gap explicito, fuera de scope):**
+  - El form publico de `/pagar/evento/[slug]` NO pide el nombre del comprador (queda como "Asistente" en el QR pass). Si David quiere que el nombre sea el real, es otro sprint (agregar campo "Tu nombre completo" antes del boton "Pagar entrada").
+  - El mark-paid endpoint sigue marcando checked_in_at en el mismo flujo (un solo round-trip). Si en el futuro el staff quiere que la confirmacion quede como "pending" (sin check-in inmediato, solo registra el pago), se agrega un flag al body tipo `{ skip_checkin: true }`. Por ahora siempre hace check-in.
+
+- **Commit:** `bd572fd fix(staff): cobro-en-puerta desde scanner publico (auth via qr_token) + QR desplegable de pago digital` (1 commit atomico, 3 archivos: route.ts + page.tsx + test).
+
+- **Deploy:** alias a qlick.digital -> qlick-76nuq8etv. Listo para que David pruebe end-to-end con su celular (escaneo de un QR + cobro en puerta).
+
+- **Aplica a:** cualquier scanner publico que necesite cobrar / registrar sin login. Patron: "auth por token de sesion, no por user/pass" es valido cuando el token es high-entropy (192+ bits) y de un solo uso (rotado por el scanner tras cada escaneo).
