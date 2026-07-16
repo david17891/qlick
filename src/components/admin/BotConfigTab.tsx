@@ -490,8 +490,8 @@ export function BotConfigTab() {
               />
               <ModeTarjeta
                 icon="🧪"
-                titulo="Modo Human-First (LLM-first opt-in)"
-                descripcion="El LLM controla todo el flow conversacional. Sin capa de intents rígida. Úsalo solo para experimentar — los 3 modos anteriores siguen siendo los modos de producción."
+                titulo="Modo Estilo Humano (Conversacional Directo)"
+                descripcion="El bot actúa como un humano conversando directamente de forma natural y fluida con el usuario. El LLM gestiona la conversación sin menús ni reglas rígidas."
                 activo={mode === "human_first"}
                 disabled={modeSaving}
                 badge="🧪 EXPERIMENTO"

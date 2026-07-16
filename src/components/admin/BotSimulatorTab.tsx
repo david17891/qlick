@@ -88,7 +88,7 @@ const MODE_LABELS: Record<BotMode, string> = {
   super_executive: "🚀 Súper Ejecutivo",
   // Sprint v0.9.x PR #1: 4to modo opt-in `human_first` (LLM-first total).
   // Aparece en el selector del simulador y en la UI de telemetría.
-  human_first: "🧪 Human-First (LLM-first opt-in)"
+  human_first: "🧪 Estilo Humano (Conversacional)"
 };
 
 const MODE_EMOJI: Record<BotMode, string> = {
@@ -729,7 +729,7 @@ export function BotSimulatorTab({ currentMode }: BotSimulatorTabProps) {
                   <option value="super_executive">🚀 Súper Ejecutivo (override)</option>
                   <option value="socratic_autopilot_v2">🟢 Socrático v2 (override)</option>
                   <option value="socratic_no_tools_v1">🔵 Socrático v1 (override)</option>
-                  <option value="human_first">🧪 Human-First (override)</option>
+                  <option value="human_first">🧪 Estilo Humano (override)</option>
                 </optgroup>
               </select>
               {modeChoice !== "db" && (
