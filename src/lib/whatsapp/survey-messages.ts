@@ -47,12 +47,17 @@ export function buildSurveyOfferMessage(args: {
 }): { text: string; interactive: InteractiveMessage } {
   const clean = cleanFirstName(args.leadName);
   const saludo = clean ? `¡Hola ${clean}! ` : "¡Hola! ";
-  const eventLabel = args.eventTitle?.trim()
-    ? `del evento "${args.eventTitle.trim()}"`
-    : "del evento";
+  // FIX 2026-07-16 (sesion David, "Gracias por haberte sumado a del
+  // evento" + voseo "Te tomás"):
+  //   - Construccion: "sumado al evento" (no "sumado a del evento").
+  //     Antes el codigo interpolaba "a " + "del evento" -> "a del evento".
+  //   - Tuteo MX: "te tomas" (no "te tomás"). Memory: "Español MX,
+  //     PROHIBIDO voseo, OK tuteo".
+  const titleTrim = args.eventTitle?.trim();
   const text =
-    `${saludo}Gracias por haberte sumado a ${eventLabel}. ` +
-    `¿Te tomás 2 minutos para contarnos cómo te fue? ` +
+    `${saludo}Gracias por haberte sumado al evento` +
+    (titleTrim ? ` "${titleTrim}"` : "") +
+    `. ¿Te tomas 2 minutos para contarnos cómo te fue? ` +
     `Tu feedback nos ayuda a mejorar los próximos eventos.`;
 
   const interactive: InteractiveMessage = {

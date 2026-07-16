@@ -2599,9 +2599,12 @@ case "interactive_event_inscribir": {
       const allEvents = await loadAllActiveEvents().catch(() => [] as ActiveEventContext[]);
       if (allEvents.length === 0) {
         // No hay eventos publicados. Degradar a texto simple.
+        // FIX 2026-07-16: voseo "tenes" -> tuteo "tienes", y agregar
+        // tildes faltantes ("próximos"). Memory: "Español MX, PROHIBIDO
+        // voseo, OK tuteo".
         const bodyText =
-          "Por ahora no tenemos eventos publicados, pero estamos preparando los proximos. " +
-          "Te aviso cuando haya algo. Mientras tanto, ?tenes alguna otra pregunta?";
+          "Por ahora no tenemos eventos publicados, pero estamos preparando los próximos. " +
+          "Te aviso cuando haya algo. Mientras tanto, ¿tienes alguna otra pregunta?";
         return {
           kind: "text",
           body: bodyText,
