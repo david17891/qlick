@@ -89,6 +89,22 @@ eventRules: import("@/types/events").EventBotRules;
   streamingProvider: "youtube_live" | "facebook_live" | "zoom" | "other" | null;
   /** Nota visible para el asistente (ej: "el link se desbloquea 10 min antes"). */
   streamingAccessNote: string | null;
+  /**
+   * FIX 2026-07-16 (sprint pago-en-puerta): precio del evento en MXN.
+   * - `null` o `0` o `undefined` = evento gratuito. El welcome NO
+   *   menciona "es de pago" y el flow de provide_email NO agrega el
+   *   bloque de link de checkout.
+   * - `> 0` = evento de pago. El welcome debe mencionarlo, el LLM lo
+   *   usa para responder "¿cuánto cuesta?", y el flow de provide_email
+   *   agrega el bloque con link de checkout + opción de pagar en
+   *   puerta.
+   *
+   * Antes el bot-engine hacía regex sobre la description para
+   * extraer el precio (frágil, dependía de cómo Paul/Admin escribieran
+   * el evento en DB). Ahora la fuente de verdad es `events.price_mxn`
+   * directamente.
+   */
+  priceMxn: number | null;
 }
 
 type SupabaseAdmin = SupabaseClient<Database>;
@@ -135,7 +151,8 @@ function fallbackNoEvents(): ActiveEventContext {
       humanDuration: "—",
       location: "—",
       description: null,
-      eventRules: { personality: "", rules: [] }
+      eventRules: { personality: "", rules: [] },
+      priceMxn: null
     }),
     source: "no_events",
     // FIX 2026-07-06: el placeholder DEBE pedir nombre. David decidio
@@ -149,6 +166,7 @@ function fallbackNoEvents(): ActiveEventContext {
     streamingUrl: null,
     streamingProvider: null,
     streamingAccessNote: null,
+    priceMxn: null,
   };
 }
 
@@ -236,6 +254,13 @@ function formatPromptBlock(args: {
   location: string;
   description: string | null;
   eventRules: import("@/types/events").EventBotRules;
+  /**
+   * FIX 2026-07-16 (sprint pago-en-puerta): precio real del evento en
+   * MXN. Si está presente (> 0), el LLM lo inyecta en respuestas a
+   * "¿cuánto cuesta?" y la cabecera de tipo de oferta se vuelve más
+   * precisa (antes dependía solo de regex sobre la description).
+   */
+  priceMxn: number | null;
 }): string {
   const lines: string[] = [
     "=== EVENTO ACTIVO ===",
@@ -244,13 +269,25 @@ function formatPromptBlock(args: {
     `Duración: ${args.humanDuration}`,
     `Lugar: ${args.location}`
   ];
+  // FIX 2026-07-16: línea explícita de precio. Antes el LLM tenía que
+  // adivinarlo parseando la description. Si el lead preguntaba
+  // "¿cuánto cuesta?", el bot a veces no lo decía.
+  if (typeof args.priceMxn === "number" && args.priceMxn > 0) {
+    lines.push(`Precio: $${args.priceMxn} MXN (evento de pago)`);
+  } else {
+    lines.push("Precio: evento gratuito");
+  }
   if (args.description) {
     lines.push("", "Detalles:", args.description);
   }
   // Sprint v15 PR #2: cabecera de tipo de oferta. Usa classifyEventType
   // (exportada abajo) con prioridad `price > descripción > unknown`.
+  //
+  // FIX 2026-07-16 (sprint pago-en-puerta): ahora pasamos el precio
+  // real. Antes siempre era `price: null` y caía a la heurística de
+  // descripción, que era frágil.
   const offer = classifyEventType({
-    price: null, // `formatPromptBlock` no recibe price; cae a heurística de descripción.
+    price: args.priceMxn,
     description: args.description,
     format: null
   });
@@ -263,6 +300,20 @@ function formatPromptBlock(args: {
   lines.push(
     "",
     `=== TIPO DE OFERTA: ${offerLabel[offer]} ===`
+  );
+  // FIX 2026-07-16 (sprint pago-en-puerta): instrucción explícita
+  // para que el LLM pueda responder cualquier duda del evento
+  // (constancias, temas, requisitos, ubicación, etc) usando el
+  // contexto disponible (description + eventRules). Si NO tiene la
+  // info, NO inventa — escala a humano.
+  lines.push(
+    "",
+    "=== INSTRUCCIONES PARA EL BOT (OBLIGATORIAS) ===",
+    "- Puedes responder CUALQUIER duda sobre el evento: fecha, hora, día, duración, lugar, temas, requisitos, si hay constancia, qué incluye, cómo llegar, etc. Usa SOLO la información del bloque EVENTO ACTIVO y REGLAS DEL BOT.",
+    "- Si la respuesta no está en el contexto o en las reglas, NO INVENTES. Responde: 'No tengo esa información, te derivo con el equipo.'",
+    "- Para preguntas de PAGO: si el evento es de pago, puedes decir el precio y mencionar que hay 2 opciones (pago en línea y pago en puerta el día del evento). NO confirmes pagos. NO digas 'pago confirmado' ni nada similar.",
+    "- Para CONSTANCIAS / CERTIFICADOS: si la description o las reglas lo mencionan, dilo. Si NO, di que no tienes esa info y derivo.",
+    "================================================="
   );
   if (args.eventRules.personality || args.eventRules.rules.length > 0) {
     lines.push("", "=== REGLAS DEL BOT (OBLIGATORIAS) ===");
@@ -386,7 +437,7 @@ export async function loadActiveEventContext(
       ? await supabase
           .from("events")
           .select(
-            "id, slug, short_code, title, description, starts_at, ends_at, location, status, requires_name, event_rules, format, streaming_url, streaming_provider, streaming_access_note"
+            "id, slug, short_code, title, description, starts_at, ends_at, location, status, requires_name, event_rules, format, streaming_url, streaming_provider, streaming_access_note, price_mxn"
           )
           .eq("status", "published")
           .eq("slug", slug)
@@ -397,7 +448,7 @@ export async function loadActiveEventContext(
       : await supabase
           .from("events")
           .select(
-            "id, slug, short_code, title, description, starts_at, ends_at, location, status, requires_name, event_rules, format, streaming_url, streaming_provider, streaming_access_note"
+            "id, slug, short_code, title, description, starts_at, ends_at, location, status, requires_name, event_rules, format, streaming_url, streaming_provider, streaming_access_note, price_mxn"
           )
           .eq("status", "published")
           .gte("starts_at", graceStartIso)
@@ -436,6 +487,10 @@ export async function loadActiveEventContext(
         | "other"
         | null;
       streaming_access_note?: string | null;
+      // FIX 2026-07-16 (sprint pago-en-puerta): precio del evento.
+      // numeric en Supabase llega como string (numeric type) o number,
+      // dependiendo del cast del driver. Aceptamos ambos.
+      price_mxn?: number | string | null;
     };
 
     const humanStartsAt = formatHumanDate(evt.starts_at);
@@ -443,13 +498,22 @@ export async function loadActiveEventContext(
     const location = evt.location?.trim() || "Por confirmar";
     const { normalizeEventRules } = await import("../events/event-mapper");
     const eventRules = normalizeEventRules(evt.event_rules);
+    // FIX 2026-07-16: normalizar price_mxn a number. Supabase numeric
+    // llega como string "599" o "599.00"; lo convertimos a número.
+    const priceMxn: number | null =
+      typeof evt.price_mxn === "string"
+        ? Number.parseFloat(evt.price_mxn)
+        : typeof evt.price_mxn === "number"
+          ? evt.price_mxn
+          : null;
     const promptBlock = formatPromptBlock({
       title: evt.title,
       humanStartsAt,
       humanDuration,
       location,
       description: evt.description,
-      eventRules
+      eventRules,
+      priceMxn
     });
 
     return {
@@ -474,6 +538,8 @@ export async function loadActiveEventContext(
       streamingUrl: evt.streaming_url ?? null,
       streamingProvider: evt.streaming_provider ?? null,
       streamingAccessNote: evt.streaming_access_note ?? null,
+      // FIX 2026-07-16: precio del evento (sprint pago-en-puerta).
+      priceMxn,
     };
   } catch {
     return fallbackNoEvents();
@@ -510,7 +576,7 @@ export async function loadAllActiveEvents(): Promise<ActiveEventContext[]> {
     const { data, error } = await supabase
       .from("events")
       .select(
-        "id, slug, short_code, title, description, starts_at, ends_at, location, status, requires_name, event_rules, format, streaming_url, streaming_provider, streaming_access_note"
+        "id, slug, short_code, title, description, starts_at, ends_at, location, status, requires_name, event_rules, format, streaming_url, streaming_provider, streaming_access_note, price_mxn"
       )
       .eq("status", "published")
       // FIX 2026-07-15 (sesion David, E2E human_first): el catálogo
@@ -556,19 +622,27 @@ export async function loadAllActiveEvents(): Promise<ActiveEventContext[]> {
         | "other"
         | null;
       streaming_access_note?: string | null;
+      price_mxn?: number | string | null;
     };
     return (data as unknown as Row[]).map((evt) => {
       const humanStartsAt = formatHumanDate(evt.starts_at);
       const humanDuration = formatHumanDuration(evt.starts_at, evt.ends_at);
       const location = evt.location?.trim() || "Por confirmar";
       const eventRules = normalizeEventRules(evt.event_rules);
+      const priceMxn: number | null =
+        typeof evt.price_mxn === "string"
+          ? Number.parseFloat(evt.price_mxn)
+          : typeof evt.price_mxn === "number"
+            ? evt.price_mxn
+            : null;
       const promptBlock = formatPromptBlock({
         title: evt.title,
         humanStartsAt,
         humanDuration,
         location,
         description: evt.description,
-        eventRules
+        eventRules,
+        priceMxn
       });
       return {
         id: evt.id,
@@ -589,6 +663,7 @@ export async function loadAllActiveEvents(): Promise<ActiveEventContext[]> {
         streamingProvider: evt.streaming_provider ?? null,
         streamingAccessNote: evt.streaming_access_note ?? null,
         eventRules,
+        priceMxn,
       };
     });
   } catch {

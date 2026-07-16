@@ -1994,7 +1994,15 @@ async function buildOpenerPlan(args: {
 
   const eventLine =
     realActiveEvent && realActiveEvent.source === "db"
-      ? `\n\nPróximo evento: ${realActiveEvent.title} (${realActiveEvent.humanStartsAt})`
+      ? `\n\nPróximo evento: ${realActiveEvent.title} (${realActiveEvent.humanStartsAt})` +
+        // FIX 2026-07-16 (sprint pago-en-puerta): si el evento es de
+        // pago, lo decimos en el welcome para que el lead NO se inscriba
+        // pensando que es gratis. Antes el "Marketing + IA para
+        // Emprendedores (Copia - Pago)" tenía el sufijo raro entre
+        // paréntesis y el lead no entendía.
+        (realActiveEvent.priceMxn && realActiveEvent.priceMxn > 0
+          ? ` — evento de pago ($${realActiveEvent.priceMxn} MXN)`
+          : "")
       : "";
   const interactive = singleEventShortcut
     ? {
@@ -3763,14 +3771,32 @@ case "interactive_event_inscribir": {
       const regEvt = args.registrationEvent;
       const isVirtual = regEvt?.format === "virtual" || regEvt?.format === "hybrid";
       const hasStreamingLink = Boolean(regEvt?.streamingUrl);
+      // FIX 2026-07-16 (sprint pago-en-puerta): si el evento del
+      // registro es de pago (priceMxn > 0), agregamos al final del
+      // mensaje un bloque con las 2 opciones de pago: (1) link de
+      // checkout en línea, (2) pagar en puerta el día del evento.
+      // El link de checkout es la URL pública de pago con el slug
+      // del evento (la confirmation_id aún no existe en este
+      // punto del flow, pero el endpoint /pagar/evento/[slug]
+      // acepta entrar sin confirmation y la crea al confirmar el
+      // pago via dedupe por email+evento).
+      const regEvtSlug = regEvt?.slug ?? null;
+      const regEvtIsPaid =
+        typeof regEvt?.priceMxn === "number" && regEvt.priceMxn > 0;
+      const checkoutUrl = regEvtSlug ? `${appBaseUrl()}/pagar/evento/${regEvtSlug}` : null;
+      const paymentBlock = regEvtIsPaid
+        ? checkoutUrl
+          ? `\n\nSobre el pago: el evento cuesta $${regEvt!.priceMxn} MXN. Tienes 2 opciones:\n1. Pagar en línea ahora (tarjeta/OXXO/SPEI): ${checkoutUrl}\n2. Pagar en puerta el día del evento (efectivo o tarjeta). Solo avísanos al llegar.`
+          : `\n\nSobre el pago: el evento cuesta $${regEvt!.priceMxn} MXN. Puedes pagar en puerta el día del evento (efectivo o tarjeta). Te enviaremos el link de pago en línea pronto.`
+        : "";
       const eventLine = isVirtual && hasStreamingLink
         ? `\n\nEs un evento virtual. Te enviamos el link de acceso al stream por correo. Cuando estés listo, haz click y entras.${regEvt?.streamingAccessNote ? `\n\n${regEvt.streamingAccessNote}` : ""}`
         : isVirtual
           ? `\n\nEs un evento virtual. ${regEvt?.streamingAccessNote ? `${regEvt.streamingAccessNote}\n\n` : ""}Aún no tenemos el link del stream configurado — te lo enviamos por correo y por aquí el día del evento. Guarda tu pase con QR, lo vas a necesitar para confirmar asistencia.`
           : `\n\nTambién te enviamos el pase con el QR a tu correo. Lo vas a necesitar el día del evento.`;
       const bodyText = qrUrl
-        ? `Listo${clean ? " " + clean : ""}, te registramos para el evento. Tu pase (link de check-in): ${qrUrl}${eventLine}`
-        : `Listo${clean ? " " + clean : ""}, registramos tu email ${email}. Te esperamos el ${evt.date} en ${evt.location}.`;
+        ? `Listo${clean ? " " + clean : ""}, te registramos para el evento. Tu pase (link de check-in): ${qrUrl}${eventLine}${paymentBlock}`
+        : `Listo${clean ? " " + clean : ""}, registramos tu email ${email}. Te esperamos el ${evt.date} en ${evt.location}.${paymentBlock}`;
       return {
         kind: "text",
         body: bodyText,
@@ -6577,6 +6603,51 @@ export async function processInboundMessage(
             persisted: confResult.persisted,
             note: confResult.note,
           });
+
+          // FIX 2026-07-16 (sprint pago-en-puerta): si el evento del
+          // registro es de pago (priceMxn > 0), forzar
+          // payment_status='pending' en la confirmation. createConfirmation
+          // inserta con el default 'not_required' (legacy, asume free),
+          // pero para que el admin de pagos manuales (panel
+          // /admin/eventos/[id]) pueda registrar el cobro en puerta y
+          // para que el endpoint /api/check-in/[token] avise al staff
+          // que el asistente aún no ha pagado, el estado inicial del
+          // confirmado de pago DEBE ser 'pending'.
+          //
+          // Mismo patrón que el bloque de `interactive_event_inscribir`
+          // (linea 6225+, fix 2026-07-15c). Ahí ya se hacía, pero
+          // SOLO cuando el flow pasaba por el botón "Inscribirme"
+          // directo. Aquí cubrimos el path `provide_name → provide_email`
+          // que también termina en una confirmation.
+          const regEvtIsPaid =
+            typeof regEvt.priceMxn === "number" && regEvt.priceMxn > 0;
+          if (regEvtIsPaid && confResult?.ok && confResult.confirmation) {
+            try {
+              const { error: payUpdErr } = await supabase
+                .from("event_confirmations")
+                .update({ payment_status: "pending" } as never)
+                .eq("id", confResult.confirmation.id);
+              if (payUpdErr) {
+                errorLog("[whatsapp/bot] provide_email: payment_status update fallo (no fatal)", {
+                  leadId: lead.id,
+                  confirmationId: confResult.confirmation.id,
+                  code: (payUpdErr as { code?: string }).code,
+                });
+              } else {
+                debugLog("[whatsapp/bot] provide_email: payment_status=pending aplicado", {
+                  leadId: lead.id,
+                  confirmationId: confResult.confirmation.id,
+                  eventSlug: registrationEventSlug,
+                  priceMxn: regEvt.priceMxn,
+                });
+              }
+            } catch (payUpdEx) {
+              errorLog("[whatsapp/bot] provide_email: payment_status update threw", {
+                leadId: lead.id,
+                error: payUpdEx instanceof Error ? payUpdEx.message : String(payUpdEx),
+              });
+            }
+          }
         } else {
           errorLog("[whatsapp/bot] provide_email: no se pudo resolver event_id para confirmation", {
             leadId: lead.id,
