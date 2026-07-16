@@ -4625,34 +4625,28 @@ export async function processInboundMessage(
         note: "opt-out registrado (gate legal LFPDPPP, pre-kill-switch). Sin outbound por kill-switch/bot_paused."
       };
     }
-    // Gate 2: provide_email (captura de email, valioso, pre-kill-switch).
-    // Solo si el body es SOLO un email (no texto que contiene un email).
-    if (trimmedBody && EMAIL_RE.test(trimmedBody)) {
-      debugLog("[whatsapp/bot] early-gate provide_email (pre-kill-switch)", {
-        leadId: lead.id,
-        body: trimmedBody.slice(0, 60)
-      });
-      // Persistir el email (best-effort). NO enviamos outbound por
-      // la misma razón que arriba.
-      try {
-        await supabase
-          .from("leads" as never)
-          .update({ email: trimmedBody } as never)
-          .eq("id" as never, lead.id);
-      } catch (err) {
-        errorLog("[whatsapp/bot] early-gate provide_email persist failed", {
-          leadId: lead.id,
-          error: err instanceof Error ? err.message : String(err)
-        });
-      }
-      return {
-        ok: true,
-        intent: "provide_email",
-        leadId: lead.id,
-        responseKind: "none",
-        note: "email capturado (gate pre-kill-switch). Sin outbound por kill-switch/bot_paused."
-      };
-    }
+    // Gate 2 (REMOVED 2026-07-16, sesion David "le paso mi correo y ya
+    // no pasa nada"): el early-gate de provide_email interceptaba
+    // emails ANTES del flow normal con `responseKind: "none"`, lo que
+    // rompía la conversación (lead colgado sin QR ni email de
+    // bienvenida). El test existente ("provee email → provide_email")
+    // usa disableSupabase() y no detectó el bug porque el gate solo
+    // se activa con Supabase real.
+    //
+    // Por qué NO aplicamos la misma lógica que opt_out:
+    //   - opt_out: LFPDPPP exige REGISTRAR el opt-out, no CONFIRMARLO.
+    //     El lead ya no quiere mensajes — no mandarle outbound es
+    //     correcto y la ley lo respalda.
+    //   - provide_email: el lead SÍ espera respuesta. Sin outbound,
+    //     queda colgado aunque su email esté en DB. No es gate legal,
+    //     es UX roto.
+    //
+    // El flow normal de provide_email (case "provide_email" en
+    // buildResponsePlan + sección 5 de processInboundMessage) ya
+    // persiste el email, genera QR, manda email y manda WhatsApp.
+    // El check del kill-switch (más abajo) sigue cubriendo el caso
+    // edge que el commit 85f9278 quería proteger (si outbound rolling
+    // 24h >= 50, outbound proactivo se interrumpe).
   }
 
   // Sprint v16 PR #2.4 (M4 + Kill-Switch diario): ANTES del intent
