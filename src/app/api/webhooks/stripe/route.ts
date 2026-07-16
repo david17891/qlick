@@ -486,6 +486,30 @@ async function handleCheckoutCompleted(
   const reason = `stripe_${event.type}_${new Date().toISOString().slice(0, 16)}`;
 
   if (productRef.kind === "course") {
+    // FIX 2026-07-16 (audit pago dinero real): verificar que el curso
+    // está publicado antes de grant access. Si está draft/archived/
+    // cancelled, NO grant (pago queda en DB como sospechoso).
+    const { data: courseRow } = await supabase
+      .from("courses")
+      .select("id, status")
+      .eq("id", productRef.id)
+      .maybeSingle();
+    if (!courseRow || (courseRow as { status?: string }).status !== "published") {
+      console.error("[stripe-webhook] CURSO no publicado, grant bloqueado", {
+        event_id: event.id,
+        courseId: productRef.id,
+        status: (courseRow as { status?: string } | null)?.status ?? "no encontrado",
+      });
+      return {
+        status: 200,
+        body: {
+          ok: false,
+          mode: "course_not_published",
+          event_id: event.id,
+          note: "Curso no está publicado. Grant bloqueado. Investigar.",
+        },
+      };
+    }
     await grantAccess({
       userId,
       courseId: productRef.id,
@@ -494,6 +518,32 @@ async function handleCheckoutCompleted(
       grantedReason: reason,
     });
   } else {
+    // FIX 2026-07-16 (audit pago dinero real): verificar que el evento
+    // está publicado antes de grant access. Si está draft/cancelled/
+    // archived, NO grant access (pago queda en DB como aprobado pero
+    // sin access). Esto es importante: si David cancela un evento
+    // DESPUÉS de que alguien pagó, no queremos darle access.
+    const { data: eventRow } = await supabase
+      .from("events")
+      .select("id, status, starts_at")
+      .eq("id", productRef.id)
+      .maybeSingle();
+    if (!eventRow || (eventRow as { status?: string }).status !== "published") {
+      console.error("[stripe-webhook] EVENTO no publicado, grant bloqueado", {
+        event_id: event.id,
+        eventId: productRef.id,
+        status: (eventRow as { status?: string } | null)?.status ?? "no encontrado",
+      });
+      return {
+        status: 200,
+        body: {
+          ok: false,
+          mode: "event_not_published",
+          event_id: event.id,
+          note: "Evento no está publicado. Grant bloqueado. Investigar (posible refund).",
+        },
+      };
+    }
     // event | masterclass → grantEventAccess.
     // FIX sprint 2026-07-15d + 2026-07-15f: el bot-engine ya crea el
     // event_access con source='event_pay_at_door' al confirmar la
