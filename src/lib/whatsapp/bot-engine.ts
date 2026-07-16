@@ -4861,14 +4861,6 @@ export async function processInboundMessage(
   // 3. Detectar intent. Si el usuario clickeó un botón (Fase 7a), el
   // intent se deriva del buttonId en vez de regex sobre el texto.
   let intent: BotIntent;
-  // DEBUG auditoria 2026-07-15f (E2E #2): log ANTES de detectar intent
-  // para ver qué llega del webhook.
-  errorLog("[whatsapp/bot] pre-intent-detection", {
-    leadId: lead.id,
-    messageType: message.type,
-    messageButtonId: message.buttonId ?? null,
-    messageBody: (body ?? "").slice(0, 60),
-  });
   // FIX 2026-07-02 (sesion David, "Si tras pregunta cerrada"): slug del
   // evento que el bot preguntó cerrar (ej. "¿Te gustaría apartar tu
   // lugar en IA y Marketing?"). Se setea en la rama `else` (texto libre)
@@ -6098,16 +6090,44 @@ export async function processInboundMessage(
           `Para inscribirte al taller *${evtName}* necesito tu ` +
           `nombre completo (asi queda en tu constancia de asistencia). ` +
           `¿Me lo pasas? Ej: "Juan Pérez".`;
-        const plan: OutboundPlan = {
-          kind: "text",
-          body: bodyText,
-          metadata: { awaiting_field: "name" },
-          send: () =>
-            localProvider.send({ to: phoneNormalized, body: bodyText }),
+        let sendResult: { ok: boolean; externalId?: string; demo?: boolean } = {
+          ok: false
         };
-        // El case retorna BotProcessResult por un return del codigo
-        // pre-existente; matcheamos el shape con un cast.
-        return plan as never;
+        try {
+          const r = await localProvider.send({ to: phoneNormalized, body: bodyText });
+          sendResult = { ok: r.ok, externalId: r.externalId, demo: r.demo };
+        } catch (err) {
+          errorLog("[whatsapp/bot] interactive_event_inscribir (ask name) send falló", {
+            leadId: lead.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+        if (supabase && sendResult.ok) {
+          await persistConversation(supabase, {
+            lead_id: lead.id,
+            phone_normalized: phoneNormalized,
+            direction: "outbound",
+            message_type: "text",
+            body: bodyText,
+            whatsapp_message_id: sendResult.externalId ?? null,
+            metadata: {
+              intent: "interactive_event_inscribir",
+              templateName: null,
+              demo: sendResult.demo ?? false,
+              awaiting_field: "name",
+            }
+          });
+        }
+        return {
+          ok: sendResult.ok,
+          intent,
+          leadId: lead.id,
+          responseKind: "text",
+          responsePreview: bodyText,
+          demo: sendResult.demo,
+          outboundMessageId: sendResult.externalId,
+          note: `interactive_event_inscribir: asked name for ${targetSlug}`
+        };
       }
 
       if (isPlaceholderEmail) {
@@ -6115,14 +6135,44 @@ export async function processInboundMessage(
         const bodyText =
           `Gracias ${cleanLeadName}. Ahora mándame tu email y te ` +
           `paso el QR + el link de pago.`;
-        const plan: OutboundPlan = {
-          kind: "text",
-          body: bodyText,
-          metadata: { awaiting_field: "email" },
-          send: () =>
-            localProvider.send({ to: phoneNormalized, body: bodyText }),
+        let sendResult: { ok: boolean; externalId?: string; demo?: boolean } = {
+          ok: false
         };
-        return plan as never;
+        try {
+          const r = await localProvider.send({ to: phoneNormalized, body: bodyText });
+          sendResult = { ok: r.ok, externalId: r.externalId, demo: r.demo };
+        } catch (err) {
+          errorLog("[whatsapp/bot] interactive_event_inscribir (ask email) send falló", {
+            leadId: lead.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+        if (supabase && sendResult.ok) {
+          await persistConversation(supabase, {
+            lead_id: lead.id,
+            phone_normalized: phoneNormalized,
+            direction: "outbound",
+            message_type: "text",
+            body: bodyText,
+            whatsapp_message_id: sendResult.externalId ?? null,
+            metadata: {
+              intent: "interactive_event_inscribir",
+              templateName: null,
+              demo: sendResult.demo ?? false,
+              awaiting_field: "email",
+            }
+          });
+        }
+        return {
+          ok: sendResult.ok,
+          intent,
+          leadId: lead.id,
+          responseKind: "text",
+          responsePreview: bodyText,
+          demo: sendResult.demo,
+          outboundMessageId: sendResult.externalId,
+          note: `interactive_event_inscribir: asked email for ${targetSlug}`
+        };
       }
       if (targetSlug) {
         // No generamos QR de pago si el lead ya está registrado (4.7 ya
