@@ -316,17 +316,13 @@ export async function POST(req: NextRequest) {
       adminEmail: admin.email,
     });
 
-    // FIX auditoria 2026-07-15f: notificar al asistente que su pago se
-    // confirmo en puerta. Fire-and-forget para no bloquear el response
-    // del scanner.
-    //
-    // 1) Re-enviar el email del QR con el badge "PAGADO" (mismo helper
-    //    que el webhook de Stripe usa). El template ahora muestra el
-    //    badge verde porque paymentStatus=paid_manual.
-    // 2) Mandar WhatsApp al lead (si tiene phone) confirmando el pago.
-    //    Patron espejado de `notifyLeadPaymentConfirmed` en el webhook
-    //    de Stripe. Fire-and-forget: si falla, el lead igual ve el
-    //    badge verde en su email y el staff ya le cobró.
+    // FIX auditoria 2026-07-15f v2 (refactor): el codigo inline de
+    // email + WhatsApp se movio a
+    // `@/lib/payments/notify-lead-payment-confirmed` (mismo helper que
+    // el webhook de Stripe y el simulator dev usan). El mark-paid pasa
+    // paymentStatusOverride="paid_manual" para que el badge del email
+    // diga "pago fue registrado en puerta" (no "pago en línea se
+    // confirmó").
     const attendeeEmail = (confRow as { email?: string | null }).email;
     const attendeePhone = (confRow as { phone_normalized?: string | null })
       .phone_normalized;
@@ -334,70 +330,27 @@ export async function POST(req: NextRequest) {
     if (attendeeEmail) {
       void (async () => {
         try {
-          const { sendQrPassForConfirmation } = await import(
-            "@/lib/email/event-qr-pass"
+          const { notifyLeadPaymentConfirmed } = await import(
+            "@/lib/payments/notify-lead-payment-confirmed"
           );
-          // Re-leemos el evento desde la DB (es solo 1 row, vale el round-trip).
-          const { getEventById } = await import(
-            "@/lib/events/events-server"
-          );
-          const evt = await getEventById(eventId);
-          if (evt) {
-            await sendQrPassForConfirmation({
-              confirmationId: body.confirmation_id,
-              event: evt,
-            });
-            infoLog(
-              "[staff/mark-paid] email re-enviado con badge PAGADO",
-              {
-                confirmationId: body.confirmation_id,
-                email: attendeeEmail,
-              },
-            );
-          }
-        } catch (emailErr) {
-          errorLog("[staff/mark-paid] email fallo (no fatal)", {
-            error:
-              emailErr instanceof Error
-                ? emailErr.message
-                : String(emailErr),
+          // effectiveLeadId: el helper hace SELECT por lead.id. Si
+          // el confirmation no tiene leadId (caso raro), usamos el
+          // phone_normalized como fallback. El simulator usa el mismo
+          // truco.
+          const effectiveLeadId = attendeePhone ?? eventId;
+          await notifyLeadPaymentConfirmed({
+            leadId: effectiveLeadId,
+            eventId,
+            amountTotalMXN: amountMXN,
+            paymentStatusOverride: "paid_manual",
+            logSource: "staff-mark-paid",
           });
-        }
-      })();
-    }
-    if (attendeePhone) {
-      void (async () => {
-        try {
-          const { getActiveWhatsAppProvider } = await import(
-            "@/lib/whatsapp"
-          );
-          const provider = getActiveWhatsAppProvider();
-          if (provider) {
-            const { getEventById } = await import(
-              "@/lib/events/events-server"
-            );
-            const evt = await getEventById(eventId);
-            const eventTitle = evt?.title ?? "el evento";
-            const message =
-              `✅ Tu pago en puerta quedó registrado. ` +
-              `Te esperamos el día del evento. ` +
-              `Pase digital: te lo re-enviamos al correo por si lo necesitas.`;
-            await provider.send({
-              to: attendeePhone,
-              body: message,
-            });
-            infoLog(
-              "[staff/mark-paid] WhatsApp confirmacion enviado",
-              {
-                phone: attendeePhone,
-                eventTitle,
-              },
-            );
-          }
-        } catch (waErr) {
-          errorLog("[staff/mark-paid] WhatsApp fallo (no fatal)", {
+        } catch (notifErr) {
+          errorLog("[staff/mark-paid] notifyLead fallo (no fatal)", {
             error:
-              waErr instanceof Error ? waErr.message : String(waErr),
+              notifErr instanceof Error
+                ? notifErr.message
+                : String(notifErr),
           });
         }
       })();

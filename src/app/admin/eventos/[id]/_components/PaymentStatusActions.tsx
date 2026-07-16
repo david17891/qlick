@@ -28,6 +28,7 @@ type PaymentStatus =
   | "pending"
   | "pending_verification"
   | "paid"
+  | "paid_manual"
   | "revoked"
   | undefined;
 
@@ -59,12 +60,19 @@ export function PaymentStatusActions({
   // pero por defensa lo manejamos.
   if (paymentStatus === "not_required") return null;
 
-  if (paymentStatus === "paid") {
+  // FIX auditoria 2026-07-15f: paid_manual (staff cobro en puerta) tiene
+  // el mismo tratamiento visual que paid. Antes caía al default que
+  // mostraba "Confirmar pagado" — confuso, el staff ya habia cobrado.
+  if (paymentStatus === "paid" || paymentStatus === "paid_manual") {
     return (
       <>
         <span
           className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-semibold text-emerald-700"
-          title="Pago confirmado"
+          title={
+            paymentStatus === "paid_manual"
+              ? "Pago registrado en puerta"
+              : "Pago confirmado"
+          }
         >
           ✓ Pagado
         </span>

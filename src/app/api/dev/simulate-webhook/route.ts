@@ -297,6 +297,29 @@ export async function POST(req: NextRequest) {
           paymentId,
           grantedReason: `paid_via_sim_${new Date().toISOString().slice(0, 16)}`,
         });
+        // FIX auditoria 2026-07-15f: despues de grantEventAccess,
+        // actualizar el payment_status del confirmation y disparar
+        // email + WhatsApp (mismo patron que el webhook real de Stripe).
+        // Sin esto, el simulator solo cambiaba event_access pero el
+        // confirmation quedaba en 'pending' y el email sin badge
+        // PAGADO. David probaba el simulator y el badge no aparecia.
+        try {
+          const { notifyLeadPaymentConfirmed } = await import(
+            "@/lib/payments/notify-lead-payment-confirmed"
+          );
+          await notifyLeadPaymentConfirmed({
+            leadId: effectiveUserId,
+            eventId: productId,
+            amountTotalMXN: body.amountMxn ?? defaultAmountMxn,
+            logSource: "dev-simulate-webhook",
+          });
+        } catch (notifErr) {
+          // No fatal: el access ya quedo, el badge es UX.
+          console.error(
+            "[dev/simulate-webhook] notifyLeadPaymentConfirmed fallo (no fatal):",
+            notifErr instanceof Error ? notifErr.message : String(notifErr),
+          );
+        }
       } else {
         // Curso: grantAccess + enrollUserInCourse (comportamiento legacy).
         await grantAccess({

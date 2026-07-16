@@ -57,6 +57,7 @@ import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { grantAccess } from "@/lib/lms/entitlements";
 import { errorLog, infoLog } from "@/lib/log";
 import { grantEventAccess, revokeEventAccess } from "@/lib/lms/event-entitlements";
+import { notifyLeadPaymentConfirmed as notifyLeadPaymentConfirmedLib } from "@/lib/payments/notify-lead-payment-confirmed";
 import {
   extractProductRefFromMetadata,
   requireStripeWebhookSecret,
@@ -605,147 +606,26 @@ async function findConfirmationIdForEvent(args: {
  * FIX sprint 2026-07-15d: notifica al lead por WhatsApp + re-envia
  * el email del QR cuando Stripe confirma el pago de un evento.
  *
- * Pasos:
- *   1. UPDATE event_confirmations.payment_status='paid' (para que
- *      el staff scan del check-in acepte al asistente sin cobrar
- *      en puerta).
- *   2. Re-enviar el email del QR via sendQrPassForConfirmation
- *      (mismo helper que el form publico). El email sale con
- *      el bloque de pago en estado "pagado" (sin CTA al checkout).
- *   3. Mandar WhatsApp al lead: "Tu pago se confirmo. Te esperamos
- *      el 17 de julio."
+ * FIX auditoria 2026-07-15f: la logica vive ahora en
+ * `@/lib/payments/notify-lead-payment-confirmed` y la reusamos aca,
+ * en el simulator dev (`/api/dev/simulate-webhook`) y en el mark-paid
+ * endpoint (`/api/staff/check-in/mark-paid`). El patron de "pago
+ * confirmado → notificar al lead" es el mismo en los 3 lugares.
  *
- * Fire-and-forget: cualquier error se loggea pero NO rompe el
- * response del webhook de Stripe.
+ * Este wrapper solo agrega el `logSource` correcto para que los logs
+ * del webhook de Stripe sean trazables. Se mantiene como `export`
+ * por compat con callers que importaban la version local antes del
+ * refactor; los callers nuevos deben importar la lib directamente.
  */
-async function notifyLeadPaymentConfirmed(args: {
+export async function notifyLeadPaymentConfirmed(args: {
   leadId: string;
   eventId: string;
   amountTotalMXN: number;
 }): Promise<void> {
-  const supabase = createSupabaseAdminClient();
-
-  // 1. Buscar la confirmation del lead para este evento.
-  const { data: confRows, error: confErr } = await supabase
-    .from("event_confirmations")
-    .select(
-      "id, name, email, phone_normalized, payment_status",
-    )
-    .eq("event_id", args.eventId)
-    .or(`phone_normalized.not.is.null,email.not.is.null`)
-    .order("confirmed_at", { ascending: false })
-    .limit(20);
-  if (confErr) {
-    errorLog("[stripe-webhook] notifyLead: SELECT confirmation fallo", {
-      error: confErr.message,
-    });
-    return;
-  }
-  // Filtrar por el leadId via JOIN con leads (mejor: traer el lead
-  // y matchear por phone). Simplificado: matchear por phone o email.
-  const leadRow = await supabase
-    .from("leads")
-    .select("id, phone_normalized, email, name")
-    .eq("id", args.leadId)
-    .maybeSingle();
-  if (!leadRow.data) {
-    errorLog("[stripe-webhook] notifyLead: lead no existe", {
-      leadId: args.leadId,
-    });
-    return;
-  }
-  const leadPhone = (leadRow.data as { phone_normalized?: string | null })
-    .phone_normalized;
-  const leadEmail = (leadRow.data as { email?: string | null }).email;
-  const conf =
-    (confRows ?? []).find((c) => {
-      const row = c as {
-        phone_normalized?: string | null;
-        email?: string | null;
-      };
-      return (
-        (leadPhone && row.phone_normalized === leadPhone) ||
-        (leadEmail && row.email === leadEmail)
-      );
-    }) ?? null;
-  if (!conf) {
-    infoLog("[stripe-webhook] notifyLead: no encontre confirmation", {
-      leadId: args.leadId,
-      eventId: args.eventId,
-    });
-    return;
-  }
-  const confId = (conf as unknown as { id: string }).id;
-
-  // 2. UPDATE payment_status='paid'.
-  const { error: payUpdErr } = await supabase
-    .from("event_confirmations")
-    .update({ payment_status: "paid" } as never)
-    .eq("id", confId as never);
-  if (payUpdErr) {
-    errorLog("[stripe-webhook] notifyLead: payment_status update fallo", {
-      error: payUpdErr.message,
-    });
-  }
-
-  // 3. Re-enviar el email del QR (mismo helper que el form
-  //    publico). El email se envia con el bloque de pago en
-  //    estado "pagado" (sin CTA al checkout).
-  if (leadEmail) {
-    try {
-      const { sendQrPassForConfirmation } = await import(
-        "@/lib/email/event-qr-pass"
-      );
-      const { loadActiveEventContext } = await import(
-        "@/lib/ai/event-context-loader"
-      );
-      const evt = await loadActiveEventContext(
-        args.eventId.length > 0 ? args.eventId : undefined,
-      ).catch(() => null);
-      if (evt) {
-        await sendQrPassForConfirmation({
-          confirmationId: confId,
-          event: evt as unknown as Parameters<
-            typeof sendQrPassForConfirmation
-          >[0]["event"],
-        });
-      }
-    } catch (emailErr) {
-      errorLog("[stripe-webhook] notifyLead: email fallo", {
-        error:
-          emailErr instanceof Error
-            ? emailErr.message
-            : String(emailErr),
-      });
-    }
-  }
-
-  // 4. Mandar WhatsApp al lead: "Tu pago se confirmo. Te esperamos
-  //    el dia del evento." Fire-and-forget (no bloquea).
-  if (leadPhone) {
-    try {
-      const { getActiveWhatsAppProvider } = await import(
-        "@/lib/whatsapp"
-      );
-      const provider = getActiveWhatsAppProvider();
-      const evtTitleRow = await supabase
-        .from("events")
-        .select("title, starts_at")
-        .eq("id", args.eventId)
-        .maybeSingle();
-      const evtTitle = (evtTitleRow.data as { title?: string } | null)
-        ?.title ?? "el evento";
-      const bodyText =
-        `¡Listo! Tu pago de $${args.amountTotalMXN.toLocaleString("es-MX")} MXN ` +
-        `para *${evtTitle}* se confirmó. Tu QR ya está validado. ` +
-        `Te esperamos el día del evento. Si tienes dudas, responde a este chat.`;
-      await provider.send({ to: leadPhone, body: bodyText });
-    } catch (waErr) {
-      errorLog("[stripe-webhook] notifyLead: WhatsApp fallo", {
-        error: waErr instanceof Error ? waErr.message : String(waErr),
-      });
-    }
-  }
+  return notifyLeadPaymentConfirmedLib({
+    ...args,
+    logSource: "stripe-webhook",
+  });
 }
 
 async function handleCheckoutFailed(
