@@ -4760,3 +4760,66 @@ pm run build → OK (compila todas las rutas).
 - **Deploy:** alias a qlick.digital -> qlick-76nuq8etv. Listo para que David pruebe end-to-end con su celular (escaneo de un QR + cobro en puerta).
 
 - **Aplica a:** cualquier scanner publico que necesite cobrar / registrar sin login. Patron: "auth por token de sesion, no por user/pass" es valido cuando el token es high-entropy (192+ bits) y de un solo uso (rotado por el scanner tras cada escaneo).
+
+
+## 2026-07-16 03:30 Phoenix — Sprint 4 (implicit_capture + reset-lead extendido)
+
+- **Pregunta:** David reportó que después de usar el botón "Olvidar mi número" (en admin/BotSimulatorTab), el bot seguía diciendo "ya te tengo registrado David Martínez" y el copy del path implicit_capture (nombre+email juntos) tenía 3 bugs: hardcodeaba "link de Zoom 24 horas antes" para eventos presenciales, pedía "Si me confirmas con Si" innecesariamente, y no mencionaba el pago. Además, David sospechaba que el reset no limpiaba bien la memoria del bot (cache).
+
+- **Decisión:** Cerrar los 2 fixes en 2 commits atómicos: (1) `fix(bot): implicit_capture con copy correcto segun formato y precio` (d5c32d5), y (2) `fix(admin): reset-lead extendido limpia TODO (leads + eventos)` (65b37fc).
+
+- **Razón:** El reset-lead solo limpiaba wizard state y lead_profile.summary. NO limpiaba `leads.name + email`, `event_qr_tokens`, `event_confirmations`, `event_payments`, ni `event_access`. Esos son los registros que el bot usa para detectar "ya estás registrado" (`findLeadByPhone` + `findActiveQrTokenForLead`) y dispara el plan del implicit_capture y de `interactive_event_inscribir`. Por eso "no me registro esta vez" — el `generateQrToken` reutilizaba el QR previo y el email se re-enviaba con el mismo link. El botón olvidar debe dejar al lead realmente como nuevo, sino David no puede iterar pruebas.
+
+- **Cambios concretos (commit 1, d5c32d5):**
+  - `src/lib/whatsapp/bot-engine.ts`:
+    - Línea ~6440: la condición de carga de `matchedEvent` cambia de `intent === "provide_email"` a `intent === "provide_email" || intent === "provide_name"`.
+    - Línea ~6440: `email` se re-declara dentro del sub-bloque de provide_email (porque matchedEvent se carga para ambos intents).
+    - Líneas 3652-3690: `case "provide_name"` con `implicitEmail` usa `args.registrationEvent` y genera copy según formato (presencial/virtual/hybrid) y precio (de pago/gratis).
+    - Copy del implicit_capture:
+      - Presencial: "El día del evento presenta tu QR en la entrada."
+      - Virtual sin streamingAccessNote: "Te enviamos el link de Zoom 24 horas antes."
+      - Virtual con streamingAccessNote: el note del evento.
+      - De pago: bloque con "$X MXN. Tienes 2 opciones: 1) Pagar en línea ahora (link): [URL]  2) Pagar en puerta el día del evento (efectivo o tarjeta). Solo avísanos al llegar."
+      - NO pide "Si me confirmas con Si" (el implicit_capture ya persiste email + QR).
+  - `tests/whatsapp-bot-implicit-capture-paid.test.mjs` (nuevo, 3 tests): mock del cliente admin con Supabase activo (patrón `--experimental-test-module-mocks`). El mock de `from("events")` retorna el shape RAW de Supabase (snake_case con `price_mxn`), que `loadAllActiveEvents` -> `loadActiveEventContext` transforma al shape `ActiveEventContext` (camelCase con `priceMxn` y `source: "db"`). Si mockeas el shape ya transformado, la doble transformación lo rompe.
+
+- **Cambios concretos (commit 2, 65b37fc):**
+  - `src/lib/admin/reset-lead.ts` (nuevo, ~330 líneas): función helper `resetLeadContext(sb, phoneInput, options)` que encapsula toda la lógica del reset. Es testeable sin Next.js (recibe el cliente de Supabase como argumento, no depende del runtime de Next). Retorna `{ ok, leadId, phone, cleared, note, error }`.
+  - `src/app/api/admin/bot/reset-lead/route.ts` (refactor, -172 líneas, +10 líneas): ahora es un wrapper HTTP fino. Solo hace auth (`requireAdmin`), parse del body, llama a `resetLeadContext`, y mapea el resultado a `NextResponse`. La lógica testeable vive en el helper.
+  - `resetLeadContext` ahora limpia:
+    1. `leads.name + email + status + whatsapp_status` (FIX 2026-07-16, antes no se limpiaba).
+    2. Wizard state del último outbound (awaiting_field, awaiting_survey_step, etc.) — ya lo hacía.
+    3. `lead_profile.summary` — ya lo hacía.
+    4. `event_qr_tokens` (por `attendee_phone_normalized`) — FIX 2026-07-16 (NUEVO).
+    5. `event_confirmations` (por `phone_normalized` Y `email`) — FIX 2026-07-16 (NUEVO).
+    6. `event_payments` (vinculadas a las confirmations borradas) — FIX 2026-07-16 (NUEVO). Se borran ANTES de confirmations por la FK.
+    7. `event_access` (por `lead_id`) — FIX 2026-07-16 (NUEVO). Migración 20260715131000 agregó `lead_id` (nullable).
+    8. Opcional: `event_attendees` (por `lead_id`) — solo si `alsoDeleteAttendees=true`.
+  - Devuelve el conteo de cada limpieza en `cleared`: `{ outbounds, profiles, attendees, qrTokens, confirmations, payments, access }`.
+  - Workaround typegen: `.from("event_payments" as never)` y `.eq("lead_id" as never, ...)` porque el typegen de Supabase está stale (la tabla event_payments no está en el Database typegen; event_access.lead_id se agregó en migration 20260715131000 pero el typegen no se ha regenerado). Patrón del mark-paid endpoint.
+
+- **Tests (commit 2, 65b37fc):**
+  - `tests/reset-lead-extended.test.mjs` (nuevo, 6 tests):
+    1. Limpia `leads.name + email + status + whatsapp_status`.
+    2. Borra `event_qr_tokens`, `event_payments`, `event_access`, `event_confirmations`.
+    3. `event_payments` se borran ANTES de `event_confirmations` (FK).
+    4. Busca confirmations por phone Y email (>=2 SELECTs).
+    5. Devuelve `cleared` con todos los counts.
+    6. NO borra `event_attendees` sin `alsoDeleteAttendees=true`.
+  - Mock chainable: `wasDelete` se propaga a través del chain para que `.then()` distinga DELETE de SELECT en tablas que tienen ambos (event_confirmations, event_payments). El approach de "kind" no funciona porque el chain `.delete().eq().select("id")` sobrescribe el kind al último método.
+
+- **Verificación:**
+  - `npm test` → 1405/1405 verde (1399 antes + 3 del implicit_capture + 6 del reset-lead = +9, total 1405).
+  - `npm run type-check` → 0 errores (gracias al workaround `as never` del typegen stale).
+  - `npm run lint` → 0 warnings/errors.
+  - `npm run build` → ✓ Compiled successfully, 27/27 páginas estáticas.
+
+- **Riesgos restantes:**
+  - Typegen stale: `event_payments` no está en el Database typegen. Usar `as never` funciona pero es frágil. Regenerar typegen con `supabase gen types typescript` en una sesión futura (sprint técnico).
+  - Si el `createConfirmation` revienta por unique violation (ya existe confirmation con mismo email), el reset limpia igual porque borra por `confirmation_id` antes. Pero el reset NO re-crea el lead — el siguiente mensaje del lead crea un confirmation nuevo via `upsert`.
+  - El `event_payments.id` se borra junto con las confirmations. Si hay pagos huérfanos (sin confirmation_id) de una prueba anterior, NO se limpian. Documentar en OPEN_ITEMS como bug menor.
+
+- **Próximos pasos:**
+  - Asignar alias `qlick.digital` al nuevo deployment (después de verificar que el deploy esté Ready en Vercel).
+  - David prueba el botón olvidar de nuevo y verifica que el bot ahora arranca limpio.
+  - Sprint siguiente: QR del scanner (pregunta pendiente de David sobre cómo manejar el pago del walk-in).
