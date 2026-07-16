@@ -4823,3 +4823,44 @@ pm run build → OK (compila todas las rutas).
   - Asignar alias `qlick.digital` al nuevo deployment (después de verificar que el deploy esté Ready en Vercel).
   - David prueba el botón olvidar de nuevo y verifica que el bot ahora arranca limpio.
   - Sprint siguiente: QR del scanner (pregunta pendiente de David sobre cómo manejar el pago del walk-in).
+
+
+## 2026-07-16 04:00 Phoenix — Sprint 4 HOTFIX: mark-paid asumia event_confirmations.lead_id (no existe)
+
+- **Pregunta:** David probó el scanner cobro-en-puerta del Sprint 3 con su evento de $1000 MXN. Al hacer clic en "Cobrar y registrar" con método "Efectivo", el endpoint retornó 500 con el error visible: `Error buscando confirmation: column event_confirmations.lead_id does not exist`. El staff no podía registrar el pago en puerta.
+
+- **Decisión:** Fix quirúrgico en `src/app/api/staff/check-in/mark-paid/route.ts` (1 archivo, +19/-4 líneas). Sin nueva migration. Commit: `0f03799 fix(staff): mark-paid no asume event_confirmations.lead_id (no existe)`.
+
+- **Razón:** El Sprint 3 (mark-paid cobro-en-puerta) inventó que `event_confirmations` tiene columna `lead_id`. NO la tiene. La estructura real de las 3 tablas relacionadas con lead:
+
+  - `event_confirmations`: id, event_id, name, email, phone_raw, phone_normalized, import_batch_id, source, payment_status. **Sin lead_id**. Se identifica por phone_normalized o email, no por lead.
+
+  - `event_attendees`: id, event_id, confirmation_id (FK desde migration 20260627000000), name, email, phone_normalized, checked_in_at, checked_in_by, source, lead_id (FK agregada en migration 20260714120000). El attendee SÍ tiene lead_id (nullable), pero el confirmation no.
+
+  - `event_access`: id, user_id, event_id, lead_id (nullable, agregada en 20260715131000), confirmation_id (nullable, agregada en 20260715131000). El access SÍ tiene lead_id.
+
+  El Sprint 3 invirtió el modelo: asumió que el confirmation lleva al attendee, cuando en realidad el attendee referencia al confirmation via FK.
+
+- **Cambios concretos:**
+  1. **Línea 170 (SELECT de event_confirmations)**: quitar `lead_id` del select. Ahora selecciona: `id, event_id, name, email, phone_normalized, payment_status`. Esto es lo que causa el 500 visible que David reportó.
+  2. **Búsqueda de attendee existente (línea ~343)**: cambiar de `eq("lead_id", confRow.lead_id ?? "")` a `eq("confirmation_id", body.confirmation_id)`. Esto matchea correctamente el attendee que se creó en el check-in público o en un flow previo.
+  3. **INSERT de attendee nuevo (línea ~363)**: quitar el gate `else if (confRow.lead_id)` que NUNCA se ejecutaba (porque confRow.lead_id es undefined). Ahora siempre intenta el INSERT, con `lead_id` omitido (queda null, se setea en otro flow cuando el scanner público promueve a lead).
+
+- **Verificación:**
+  - `npm run type-check` → 0 errores.
+  - `npm run lint` → 0 warnings/errors.
+  - `npm test` → 1405/1405 verde. (No agregué tests nuevos porque el bug era un runtime 500 que solo aparece con Supabase real; los tests E2E del staff son con regex match del código fuente y no cubren la lógica del endpoint. Para una cobertura real se necesita un test runner con Next.js disponible, ver `docs/E2E_TESTS_PLAN.md`.)
+  - Deploy: `qlick-r5nylkxge` Ready en 1m.
+  - Alias: `qlick.digital` → `qlick-r5nylkxge` ✓.
+
+- **Para David:** El scanner cobro-en-puerta ya funciona. Vuelve a hacer clic en "Cobrar y registrar" con método "Efectivo" y debería:
+  1. Marcar la confirmation como `paid_manual`.
+  2. Crear la fila en `event_payments` (method='cash', amount_mxn=$1000).
+  3. Hacer el check-in del attendee (crear/actualizar event_attendees con confirmation_id linkeado).
+
+- **Riesgos restantes / próximos pasos:**
+  - El Sprint 3 (mark-paid) tiene un comment en la línea 75-77 que dice: "validar que el qr_token corresponde al event_id de la confirmation". Esta validación SÍ está bien. No es afectada por este fix.
+  - El helper `notifyLeadPaymentConfirmed` (en `@/lib/payments/notify-lead-payment-confirmed`) recibe un `effectiveLeadId` que es `attendeePhone ?? eventId`. Esto es un workaround del bug que el lead_id del confirmation no existe. Funciona pero es frágil. En un sprint futuro, valdría la pena agregar `lead_id` a `event_confirmations` con una migration (resuelve el bug de raíz) o cambiar el helper para que use `confirmation_id` directamente.
+  - El typegen de Supabase sigue stale (no incluye `event_payments`, no incluye `event_access.lead_id`). Esto lo arreglamos con el workaround `as never` en el código, pero es frágil. Regenerar typegen en una sesión futura.
+
+- **Lección aprendida (regla preventiva):** Antes de usar una columna en código, verificar que EXISTE en la migration correspondiente, no asumir que el modelo es coherente entre tablas. La regla de memory "Migration en repo ≠ aplicada a prod; verificar en DB" también aplica para "columna en código ≠ columna en DB; verificar en migration".
