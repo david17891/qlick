@@ -5915,51 +5915,53 @@ export async function processInboundMessage(
         }
         // Evento gratis (o sin precio detectado). Reenviamos email + QR.
         if (lead.email && !lead.email.endsWith("@placeholder.local")) {
-          try {
-            const qrImageUrl = `${appBaseUrl()}/api/event-qr/${existing.token}.png`;
-            // Gate URL para eventos virtuales/híbridos (migration 20260707000000).
-            // El handler registra intent_attended y redirige al streaming_url.
-            // Migration 20260707093000: streaming_url es opcional, así que el
-            // gateUrl solo se calcula si hay link (si no, el email no muestra
-            // el bloque gate — solo QR + nota "link pendiente").
-            const gateUrl =
-              evt?.format && evt.format !== "in_person" && evt.streamingUrl
-                ? `${appBaseUrl()}/api/event-gate/${encodeURIComponent(existing.token)}/click`
-                : undefined;
-            // FIX P1 2026-07-03: pasamos eventId + tokenId para que el
-            // resultado se loggee en event_email_log (visibilidad admin).
-            await sendEventQrPassEmail(
-              {
-                attendeeName: lead.name?.trim() || "Asistente",
-                attendeeEmail: lead.email,
-                eventTitle: evtName,
-                eventStartsAt: evt?.startsAt
-                  ? evt.startsAt.toISOString()
-                  : new Date().toISOString(),
-                eventLocation: evt?.location ?? null,
-                qrImageUrl,
-                checkInUrl: existing.url,
-                // Streaming (migration 20260707000000).
-                format: evt?.format ?? "in_person",
-                gateUrl,
-                streamingAccessNote: evt?.streamingAccessNote ?? undefined,
-              },
-              {
-                eventId: existing.eventId,
-                // existing es { token, url, eventId } de findActiveQrTokenForLead.
-                // No expone el id del token (PK), solo el token string. Para
-                // event_qr_token_id tendríamos que agregarlo al return — por
-                // ahora pasamos null (el log queda sin FK al token row, pero
-                // igual queda el event_id para filtrar).
-                eventQrTokenId: null,
-              }
-            );
-          } catch (err) {
-            errorLog("[whatsapp/bot] already_registered: reenvío email falló", {
-              leadId: lead.id,
-              error: err instanceof Error ? err.message : String(err)
-            });
-          }
+          void (async () => {
+            try {
+              const qrImageUrl = `${appBaseUrl()}/api/event-qr/${existing.token}.png`;
+              // Gate URL para eventos virtuales/híbridos (migration 20260707000000).
+              // El handler registra intent_attended y redirige al streaming_url.
+              // Migration 20260707093000: streaming_url es opcional, así que el
+              // gateUrl solo se calcula si hay link (si no, el email no muestra
+              // el bloque gate — solo QR + nota "link pendiente").
+              const gateUrl =
+                evt?.format && evt.format !== "in_person" && evt.streamingUrl
+                  ? `${appBaseUrl()}/api/event-gate/${encodeURIComponent(existing.token)}/click`
+                  : undefined;
+              // FIX P1 2026-07-03: pasamos eventId + tokenId para que el
+              // resultado se loggee en event_email_log (visibilidad admin).
+              await sendEventQrPassEmail(
+                {
+                  attendeeName: lead.name?.trim() || "Asistente",
+                  attendeeEmail: lead.email,
+                  eventTitle: evtName,
+                  eventStartsAt: evt?.startsAt
+                    ? evt.startsAt.toISOString()
+                    : new Date().toISOString(),
+                  eventLocation: evt?.location ?? null,
+                  qrImageUrl,
+                  checkInUrl: existing.url,
+                  // Streaming (migration 20260707000000).
+                  format: evt?.format ?? "in_person",
+                  gateUrl,
+                  streamingAccessNote: evt?.streamingAccessNote ?? undefined,
+                },
+                {
+                  eventId: existing.eventId,
+                  // existing es { token, url, eventId } de findActiveQrTokenForLead.
+                  // No expone el id del token (PK), solo el token string. Para
+                  // event_qr_token_id tendríamos que agregarlo al return — por
+                  // ahora pasamos null (el log queda sin FK al token row, pero
+                  // igual queda el event_id para filtrar).
+                  eventQrTokenId: null,
+                }
+              );
+            } catch (err) {
+              errorLog("[whatsapp/bot] already_registered: reenvío email falló", {
+                leadId: lead.id,
+                error: err instanceof Error ? err.message : String(err)
+              });
+            }
+          })();
         }
         const clean = cleanFirstName(lead.name);
         const saludo = clean ? `¡Hola ${clean}!` : "¡Hola!";
@@ -6605,55 +6607,57 @@ export async function processInboundMessage(
     // siempre retorna el primero. Asi el email coincide con el QR y la
     // pagina de check-in.
     if (qrUrl && qr) {
-      try {
-        const event = registrationEventSlug
-          ? await loadActiveEventContext(registrationEventSlug).catch(() => null)
-          : await loadActiveEventContext().catch(() => null);
-        // FIX 2026-07-02: usar URL publica del QR en vez de data URL.
-        // Los data URLs no se renderizan en Gmail/Outlook.
-        const qrImageUrl = `${appBaseUrl()}/api/event-qr/${qr.token}.png`;
-        // Gate URL para eventos virtuales/híbridos (migration 20260707000000).
-        const gateUrl =
-          event?.format && event.format !== "in_person"
-            ? `${appBaseUrl()}/api/event-gate/${encodeURIComponent(qr.token)}/click`
-            : undefined;
-        // FIX P1 2026-07-03: pasamos eventId + tokenId para que el
-        // resultado se loggee en event_email_log (visibilidad admin).
-        // `generateQrToken` no devuelve el token.id (PK), solo el string —
-        // para event_qr_token_id haría falta otro SELECT. Por ahora null.
-        const result = await sendEventQrPassEmail(
-          {
-            attendeeName: lead.name,
-            attendeeEmail: email,
-            eventTitle: event?.title ?? registrationEventTitle ?? "el evento",
-            eventStartsAt: event?.startsAt
-              ? event.startsAt.toISOString()
-              : new Date().toISOString(),
-            eventLocation: event?.location ?? null,
-            qrImageUrl,
-            checkInUrl: qrUrl,
-            // Streaming (migration 20260707000000).
-            format: event?.format ?? "in_person",
-            gateUrl,
-            streamingAccessNote: event?.streamingAccessNote ?? undefined,
-          },
-          {
-            eventId: event?.id ?? null,
-            eventQrTokenId: null,
+      void (async () => {
+        try {
+          const event = registrationEventSlug
+            ? await loadActiveEventContext(registrationEventSlug).catch(() => null)
+            : await loadActiveEventContext().catch(() => null);
+          // FIX 2026-07-02: usar URL publica del QR en vez de data URL.
+          // Los data URLs no se renderizan en Gmail/Outlook.
+          const qrImageUrl = `${appBaseUrl()}/api/event-qr/${qr.token}.png`;
+          // Gate URL para eventos virtuales/híbridos (migration 20260707000000).
+          const gateUrl =
+            event?.format && event.format !== "in_person"
+              ? `${appBaseUrl()}/api/event-gate/${encodeURIComponent(qr.token)}/click`
+              : undefined;
+          // FIX P1 2026-07-03: pasamos eventId + tokenId para que el
+          // resultado se loggee en event_email_log (visibilidad admin).
+          // `generateQrToken` no devuelve el token.id (PK), solo el string —
+          // para event_qr_token_id haría falta otro SELECT. Por ahora null.
+          const result = await sendEventQrPassEmail(
+            {
+              attendeeName: lead.name,
+              attendeeEmail: email,
+              eventTitle: event?.title ?? registrationEventTitle ?? "el evento",
+              eventStartsAt: event?.startsAt
+                ? event.startsAt.toISOString()
+                : new Date().toISOString(),
+              eventLocation: event?.location ?? null,
+              qrImageUrl,
+              checkInUrl: qrUrl,
+              // Streaming (migration 20260707000000).
+              format: event?.format ?? "in_person",
+              gateUrl,
+              streamingAccessNote: event?.streamingAccessNote ?? undefined,
+            },
+            {
+              eventId: event?.id ?? null,
+              eventQrTokenId: null,
+            }
+          );
+          if (!result.ok) {
+            errorLog("[whatsapp/bot] sendEventQrPassEmail failed", {
+              leadId: lead.id,
+              error: result.error,
+            });
           }
-        );
-        if (!result.ok) {
-          errorLog("[whatsapp/bot] sendEventQrPassEmail failed", {
+        } catch (err) {
+          errorLog("[whatsapp/bot] sendEventQrPassEmail threw", {
             leadId: lead.id,
-            error: result.error,
+            error: err instanceof Error ? err.message : String(err),
           });
         }
-      } catch (err) {
-        errorLog("[whatsapp/bot] sendEventQrPassEmail threw", {
-          leadId: lead.id,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
+      })();
     }
   }
 
@@ -6869,47 +6873,49 @@ export async function processInboundMessage(
       }
       // f) Send event QR pass email (best-effort).
       if (qr) {
-        try {
-          const event = icEventSlug
-            ? await loadActiveEventContext(icEventSlug).catch(() => null)
-            : await loadActiveEventContext().catch(() => null);
-          const qrImageUrl = `${appBaseUrl()}/api/event-qr/${qr.token}.png`;
-          const gateUrl =
-            event?.format && event.format !== "in_person"
-              ? `${appBaseUrl()}/api/event-gate/${encodeURIComponent(qr.token)}/click`
-              : undefined;
-          const result = await sendEventQrPassEmail(
-            {
-              attendeeName: capturedName,
-              attendeeEmail: capturedEmail,
-              eventTitle: event?.title ?? icEventTitle ?? "el evento",
-              eventStartsAt: event?.startsAt
-                ? event.startsAt.toISOString()
-                : new Date().toISOString(),
-              eventLocation: event?.location ?? null,
-              qrImageUrl,
-              checkInUrl: icQrUrl ?? qr.url,
-              format: event?.format ?? "in_person",
-              gateUrl,
-              streamingAccessNote: event?.streamingAccessNote ?? undefined
-            },
-            {
-              eventId: event?.id ?? null,
-              eventQrTokenId: null
+        void (async () => {
+          try {
+            const event = icEventSlug
+              ? await loadActiveEventContext(icEventSlug).catch(() => null)
+              : await loadActiveEventContext().catch(() => null);
+            const qrImageUrl = `${appBaseUrl()}/api/event-qr/${qr.token}.png`;
+            const gateUrl =
+              event?.format && event.format !== "in_person"
+                ? `${appBaseUrl()}/api/event-gate/${encodeURIComponent(qr.token)}/click`
+                : undefined;
+            const result = await sendEventQrPassEmail(
+              {
+                attendeeName: capturedName,
+                attendeeEmail: capturedEmail,
+                eventTitle: event?.title ?? icEventTitle ?? "el evento",
+                eventStartsAt: event?.startsAt
+                  ? event.startsAt.toISOString()
+                  : new Date().toISOString(),
+                eventLocation: event?.location ?? null,
+                qrImageUrl,
+                checkInUrl: icQrUrl ?? qr.url,
+                format: event?.format ?? "in_person",
+                gateUrl,
+                streamingAccessNote: event?.streamingAccessNote ?? undefined
+              },
+              {
+                eventId: event?.id ?? null,
+                eventQrTokenId: null
+              }
+            );
+            if (!result.ok) {
+              errorLog("[whatsapp/bot] implicit_capture: sendEventQrPassEmail failed", {
+                leadId: lead.id,
+                error: result.error
+              });
             }
-          );
-          if (!result.ok) {
-            errorLog("[whatsapp/bot] implicit_capture: sendEventQrPassEmail failed", {
+          } catch (sendErr) {
+            errorLog("[whatsapp/bot] implicit_capture: sendEventQrPassEmail threw", {
               leadId: lead.id,
-              error: result.error
+              error: sendErr instanceof Error ? sendErr.message : String(sendErr)
             });
           }
-        } catch (sendErr) {
-          errorLog("[whatsapp/bot] implicit_capture: sendEventQrPassEmail threw", {
-            leadId: lead.id,
-            error: sendErr instanceof Error ? sendErr.message : String(sendErr)
-          });
-        }
+        })();
       }
       debugLog("[whatsapp/bot] implicit_capture: side-effects completados", {
         leadId: lead.id,
