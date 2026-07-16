@@ -613,11 +613,14 @@ async function findConfirmationIdForEvent(args: {
  * confirmado → notificar al lead" es el mismo en los 3 lugares.
  *
  * Este wrapper solo agrega el `logSource` correcto para que los logs
- * del webhook de Stripe sean trazables. Se mantiene como `export`
- * por compat con callers que importaban la version local antes del
- * refactor; los callers nuevos deben importar la lib directamente.
+ * del webhook de Stripe sean trazables.
+ *
+ * **No se exporta:** este archivo es una Next.js Route, asi que solo
+ * puede exportar HTTP methods (GET, POST, etc). Los callers externos
+ * deben importar `notifyLeadPaymentConfirmed` directamente desde
+ * `@/lib/payments/notify-lead-payment-confirmed`.
  */
-export async function notifyLeadPaymentConfirmed(args: {
+async function notifyLeadPaymentConfirmed(args: {
   leadId: string;
   eventId: string;
   amountTotalMXN: number;
