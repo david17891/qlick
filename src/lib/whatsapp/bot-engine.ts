@@ -3651,10 +3651,35 @@ case "interactive_event_inscribir": {
       // createConfirmation) sin pedir el email en un turno separado.
       if (implicitEmail) {
         const saludoIc = clean ? `¡Excelente ${clean}!` : "¡Excelente!";
+        // FIX 2026-07-16 (sprint pago-en-puerta): el copy del
+        // implicit_capture estaba hardcodeado ("link de Zoom 24 horas
+        // antes", "Si me confirmas con Si") y no mencionaba el pago.
+        // Ahora usa el evento del registro para:
+        //   - Distinguir presencial ("el dia del evento") vs virtual
+        //     ("el link de Zoom 24 horas antes" o el streamingAccessNote).
+        //   - Mencionar el pago si el evento es de pago (priceMxn > 0).
+        //   - NO pedir confirmacion ("Si me confirmas con Si"). El
+        //     implicit_capture ya persiste el email + QR automaticamente.
+        const regEvtIc = args.registrationEvent;
+        const regEvtIsPaidIc =
+          regEvtIc && regEvtIc.source === "db" &&
+          typeof regEvtIc.priceMxn === "number" && regEvtIc.priceMxn > 0;
+        const regEvtSlugIc = regEvtIc && regEvtIc.source === "db" ? regEvtIc.slug : null;
+        const isVirtualIc =
+          regEvtIc?.format === "virtual" || regEvtIc?.format === "hybrid";
+        const accessLineIc = isVirtualIc
+          ? regEvtIc?.streamingAccessNote
+            ? ` ${regEvtIc.streamingAccessNote}`
+            : " Te enviamos el link de Zoom 24 horas antes."
+          : " El día del evento presenta tu QR en la entrada.";
+        const paymentLineIc = regEvtIsPaidIc && regEvtSlugIc
+          ? ` El evento cuesta $${regEvtIc!.priceMxn} MXN. Tienes 2 opciones: 1) Pagar en línea ahora (tarjeta/OXXO/SPEI): ${appBaseUrl()}/pagar/evento/${regEvtSlugIc}  2) Pagar en puerta el día del evento (efectivo o tarjeta). Solo avísanos al llegar.`
+          : regEvtIsPaidIc
+            ? ` El evento cuesta $${regEvtIc!.priceMxn} MXN. Puedes pagar en puerta el día del evento (efectivo o tarjeta). Te enviaremos el link de pago en línea pronto.`
+            : "";
         const bodyText =
           `${saludoIc} Ya te tengo registrado. Te enviamos tu QR al ` +
-          `correo ${implicitEmail} y el link de Zoom 24 horas antes. ` +
-          `Si me confirmas con "Si", queda cerrado.`;
+          `correo ${implicitEmail}.${accessLineIc}${paymentLineIc}`;
         return {
           kind: "text",
           body: bodyText,
@@ -6437,24 +6462,21 @@ export async function processInboundMessage(
   let registrationEventTitle: string | null = null;
   let registrationEventRequiresName: boolean = false;
   /**
-   * Evento del registro completo (con format, streamingUrl, etc). Se carga
-   * en el bloque `if (intent === "provide_email" && supabase)` y se pasa
-   * a buildResponsePlan para que el handler sepa si el evento es virtual
-   * (migration 20260707000000).
+   * Evento del registro completo (con format, streamingUrl, priceMxn, etc).
+   * FIX 2026-07-16 (sprint pago-en-puerta): se carga tambien para
+   * `provide_name` (no solo `provide_email`) porque el `case "provide_name"`
+   * con implicit_capture (nombre+email juntos) necesita el precio y
+   * el formato del evento para armar el copy correcto:
+   *   - Si es de pago: mencionar el monto y opciones de pago.
+   *   - Si es presencial: NO decir "link de Zoom 24 horas antes"
+   *     (eso era un copy hardcodeado que aplicaba a cualquier evento).
+   *   - Si es virtual: "link de Zoom 24 horas antes" OK.
    */
   let matchedEvent: ActiveEventContext | null = null;
-  if (intent === "provide_email" && supabase) {
-    // FIX 2026-07-05 (sesion David): extraer email del body, no usar el
-    // body completo. Si el usuario mando contexto extra ("me equivoque, es X"),
-    // guardabamos la frase entera en leads.email y la pasabamos a Brevo,
-    // que rechazaba silenciosamente. extractEmailFromText devuelve el primer
-    // email en el texto; fallback a body.trim() si no hay match.
-    const email = extractEmailFromText(body)?.toLowerCase() ?? body.trim().toLowerCase();
-    // FIX 2026-07-02 (Commit A): si el evento del registro requiere
-    // nombre Y el lead no tiene nombre en DB, NO avanzamos al QR.
-    // Respondemos pidiendo el nombre primero. Este caso pasa cuando
-    // el lead saltó el flow secuencial (mandó email sin pasar por
-    // provide_name).
+  if (
+    (intent === "provide_email" || intent === "provide_name") &&
+    supabase
+  ) {
     // Cargamos el evento del registration via findEventInConversation.
     // FIX P0-4 (auditoria 2026-07-02): usar phoneNormalized (siempre
     // seteado desde message.from) en vez de lead.phone ?? "" (que puede
@@ -6535,6 +6557,12 @@ export async function processInboundMessage(
     // cargaron arriba (en el bloque del requires_name check). Reusamos
     // esas variables. Si llegamos aca es porque el evento NO requiere
     // nombre O el lead YA tiene nombre.
+    // FIX 2026-07-16 (sprint pago-en-puerta): re-declaramos `email`
+    // aca porque ahora se carga `matchedEvent` tanto para
+    // `provide_email` como para `provide_name` (la declaracion de
+    // arriba la movimos). El `email` solo se usa en este sub-bloque
+    // de side-effects de provide_email.
+    const email = extractEmailFromText(body)?.toLowerCase() ?? body.trim().toLowerCase();
     // FIX P1-3 (auditoria 2026-07-02): capturar error del update de lead.
     // Si falla (FK, constraint, network), el email queda desactualizado
     // y los siguientes pasos usan el email viejo. Loggeamos para debug
