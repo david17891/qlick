@@ -4868,7 +4868,6 @@ export async function processInboundMessage(
     messageType: message.type,
     messageButtonId: message.buttonId ?? null,
     messageBody: (body ?? "").slice(0, 60),
-    hasInteractive: !!message.interactive,
   });
   // FIX 2026-07-02 (sesion David, "Si tras pregunta cerrada"): slug del
   // evento que el bot preguntó cerrar (ej. "¿Te gustaría apartar tu
