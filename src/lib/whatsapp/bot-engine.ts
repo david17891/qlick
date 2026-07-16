@@ -5556,7 +5556,9 @@ export async function processInboundMessage(
   if (
     isHumanFirstMode &&
     intent !== "opt_out" &&
-    intent !== "provide_email"
+    intent !== "provide_email" &&
+    intent !== "provide_name" &&
+    intent !== "interactive_event_inscribir"
   ) {
     if (OPT_OUT_RE.test(body)) {
       intent = "opt_out";
@@ -5567,20 +5569,17 @@ export async function processInboundMessage(
     }
   }
 
-  // FIX 2026-07-14 (PR #10 hardening): invariante defensivo de runtime.
-  // En `human_first` el intent SOLO puede ser uno de 3 valores:
-  // `opt_out` (gate legal LFPDPPP), `provide_email` (captura
-  // determinista) o `question` (todo lo demás va al LLM). Si por un
-  // desvío futuro (nuevo path que setea intent, race condition, refactor
-  // que rompe el override de arriba) el intent resulta ser OTRO valor,
-  // logueamos y forzamos a `question` para que vaya al LLM y NO se
-  // cuele en un flow secuencial. Es un safety net de último recurso:
-  // la lógica de arriba YA debería garantizar el invariante, pero si
-  // algo se rompe, el bot sigue siendo seguro (pregunta al LLM, no
-  // ejecuta un flow de captura que no toca en human_first).
+  // FIX 2026-07-16: En `human_first`, permitimos `provide_name` e
+  // `interactive_event_inscribir` además de `opt_out`, `provide_email` y
+  // `question`. Sin `provide_name`, cuando el lead respondía con su nombre
+  // ("David Martinez"), el intent se forzaba a `question` y NUNCA se guardaba
+  // el nombre en DB. Luego, al enviar el email, el bot re-evaluaba y rebotaba
+  // porque DB seguía teniendo lead.name=null.
   const ALLOWED_HUMAN_FIRST_INTENTS = new Set<string>([
     "opt_out",
     "provide_email",
+    "provide_name",
+    "interactive_event_inscribir",
     "question"
   ]);
   if (isHumanFirstMode && !ALLOWED_HUMAN_FIRST_INTENTS.has(intent)) {
