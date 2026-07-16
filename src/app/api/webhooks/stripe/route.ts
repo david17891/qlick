@@ -443,43 +443,96 @@ async function handleCheckoutCompleted(
     };
   }
 
-  const { data: payment, error: payErr } = await supabase
-    .from("payments")
-    // @ts-ignore — payments.course_id es nullable en DB (migration 20260707110000)
-    // pero el typegen local aún dice NOT NULL.
-    .insert({
-      user_id: userId,
-      // Para eventos/masterclass, course_id queda NULL (pago vinculado via
-      // event_access.payment_id). Para cursos, el id del curso.
-      course_id: productRef.kind === "course" ? productRef.id : null,
-      provider: "stripe",
-      external_reference: session.id,
-      amount_mxn: amountTotalMXN,
-      discount_mxn: 0,
-      currency: "MXN",
-      status: "approved" as PaymentStatus,
-      method: detectMethodFromSession(session),
-      idempotency_key: idempotencyKey,
-    } as any)
-    .select("id")
-    .single();
-
-  if (payErr || !payment) {
-    // 23505 = unique violation: ya existe (corredor concurrente). OK.
-    if (payErr?.code === "23505") {
-      return {
-        status: 200,
-        body: {
-          ok: true,
-          mode: "race_idempotent",
-          event_id: event.id,
-          note: "Payment ya existía por carrera concurrente.",
+  // FIX 2026-07-16 (sprint event-payments FK): para eventos, el
+  // payment se inserta en `event_payments` (tabla separada de
+  // eventos, con FK a `event_confirmations`). Para cursos, sigue
+  // en `payments` (legacy). El `event_access.payment_id` apunta a
+  // `event_payments.id` después de la migration 20260716120000.
+  let payment: { id: string };
+  if (productRef.kind === "event" || productRef.kind === "masterclass") {
+    // Evento: INSERT en event_payments. Vinculamos a la confirmation
+    // del lead via `findConfirmationIdForEvent` (mismo lookup que
+    // usamos para grantEventAccess). Si no hay confirmationId, lo
+    // insertamos sin FK (legacy o guest sin confirmation).
+    const confLookup = await findConfirmationIdForEvent({
+      eventId: productRef.id,
+      leadId: userId,
+    }).catch(() => null);
+    const { data: evPayment, error: evPayErr } = await supabase
+      // @ts-ignore — event_payments no esta en el typegen (migration 20260715120000).
+      .from("event_payments" as never)
+      .insert({
+        confirmation_id: confLookup ?? null,
+        method: detectMethodFromSession(session),
+        status: "approved",
+        amount_mxn: amountTotalMXN,
+        currency: "MXN",
+        external_reference: session.id,
+        idempotency_key: idempotencyKey,
+        metadata: {
+          source: "stripe-webhook",
+          session_id: session.id,
+          user_id: userId,
         },
-      };
+      } as never)
+      .select("id")
+      .single();
+    if (evPayErr || !evPayment) {
+      if (evPayErr?.code === "23505") {
+        // Idempotencia: ya existe el row (corredor concurrente).
+        return {
+          status: 200,
+          body: {
+            ok: true,
+            mode: "race_idempotent",
+            event_id: event.id,
+            note: "event_payment ya existía por carrera concurrente.",
+          },
+        };
+      }
+      throw new Error(
+        `Error insertando event_payment: ${evPayErr?.message ?? "unknown"}`
+      );
     }
-    throw new Error(
-      `Error insertando payment: ${payErr?.message ?? "unknown"}`
-    );
+    payment = evPayment as unknown as { id: string };
+  } else {
+    // Curso: INSERT en payments (legacy, no se mueve).
+    const { data: coursePayment, error: payErr } = await supabase
+      .from("payments")
+      // @ts-ignore — payments.course_id es nullable en DB (migration 20260707110000)
+      // pero el typegen local aún dice NOT NULL.
+      .insert({
+        user_id: userId,
+        course_id: productRef.kind === "course" ? productRef.id : null,
+        provider: "stripe",
+        external_reference: session.id,
+        amount_mxn: amountTotalMXN,
+        discount_mxn: 0,
+        currency: "MXN",
+        status: "approved" as PaymentStatus,
+        method: detectMethodFromSession(session),
+        idempotency_key: idempotencyKey,
+      } as any)
+      .select("id")
+      .single();
+
+    if (payErr || !coursePayment) {
+      if (payErr?.code === "23505") {
+        return {
+          status: 200,
+          body: {
+            ok: true,
+            mode: "race_idempotent",
+            event_id: event.id,
+            note: "Payment ya existía por carrera concurrente.",
+          },
+        };
+      }
+      throw new Error(
+        `Error insertando payment: ${payErr?.message ?? "unknown"}`
+      );
+    }
+    payment = coursePayment as { id: string };
   }
 
   // 2. Grant access según kind.
@@ -768,19 +821,49 @@ async function handleChargeRefunded(
   const supabase = createSupabaseAdminClient();
 
   // Buscar payment por external_reference (charge.payment_intent === session.id).
+  // FIX 2026-07-16 (sprint event-payments FK): buscar primero en
+  // `payments` (cursos), si no encuentra, en `event_payments`
+  // (eventos). Antes solo buscaba en `payments`, por lo que refunds
+  // de eventos quedaban huérfanos.
   const externalRef =
     typeof charge.payment_intent === "string"
       ? charge.payment_intent
       : (charge.payment_intent?.id ?? charge.id);
 
-  const { data: payment } = await supabase
+  let paymentKind: "course" | "event" | null = null;
+  let paymentId: string | null = null;
+  let paymentUserId: string | null = null;
+  let courseId: string | null = null;
+
+  // 1) Buscar en payments (cursos).
+  const { data: coursePay } = await supabase
     .from("payments")
     .select("id, user_id, course_id")
     .eq("provider", "stripe")
     .eq("external_reference", externalRef)
     .maybeSingle();
+  if (coursePay) {
+    paymentKind = "course";
+    paymentId = (coursePay as { id: string }).id;
+    paymentUserId = (coursePay as { user_id: string | null }).user_id;
+    courseId = (coursePay as { course_id: string | null }).course_id;
+  } else {
+    // 2) Buscar en event_payments (eventos).
+    const { data: evPay } = await supabase
+      // @ts-ignore — event_payments no esta en el typegen.
+      .from("event_payments" as never)
+      .select("id, confirmation_id, amount_mxn, status")
+      .eq("external_reference", externalRef)
+      .maybeSingle();
+    if (evPay) {
+      paymentKind = "event";
+      paymentId = (evPay as { id: string }).id;
+      // El user_id del event_payment se resuelve via el access
+      // (event_access.user_id linkeado por payment_id).
+    }
+  }
 
-  if (!payment) {
+  if (!paymentId || !paymentKind) {
     return {
       status: 200,
       body: {
@@ -793,31 +876,36 @@ async function handleChargeRefunded(
   }
 
   // Marcar payment como refunded.
-  await supabase
-    .from("payments")
-    .update({ status: "refunded" as PaymentStatus })
-    .eq("id", payment.id);
+  if (paymentKind === "course") {
+    await supabase
+      .from("payments")
+      .update({ status: "refunded" as PaymentStatus })
+      .eq("id", paymentId);
+  } else {
+    await supabase
+      // @ts-ignore — event_payments no esta en el typegen.
+      .from("event_payments" as never)
+      .update({ status: "refunded" } as never)
+      .eq("id", paymentId as never);
+  }
 
-  // Revocar access. Como el schema actual de course_access es polimórfico
-  // en payment pero no en productRef, hacemos best-effort:
-  // si payment.course_id existe, revocamos course; si no, intentamos event.
+  // Revocar access.
   const revokeReason = `refunded_via_stripe_${event.id}`;
-  if (payment.course_id) {
+  if (paymentKind === "course" && courseId && paymentUserId) {
     // Para revocación de course importamos revokeAccess desde entitlements.
     const { revokeAccess } = await import("@/lib/lms/entitlements");
     await revokeAccess({
-      userId: payment.user_id,
-      courseId: payment.course_id,
+      userId: paymentUserId,
+      courseId,
       reason: revokeReason,
     });
-  } else {
-    // Sin course_id, intentamos evento.
-    // Buscamos event_access por payment_id.
+  } else if (paymentKind === "event") {
+    // Evento: buscar event_access por payment_id.
     const { data: eventAccess } = await (supabase
       // @ts-ignore — typegen aún sin event_access.
       .from("event_access") as any)
       .select("id, user_id, event_id")
-      .eq("payment_id", payment.id)
+      .eq("payment_id", paymentId)
       .eq("access_status", "active")
       .maybeSingle();
 
@@ -839,7 +927,7 @@ async function handleChargeRefunded(
       ok: true,
       mode: "refund_processed",
       event_id: event.id,
-      payment_id: payment.id,
+      payment_id: paymentId,
     },
   };
 }
