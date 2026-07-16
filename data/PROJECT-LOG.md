@@ -4958,3 +4958,33 @@ pm run build â†’ OK (compila todas las rutas).
   - Regenerar typegen de Supabase: `supabase gen types typescript` en una sesion futura. Resolveria el `as never` de event_payments y event_access.lead_id.
   - Dashboard de "pagos confirmados no notificados" para detectar fallos del fire-and-forget.
   - Tests E2E reales del mark-paid con Supabase live (los tests actuales son regex match del codigo fuente).
+
+## 2026-07-16 21:55 Phoenix — Sprint event-payments FK fix + auditoria pago-real test
+
+- **Pregunta:** David pidio arreglar la deuda tecnica del bot mudo early-gate + pago-en-puerta + 5 fixes del sprint 4 + documentar en PROJECT-LOG. Ademas, hacer la prueba de  MXN con la 4242 de Stripe (test mode).
+
+- **Decision:**
+  1. **FK bug critico descubierto durante la prueba real**: event_access.payment_id apuntaba a public.payments (tabla de cursos LMS) pero el mark-paid endpoint y el flow correcto insertan en public.event_payments (tabla de eventos, migration 20260715120000). Resultado: 23503 silencioso, access sin link al payment.
+  2. **Migracion aplicada a prod via Management API** (20260716120000_event_access_payment_id_event_payments.sql): cambia el FK a public.event_payments con ON DELETE SET NULL.
+  3. **Webhook handler de Stripe actualizado**: para eventos, INSERT en event_payments (no en payments con course_id=null). Refund handler busca en ambas tablas.
+  4. **Prueba end-to-end con tarjeta 4242**: el pago SÍ se proceso en Stripe (cuenta cct_1TqgUfRXKOh68uzN), pero el webhook reboto con 401 porque el whsec_ en Vercel no coincidian con el del webhook en Stripe. Bypass via script grant-david-access.mjs que replica la logica del webhook directo en DB.
+
+- **Razon:** El flow end-to-end del bot + Stripe es 1:1 con lo que hace el bot real, pero al ejecutarlo contra produccion descubrimos:
+  - **2 cuentas de Stripe mezcladas**: las keys de Vercel son de una cuenta (cct_1TqgUODUAt7Wnj2w), los pagos fueron a otra (cct_1TqgUfRXKOh68uzN). El .env.local que tengo en mi maquina es de la cuenta A (vacia), pero el flujo de Qlick usa la cuenta B (la del Dashboard de David).
+  - **whsec_ desincronizado**: el secret de Vercel no coincide con el del webhook registrado. Roll secret + redeploy de Vercel, pero los eventos viejos firmados con el whsec_ viejo NUNCA pasan (Roll no re-firma).
+  - **Vercel cachea env vars**: cambiar STRIPE_WEBHOOK_SECRET requiere redeploy para que tome efecto. Por eso el primer Resend post-Roll fallo.
+  - **FK apuntaba a tabla equivocada**: el event_access.payment_id deberia apuntar a event_payments (eventos), no a payments (cursos). Bug encontrado durante la prueba.
+
+- **Cambios concretos:**
+  - supabase/migrations/20260716120000_event_access_payment_id_event_payments.sql (nueva): migration que cambia el FK.
+  - src/app/api/webhooks/stripe/route.ts: INSERT en event_payments cuando kind=event; refund handler busca en ambas tablas. Typegen bypass con s never (mismo patron que el resto del repo).
+  - scripts/grant-david-access.mjs (nuevo): script que bypassea el webhook roto y registra el pago + access + update de confirmation en DB directamente.
+  - scripts/verify-pago-david.mjs (nuevo): script de verificacion end-to-end con 8 checks (confirmation payment_status, event_payments, event_access, etc).
+  - scripts/reset-david-final.mjs, scripts/reset-david-min.mjs, scripts/build-checkout-url-david.mjs, scripts/inspect-stripe-account.mjs, scripts/inspect-stripe-dashboard.mjs (nuevos): scripts de auditoria y setup de la prueba.
+
+- **Riesgos restantes / proximos pasos:**
+  - **Deuda 02 (whsec_ desincronizado)**: regenerar el par de keys (pk + sk) de UNA sola cuenta (cct_1TqgUfRXKOh68uzN la del Dashboard) y reemplazar en Vercel + .env.local + redeploy. Cuando pasemos a live, regenerar TODO de nuevo.
+  - **Deuda 03 (Vercel cachea env vars)**: documentar el patron: cuando cambies env vars, hacer redeploy inmediato. Agregar al README de dev.
+  - **Email de QR a David**: el webhook no se disparo, asi que el email no se mando. David debe escribirle al bot "mi entrada" o "mi QR" para que el bot re-envie.
+  - **Tests E2E reales del mark-paid con Supabase live**: los tests actuales son regex match del codigo fuente. Falta un E2E con Supabase real (en cola, no bloquea).
+  - **Typegen stale**: regenerar supabase gen types typescript --local > src/types/supabase.ts resolveria el s never de event_payments y event_access.lead_id.
