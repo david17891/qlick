@@ -4637,3 +4637,32 @@ pm run build → OK (compila todas las rutas).
   - El fallback WhatsApp NO se trackea automáticamente (es web.whatsapp.com, no el bot). El badge `✓ Enviado` solo se setea para emails reales con `ok=true`. Si David quiere trackear WhatsApp también, eso es otro sprint (bot outbound + nuevo `email_type='certificate_wa'` o tabla de log separada).
 
 
+
+## 2026-07-15 23:55 Phoenix — E2E David #1: boton Inscribirme no responde + UX 1 evento
+
+- **Pregunta:** David inicio pruebas E2E en produccion. Reporto 2 problemas:
+  1. (bug) El bot NO RESPONDE al hacer click en 'Inscribirme' desde el welcome. Si insiste con 'mas' o manda otro texto, sí contesta pero no avanza y no inscribe.
+  2. (UX) Con un solo evento publicado, el paso intermedio 'Info evento' sobra. El lead tiene que tocar 2 botones para llegar a 'Inscribirme'.
+
+- **FIX 9 (bug, 'Inscribirme' no responde):**
+  - El case del switch 'interactive_event_inscribir' (linea 2361) NO extraía el slug del buttonId. Cuando David hacia click en 'Inscribirme' (buttonId 'evt_inscribir_<slug>'), la linea 4847 del dispatcher solo seteaba el intent pero NO pasaba el slug a 'args.requestedEventSlug'. Resultado: el case llamaba a 'loadActiveEventContext(undefined)' y cargaba el active event por defecto.
+  - FIX 9a: extraer el slug del buttonId con prioridad sobre 'args.requestedEventSlug'.
+  - FIX 9b: antes de pedir email, chequear si el lead YA esta registrado via 'findActiveQrTokenForLead'. Si SI, devolver el plan 'ya estas registrado' con el link de check-in (mismo copy que el bloque inline de la rama 4.7). Sin esto, David tenia que volver a dar email aunque ya estaba registrado.
+  - FIX 9c: si NO esta registrado, sigue el flow normal de captura (nombre si falta, email si tiene nombre).
+
+- **FIX 10 (UX, 'Info evento' sobra con 1 evento):**
+  - Cuando 'loadAllActiveEvents()' devuelve exactamente 1 evento (caso CANACA hoy), el 'buildOpenerPlan' ahora muestra el boton 'Inscribirme' directo con el slug embebido (id='evt_inscribir_<slug>'). Si hay 2+ eventos, mantiene el flow viejo (Info evento + Proximos eventos).
+
+- **E2E HTTP contra Vercel prod:** el webhook recibio el mensaje OK (response 200). En dev local tambien OK. La signature gate en prod bloquea los tests sin X-Hub-Signature-256 (correcto).
+
+- **Tests:** 1385/1385. Lint OK, type-check OK.
+
+- **Commits:** 0e5d2df (fix bot).
+
+- **Deploy:** alias a qlick.digital → qlick-docn9b3sg.
+
+- **Instrucciones para David** (cuando vuelva a probar):
+  1. Limpiar la conversacion: mandar 'reiniciar' o pedir un reset (o usar un nuevo numero).
+  2. Esperar el welcome. El primer boton debe ser 'Inscribirme' directo (no 'Info evento').
+  3. Click en 'Inscribirme'. El bot debe responder 'Hola David! Ya estas registrado en *Marketing + IA...* (codigo PYT5). Tu pase (link de check-in) es: <URL>'.
+  4. Si NO se ve, mandar el screenshot del chat para ver que respondio.
