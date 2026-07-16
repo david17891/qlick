@@ -1974,29 +1974,70 @@ async function buildOpenerPlan(args: {
   // no le llamamos por nombre. Ver constante de módulo PLACEHOLDER_NAMES.
   const clean = cleanFirstName(firstName);
   const saludo = clean ? `¡Hola ${clean}!` : "¡Hola!";
+
+  // FIX auditoria 2026-07-15f (sesion David E2E #1, "Info evento sobra
+  // si hay 1 solo evento"): si SOLO hay 1 evento publicado, el
+  // paso intermedio "Info evento" no aporta — el lead tiene que
+  // tocar 2 botones para llegar a "Inscribirme". Saltamos directo
+  // a "Inscribirme <evento>" con el slug embebido en el buttonId.
+  // Si hay 2+ eventos, mantenemos el boton "Info evento" + "Próximos
+  // eventos" (el lead debe elegir primero cuál le interesa).
+  const allActiveEventsForOpener = await loadAllActiveEvents().catch(
+    () => [] as ActiveEventContext[]
+  );
+  const singleEventShortcut =
+    realActiveEvent &&
+    realActiveEvent.source === "db" &&
+    allActiveEventsForOpener.length === 1
+      ? realActiveEvent
+      : null;
+
   const eventLine =
     realActiveEvent && realActiveEvent.source === "db"
       ? `\n\nPróximo evento: ${realActiveEvent.title} (${realActiveEvent.humanStartsAt})`
       : "";
-  const interactive = {
-    type: "button" as const,
-    body: {
-      text: `${saludo} Soy Qlick, asistente de Qlick Marketing Digital. ¿Qué te interesa?${eventLine}`,
-    },
-    action: {
-      buttons: [
-        {
-          type: "reply" as const,
-          reply: { id: "evt_yes_next", title: "Info evento" },
+  const interactive = singleEventShortcut
+    ? {
+        type: "button" as const,
+        body: {
+          text: `${saludo} Soy Qlick, asistente de Qlick Marketing Digital. ¿Te interesa "${singleEventShortcut.title}"?${eventLine}`,
         },
-        {
-          type: "reply" as const,
-          reply: { id: "show_events", title: "Próximos eventos" },
+        action: {
+          buttons: [
+            {
+              type: "reply" as const,
+              reply: {
+                id: `evt_inscribir_${singleEventShortcut.slug}`,
+                title: "Inscribirme",
+              },
+            },
+            {
+              type: "reply" as const,
+              reply: { id: "show_events", title: "Próximos eventos" },
+            },
+          ],
         },
-      ],
-    },
-    footer: { text: "Respondé con un botón o escribí tu pregunta" },
-  };
+        footer: { text: "Toca Inscribirme o escribí tu pregunta" },
+      }
+    : {
+        type: "button" as const,
+        body: {
+          text: `${saludo} Soy Qlick, asistente de Qlick Marketing Digital. ¿Qué te interesa?${eventLine}`,
+        },
+        action: {
+          buttons: [
+            {
+              type: "reply" as const,
+              reply: { id: "evt_yes_next", title: "Info evento" },
+            },
+            {
+              type: "reply" as const,
+              reply: { id: "show_events", title: "Próximos eventos" },
+            },
+          ],
+        },
+        footer: { text: "Respondé con un botón o escribí tu pregunta" },
+      };
   const bodyText = interactive.body.text;
   return {
     kind: "interactive",
@@ -2378,7 +2419,20 @@ case "interactive_event_inscribir": {
       // si el handler se invoca desde un affirmative corto,
       // `requestedEventSlug` viene con el slug del evento sobre el que
       // el bot preguntó. Lo usamos para inscribir al evento correcto.
-      const evtReal = await loadActiveEventContext(args.requestedEventSlug ?? undefined).catch(() => null);
+      //
+      // FIX auditoria 2026-07-15f (sesion David E2E #1, "Inscribirme
+      // no responde"): antes SOLO se usaba `args.requestedEventSlug`,
+      // que es `undefined` cuando el lead hace click en el botón
+      // `evt_inscribir_<slug>` (la línea 4847 seteaba el intent pero
+      // NO extraía el slug del buttonId). Resultado: el bot cargaba el
+      // active event por defecto (a veces ninguno) o el equivocado.
+      // FIX: extraemos el slug del buttonId con prioridad sobre
+      // `args.requestedEventSlug`.
+      const evtSlugFromBtn = args.buttonId?.startsWith("evt_inscribir_")
+        ? args.buttonId.slice("evt_inscribir_".length)
+        : null;
+      const targetEventSlug = evtSlugFromBtn ?? args.requestedEventSlug ?? null;
+      const evtReal = await loadActiveEventContext(targetEventSlug ?? undefined).catch(() => null);
       // FIX 2026-07-07 (audit David "bot presenta evento fantasma"):
       // si NO hay evento real (slug invalido o env vars no seteadas),
       // respondemos con copy honesto en vez de comprometer al lead con
@@ -2397,6 +2451,43 @@ case "interactive_event_inscribir": {
       const evtFallback = getActiveEvent();
       const evtName = evtReal?.title ?? evtFallback.name;
       const evtDate = evtReal?.humanStartsAt ?? evtFallback.date;
+
+      // FIX auditoria 2026-07-15f (sesion David E2E #1, "Inscribirme
+      // no responde / me pide email de nuevo"): si el lead YA está
+      // registrado en este evento (tiene QR token vigente), le mandamos
+      // el plan "ya estás registrado" con el link de check-in, en vez
+      // de pedirle email otra vez. Esto evita la fricción del flow
+      // duplicado cuando David ya completó el registro en una sesión
+      // anterior y vuelve a hacer click en "Inscribirme".
+      if (supabase && lead.id && evtReal?.id) {
+        try {
+          const existingToken = await findActiveQrTokenForLead(
+            supabase,
+            lead.id,
+            phoneNormalized,
+            evtReal.id,
+          );
+          if (existingToken) {
+            const evtCodeLabel = evtReal.shortCode ? ` (código ${evtReal.shortCode})` : "";
+            const cleanAlready = cleanFirstName(firstName);
+            const saludoAlready = cleanAlready ? `¡Hola ${cleanAlready}!` : "¡Hola!";
+            const bodyText =
+              `${saludoAlready} Ya estás registrado en *${evtName}*${evtCodeLabel}. ` +
+              `Tu pase (link de check-in) es:\n\n${existingToken.url}`;
+            return {
+              kind: "text",
+              body: bodyText,
+              send: () => provider.send({ to: phoneNormalized, body: bodyText })
+            };
+          }
+        } catch (err) {
+          errorLog("[whatsapp/bot] interactive_event_inscribir: check already_registered falló", {
+            leadId: lead.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+
       // FIX 2026-07-02: filtrar firstName de placeholders.
       const clean = cleanFirstName(firstName);
       const saludo = clean ? `¡Excelente ${clean}!` : "¡Excelente!";
@@ -4844,7 +4935,26 @@ export async function processInboundMessage(
       // viejo por si hay botones cacheados.
       intent = "interactive_event_yes";
     } else if (message.buttonId.startsWith("evt_inscribir_") || message.buttonId === "evt_inscribir_next") {
+      // FIX auditoria 2026-07-15f (sesion David E2E #1, "Inscribirme
+      // no responde"): antes SOLO seteabamos el intent y el slug quedaba
+      // en `undefined`, lo cual causaba que el case `interactive_event_inscribir`
+      // (linea 2361) llamara a `loadActiveEventContext(undefined)` y
+      // recibiera el evento equivocado o ninguno. Tambien: el case
+      // siempre decia "dime tu nombre/email" sin checar si el lead ya
+      // estaba registrado. Extraemos el slug y dejamos que el bloque
+      // inline (linea 5900+) maneje la captura de nombre/email ANTES
+      // de crear la confirmation. Esa logica ya existia, solo que el
+      // case del switch hacia return ANTES de llegar al bloque.
+      //
+      // FIX 2026-07-15f: ahora el case del switch sigue retornando con
+      // un plan (mantenemos la captura simple), pero el bloque inline
+      // se ejecuta SIEMPRE (no es excluyente). Ver bug adicional abajo.
       intent = "interactive_event_inscribir";
+      // FIX 2026-07-15f: extraer el slug del buttonId para que
+      // el case pueda cargar el evento correcto.
+      if (message.buttonId.startsWith("evt_inscribir_")) {
+        requestedEventSlug = message.buttonId.slice("evt_inscribir_".length);
+      }
     } else if (message.buttonId.startsWith("confirm_inscription_")) {
       // FIX 2026-07-03: el bot manda un button message "Sí, inscribirme"
       // con buttonId `confirm_inscription_<slug>` cuando el LLM hace
