@@ -33,6 +33,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { extractQrToken } from "@/lib/staff/qr-token";
+import { errorLog } from "@/lib/log";
 
 type Status =
   | { kind: "loading" }
@@ -136,6 +137,12 @@ export default function StaffScanPage() {
   // de errores en la UI. Throttle simple: ignorar scans del mismo token
   // dentro de la ventana SCAN_THROTTLE_MS.
   const lastScanAtRef = useRef<{ token: string; at: number } | null>(null);
+  // FIX 2026-07-16 (sprint cobro-en-puerta): el MarkPaidAction
+  // necesita el qr_token del último escaneo (lo pasa al endpoint
+  // mark-paid para autorizar el cobro sin login). Lo guardamos en
+  // un ref aparte del throttle para que sobreviva entre renders
+  // sin resetearse cuando el throttle de 2.5s expira.
+  const lastQrTokenRef = useRef<string | null>(null);
   const SCAN_THROTTLE_MS = 2500;
 
   // Validar token al montar.
@@ -247,6 +254,7 @@ export default function StaffScanPage() {
       return;
     }
     lastScanAtRef.current = { token: qrToken, at: now };
+    lastQrTokenRef.current = qrToken;
     await submitCheckIn(qrToken);
   }
 
@@ -501,8 +509,14 @@ export default function StaffScanPage() {
                 confirmationId={
                   lastFeedback.payment_pending.confirmation_id
                 }
+                // FIX 2026-07-16 (sprint cobro-en-puerta): pasamos el
+                // qr_token al endpoint para que el staff pueda cobrar
+                // SIN estar logueado como admin. El backend valida
+                // que el qr_token corresponde a esta confirmation.
+                qrToken={lastQrTokenRef.current ?? ""}
                 attendeeName={lastFeedback.payment_pending.attendee_name}
                 eventTitle={lastFeedback.payment_pending.event_title}
+                staffEmail={identity.email}
                 onSuccess={() => {
                   setLastFeedback({
                     type: "ok",
@@ -637,8 +651,90 @@ export default function StaffScanPage() {
             </ul>
           </div>
         )}
+
+        {/* FIX 2026-07-16 (sprint cobro-en-puerta): QR desplegable al
+            final del scanner. Apunta a /pagar/evento/[slug] (link
+            público de pago del evento). El staff lo muestra al
+            asistente que NO quiere pagar en efectivo y prefiere
+            tarjeta/OXXO/SPEI. Rehusable: el slug viene del eventId
+            del URL del scanner, no hardcodeado. El QR se genera
+            client-side con la lib `qrcode` (ya en package.json). */}
+        <CheckoutQrBlock eventSlug={eventIdFromUrl ?? ""} />
       </div>
     </main>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// CheckoutQrBlock — QR desplegable con el link de pago del evento.
+// FIX 2026-07-16 (sprint cobro-en-puerta, sesion David "se
+// muestra al asistente para que pague digital"). El staff lo
+// muestra en su celular al asistente que no tiene efectivo o que
+// prefiere pagar online. El QR se genera client-side (no requiere
+// auth, no toca el backend).
+// ─────────────────────────────────────────────────────────
+
+function CheckoutQrBlock({ eventSlug }: { eventSlug: string }) {
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [checkoutUrl, setCheckoutUrl] = useState<string>("");
+  useEffect(() => {
+    if (typeof window === "undefined" || !eventSlug) return;
+    const url = `${window.location.origin}/pagar/evento/${eventSlug}`;
+    setCheckoutUrl(url);
+    // Dynamic import: qrcode ESM-only, no queremos bundle pesado si
+    // el scanner no se usa.
+    void (async () => {
+      try {
+        const { default: QRCode } = await import("qrcode");
+        const dataUrl = await QRCode.toDataURL(url, {
+          width: 220,
+          margin: 1,
+          color: { dark: "#0f172a", light: "#ffffff" },
+        });
+        setQrDataUrl(dataUrl);
+      } catch (err) {
+        errorLog("[staff/scan] QR generation failed", {
+          error: err instanceof Error ? err.message : String(err),
+          eventSlug,
+        });
+      }
+    })();
+  }, [eventSlug]);
+  if (!eventSlug) return null;
+  return (
+    <details className="rounded-xl bg-white border border-violet-100 p-3">
+      <summary className="text-xs font-bold text-violet-700 cursor-pointer">
+        💳 Cobro digital — el asistente escanea para pagar en línea
+      </summary>
+      <div className="mt-3 space-y-2">
+        <p className="text-xs text-ink-muted">
+          Si el asistente no trae efectivo (o prefiere pagar con
+          tarjeta/OXXO/SPEI), mostrá este QR. Lo escanea con su
+          celular y se abre la página de pago del evento.
+        </p>
+        {qrDataUrl ? (
+          <div className="flex flex-col items-center gap-2">
+            <img
+              src={qrDataUrl}
+              alt="QR para pagar entrada del evento"
+              className="w-44 h-44 rounded-lg border border-violet-200"
+            />
+            <p className="text-[10px] text-ink-muted text-center break-all max-w-full">
+              {checkoutUrl}
+            </p>
+          </div>
+        ) : (
+          <p className="text-xs text-ink-muted text-center py-4">
+            Generando QR…
+          </p>
+        )}
+        <p className="text-[10px] text-ink-muted italic">
+          Rehusable para cualquier evento nuevo. Funciona con gente
+          que ya está registrada (entra a su confirmation por email) o
+          gente sin registro (crea una nueva al pagar).
+        </p>
+      </div>
+    </details>
   );
 }
 
@@ -813,17 +909,37 @@ function WalkInForm({
 // Llama a POST /api/staff/check-in/mark-paid con el confirmation_id
 // del feedback. Sprint 2026-07-15e (sesion David, "mucha gente
 // pagara efectivo").
+//
+// FIX 2026-07-16 (sprint cobro-en-puerta): el endpoint ahora es
+// público (sin requireAdmin) si se le pasa el `qr_token` del
+// cuerpo. El scanner público del staff pasa el `qr_token` que
+// acaba de escanear — el backend valida que corresponde a la
+// confirmation. Asi el staff en puerta puede cobrar SIN estar
+// logueado como admin.
 // ─────────────────────────────────────────────────────────
 
 function MarkPaidAction({
   confirmationId,
+  qrToken,
   attendeeName,
   eventTitle,
+  staffEmail,
   onSuccess,
 }: {
   confirmationId: string;
+  /**
+   * Token del QR que el staff acaba de escanear. Requerido por
+   * el endpoint mark-paid cuando NO hay sesión admin (path del
+   * scanner público). El scanner lo pasa desde su state.
+   */
+  qrToken: string;
   attendeeName?: string;
   eventTitle?: string;
+  /**
+   * Email opcional del operador (cacheado en localStorage). Si
+   * viene, queda registrado en admin_audit_log como `actor_email`.
+   */
+  staffEmail?: string;
   onSuccess: () => void;
 }) {
   const [loading, setLoading] = useState(false);
@@ -841,7 +957,14 @@ function MarkPaidAction({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           confirmation_id: confirmationId,
+          // FIX 2026-07-16: el scanner público del staff NO tiene
+          // sesión admin. El endpoint valida que este qr_token
+          // existe en event_qr_tokens y corresponde a la
+          // confirmation. Defense in depth: el body valida que
+          // ambos son del mismo event_id.
+          qr_token: qrToken,
           payment_method: method,
+          ...(staffEmail ? { staff_email: staffEmail } : {}),
         }),
       });
       const data = (await res.json()) as {
