@@ -58,6 +58,7 @@ import { grantAccess } from "@/lib/lms/entitlements";
 import { errorLog, infoLog } from "@/lib/log";
 import { grantEventAccess, revokeEventAccess } from "@/lib/lms/event-entitlements";
 import { notifyLeadPaymentConfirmed as notifyLeadPaymentConfirmedLib } from "@/lib/payments/notify-lead-payment-confirmed";
+import { findConfirmationIdForEvent } from "@/lib/events/find-confirmation-id";
 import {
   extractProductRefFromMetadata,
   requireStripeWebhookSecret,
@@ -527,7 +528,7 @@ async function handleCheckoutCompleted(
     // publico usa). Fire-and-forget: no bloquea el response del
     // webhook de Stripe.
     void notifyLeadPaymentConfirmed({
-      leadId: userId,
+      confirmationId: confLookup ?? "",
       eventId: productRef.id,
       amountTotalMXN,
     }).catch((notifyErr) => {
@@ -567,41 +568,6 @@ async function handleCheckoutCompleted(
  *    confirmation por lead si se inscribio 2 veces — pero el
  *    checkout es 1 a 1).
  */
-async function findConfirmationIdForEvent(args: {
-  eventId: string;
-  leadId: string;
-}): Promise<string | null> {
-  const supabase = createSupabaseAdminClient();
-  // 1) Traer el lead.
-  const { data: lead } = await supabase
-    .from("leads")
-    .select("id, phone_normalized, email")
-    .eq("id", args.leadId)
-    .maybeSingle();
-  if (!lead) return null;
-  const leadPhone = (lead as { phone_normalized?: string | null })
-    .phone_normalized;
-  const leadEmail = (lead as { email?: string | null }).email;
-
-  // 2) Buscar confirmation por phone o email (la mas reciente).
-  let q = supabase
-    .from("event_confirmations")
-    .select("id, phone_normalized, email, confirmed_at")
-    .eq("event_id", args.eventId)
-    .order("confirmed_at", { ascending: false })
-    .limit(10);
-  if (leadPhone) {
-    q = q.eq("phone_normalized", leadPhone);
-  } else if (leadEmail) {
-    q = q.eq("email", leadEmail);
-  }
-  const { data: rows } = await q;
-  if (rows && rows.length > 0) {
-    return (rows[0] as unknown as { id: string }).id;
-  }
-  return null;
-}
-
 /**
  * FIX sprint 2026-07-15d: notifica al lead por WhatsApp + re-envia
  * el email del QR cuando Stripe confirma el pago de un evento.
@@ -621,7 +587,7 @@ async function findConfirmationIdForEvent(args: {
  * `@/lib/payments/notify-lead-payment-confirmed`.
  */
 async function notifyLeadPaymentConfirmed(args: {
-  leadId: string;
+  confirmationId: string;
   eventId: string;
   amountTotalMXN: number;
 }): Promise<void> {

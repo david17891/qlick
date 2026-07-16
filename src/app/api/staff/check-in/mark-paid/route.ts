@@ -262,21 +262,32 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 6. Crear fila en event_payments (si no existe ya una manual).
-    // Buscamos una fila existente con el mismo confirmation_id +
-    // method='cash' o 'card_manual' o 'transfer' (los manuales).
-    const { data: existingPayments } = await supabase
+    // 6. Crear/recuperar event_payments (idempotente via UNIQUE
+    // constraint `event_payments_manual_idempotency(confirmation_id,
+    // method, idempotency_key) WHERE idempotency_key IS NOT NULL` —
+    // migration 20260715120000).
+    //
+    // FIX 2026-07-16 (auditoria scanner cobro-en-puerta, "doble click
+    // del staff crea 2 payments"): antes el codigo buscaba un existing
+    // payment con `in("method", ["cash", ...])` y reusaba el primero
+    // que encontrara — pero si los 2 clicks eran concurrentes
+    // (race condition de <100ms entre SELECT y INSERT), ambos
+    // pasaban el check y creaban 2 rows. Ahora usamos un
+    // `idempotency_key` deterministico (manual:{confirmation_id}:
+    // {method}) y dejamos que la UNIQUE constraint de Postgres
+    // haga la deduplicacion atomica. Si el INSERT revienta con 23505
+    // (UNIQUE violation), el otro proceso gano la carrera y nosotros
+    // hacemos un SELECT para obtener su id.
+    const idempotencyKey = `manual:${body.confirmation_id}:${paymentMethod}`;
+    let paymentId: string;
+    const { data: existingPayByKey } = await supabase
       .from("event_payments" as never)
       .select("id")
       .eq("confirmation_id" as never, body.confirmation_id as never)
-      .in("method" as never, ["cash", "card_manual", "transfer", "other"] as never)
-      .limit(1);
-    const existingPayRows = (existingPayments ?? []) as unknown as {
-      id: string;
-    }[];
-    let paymentId: string;
-    if (existingPayRows.length > 0) {
-      paymentId = existingPayRows[0].id;
+      .eq("idempotency_key" as never, idempotencyKey as never)
+      .maybeSingle();
+    if (existingPayByKey) {
+      paymentId = (existingPayByKey as { id: string }).id;
     } else {
       const { data: newPay, error: payInsErr } = await supabase
         .from("event_payments" as never)
@@ -287,10 +298,37 @@ export async function POST(req: NextRequest) {
           amount_mxn: amountMXN,
           currency: "MXN",
           notes: body.notes ?? null,
+          idempotency_key: idempotencyKey,
         } as never)
         .select("id")
         .maybeSingle();
-      if (payInsErr || !newPay) {
+      if (payInsErr?.code === "23505") {
+        // UNIQUE violation: otro proceso (doble click concurrente)
+        // inserto entre nuestro SELECT y nuestro INSERT. Buscamos su row.
+        const { data: raceWinner } = await supabase
+          .from("event_payments" as never)
+          .select("id")
+          .eq("confirmation_id" as never, body.confirmation_id as never)
+          .eq("idempotency_key" as never, idempotencyKey as never)
+          .maybeSingle();
+        if (raceWinner) {
+          paymentId = (raceWinner as { id: string }).id;
+          infoLog(
+            "[staff/mark-paid] race condition gano el otro INSERT, reusando",
+            {
+              confirmationId: body.confirmation_id,
+              paymentId,
+            },
+          );
+        } else {
+          return NextResponse.json(
+            {
+              error: `23505 UNIQUE violation pero SELECT no encontro row: ${payInsErr.message}`,
+            },
+            { status: 500 },
+          );
+        }
+      } else if (payInsErr || !newPay) {
         return NextResponse.json(
           {
             error: `Error creando payment: ${
@@ -299,8 +337,50 @@ export async function POST(req: NextRequest) {
           },
           { status: 500 },
         );
+      } else {
+        paymentId = (newPay as { id: string }).id;
       }
-      paymentId = (newPay as { id: string }).id;
+    }
+
+    // 6.5 FIX 2026-07-16 (auditoria scanner cobro-en-puerta): ademas del
+    // payment, crear/actualizar el event_access para que el asistente
+    // tenga acceso al evento (post-recordings, LMS, etc). Mismo patron
+    // que `manual-payment.ts` (admin flow): grantEventAccess es
+    // idempotente. Si ya hay uno active del mismo (userId o
+    // confirmationId, eventId), refresca source y reason. Como aca NO
+    // tenemos userId (guest checkout), usamos confirmationId como key
+    // de idempotencia.
+    //
+    // Best-effort: si falla, no abortamos el flow. El staff ya cobro,
+    // el payment ya esta creado, el check-in se hace igual. El
+    // event_access se puede reconciliar despues.
+    try {
+      const { grantEventAccess } = await import(
+        "@/lib/lms/event-entitlements"
+      );
+      const access = await grantEventAccess({
+        userId: null,
+        confirmationId: body.confirmation_id,
+        eventId: (confRow as unknown as { event_id: string }).event_id,
+        source: "manual_event_admin",
+        paymentId,
+        grantedReason: `staff_pay_at_door_${paymentMethod}_${new Date()
+          .toISOString()
+          .slice(0, 16)}`,
+      });
+      infoLog("[staff/mark-paid] event_access grant OK", {
+        confirmationId: body.confirmation_id,
+        accessId: access.id,
+        source: "manual_event_admin",
+      });
+    } catch (accessErr) {
+      // No fatal: el payment ya esta creado. El grant se puede
+      // reconciliar despues via admin manual o via bot-engine.
+      errorLog("[staff/mark-paid] grantEventAccess fallo (no fatal)", {
+        confirmationId: body.confirmation_id,
+        error:
+          accessErr instanceof Error ? accessErr.message : String(accessErr),
+      });
     }
 
     // 7. Hacer el check-in del attendee (buscar por phone o crear walk-in).
@@ -435,38 +515,36 @@ export async function POST(req: NextRequest) {
     // paymentStatusOverride="paid_manual" para que el badge del email
     // diga "pago fue registrado en puerta" (no "pago en línea se
     // confirmó").
-    const attendeeEmail = (confRow as { email?: string | null }).email;
-    const attendeePhone = (confRow as { phone_normalized?: string | null })
-      .phone_normalized;
+    //
+    // FIX 2026-07-16 (auditoria scanner cobro-en-puerta): antes
+    // pasabamos `leadId: attendeePhone ?? eventId` (workaround del
+    // bug de que event_confirmations.lead_id no existe). Eso
+    // ROMPIA la notificacion: el helper hacia SELECT leads WHERE
+    // id="+52..." (no UUID), no encontraba nada, y el asistente NO
+    // recibia email ni WhatsApp. Ahora pasamos confirmationId
+    // directo (que SI existe) y el helper hace SELECT por PK.
     const eventId = (confRow as unknown as { event_id: string }).event_id;
-    if (attendeeEmail) {
-      void (async () => {
-        try {
-          const { notifyLeadPaymentConfirmed } = await import(
-            "@/lib/payments/notify-lead-payment-confirmed"
-          );
-          // effectiveLeadId: el helper hace SELECT por lead.id. Si
-          // el confirmation no tiene leadId (caso raro), usamos el
-          // phone_normalized como fallback. El simulator usa el mismo
-          // truco.
-          const effectiveLeadId = attendeePhone ?? eventId;
-          await notifyLeadPaymentConfirmed({
-            leadId: effectiveLeadId,
-            eventId,
-            amountTotalMXN: amountMXN,
-            paymentStatusOverride: "paid_manual",
-            logSource: "staff-mark-paid",
-          });
-        } catch (notifErr) {
-          errorLog("[staff/mark-paid] notifyLead fallo (no fatal)", {
-            error:
-              notifErr instanceof Error
-                ? notifErr.message
-                : String(notifErr),
-          });
-        }
-      })();
-    }
+    void (async () => {
+      try {
+        const { notifyLeadPaymentConfirmed } = await import(
+          "@/lib/payments/notify-lead-payment-confirmed"
+        );
+        await notifyLeadPaymentConfirmed({
+          confirmationId: body.confirmation_id,
+          eventId,
+          amountTotalMXN: amountMXN,
+          paymentStatusOverride: "paid_manual",
+          logSource: "staff-mark-paid",
+        });
+      } catch (notifErr) {
+        errorLog("[staff/mark-paid] notifyLead fallo (no fatal)", {
+          error:
+            notifErr instanceof Error
+              ? notifErr.message
+              : String(notifErr),
+        });
+      }
+    })();
 
     return NextResponse.json(
       {

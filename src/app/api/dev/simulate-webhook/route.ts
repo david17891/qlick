@@ -307,8 +307,20 @@ export async function POST(req: NextRequest) {
           const { notifyLeadPaymentConfirmed } = await import(
             "@/lib/payments/notify-lead-payment-confirmed"
           );
-          await notifyLeadPaymentConfirmed({
+          // FIX 2026-07-16 (auditoria scanner): el helper ahora
+          // recibe confirmationId directo. Lo buscamos por (eventId +
+          // leadId) usando el helper compartido. Si no lo encuentra
+          // (caso raro: el bot no creo confirmation), fallback a
+          // string vacio (el helper hace early return y logea).
+          const { findConfirmationIdForEvent } = await import(
+            "@/lib/events/find-confirmation-id"
+          );
+          const confId = await findConfirmationIdForEvent({
+            eventId: productId,
             leadId: effectiveUserId,
+          }).catch(() => null);
+          await notifyLeadPaymentConfirmed({
+            confirmationId: confId ?? "",
             eventId: productId,
             amountTotalMXN: body.amountMxn ?? defaultAmountMxn,
             logSource: "dev-simulate-webhook",
