@@ -4570,3 +4570,43 @@ pm run build → OK (compila todas las rutas).
 
 - **Deploy:** Vercel build OK, alias a qlick.digital (deployment qlick-njbxempg0).
 
+## 2026-07-15 20:35 Phoenix — Pre-E2E: refactor patron notify + UI fixes + staff link
+
+- **Pregunta:** David pidio preparar todo antes de iniciar las pruebas E2E manuales.
+
+- **FIX 6 (UI admin):** `PaymentStatusActions` no tenia caso para `'paid_manual'`. Si el staff cobraba en puerta (mark-paid), el confirmation pasaba a `paid_manual` pero la UI del admin mostraba "Confirmar pagado" (incorrecto, ya estaba pagado). FIX: agregar `paid_manual` al union del type y al branch que muestra el badge `Pagado` + Revocar (mismo que `paid`).
+
+- **FIX 7 (refactor):** la logica "pago confirmado → UPDATE payment_status + email + WhatsApp" estaba duplicada en 3 lugares (webhook Stripe, simulator dev, mark-paid endpoint). FIX: nueva lib `@/lib/payments/notify-lead-payment-confirmed.ts` con la funcion compartida. Param `paymentStatusOverride` distingue `paid` (default) de `paid_manual` (mark-paid). Param `logSource` para distinguir el origen en los logs.
+
+- **Consecuencia del refactor:**
+  - El simulator dev AHORA dispara email + WhatsApp al confirmar pago (antes no, David probaba el simulator y el badge no salia).
+  - El mark-paid re-usa la lib en vez de tener su propia copia inline.
+  - El webhook de Stripe reusa la lib via wrapper interno (no exporta mas la funcion porque Next.js Route files no pueden exportar funciones helper).
+
+- **FIX 8 (build error post-refactor):** el primer build de Vercel con el refactor fallo porque el webhook tenia `export async function notifyLeadPaymentConfirmed(...)` y Next.js Route files solo pueden exportar HTTP methods. FIX: quitar el `export`.
+
+- **Staff link generado via SQL directo:** cree `event_staff_links` para el CANACA con label "E2E David 2026-07-15", valido hasta 23 de julio. David abre el link en el celular y entra al scanner sin necesidad de login admin (el link es publico, 192 bits entropia).
+
+- **Pre-flight DB:**
+  - Confirmation David (65183388): name="David Esparza", email="david17891@gmail.com", phone="+526532935492", source=whatsapp_bot, payment_status=pending.
+  - QR token vigente (G2PbbLS2tRhNodQctXZ30FjzTDD12IXQ): attendee_name="David Esparza", expira 18 de julio 03:00 UTC.
+  - event_access del CANACA: 0 (correcto, el bot no ha creado ninguno; se creara cuando David corra el flow).
+  - event_payments: 0 (limpio).
+
+- **Tests:** 1379/1379 (sin tests nuevos, refactor puro). Lint OK, type-check OK. Build OK.
+
+- **E2E HTTP final OK contra Vercel prod:**
+  - POST https://www.qlick.digital/api/check-in/G2PbbLS2tRhNodQctXZ30FjzTDD12IXQ → 403 con `payment_status=pending`, `attendee.name="David Esparza"`, `confirmation_id=65183388`, `mark_paid_endpoint` correcto.
+
+- **Commits:** c52edc2 (refactor) + c37c9d7 (fix build).
+
+- **Deploy:** alias a qlick.digital → qlick-n1dg2zk7h.
+
+- **Checklist pre-E2E para David** (preparado en sesion, no commiteado):
+  - URL scanner: https://www.qlick.digital/api/staff/scan/da2f02ba162bbe2f2bac2913500a18f1180d17c1525a6f9e
+  - QR de David: token `G2PbbLS2tRhNodQctXZ30FjzTDD12IXQ` (URL publica: https://www.qlick.digital/check-in/G2PbbLS2tRhNodQctXZ30FjzTDD12IXQ)
+  - Confirmation: 65183388-7c8b-4472-bbc5-a69fd3213f96
+  - Form publico: https://www.qlick.digital/eventos/marketing-ia-para-emprendedores-pago
+  - Simulator dev: https://www.qlick.digital/pagar/evento/marketing-ia-para-emprendedores-pago
+
+
