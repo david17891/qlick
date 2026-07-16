@@ -21,6 +21,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { CheckInTabClient } from "./CheckInTabClient";
 import { IssueCertButton } from "./IssueCertButton";
+import { SendCertEmailButton } from "./SendCertEmailButton";
 import { CertificateBatchPanel } from "./CertificateBatchPanel";
 import { StaffLinksPanel } from "./StaffLinksPanel";
 import { StaffQrTokenList } from "./StaffQrTokenList";
@@ -129,7 +130,13 @@ export async function CheckInTab({ eventId, eventTitle, eventSlug, eventStartsAt
   // Sprint Concept C (2026-07-08): folio por attendee para saber a quién
   // ya se le emitió cert. Si no tiene folio, mostramos "Emitir cert" como
   // form action que llama issueCertificateAction.
+  //
+  // Sprint Cert-Individual 2026-07-15: además cargamos qué attendees
+  // ya tienen un cert_enviado por email (event_email_log con ok=true y
+  // email_type='certificate') para mostrar el badge "✓ Enviado".
   const folioByAttendee = new Map<string, string>();
+  const certIdByAttendee = new Map<string, string>();
+  const sentAttendeeIds = new Set<string>();
   if (checkedInAttendees.length > 0 && checkSupabaseConfig().configured) {
     const sb = createSupabaseAdminClient();
     const { data: certs } = await (sb as unknown as {
@@ -137,7 +144,7 @@ export async function CheckInTab({ eventId, eventTitle, eventSlug, eventStartsAt
         select: (cols: string) => {
           in: (col: string, vals: string[]) => {
             eq: (col: string, val: string) => Promise<{
-              data: Array<{ folio: string; attendee_id: string }> | null;
+              data: Array<{ id: string; folio: string; attendee_id: string }> | null;
               error: unknown;
             }>;
           };
@@ -145,14 +152,50 @@ export async function CheckInTab({ eventId, eventTitle, eventSlug, eventStartsAt
       };
     })
       .from("event_certificates")
-      .select("folio, attendee_id")
+      .select("id, folio, attendee_id")
       .in(
         "attendee_id",
         checkedInAttendees.map((a) => a.id),
       )
       .eq("event_id", eventId);
-    for (const c of (certs ?? []) as Array<{ folio: string; attendee_id: string }>) {
+    for (const c of (certs ?? []) as Array<{ id: string; folio: string; attendee_id: string }>) {
       folioByAttendee.set(c.attendee_id, c.folio);
+      certIdByAttendee.set(c.attendee_id, c.id);
+    }
+
+    // Emails de cert enviados: log con email_type='certificate' y ok=true
+    // cuyo event_certificate_id sea uno de los certs de este evento.
+    if (certIdByAttendee.size > 0) {
+      const certIds = Array.from(certIdByAttendee.values());
+      const { data: sentCerts } = await (sb as unknown as {
+        from: (t: string) => {
+          select: (cols: string) => {
+            eq: (col: string, val: string | boolean) => {
+              eq: (col: string, val: string | boolean) => {
+                in: (col: string, vals: string[]) => Promise<{
+                  data: Array<{ event_certificate_id: string | null }> | null;
+                  error: unknown;
+                }>;
+              };
+            };
+          };
+        };
+      })
+        .from("event_email_log")
+        .select("event_certificate_id")
+        .eq("email_type", "certificate")
+        .eq("ok", true)
+        .in("event_certificate_id", certIds);
+      // Mapear certId -> attendee_id.
+      const certIdToAttendee = new Map<string, string>();
+      for (const [attendeeId, certId] of certIdByAttendee.entries()) {
+        certIdToAttendee.set(certId, attendeeId);
+      }
+      for (const row of (sentCerts ?? []) as Array<{ event_certificate_id: string | null }>) {
+        if (!row.event_certificate_id) continue;
+        const attendeeId = certIdToAttendee.get(row.event_certificate_id);
+        if (attendeeId) sentAttendeeIds.add(attendeeId);
+      }
     }
   }
 
@@ -314,6 +357,18 @@ export async function CheckInTab({ eventId, eventTitle, eventSlug, eventStartsAt
                         />
                       );
                     })()}
+                    {/* Sprint Cert-Individual 2026-07-15: envio individual
+                        de la constancia (email o WhatsApp). El action
+                        emite el cert si falta y persiste el envio en
+                        event_email_log. */}
+                    <SendCertEmailButton
+                      attendeeId={a.id}
+                      eventId={eventId}
+                      attendeeName={a.name ?? "este asistente"}
+                      attendeeEmail={a.email ?? null}
+                      attendeePhone={a.phoneNormalized ?? null}
+                      alreadySent={sentAttendeeIds.has(a.id)}
+                    />
                   </div>
                 </li>
               );

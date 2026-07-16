@@ -1198,3 +1198,244 @@ export async function sendBatchCertificatesAction(
     errors,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Sprint Cert-Individual 2026-07-15: envio individual de constancia.
+//
+// Mismo flujo que el batch (`sendBatchCertificatesAction`) pero para UN
+// attendee. Reusa `sendEventCertificateEmail()` para que el resultado
+// quede persistido en `event_email_log` con `email_type='certificate'`
+// (migration 20260708170000_event_email_log_certificate_type.sql).
+//
+// Si el attendee NO tiene email pero SI telefono, devuelve
+// `whatsappFallbackLink` (URL wa.me pre-armada). NO se persiste en
+// `event_email_log` porque el envio lo hace David manual desde
+// web.whatsapp.com.
+// ---------------------------------------------------------------------------
+
+export interface SendCertificateToAttendeeResult {
+  ok: boolean;
+  note: string;
+  /** Folio del cert (preexistente o recién emitido). */
+  folio: string | null;
+  /** ISO 8601 timestamptz del envío. null si fallback WhatsApp. */
+  sentAt: string | null;
+  /** Si attendee no tiene email pero sí phone: URL wa.me pre-armada. */
+  whatsappFallbackLink: string | null;
+  /** Mensaje de error legible. */
+  error: string | null;
+}
+
+/**
+ * Emite (si falta) y envía la constancia de un attendee por email o
+ * devuelve link wa.me pre-armado si solo tiene teléfono.
+ *
+ * Sprint Cert-Individual 2026-07-15 — Nivel 2 (envio individual).
+ */
+export async function sendCertificateToAttendeeAction(
+  attendeeId: string,
+  eventId: string,
+): Promise<SendCertificateToAttendeeResult> {
+  const admin = await requireAdmin();
+  if (!admin) {
+    return {
+      ok: false,
+      note: "No autorizado.",
+      folio: null,
+      sentAt: null,
+      whatsappFallbackLink: null,
+      error: "unauthorized",
+    };
+  }
+
+  if (!attendeeId || !eventId) {
+    return {
+      ok: false,
+      note: "Faltan datos del asistente o evento.",
+      folio: null,
+      sentAt: null,
+      whatsappFallbackLink: null,
+      error: "bad_input",
+    };
+  }
+
+  const { createSupabaseAdminClient } = await import("@/lib/supabase/admin");
+  const { appBaseUrl } = await import("@/lib/utils");
+  const { generateFolio } = await import("@/lib/certificates/folio");
+  const { sendEventCertificateEmail } = await import("@/lib/email/event-certificate");
+  const { buildCertificateWhatsAppLink } = await import("@/lib/email/cert-whatsapp-link");
+  const supabase = createSupabaseAdminClient();
+
+  // 1. Attendee.
+  const { data: attendee, error: attErr } = await supabase
+    .from("event_attendees")
+    .select("id, event_id, name, email, phone_normalized, checked_in_at")
+    .eq("id", attendeeId)
+    .eq("event_id", eventId)
+    .maybeSingle();
+  if (attErr || !attendee) {
+    return {
+      ok: false,
+      note: "Asistente no encontrado en este evento.",
+      folio: null,
+      sentAt: null,
+      whatsappFallbackLink: null,
+      error: attErr?.message ?? "not_found",
+    };
+  }
+  if (!attendee.checked_in_at) {
+    return {
+      ok: false,
+      note: "El asistente no ha hecho check-in todavía.",
+      folio: null,
+      sentAt: null,
+      whatsappFallbackLink: null,
+      error: "no_checkin",
+    };
+  }
+
+  // 2. Validar nombre (mismo filtro que el batch).
+  const PLACEHOLDER_NAMES = new Set([
+    "asistente", "por confirmar", "confirmar", "pendiente", "test",
+    "n/a", "na", "anonimo", "anonymous", "sin nombre",
+  ]);
+  const name = (attendee.name ?? "").trim();
+  if (name.length < 2 || PLACEHOLDER_NAMES.has(name.toLowerCase())) {
+    return {
+      ok: false,
+      note: "El asistente no tiene nombre real. Edita su nombre antes de enviar.",
+      folio: null,
+      sentAt: null,
+      whatsappFallbackLink: null,
+      error: "placeholder_name",
+    };
+  }
+
+  // 3. Evento.
+  const { data: event, error: evtErr } = await supabase
+    .from("events")
+    .select("title, starts_at")
+    .eq("id", eventId)
+    .maybeSingle();
+  if (evtErr || !event) {
+    return {
+      ok: false,
+      note: "Evento no encontrado.",
+      folio: null,
+      sentAt: null,
+      whatsappFallbackLink: null,
+      error: evtErr?.message ?? "event_not_found",
+    };
+  }
+
+  // 4. Emitir cert si falta (idempotente via RPC).
+  // Reusamos exactamente la misma logica que el batch.
+  const { data: existing } = await supabase
+    .from("event_certificates")
+    .select("folio, id")
+    .eq("event_id", eventId)
+    .eq("attendee_id", attendeeId)
+    .maybeSingle();
+  let folio = (existing as { folio: string; id: string } | null)?.folio ?? null;
+  let certId = (existing as { folio: string; id: string } | null)?.id ?? null;
+
+  if (!folio) {
+    const candidate = generateFolio();
+    const { data: rpcData, error: rpcErr } = await supabase.rpc(
+      "issue_event_certificate",
+      {
+        p_event_id: eventId,
+        p_attendee_id: attendeeId,
+        p_folio: candidate,
+        p_template_variant: "concept-c",
+        p_metadata: {},
+        // p_admin_user_id omitido: la RPC acepta NULL por default.
+      },
+    );
+    if (rpcErr) {
+      return {
+        ok: false,
+        note: `No se pudo emitir el certificado: ${rpcErr.message}`,
+        folio: null,
+        sentAt: null,
+        whatsappFallbackLink: null,
+        error: `rpc:${rpcErr.code ?? "?"}`,
+      };
+    }
+    const rpcRow = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+    folio = (rpcRow as { folio: string } | null)?.folio ?? candidate;
+    const { data: idRow } = await supabase
+      .from("event_certificates")
+      .select("id")
+      .eq("folio", folio)
+      .maybeSingle();
+    certId = (idRow as { id: string } | null)?.id ?? null;
+  }
+
+  const certUrl = `${appBaseUrl()}/cert/${folio}`;
+
+  // 5. Enviar por email si tiene; si no, generar link wa.me.
+  if (attendee.email) {
+    const sendResult = await sendEventCertificateEmail(
+      {
+        attendeeName: name,
+        attendeeEmail: attendee.email,
+        eventTitle: event.title,
+        eventStartsAt: event.starts_at,
+        folio,
+        certUrl,
+      },
+      {
+        eventId,
+        eventCertificateId: certId,
+        folio,
+      },
+    );
+    revalidatePath(`/admin/eventos/${eventId}`);
+    if (sendResult.ok) {
+      return {
+        ok: true,
+        note: "Constancia enviada por email.",
+        folio,
+        sentAt: new Date().toISOString(),
+        whatsappFallbackLink: null,
+        error: null,
+      };
+    }
+    return {
+      ok: false,
+      note: sendResult.error ?? "Error al enviar el email.",
+      folio,
+      sentAt: null,
+      whatsappFallbackLink: null,
+      error: sendResult.error ?? "send_failed",
+    };
+  }
+
+  if (attendee.phone_normalized) {
+    const link = buildCertificateWhatsAppLink({
+      attendeeName: name,
+      attendeePhone: attendee.phone_normalized,
+      folio,
+      eventTitle: event.title,
+      certUrl,
+    });
+    return {
+      ok: true,
+      note: "Link de WhatsApp generado. El asistente no tiene email.",
+      folio,
+      sentAt: null,
+      whatsappFallbackLink: link,
+      error: null,
+    };
+  }
+
+  return {
+    ok: false,
+    note: "El asistente no tiene email ni teléfono. No se puede enviar.",
+    folio,
+    sentAt: null,
+    whatsappFallbackLink: null,
+    error: "no_contact",
+  };
+}

@@ -4609,4 +4609,31 @@ pm run build → OK (compila todas las rutas).
   - Form publico: https://www.qlick.digital/eventos/marketing-ia-para-emprendedores-pago
   - Simulator dev: https://www.qlick.digital/pagar/evento/marketing-ia-para-emprendedores-pago
 
+## 2026-07-15 Cert-Individual — botón de envío de constancia por asistente
+
+- **Pregunta:** David pidió poder enviar la constancia de cada asistente de forma individual (ya existía el batch `CertificateBatchPanel`) y que el envío quedara registrado como `ya enviado`.
+
+- **Decisión:** Nuevo sprint chico en CheckInTab: action `sendCertificateToAttendeeAction` + Client Component `SendCertEmailButton` con 3 ramas (email, WhatsApp fallback, sin contacto). Reutiliza `sendEventCertificateEmail()` (que ya loggea en `event_email_log` con `email_type='certificate'`), así que el registro de envío es automático sin migración nueva. Badge simple `✓ Enviado` cuando ya hay un log con `ok=true` para ese cert — sin fecha ni botón reenviar (decisión de David para mantener simple).
+
+- **Razón:** Antes, si David quería reenviar la constancia de UNA persona (caso típico: el correo se perdió, o el asistente pidió reenvío), tenía que volver a correr el batch completo, que reenvía a todos. Con el botón individual resuelve el caso común sin tocar a los demás. La query a `event_email_log` para detectar el estado inicial es JOIN via dos queries (primero certs del evento con `id+folio+attendee_id`, después emails con `event_certificate_id IN (...)` y `ok=true`) — sin migración, sin RPC, todo admin client.
+
+- **Cambios concretos:**
+  - `src/lib/email/cert-whatsapp-link.ts` (nuevo): helper puro `buildCertificateWhatsAppLink({attendeeName, attendeePhone, folio, eventTitle, certUrl})` que arma la URL `wa.me/{phone}?text=...`. Usado por el action server-side (que emite cert si falta y devuelve el link) y testeado en aislamiento.
+  - `src/app/admin/eventos/[id]/_actions.ts` (+241 líneas): nueva action `sendCertificateToAttendeeAction(attendeeId, eventId)`. Carga attendee + evento, valida check-in + nombre real, emite cert via RPC si falta, y según canal: email (vía `sendEventCertificateEmail` que loggea en `event_email_log`), WhatsApp fallback (devuelve waLink sin loggear), o error si no hay contacto.
+  - `src/app/admin/eventos/[id]/_components/SendCertEmailButton.tsx` (nuevo): Client Component con 3 estados — `alreadySent` (badge verde read-only), con email (botón `✉️ Enviar cert`), sin email pero con phone (botón-link `📱 WhatsApp` que llama al action y abre wa.me en nueva tab), sin contacto (texto `sin contacto`).
+  - `src/app/admin/eventos/[id]/_components/CheckInTab.tsx` (+58 líneas): query inicial carga `certIdByAttendee` (no solo `folioByAttendee`) y luego `event_email_log` con `email_type='certificate' AND ok=true` para poblar `sentAttendeeIds`. Render del nuevo botón al final de cada fila del asistente (después del link al cert o del IssueCertButton).
+  - `tests/email-cert-whatsapp-link.test.mjs` (nuevo, 6 tests): happy path con E.164, normalización de teléfono con espacios/guiones, fallback a `asistente` con nombre vacío, trim de espacios extra, encoding correcto de acentos/ñ, e inclusión literal de folio + certUrl.
+
+- **Verificación:**
+  - `npm run type-check` → 0 errores.
+  - `npm run lint` → 0 warnings/errors.
+  - `npm test` → 1385/1385 (6 nuevos del helper).
+  - `npm run build` → compila sin errores; las ~145 rutas siguen renderizando.
+  - `npm run audit:voseo` → 0 matches en código nuevo (los 2 matches detectados son pre-existentes en `page.tsx` del admin y `pagar/evento/[slug]/exito/page.tsx`; NO introducidos por este sprint, NO se corrigen acá para no expandir scope).
+
+- **Lo que NO se hizo (gap explícito):**
+  - Sin migración nueva: la columna `event_certificate_id` en `event_email_log` ya existe (migration `20260708170000_event_email_log_certificate_type.sql`); el CHECK de `email_type` ya incluye `'certificate'`. El registro de envío se reusa tal cual del batch.
+  - Sin `revalidatePath` en la rama WhatsApp (no se persistió nada, no hay que revalidar). En la rama email sí se revalida el path del admin de eventos para refrescar el badge.
+  - El fallback WhatsApp NO se trackea automáticamente (es web.whatsapp.com, no el bot). El badge `✓ Enviado` solo se setea para emails reales con `ok=true`. Si David quiere trackear WhatsApp también, eso es otro sprint (bot outbound + nuevo `email_type='certificate_wa'` o tabla de log separada).
+
 
