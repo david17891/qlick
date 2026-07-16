@@ -165,9 +165,16 @@ export async function POST(req: NextRequest) {
 
   try {
     // 4. Buscar la confirmation.
+    // FIX 2026-07-16 (sesion David, scanner cobro-en-puerta "Error
+    // buscando confirmation: column event_confirmations.lead_id does
+    // not exist"): event_confirmations NO tiene columna lead_id. La
+    // columna lead_id se agrego a event_attendees (migration
+    // 20260714120000) y a event_access (migration 20260715131000),
+    // pero NO a event_confirmations (que se identifica por
+    // phone_normalized o email, no por lead).
     const { data: confRow, error: confErr } = await supabase
       .from("event_confirmations")
-      .select("id, event_id, lead_id, name, email, phone_normalized, payment_status")
+      .select("id, event_id, name, email, phone_normalized, payment_status")
       .eq("id", body.confirmation_id)
       .maybeSingle();
     if (confErr) {
@@ -339,10 +346,16 @@ export async function POST(req: NextRequest) {
           checkedInAt = token.checked_in_at;
         }
         // Tambien crear/actualizar el event_attendees (path del check-in publico).
+        // FIX 2026-07-16: antes buscabamos el attendee por lead_id,
+        // pero event_confirmations NO tiene lead_id. Ahora usamos
+        // confirmation_id (FK existente desde migration 20260627000000)
+        // o phone_normalized como fallback. El attendee puede tener
+        // lead_id=null si todavia no se promovio a lead; eso es OK
+        // (la columna es nullable).
         const { data: existingAtt } = await supabase
           .from("event_attendees")
           .select("id, checked_in_at")
-          .eq("lead_id", (confRow as unknown as { lead_id: string | null }).lead_id ?? "")
+          .eq("confirmation_id", body.confirmation_id)
           .eq("event_id", (confRow as unknown as { event_id: string }).event_id)
           .limit(1)
           .maybeSingle();
@@ -359,12 +372,14 @@ export async function POST(req: NextRequest) {
           if (updAtt) {
             checkedInAttendeeId = (updAtt as { id: string }).id;
           }
-        } else if ((confRow as unknown as { lead_id: string | null }).lead_id) {
+        } else {
+          // No hay attendee previo. Crear uno nuevo linkeado a la
+          // confirmation. lead_id queda null (se setea en otro flow
+          // cuando el scanner publico promueve a lead).
           const { data: insAtt } = await supabase
             .from("event_attendees" as never)
             .insert({
               event_id: (confRow as unknown as { event_id: string }).event_id,
-              lead_id: (confRow as unknown as { lead_id: string }).lead_id,
               confirmation_id: body.confirmation_id,
               name: (confRow as { name?: string | null }).name ?? "Asistente",
               email: (confRow as { email?: string | null }).email ?? null,
