@@ -192,18 +192,27 @@ export async function getEventPaymentsSnapshot(
   }
 
   for (const p of eventPayments) {
-    if (p.status === "approved") {
+    // FIX 2026-07-17 (sprint event-payments manual flow, feedback
+    // David "Cobrado $0.00 MXN"): el codigo original solo contaba
+    // `status === "approved"` para sumar al cobrado. PERO los pagos
+    // manuales del staff (mark-paid, register-manual-payment) usan
+    // `status = "paid_manual"` (CHECK enum de event_payments). Esos
+    // NO se contaban en `totalCollectedCentavos` aunque fueran pagos
+    // confirmados. Ahora contamos tanto `approved` (Stripe) como
+    // `paid_manual` (cash/transfer) como cobrado.
+    const isCollected = p.status === "approved" || p.status === "paid_manual";
+    if (isCollected) {
       stats.totalCollectedCentavos += p.amount_mxn;
     }
     const method = p.method ?? "unknown";
     if (!stats.byMethod[method]) stats.byMethod[method] = { count: 0, centavos: 0 };
     stats.byMethod[method].count++;
-    if (p.status === "approved") stats.byMethod[method].centavos += p.amount_mxn;
+    if (isCollected) stats.byMethod[method].centavos += p.amount_mxn;
     // Para `event_payments` no hay columna `provider` separada —
     // `method` ya distingue online/stripe, cash, transfer, etc.
     if (!stats.byProvider[method]) stats.byProvider[method] = { count: 0, centavos: 0 };
     stats.byProvider[method].count++;
-    if (p.status === "approved") stats.byProvider[method].centavos += p.amount_mxn;
+    if (isCollected) stats.byProvider[method].centavos += p.amount_mxn;
   }
 
   // Total pendiente (evento de pago) = confirmados en 'pending' o

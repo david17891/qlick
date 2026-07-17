@@ -68,11 +68,15 @@ for (const c of confs ?? []) {
   else if (s === "not_required") stats.totalNotRequired++;
 }
 for (const p of eps ?? []) {
-  if (p.status === "approved") stats.totalCollectedCentavos += p.amount_mxn;
+  // FIX 2026-07-17: el helper real cuenta `approved` Y `paid_manual`
+  // como collected. Antes solo `approved` se contaba, dejando los
+  // pagos manuales del staff fuera del total cobrado.
+  const isCollected = p.status === "approved" || p.status === "paid_manual";
+  if (isCollected) stats.totalCollectedCentavos += p.amount_mxn;
   const method = p.method ?? "unknown";
   if (!stats.byMethod[method]) stats.byMethod[method] = { count: 0, centavos: 0 };
   stats.byMethod[method].count++;
-  if (p.status === "approved") stats.byMethod[method].centavos += p.amount_mxn;
+  if (isCollected) stats.byMethod[method].centavos += p.amount_mxn;
 }
 
 console.log("\n=== Stats (lo que vera el dashboard) ===");
