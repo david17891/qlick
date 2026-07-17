@@ -91,10 +91,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   let secret: string;
   try {
     secret = requireStripeWebhookSecret();
-    // DEBUG TEMPORAL (FIX sprint event-payments FK): log de los primeros 20 chars
-    // del whsec_ para diagnosticar mismatch de firma con Stripe.
+    // DEBUG TEMPORAL: imprime el whsec_ completo en base64 para detectar
+    // whitespace invisible (newline al final, etc).
     // REMOVER después de validar.
-    console.log("[stripe-webhook DEBUG] whsec_=", secret.slice(0, 20), "len=", secret.length);
+    const whsecB64 = Buffer.from(secret).toString("base64");
+    const whsecLen = secret.length;
+    const whsecTrimmed = secret.trim().length;
+    console.log(
+      "[stripe-webhook DEBUG] whsec_b64=" + whsecB64 +
+      " len=" + whsecLen +
+      " trimmed_len=" + whsecTrimmed +
+      " has_trailing_newline=" + (secret.endsWith("\n") || secret.endsWith("\r"))
+    );
   } catch (err) {
     return NextResponse.json(
       {
