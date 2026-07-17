@@ -175,11 +175,27 @@ export async function loadConversationWindow(
       .eq("phone_normalized", phoneNormalized)
       // FIX 2026-07-06 (debug David "david martinez" ignorado):
       // excluir status updates de Meta (sent/delivered/read) que se
-      // persisten con metadata.status y body=null. Si los dejamos,
-      // contaminan el lastOutbound (no tiene body, no tiene
-      // awaiting_field) y rompen el flow provide_name / provide_email.
-      // PostgREST syntax: metadata->>'status' IS NULL filtra por key.
-      .is("metadata->>status" as never, null)
+      // persisten con body=null. Si los dejamos, contaminan el
+      // lastOutbound (no tiene body, no tiene awaiting_field) y rompen
+      // el flow provide_name / provide_email.
+      //
+      // FIX 2026-07-17 (sprint event-payments bot bug 11, David
+      // "Por el momento no tenemos eventos próximos publicados" tras
+      // pedir email para evento activo): el filtro anterior era
+      // `.is("metadata->>status", null)`, que también EXCLUÍA los
+      // outbounds del bot que tienen copy + metadata.status="read"
+      // (delivery tracking de Meta aplicado por `persistStatusUpdatesIfAny`).
+      // Resultado: el lastOutbound perdía el `awaiting_field="name"`,
+      // el intent caía a `question` (LLM) en vez de `provide_name`, y
+      // el email subsiguiente se procesaba con `args.registrationEvent=null`
+      // → "no hay eventos próximos".
+      //
+      // Filtro correcto: `body IS NOT NULL`. Los status updates de Meta
+      // son `body=null` (vienen del webhook de statuses, no tienen texto).
+      // Los outbounds del bot SIEMPRE tienen body con copy. Sin
+      // excepciones reportadas.
+      // PostgREST syntax: .not("body", "is", null).
+      .not("body" as never, "is", null)
       .order("created_at", { ascending: false })
       .limit(safeLimit);
 

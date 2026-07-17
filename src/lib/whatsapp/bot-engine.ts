@@ -3819,15 +3819,43 @@ case "interactive_event_inscribir": {
       // si llegamos a `provide_email` SIN un evento del registro (matched)
       // Y el fallback es `no_events` (sin env vars reales), NO podemos
       // inscribir al lead en un placeholder. Respondemos con copy honesto.
+      //
+      // FIX 2026-07-17 (sprint event-payments bot bug 11, David
+      // "Por el momento no tenemos eventos próximos publicados" tras
+      // pedir email para evento activo): el bug raíz es que
+      // `loadConversationWindow` excluía los outbounds del bot con
+      // delivery tracking (metadata.status="read"), lo cual hacía que
+      // `findEventInConversation` no encontrara el evento en el body
+      // del último outbound, y `args.registrationEvent` venía null.
+      // Ya está fixeado en conversation-window.ts. ESTE guard es la red
+      // defensiva por si en el futuro vuelve a fallar: si el evento
+      // no viene del flow, intentar `loadActiveEventContext()` (BD
+      // single source of truth) antes de declarar "no hay eventos".
+      // Solo decimos "no hay eventos" si BD tampoco tiene eventos
+      // publicados Y el fallback de env vars está vacío.
       if (!args.registrationEvent || args.registrationEvent.source === "no_events") {
-        const fallback = getActiveEvent();
-        if (fallback.source === "no_events") {
-          const noEvents = noEventsText();
-          return {
-            kind: "text",
-            body: noEvents,
-            send: () => provider.send({ to: phoneNormalized, body: noEvents })
-          };
+        // Intento defensivo: cargar el evento activo de BD una vez más.
+        // Si lo encontramos, lo usamos para el copy de salida. Si BD
+        // falla, caemos al fallback de env vars (getActiveEvent).
+        let bdEvent: { source: string } | null = null;
+        try {
+          const ctx = await loadActiveEventContext().catch(() => null);
+          if (ctx && ctx.source === "db") {
+            bdEvent = ctx;
+          }
+        } catch {
+          // best-effort
+        }
+        if (!bdEvent) {
+          const fallback = getActiveEvent();
+          if (fallback.source === "no_events") {
+            const noEvents = noEventsText();
+            return {
+              kind: "text",
+              body: noEvents,
+              send: () => provider.send({ to: phoneNormalized, body: noEvents })
+            };
+          }
         }
       }
       const evt = getActiveEvent();
