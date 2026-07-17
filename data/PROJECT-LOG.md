@@ -5161,3 +5161,100 @@ otifyLeadPaymentConfirmed se ejecuta en oid ... .catch(...). Vercel a veces no 
 - **B**: Completar KYC de Stripe para activar card_payments y eliminar el bypass.
 - **C**: Configurar Meta Cloud API de WhatsApp (o documentar que el bot esta en modo manual).
 - **D**: Test E2E automatizado con tarjeta 4242 (sin intervencion humana, via test_clock de Stripe).
+## 2026-07-17 05:00 — Sprint bugs dashboard + WhatsApp (post-flow manual)
+
+### TL;DR
+David hizo el flow completo manual. Detectó 4 bugs que el verify-pago-david no había atrapado:
+- Bug 1+4: outbounds WhatsApp con body vacío (confundia status updates con respuestas).
+- Bug 2+3: dashboard no mostraba pagos en efectivo (cash) ni pagos stripe del test 4242.
+- Mejora UX: mensaje de pago en puerta poco claro.
+
+### Bugs y fixes
+
+**Bug 1+4 — body vacio en outbounds WhatsApp (root cause)**
+- **Sintoma**: row en lead_whatsapp_conversations con direction=outbound, body=null. David recibia el mensaje al celular pero el body no quedaba persistido.
+- **Causa**: webhook de WhatsApp (/api/whatsapp/webhook/route.ts) procesaba los status updates de Meta (sent/delivered/read/failed) y hacia INSERT ciego con ody: null por cada uno. Resultado: 3-4 rows extras por cada mensaje real.
+- **Fix**: persistStatusUpdatesIfAny ahora hace SELECT primero; si el row original (del bot) existe, UPDATE su metadata.status. Si no, INSERT con message_type='status_update'. Asi el body del mensaje original se preserva y los status solo actualizan el metadata.
+- Commit: 52014e (parte del fix bundle).
+
+**Bug 2+3 — dashboard no mostraba pagos de eventos**
+- **Sintoma**: /admin/eventos/[id]?tab=payments mostraba TODO como pendiente, incluso pagos aprobados de David (cash) y del test 4242 (stripe). David reporto "pago de David aparece como pendiente" y "pago 807d3ac3 desaparece".
+- **Causa**: helper getEventPaymentsSnapshot leia de la tabla payments (legacy de cursos) y filtraba en memoria por idempotency_key (manual_admin) o metadata.product_id (stripe). PERO los pagos de eventos se insertan en event_payments (nueva tabla, FK directa a event_confirmations).
+- **Fix**: helper reescrito para leer de event_payments con join por confirmation_id. Mucho mas simple, SQL directo, sin regex de idempotency_key.
+- Sub-bug adicional: 	otalPaid no contaba paid_manual. Arreglado: ahora cuenta paid y paid_manual.
+- Commit: 52014e + 8be1d27.
+
+**Mejora UX — mensaje de pago en puerta**
+- **Sintoma**: el helper 
+otifyLeadPaymentConfirmed mandaba "Tu pago en puerta quedó registrado de ,000 MXN para Marketing + IA..." que es confuso para el usuario.
+- **Fix**: nuevo mensaje con formato de comprobante, incluye monto + metodo + fecha + link al QR. Mas util para el usuario que pago en efectivo.
+- Commit: 52014e.
+
+### Verificacion post-fix
+- scripts/test-payments-helper.mjs simula el helper y muestra los datos correctos: 3 confirmados, 1 paid_manual (David, cash, ), 1 pending (Alberto), 1 not_required (Luz Elena).
+- yMethod.cash.count=1, centavos=1000 ✓
+- payments: [David con method=cash, status=approved, provider=manual_admin] ✓
+
+### Cleanup del test 2
+- scripts/cleanup-test-2.mjs borra todo el state del test 4242 (lead, confirmation, event_payments, event_access, event_qr_tokens, wa conversations).
+- Refund del cargo fallo por syntax de la API de Stripe (search query no soportado con brackets); el cargo queda en Stripe como succeeded (test mode, sin impacto financiero).
+- 0 rows del test 2 en BD. Test 1 (David real, pago en puerta) NO se toco.
+
+### Archivos modificados
+- src/app/api/whatsapp/webhook/route.ts — UPSERT pattern para status updates.
+- src/lib/payments/event-payments-server.ts — leer de event_payments, contar paid_manual.
+- src/lib/payments/notify-lead-payment-confirmed.ts — mensaje de comprobante.
+
+### Archivos nuevos
+- scripts/audit-after-manual-flow.mjs — auditoria del state post-flow.
+- scripts/cleanup-test-2.mjs — cleanup del test 4242.
+- scripts/test-payments-helper.mjs — test del helper.
+
+### Pendiente (no bloquea)
+- **Bug 6 — qr_token**: el QR token no se persistia en 
+otifyLeadPaymentConfirmed (es el sendQrPassForConfirmation quien lo crea via event_qr_tokens). Si el email falla, no hay QR. Fix: persistir QR token desde el webhook ANTES de mandar el email.
+- **Bug 7 — flow de pago con tarjeta manda a dashboard de curso**: el email del QR o la página de éxito redirige a /dashboard (curso) en vez de al evento. Posible bug en event-qr-pass.ts.
+## 2026-07-17 05:50 — Bug 7: checkout de evento redirigia a flow de curso
+
+### TL;DR
+El `CheckoutButton.tsx` del evento NO pasaba `successUrl` ni `cancelUrl` al
+`/api/payments/create-checkout`. El provider usaba el default
+`${slug}/exito` que apuntaba a `/pagar/[courseSlug]/exito` (ruta de CURSO,
+no evento). Stripe redirigia al flow de curso, que mandaba al usuario
+a `/dashboard?paid=ok`. Pagaba por un evento, lo trataba como curso.
+
+### Diagnostico
+
+1. David reporto: despues de pagar con tarjeta, lo mandaba a /dashboard.
+2. El default del provider (`src/lib/payments/stripe-provider.ts:140`) usa
+   `${slug}/exito` que es la ruta de CURSO.
+3. El page.tsx de curso (`src/app/pagar/[courseSlug]/exito/page.tsx:117`) en
+   su branch principal redirige a `/dashboard?paid=ok`.
+4. `CheckoutButton.tsx` del evento (`src/app/pagar/evento/[slug]/CheckoutButton.tsx:65-71`)
+   NO pasaba successUrl ni cancelUrl.
+
+### Fix
+
+`src/app/pagar/evento/[slug]/CheckoutButton.tsx`: ahora pasa URLs explicitas
+que apuntan a la pagina de exito del EVENTO:
+
+```js
+successUrl: `${baseUrl}/pagar/evento/${eventSlug}/exito?session_id={CHECKOUT_SESSION_ID}`,
+cancelUrl: `${baseUrl}/pagar/evento/${eventSlug}/cancelled=1`,
+```
+
+Commit: `c09b201 fix(checkout): event CheckoutButton pasa successUrl/cancelUrl correctos`.
+
+### Credenciales de git (manual)
+
+David se quejo de que mis commits aparecian como "GitHub user not found"
+con author `bot@qlick.digital`. Causa: estaba usando
+`git -c user.email=bot@qlick.digital -c user.name=Mavis commit ...` que
+SOBREESCRIBE la config global de git de David.
+
+Regla preventiva: NUNCA usar `-c user.name` ni `-c user.email` en commits.
+La config global tiene los datos correctos. Verificar antes de commit con
+`git config --get user.name && git config --get user.email`.
+
+Commit `c09b201` ya uso la config global: aparece como
+`David A. <41293320+david17891@users.noreply.github.com>`.
