@@ -514,7 +514,15 @@ async function handleCheckoutCompleted(
       .from("event_payments" as never)
       .insert({
         confirmation_id: confLookup,
-        method: detectMethodFromSession(session),
+        // FIX 2026-07-16c (sprint event-payments FK): usar 'stripe'
+        // (provider), no el method específico (card/oxxo/spei) que
+        // retorna detectMethodFromSession. El CHECK
+        // event_payments_method_check solo acepta:
+        // 'stripe', 'cash', 'card_manual', 'transfer', 'other',
+        // 'simulated_event_payment'. La granularidad card/oxxo/spei
+        // queda en `metadata.method` o en `payment_method_types` del
+        // session si se necesita reportear.
+        method: "stripe",
         status: "approved",
         amount_mxn: amountTotalMXN,
         currency: "MXN",
