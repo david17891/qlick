@@ -1340,7 +1340,7 @@ async function findActiveQrTokenForLead(
   leadId: string,
   phoneNormalized: string,
   eventSlug: string
-): Promise<{ token: string; url: string; eventId: string } | null> {
+): Promise<{ token: string; url: string; eventId: string; confirmationId: string | null } | null> {
   // 1) Resolver event_id por slug.
   const { data: evtData, error: evtErr } = await supabase
     .from("events" as never)
@@ -1352,12 +1352,19 @@ async function findActiveQrTokenForLead(
   const eventId = (evtData as { id: string }).id;
 
   // 2) Buscar token vigente del lead para este evento.
+  //    FIX 2026-07-17 (sprint event-payments manual flow, David
+  //    feedback): ahora también devolvemos `confirmation_id` para que
+  //    el caller pueda re-validar que la confirmation existe. Antes el
+  //    bot decia "ya estas registrado" si encontraba un QR token
+  //    huerfano (sin confirmation), mintiendo sobre el estado del
+  //    registration. Ver migration
+  //    20260717063306_event_qr_tokens_confirmation_fk.sql.
   //    Prioridad: (event_id, attendee_phone_normalized) que es como
   //    `generateQrToken` guarda. Fallback a (event_id, lead_id) por
   //    si hay datos legacy.
   const { data: byPhone } = await supabase
     .from("event_qr_tokens" as never)
-    .select("token")
+    .select("token, confirmation_id")
     .eq("event_id" as never, eventId)
     .eq("attendee_phone_normalized" as never, phoneNormalized)
     .gt("expires_at" as never, new Date().toISOString())
@@ -1366,14 +1373,16 @@ async function findActiveQrTokenForLead(
     .maybeSingle();
 
   let token: string | null = null;
+  let confirmationId: string | null = null;
   if (byPhone) {
     token = (byPhone as { token: string }).token;
+    confirmationId = (byPhone as { confirmation_id: string | null }).confirmation_id ?? null;
   } else {
     // Fallback por lead_id (sin filtro de phone — útil si la fila se
     // creó con phone distinto por algun bug previo).
     const { data: byLeadId } = await supabase
       .from("event_qr_tokens" as never)
-      .select("token")
+      .select("token, confirmation_id")
       .eq("event_id" as never, eventId)
       .eq("lead_id" as never, leadId)
       .gt("expires_at" as never, new Date().toISOString())
@@ -1382,12 +1391,13 @@ async function findActiveQrTokenForLead(
       .maybeSingle();
     if (byLeadId) {
       token = (byLeadId as { token: string }).token;
+      confirmationId = (byLeadId as { confirmation_id: string | null }).confirmation_id ?? null;
     }
   }
 
   if (!token) return null;
   const url = `${appBaseUrl()}/check-in/${token}`;
-  return { token, url, eventId };
+  return { token, url, eventId, confirmationId };
 }
 
 /**
@@ -1404,7 +1414,7 @@ async function generateQrToken(
   attendeeName: string,
   attendeeEmail: string | null,
   eventSlug?: string | null
-): Promise<{ token: string; url: string } | null> {
+): Promise<{ token: string; url: string; confirmationId: string | null } | null> {
   // Buscar el evento: si nos pasan slug, ESE; si no, el primero published.
   let evt: { id: string; ends_at: string | null } | null = null;
   if (eventSlug) {
@@ -1470,8 +1480,9 @@ async function generateQrToken(
     .maybeSingle();
   if (existing) {
     const existingToken = (existing as { token: string }).token;
+    const existingConfirmationId = (existing as { confirmation_id: string | null }).confirmation_id ?? null;
     const url = `${appBaseUrl()}/check-in/${existingToken}`;
-    return { token: existingToken, url };
+    return { token: existingToken, url, confirmationId: existingConfirmationId };
   }
 
   const { error } = await supabase
@@ -1500,8 +1511,9 @@ async function generateQrToken(
         .maybeSingle();
       if (raced) {
         const racedToken = (raced as { token: string }).token;
+        const racedConfirmationId = (raced as { confirmation_id: string | null }).confirmation_id ?? null;
         const url = `${appBaseUrl()}/check-in/${racedToken}`;
-        return { token: racedToken, url };
+        return { token: racedToken, url, confirmationId: racedConfirmationId };
       }
     }
     errorLog("[whatsapp/bot] generateQrToken falló", {
@@ -1512,8 +1524,10 @@ async function generateQrToken(
   // BUG FIX B1: la ruta pública del QR de check-in es `/check-in/[token]`,
   // no `/api/qr/[token]`. Ver `src/app/check-in/[token]/page.tsx` y
   // `src/lib/qr/event-tokens.ts:94` (que construye la misma URL).
+  // FIX 2026-07-17: incluimos confirmationId en el return para que el
+  // caller pueda re-validar que la confirmation existe.
   const url = `${appBaseUrl()}/check-in/${token}`;
-  return { token, url };
+  return { token, url, confirmationId: null };
 }
 
 /**
@@ -2521,21 +2535,63 @@ case "interactive_event_inscribir": {
             tokenUrl: existingToken?.url,
           });
           if (existingToken) {
-            const evtCodeLabel = evtReal.shortCode ? ` (código ${evtReal.shortCode})` : "";
-            const cleanAlready = cleanFirstName(firstName);
-            const saludoAlready = cleanAlready ? `¡Hola ${cleanAlready}!` : "¡Hola!";
-            const bodyText =
-              `${saludoAlready} Ya estás registrado en *${evtName}*${evtCodeLabel}. ` +
-              `Tu pase (link de check-in) es:\n\n${existingToken.url}`;
-            errorLog("[whatsapp/bot] interactive_event_inscribir: returning already_registered plan", {
-              leadId: lead.id,
-              bodyText: bodyText.slice(0, 100),
-            });
-            return {
-              kind: "text",
-              body: bodyText,
-              send: () => provider.send({ to: phoneNormalized, body: bodyText })
-            };
+            // FIX 2026-07-17 (sprint event-payments manual flow, David
+            // feedback): antes el bot decia "ya estas registrado" al
+            // encontrar un QR token huerfano (sin confirmation). Ahora
+            // re-validamos: leemos la confirmation via confirmation_id
+            // del QR. Si no existe o el lead la borro, el QR es
+            // huerfano y continuamos el flow normal (crear nueva
+            // confirmation). Tambien leemos el payment_status para
+            // agregar copy dinamico al mensaje.
+            let confRow: { id: string; payment_status: string | null } | null = null;
+            if (existingToken.confirmationId && supabase) {
+              const { data: confData } = await supabase
+                .from("event_confirmations" as never)
+                .select("id, payment_status")
+                .eq("id" as never, existingToken.confirmationId)
+                .maybeSingle();
+              confRow = confData as { id: string; payment_status: string | null } | null;
+            }
+            if (!confRow) {
+              // QR huerfano: el bot no debe mentir. Continuamos con el
+              // flow normal de pedir email.
+              errorLog("[whatsapp/bot] interactive_event_inscribir: QR huerfano (sin confirmation), cayendo a flow normal", {
+                leadId: lead.id,
+                eventId: evtReal.id,
+                qrToken: existingToken.token,
+                qrConfirmationId: existingToken.confirmationId,
+              });
+            } else {
+              const evtCodeLabel = evtReal.shortCode ? ` (código ${evtReal.shortCode})` : "";
+              const cleanAlready = cleanFirstName(firstName);
+              const saludoAlready = cleanAlready ? `¡Hola ${cleanAlready}!` : "¡Hola!";
+              // Copy dinamico segun payment_status.
+              const ps = confRow.payment_status ?? "pending";
+              const paymentLine = ps === "paid" || ps === "paid_manual"
+                ? `\n\n✅ Tu pago está confirmado.`
+                : ps === "pending"
+                  ? `\n\n⚠️ Tu pago está pendiente. Te paso el link para pagar: ` +
+                    `${appBaseUrl()}/pagar/evento/${evtReal.slug}?confirmation=${confRow.id}`
+                  : ps === "pending_verification"
+                    ? `\n\n⏳ Estamos verificando tu pago. Te avisamos cuando esté listo.`
+                    : ps === "revoked"
+                      ? `\n\n❌ Tu pago fue revocado. Contactános para más info.`
+                      : "";
+              const bodyText =
+                `${saludoAlready} Ya estás registrado en *${evtName}*${evtCodeLabel}. ` +
+                `Tu pase (link de check-in) es:\n\n${existingToken.url}` +
+                paymentLine;
+              errorLog("[whatsapp/bot] interactive_event_inscribir: returning already_registered plan", {
+                leadId: lead.id,
+                paymentStatus: ps,
+                bodyText: bodyText.slice(0, 100),
+              });
+              return {
+                kind: "text",
+                body: bodyText,
+                send: () => provider.send({ to: phoneNormalized, body: bodyText })
+              };
+            }
           }
         } catch (err) {
           errorLog("[whatsapp/bot] interactive_event_inscribir: check already_registered falló", {
