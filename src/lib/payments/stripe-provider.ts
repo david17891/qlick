@@ -217,9 +217,22 @@ export const stripeProvider: PaymentProvider = {
     } catch (err) {
       // Re-throw con contexto para que el caller (action del lado servidor)
       // pueda mostrar mensaje útil. NO loggear secretos.
+      // FIX debug 2026-07-17: loggear tipo + code para diagnosticar
+      // "Request was retried 2 times" del KYC activo (card_payments
+      // activo en cuenta, API directa funciona, pero endpoint de Qlik
+      // retorna 500). El error es opaco sin contexto.
+      // eslint-disable-next-line no-console
+      console.error("[stripe-provider] createCheckout error detail", {
+        type: err?.constructor?.name,
+        code: err instanceof Stripe.errors.StripeError ? err.code : undefined,
+        statusCode: err instanceof Stripe.errors.StripeError ? err.statusCode : undefined,
+        message: err instanceof Error ? err.message : String(err),
+        apiKeyPrefix: process.env.STRIPE_SECRET_KEY?.slice(0, 12),
+        apiVersion: STRIPE_API_VERSION,
+      });
       const message =
         err instanceof Stripe.errors.StripeError
-          ? `[stripe ${err.statusCode ?? "?"}] ${err.message}`
+          ? `[stripe ${err.statusCode ?? "?"} ${err.code ?? err.type ?? "?"}] ${err.message}`
           : err instanceof Error
             ? err.message
             : "Error desconocido creando checkout.";
