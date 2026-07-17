@@ -703,6 +703,31 @@ async function handleCheckoutCompleted(
       grantedReason: reason,
     });
 
+    // FIX 2026-07-16d (sprint event-payments FK): actualizar
+    // `event_confirmations.payment_status = 'paid'` después del GRANT.
+    // Antes este paso se saltaba — el webhook confiaba en el caller
+    // (mark-paid, simulator, etc) para hacerlo. Pero en el path de
+    // checkout online (Stripe webhook), NADIE lo hacia: el estado se
+    // quedaba en 'pending' aunque el pago estaba 'approved'. El
+    // notifyLeadPaymentConfirmed abajo reenvía el email con el badge
+    // de pago, pero el `payment_status` en BD estaba stale. Esto
+    // causaba que la UI mostrara "Pago pendiente" aunque el cargo
+    // ya estuviera cobrado. Lo arreglamos acá, idempotente.
+    if (confLookup) {
+      const { error: confUpdErr } = await supabase
+        .from("event_confirmations")
+        .update({ payment_status: "paid" } as never)
+        .eq("id", confLookup);
+      if (confUpdErr) {
+        // No rompemos el flow si falla (el pago está approved igual).
+        // Solo loggeamos.
+        errorLog("[stripe-webhook] update confirmation payment_status fallo", {
+          confirmationId: confLookup,
+          error: confUpdErr.message,
+        });
+      }
+    }
+
     // FIX sprint 2026-07-15d: notificar al lead por WhatsApp que su
     // pago se confirmo. Tambien re-enviar el email del QR con el
     // estado actualizado (badge "PAGADO"). El email se manda via
