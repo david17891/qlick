@@ -185,6 +185,62 @@ export async function createConfirmation(
         .or(`email.eq.${email ?? "_none_"},phone_normalized.eq.${phoneNormalized ?? "_none_"}`)
         .maybeSingle();
       if (existing) {
+        // FIX 2026-07-17 (sprint event-payments bug 14, David
+        // "ya estaba bien" + admin mostrando 'Juan Perez' no pagado):
+        // el upsert anterior hizo `onConflict: "event_id,email"`
+        // que solo cubre la UNIQUE constraint de email. Si el
+        // caller pasa un email REAL pero la fila ya existe por
+        // PHONE con un email mal guardado (ej. "juan perez" sin @
+        // en vez de "david17891@gmail.com"), el upsert choca con
+        // la UNIQUE de phone y retorna 23505. El codigo caia al
+        // bloque 23505 y retornaba el existing SIN actualizar el
+        // email. Resultado: la confirmation quedaba con email mal
+        // guardado, el webhook de Stripe no encontraba la
+        // confirmation por email, y el cargo quedaba sin registrar.
+        //
+        // Solucion: si el input.email es valido (matchea regex
+        // basica) y el existing.email es invalido (placeholder, sin
+        // @, o vacio), ACTUALIZAMOS el email del existing al valor
+        // del input. Tambien actualizamos name si el existing es
+        // placeholder. Esto preserva el dedup por phone pero
+        // limpia los datos que estaban mal.
+        const inputEmailIsValid = Boolean(
+          email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+        );
+        const existingEmail = (existing as { email?: string | null }).email ?? "";
+        const existingEmailIsInvalid =
+          !existingEmail ||
+          !existingEmail.includes("@") ||
+          existingEmail === existing.name;
+        // FIX: tambien detectar el caso "email es el mismo que el
+        // name" (eso es exactamente el bug que tuvo David y Juan:
+        // el bot-engine guardo name="Juan Perez" en el campo
+        // email).
+        const needsEmailFix =
+          inputEmailIsValid &&
+          (existingEmailIsInvalid ||
+            existingEmail.trim().toLowerCase() ===
+              (existing as { name?: string }).name?.trim().toLowerCase());
+        if (needsEmailFix) {
+          const { data: updated, error: updateErr } = await supabase
+            .from("event_confirmations" as never)
+            .update({ email: email as string } as never)
+            .eq("id", (existing as { id: string }).id)
+            .select("*")
+            .maybeSingle();
+          if (!updateErr && updated) {
+            return {
+              ok: true,
+              confirmation: mapEventConfirmationRowToEventConfirmation(
+                updated as EventConfirmationRow,
+              ),
+              created: false,
+              persisted: true,
+              demo: false,
+              note: `Email actualizado de "${existingEmail}" a "${email}" (placeholder detectado).`,
+            };
+          }
+        }
         return {
           ok: true,
           confirmation: mapEventConfirmationRowToEventConfirmation(
@@ -220,6 +276,43 @@ export async function createConfirmation(
       .or(`email.eq.${email ?? "_none_"},phone_normalized.eq.${phoneNormalized ?? "_none_"}`)
       .maybeSingle();
     if (existing) {
+      // FIX bug 14 (mismo fix que el bloque 23505 arriba): si el
+      // existing tiene email mal guardado (placeholder, sin @, o
+      // duplicado con el name) y el input trae email valido,
+      // actualizamos.
+      const inputEmailIsValid = Boolean(
+        email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+      );
+      const existingEmail = (existing as { email?: string | null }).email ?? "";
+      const existingEmailIsInvalid =
+        !existingEmail ||
+        !existingEmail.includes("@") ||
+        existingEmail === existing.name;
+      const needsEmailFix =
+        inputEmailIsValid &&
+        (existingEmailIsInvalid ||
+          existingEmail.trim().toLowerCase() ===
+            (existing as { name?: string }).name?.trim().toLowerCase());
+      if (needsEmailFix) {
+        const { data: updated, error: updateErr } = await supabase
+          .from("event_confirmations" as never)
+          .update({ email: email as string } as never)
+          .eq("id", (existing as { id: string }).id)
+          .select("*")
+          .maybeSingle();
+        if (!updateErr && updated) {
+          return {
+            ok: true,
+            confirmation: mapEventConfirmationRowToEventConfirmation(
+              updated as EventConfirmationRow,
+            ),
+            created: false,
+            persisted: true,
+            demo: false,
+            note: `Email actualizado de "${existingEmail}" a "${email}" (placeholder detectado).`,
+          };
+        }
+      }
       return {
         ok: true,
         confirmation: mapEventConfirmationRowToEventConfirmation(
