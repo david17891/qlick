@@ -1,0 +1,63 @@
+{
+  "timestamp": "2026-07-16T12:34:29.043Z",
+  "phone": "+529999999001",
+  "results": [
+    {
+      "step": 1,
+      "user": "Hola",
+      "intent": "question",
+      "leadId": null,
+      "outboundCount": 0
+    },
+    {
+      "step": 2,
+      "user": "Quiero inscribirme",
+      "intent": "question",
+      "leadId": null,
+      "outboundCount": 0,
+      "interactive": "No se pudo normalizar el teléfono \"29999999001\"."
+    },
+    {
+      "step": 3,
+      "user": "David E2E Test, e2e-test@example.com",
+      "intent": "question",
+      "leadId": null,
+      "outboundCount": 0
+    },
+    {
+      "step": 4,
+      "user": "e2e-test@example.com",
+      "intent": "question",
+      "leadId": null,
+      "outboundCount": 0
+    },
+    {
+      "step": 5,
+      "user": "¿Cuánto cuesta?",
+      "intent": "question",
+      "leadId": null,
+      "outboundCount": 0
+    }
+  ],
+  "capturedSends": [],
+  "db": {
+    "lead": null,
+    "confirmations": 0,
+    "confirmation_details": [],
+    "qr_tokens": 0,
+    "qr_token_details": [],
+    "conversations": 0,
+    "conversation_bodies": [],
+    "profile_summary": null
+  },
+  "assertions": {
+    "lead creado": false,
+    "lead.name = David E2E Test": false,
+    "lead.email = e2e-test@example.com": false,
+    ">= 1 confirmation creada": false,
+    ">= 1 qr_token creado": false,
+    ">= 5 conversations persistidas": false,
+    "capturedSends >= 3 (welcome + interactive + al menos 1 mas)": false,
+    "r5 (precio) menciona MXN o precio o costo": false
+  }
+}

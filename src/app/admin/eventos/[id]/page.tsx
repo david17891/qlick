@@ -430,8 +430,8 @@ export default async function AdminEventoDetailPage({
                   <p className="text-sm text-brand-800">
                     🎁 <strong>Evento gratuito</strong> · no hay checkout
                     configurado. Los asistentes van directo al form de
-                    confirmación. Si querés cobrarle entrada, editá el
-                    evento y poné un precio mayor a 0.
+                    confirmación. Si quieres cobrarle entrada, edita el
+                    evento y pon un precio mayor a 0.
                   </p>
                 </div>
               </Card>

@@ -1,0 +1,43 @@
+{
+  "timestamp": "2026-07-16T20:39:55.728Z",
+  "david": {
+    "phone": "+526532935492",
+    "leadId": "92739b21-05cf-4421-842b-6b50ea71f2d9",
+    "email": "david17891@gmail.com"
+  },
+  "confirmations": null,
+  "event_access": null,
+  "lead": null,
+  "checks": [
+    {
+      "name": "SELECT event_confirmations",
+      "ok": false,
+      "detail": "column event_confirmations.created_at does not exist"
+    },
+    {
+      "name": "SELECT event_payments",
+      "ok": false,
+      "detail": "no hay confirmation_id para filtrar"
+    },
+    {
+      "name": "SELECT event_access",
+      "ok": false,
+      "detail": "column event_access.source does not exist"
+    },
+    {
+      "name": "SELECT event_attendees",
+      "ok": true,
+      "detail": "1 row(s)"
+    },
+    {
+      "name": "SELECT outbounds",
+      "ok": false,
+      "detail": "column lead_whatsapp_conversations.intent does not exist"
+    }
+  ],
+  "summary": {
+    "pass": 1,
+    "fail": 4,
+    "warn": 0
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "timestamp": "2026-07-16T21:56:35.229Z",
+  "david": {
+    "phone": "+526532935492",
+    "leadId": "92739b21-05cf-4421-842b-6b50ea71f2d9",
+    "email": "david17891@gmail.com"
+  },
+  "confirmations": [
+    {
+      "id": "ca24b1be-ebeb-4faf-9f89-896e3b3f8e6b",
+      "event_id": "b1afa259-4c99-44a5-87ba-4b29a52d9259",
+      "name": "David Martinez",
+      "email": "david17891@gmail.com",
+      "phone_normalized": "+526532935492",
+      "payment_status": "paid",
+      "source": "manual",
+      "confirmed_at": "2026-07-16T20:31:48.629497+00:00"
+    }
+  ],
+  "payments": null,
+  "access": null,
+  "lead": null,
+  "checks": [
+    {
+      "name": "SELECT event_confirmations",
+      "ok": true,
+      "detail": "1 row(s)"
+    },
+    {
+      "name": "payment_status actualizado a 'paid'",
+      "ok": true,
+      "detail": "actual: paid"
+    },
+    {
+      "name": "SELECT event_payments",
+      "ok": true,
+      "detail": "1 row(s)"
+    },
+    {
+      "name": "event_payments con method='stripe'",
+      "ok": true,
+      "detail": "id=b7575f07-7753-4a90-b8d0-12d86c187841"
+    },
+    {
+      "name": "event_payments con status='approved'",
+      "ok": true,
+      "detail": "id=b7575f07-7753-4a90-b8d0-12d86c187841"
+    },
+    {
+      "name": "event_payments con amount_mxn=1000",
+      "ok": true,
+      "detail": "OK"
+    },
+    {
+      "name": "SELECT event_access",
+      "ok": false,
+      "detail": "column event_access.granted_at does not exist"
+    },
+    {
+      "name": "outbound WhatsApp con notificación de pago confirmado",
+      "ok": true,
+      "detail": "body: ¡Hola David! ¡Gracias por tu feedback! Tu opinión nos ayuda a mejorar los próximos eventos. Si quier"
+    }
+  ],
+  "summary": {
+    "pass": 7,
+    "fail": 1
+  }
+}

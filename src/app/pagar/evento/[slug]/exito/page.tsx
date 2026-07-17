@@ -118,8 +118,8 @@ export default async function ExitoEventoPage({
   } else if (paymentStatus === "rejected" || paymentStatus === "expired") {
     title = "El pago no se completó";
     body =
-      "El proveedor rechazó o expiró tu intento de pago. Podés intentar de nuevo " +
-      "con otro método o contactarnos si necesitás ayuda.";
+      "El proveedor rechazó o expiró tu intento de pago. Puedes intentar de nuevo " +
+      "con otro método o contactarnos si necesitas ayuda.";
     ctaLabel = "Volver a intentar";
     ctaHref = `/pagar/${eventSlug}`;
     tone = "warning";

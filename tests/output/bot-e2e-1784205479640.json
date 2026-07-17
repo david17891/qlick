@@ -1,0 +1,98 @@
+{
+  "timestamp": "2026-07-16T12:38:19.938Z",
+  "phone": "+529999999001",
+  "results": [
+    {
+      "step": 1,
+      "user": "Hola",
+      "intent": "greeting",
+      "preview": "¡Hola E2E! Soy Qlick, asistente de Qlick Marketing Digital. ¿Te interesa \"Marketing + IA para Emprendedores (Copia - Pago)\"?\n\nPróximo evento: Marketing + IA para Emprendedores (Copia - Pago) (17 de julio de 2026, 11:00 hrs (hora Pacífico)) — evento de pago ($1000 MXN)",
+      "leadId": "5f72a8f0-ff61-4fa7-8563-1669f088108e",
+      "outboundCount": 1
+    },
+    {
+      "step": 2,
+      "user": "Quiero inscribirme",
+      "intent": "register",
+      "preview": "Tenemos este evento próximo. Elegilo para más info:",
+      "leadId": "5f72a8f0-ff61-4fa7-8563-1669f088108e",
+      "outboundCount": 2
+    },
+    {
+      "step": 3,
+      "user": "David E2E Test",
+      "intent": "question",
+      "preview": "¡Perfecto, David! Me alegra que te quieras inscribir al evento \"Marketing + IA para Emprendedores\" el 17 de julio en CANACA.\n\nDame tu mejor correo para registrarte y que te lleguen los detalles 🎯",
+      "leadId": "5f72a8f0-ff61-4fa7-8563-1669f088108e",
+      "outboundCount": 3
+    },
+    {
+      "step": 4,
+      "user": "e2e-test@example.com",
+      "intent": "provide_email",
+      "preview": "Listo E2E, te registramos para el evento. Tu pase (link de check-in): https://qlick.mx/check-in/KWCqt4I0AC2b_RqsyM0G3wCckedKgfas\n\nTambién te enviamos el pase con el QR a tu correo. Lo vas a necesitar el día del evento.\n\nSobre el pago: el evento cuesta $1000 MXN. Tienes 2 opciones:\n1. Pagar en línea ",
+      "leadId": "5f72a8f0-ff61-4fa7-8563-1669f088108e",
+      "outboundCount": 4
+    },
+    {
+      "step": 5,
+      "user": "¿Cuánto cuesta?",
+      "intent": "question",
+      "preview": "Claro, David. El evento \"Marketing + IA para Emprendedores\" tiene un costo de **$1,000 MXN** y ya quedaste registrado. Tienes dos opciones: pagar en línea con tarjeta o en puerta el día del evento en CANACA. ¿Te interesa que te pase el enlace de pago en línea? 🎯",
+      "leadId": "5f72a8f0-ff61-4fa7-8563-1669f088108e",
+      "outboundCount": 5
+    }
+  ],
+  "capturedSends": [
+    {
+      "to": "+529999999001",
+      "body_preview": "¡Hola E2E! Soy Qlick, asistente de Qlick Marketing Digital. ¿Te interesa \"Marketing + IA para Emprendedores (Copia - Pago)\"?\n\nPróximo evento: Marketing + IA para Emprendedores (Copia - Pago) (17 de ju"
+    },
+    {
+      "to": "+529999999001",
+      "body_preview": "Tenemos este evento próximo. Elegilo para más info:"
+    },
+    {
+      "to": "+529999999001",
+      "body_preview": "¡Perfecto, David! Me alegra que te quieras inscribir al evento \"Marketing + IA para Emprendedores\" el 17 de julio en CANACA.\n\nDame tu mejor correo para registrarte y que te lleguen los detalles 🎯"
+    },
+    {
+      "to": "+529999999001",
+      "body_preview": "Listo E2E, te registramos para el evento. Tu pase (link de check-in): https://qlick.mx/check-in/KWCqt4I0AC2b_RqsyM0G3wCckedKgfas\n\nTambién te enviamos el pase con el QR a tu correo. Lo vas a necesitar "
+    },
+    {
+      "to": "+529999999001",
+      "body_preview": "Claro, David. El evento \"Marketing + IA para Emprendedores\" tiene un costo de **$1,000 MXN** y ya quedaste registrado. Tienes dos opciones: pagar en línea con tarjeta o en puerta el día del evento en "
+    }
+  ],
+  "db": {
+    "lead": {
+      "id": "5f72a8f0-ff61-4fa7-8563-1669f088108e",
+      "name": "E2E Test",
+      "email": "e2e-test@example.com",
+      "phone_normalized": "+529999999001",
+      "status": "new",
+      "whatsapp_status": "contactado"
+    },
+    "confirmations": 1,
+    "confirmation_details": [
+      {
+        "id": "897174f4-81be-4605-afb4-36e7cc80ecfe",
+        "name": "E2E Test",
+        "email": "e2e-test@example.com",
+        "payment_status": "pending",
+        "event_id": "b1afa259-4c99-44a5-87ba-4b29a52d9259"
+      }
+    ],
+    "qr_tokens": 1,
+    "qr_token_details": [
+      {
+        "id": "ebf6895a-3d57-4f13-9c0f-d6c245f994ca",
+        "attendee_name": "E2E Test",
+        "attendee_email": "e2e-test@example.com",
+        "checked_in_at": null
+      }
+    ],
+    "conversations": 0
+  }
+}
