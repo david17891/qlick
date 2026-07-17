@@ -56,6 +56,12 @@ export function CheckoutButton({
     setLoading(true);
     setError(null);
     try {
+      // FIX 2026-07-17 (bug 7): antes NO se pasaban successUrl/cancelUrl,
+      // asi que el provider usaba el default `${slug}/exito` que
+      // apunta a `/pagar/[courseSlug]/exito` (ruta de CURSO, no evento).
+      // Stripe redirigia al flow de curso, que mandaba a /dashboard.
+      // Ahora pasamos URLs explicitas a la pagina de exito del EVENTO.
+      const baseUrl = window.location.origin;
       const res = await fetch("/api/payments/create-checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -63,6 +69,8 @@ export function CheckoutButton({
           slug: eventSlug,
           productKind: "event",
           method,
+          successUrl: `${baseUrl}/pagar/evento/${eventSlug}/exito?session_id={CHECKOUT_SESSION_ID}`,
+          cancelUrl: `${baseUrl}/pagar/evento/${eventSlug}?cancelled=1`,
         }),
       });
       const data: CreateCheckoutResponse = await res.json();
