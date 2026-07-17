@@ -201,21 +201,23 @@ export async function getEventPaymentsSnapshot(
     // confirmados. Ahora contamos tanto `approved` (Stripe) como
     // `paid_manual` (cash/transfer) como cobrado.
     //
-    // FIX 2026-07-17 (sprint event-payments bug 15, David "ahí
-    // está poniendo 10 pesos"): el campo `event_payments.amount_mxn`
-    // es numeric(10,2) (PESOS con 2 decimales), no centavos. La
-    // migration 20260715120000_event_payments.sql confirma: "amount_mxn
-    // es numeric (no integer en centavos)". PERO el helper retornaba
+    // FIX 2026-07-17 (sprint event-payments bug 15, David
+    // "que estas haciendo? el cargo es 1000 no 10"): el campo
+    // `event_payments.amount_mxn` es numeric(10,2) (PESOS con 2
+    // decimales) segun migration 20260715120000 ("amount_mxn es
+    // numeric (no integer en centavos)"). PERO el helper retornaba
     // el valor en `centavos` sin multiplicar por 100, y el admin
-    // dividía por 100 al formatear (`(centavos / 100).toFixed(2)`).
-    // Resultado: un cargo de $1000 MXN se guardaba como amount_mxn=1000
-    // (pesos), el helper lo pasaba como `centavos: 1000`, y el admin
-    // mostraba `$10.00 MXN` (1000 / 100). Doble error de unidades.
+    // dividia por 100 al formatear. Resultado: cargo real \$1000
+    // MXN (Stripe amount=100000 centavos) -> BD amount_mxn=1000
+    // (pesos) -> helper retorna centavos:1000 -> admin: 1000/100
+    // = "\$10.00 MXN". Doble error: DB guarda pesos, helper
+    // retorna centavos, admin formatea centavos.
     //
-    // Fix: el helper multiplica por 100 al sumar, manteniendo la
-    // API consistente (el campo `centavos` que retorna el helper
-    // SI es centavos, como dice el nombre). El admin no cambia —
-    // sigue dividiendo por 100 al formatear, ahora correctamente.
+    // Fix: el helper multiplica por 100 al sumar, manteniendo
+    // la API consistente (el campo `centavos` que retorna el
+    // helper SI es centavos, como dice el nombre). El admin no
+    // cambia — sigue dividiendo por 100 al formatear, ahora
+    // correctamente.
     const isCollected = p.status === "approved" || p.status === "paid_manual";
     if (isCollected) {
       // amount_mxn esta en pesos. Multiplicar por 100 para centavos
@@ -239,11 +241,9 @@ export async function getEventPaymentsSnapshot(
 
   // Total pendiente (evento de pago) = confirmados en 'pending' o
   // 'pending_verification' * precio del evento. Default 0 si el evento
-  // es free (defaultPriceMXN <= 0).
-  //
-  // FIX bug 15: defaultPriceMXN ya está en pesos (viene de
-  // event.priceMXN). Multiplicar por 100 para centavos (la API del
-  // helper retorna centavos).
+  // es free (defaultPriceMXN <= 0). defaultPriceMXN viene de
+  // event.priceMXN (pesos), multiplicar por 100 para centavos
+  // (la API del helper retorna centavos).
   if (defaultPriceMXN > 0) {
     const pendingCount =
       stats.totalPending + stats.totalPendingVerification;
@@ -263,12 +263,9 @@ export async function getEventPaymentsSnapshot(
       confirmationName: conf?.name ?? "(sin nombre)",
       confirmationEmail: conf?.email ?? null,
       method: p.method,
-      // FIX bug 15: amount_mxn esta en PESOS (numeric(10,2) segun
-      // migration 20260715120000). El campo `amountCentavos` del
-      // EventPaymentRow es la API del helper (siempre centavos),
-      // asi que multiplicamos por 100 para mantener consistencia
-      // con `totalCollectedCentavos` y la UI del admin que divide
-      // por 100 al formatear.
+      // FIX bug 15: amount_mxn esta en PESOS (numeric(10,2)). El
+      // campo `amountCentavos` del EventPaymentRow es la API del
+      // helper (siempre centavos), asi que multiplicamos por 100.
       amountCentavos: Math.round(p.amount_mxn * 100),
       currency: p.currency,
       status: p.status,

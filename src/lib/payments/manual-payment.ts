@@ -439,7 +439,19 @@ export async function registerManualPayment(
       confirmation_id: input.confirmationId,
       method: eventPaymentMethod,
       status: eventPaymentStatus,
-      amount_mxn: amountCentavos,
+      // FIX 2026-07-17 (sprint event-payments bug 15, David
+      // "que estas haciendo? el cargo es 1000 no 10"): el campo
+      // `event_payments.amount_mxn` es numeric(10,2) (PESOS con
+      // 2 decimales) segun migration 20260715120000 ("amount_mxn
+      // es numeric (no integer en centavos)"). ANTES este codigo
+      // guardaba `amountCentavos` (= amountMXN * 100) en
+      // `amount_mxn`, lo cual multiplicaba por 100 dos veces (en
+      // el admin que divide por 100 al formatear): un pago
+      // manual de $1000 MXN se guardaba como 100000 y se mostraba
+      // como $1000.000.000.000 (centavos), o $10 si la UI dividia
+      // por 100. El fix: guardar `input.amountMXN` (pesos, ya en
+      // la unidad correcta) en lugar de `amountCentavos`.
+      amount_mxn: input.amountMXN,
       currency: "MXN",
       external_reference: externalReference,
       idempotency_key: idempotencyKey,
