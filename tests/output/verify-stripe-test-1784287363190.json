@@ -1,0 +1,52 @@
+{
+  "test_email": "qlick-stripe4242-mrotzh2c@mailinator.com",
+  "confirmation_id": "c7c43f76-1bfa-4546-bd99-e0dac92cee92",
+  "lead_id": "1f348e05-7f5d-4d50-aa88-bc8d8f13913e",
+  "event_id": "b1afa259-4c99-44a5-87ba-4b29a52d9259",
+  "pass": 6,
+  "fail": 2,
+  "total": 8,
+  "checks": [
+    {
+      "name": "confirmation existe",
+      "ok": true,
+      "detail": "c7c43f76-1bfa-4546-bd99-e0dac92cee92"
+    },
+    {
+      "name": "payment_status='paid'",
+      "ok": true,
+      "detail": "actual: paid"
+    },
+    {
+      "name": "event_payments con status=approved + amount=1000 + method=stripe",
+      "ok": true,
+      "detail": "b525c8ac-81e2-42f8-a6bc-46bdca6605c7"
+    },
+    {
+      "name": "event_access con status=active + source=event_purchase",
+      "ok": true,
+      "detail": "36fba38f-a277-4bba-b78c-f9aab37a2fca"
+    },
+    {
+      "name": "event_access.payment_id linkeado a event_payments",
+      "ok": true,
+      "detail": "payment_id=b525c8ac-81e2-42f8-a6bc-46bdca6605c7"
+    },
+    {
+      "name": "QR token existe",
+      "ok": false,
+      "detail": "0 rows (puede ser OK si email no se ha procesado)"
+    },
+    {
+      "name": "outbound WhatsApp con notificacion de pago",
+      "ok": false,
+      "detail": "no encontrado (provider manual_wa solo genera link wa.me, no escribe a BD)"
+    },
+    {
+      "name": "auth.user creado via resolveOrCreateUserId",
+      "ok": true,
+      "detail": "c39870af-8934-40a1-bc76-6baeb271902e"
+    }
+  ],
+  "verified_at": "2026-07-17T11:22:43.190Z"
+}

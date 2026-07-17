@@ -1,0 +1,27 @@
+{
+  "test_tag": "stripe4242-mrotzh2c",
+  "test_email": "qlick-stripe4242-mrotzh2c@mailinator.com",
+  "test_phone": "+525555555550",
+  "test_name": "Test E2E 4242",
+  "lead_id": "1f348e05-7f5d-4d50-aa88-bc8d8f13913e",
+  "confirmation_id": "c7c43f76-1bfa-4546-bd99-e0dac92cee92",
+  "event_id": "b1afa259-4c99-44a5-87ba-4b29a52d9259",
+  "event_title": "Marketing + IA para Emprendedores (Copia - Pago)",
+  "event_slug": "marketing-ia-para-emprendedores-pago",
+  "event_price_mxn": 1000,
+  "checkout_url": "https://www.qlick.digital/pagar/evento/marketing-ia-para-emprendedores-pago?confirmation=c7c43f76-1bfa-4546-bd99-e0dac92cee92",
+  "app_url": "https://www.qlick.digital",
+  "created_at": "2026-07-17T11:04:46.840Z",
+  "cleanup": {
+    "lead_id": "1f348e05-7f5d-4d50-aa88-bc8d8f13913e",
+    "confirmation_id": "c7c43f76-1bfa-4546-bd99-e0dac92cee92",
+    "notes": "Borrar lead + confirmation + event_payments + event_access + event_qr_tokens + lead_whatsapp_conversations del tag"
+  },
+  "instructions": {
+    "step1": "Abre la checkout URL en el browser",
+    "step2": "Llena los datos de tarjeta: 4242 4242 4242 4242, exp 12/30, CVC 123, nombre cualquiera",
+    "step3": "Confirma el cargo en Stripe",
+    "step4": "Revisa el email de QR en: https://www.mailinator.com/v4/public/inboxes.jsp?test=stripe4242-mrotzh2c",
+    "step5": "Avisame cuando termines para que verifique end-to-end y haga cleanup"
+  }
+}
