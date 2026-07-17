@@ -317,6 +317,19 @@ async function persistInboundIfPossible(
  * Persiste status updates de Meta (delivered/read/failed) en la misma tabla,
  * con direction='outbound' y message_type=metadata.status.
  *
+ * FIX 2026-07-17 (sprint event-payments manual flow): el codigo hacia
+ * INSERT ciego, lo que generaba rows con `body: null` por cada status
+ * update (sent/delivered/read). El bot-engine creaba un row original
+ * con body completo; Meta luego mandaba 3 status updates, cada uno
+ * creando un row NUEVO con body vacio. La BD se contaminaba con
+ * "outbound vacios" y el CRM/queries los contaban como respuestas
+ * del bot sin tener el contenido real.
+ *
+ * Fix: hacer SELECT + UPDATE (no INSERT) sobre el row original
+ * (mismo `whatsapp_message_id`). Si el row no existe (caso raro:
+ * status llega antes que el mensaje persistido), insertar uno nuevo
+ * con message_type='status_update' para no perderlo.
+ *
  * Shape de Meta:
  *   entry[].changes[].value.statuses[] = [{ id, status, ... }]
  */
@@ -330,35 +343,47 @@ async function persistStatusUpdatesIfAny(
   for (const s of statuses) {
     if (!VALID_STATUSES.includes(s.status)) continue;
     const phone = s.recipientId ? normalizePhone(s.recipientId) : null;
-    const { error } = await supabase
+    // 1. SELECT para ver si el row original (del bot) ya existe.
+    const { data: existing } = await supabase
       .from("lead_whatsapp_conversations" as never)
-      .insert({
-        lead_id: null,
-        phone_normalized: phone,
-        direction: "outbound",
-        // FIX 2026-07-04 (auditoria nocturna): el CHECK constraint de
-        // message_type NO acepta 'metadata' (cae en 23514 check_violation),
-        // asi que los status updates fallaban silenciosamente desde el
-        // inicio. Usamos 'interactive' como tipo neutral, y el campo
-        // `metadata.status` ya distingue el evento (sent/delivered/read/
-        // failed). TODO Fase 7: agregar tipo dedicado 'status_update' al
-        // enum si vale la pena semánticamente.
-        message_type: "interactive",
-        body: null,
-        whatsapp_message_id: s.id,
-        metadata: {
-          status: s.status,
-          timestamp: s.timestamp
-        }
-      } as never);
-    if (!error) {
-      count++;
-    } else if ((error as { code?: string }).code === "23505") {
-      // FIX 2026-07-04 (auditoria nocturna): Meta reentrego el mismo wamid
-      // en un status update. El row ya existe (outbound del bot o status
-      // previo). Idempotente: contamos como procesado y seguimos. Mismo
-      // patron que persistInboundIfPossible (linea ~228).
-      count++;
+      .select("id, metadata")
+      .eq("whatsapp_message_id", s.id)
+      .maybeSingle();
+    if (existing) {
+      // 2. UPDATE: agregar status al metadata del row original sin
+      //    tocar body/message_type. Merge selectivo via JSONB concat.
+      const existingMd = (existing as { metadata?: Record<string, unknown> }).metadata ?? {};
+      const { error } = await supabase
+        .from("lead_whatsapp_conversations" as never)
+        .update({
+          metadata: {
+            ...existingMd,
+            status: s.status,
+            status_timestamp: s.timestamp,
+          } as never,
+        } as never)
+        .eq("id", (existing as { id: string }).id);
+      if (!error) count++;
+    } else {
+      // 3. Row original no existe (status llego antes del mensaje
+      //    persistido, o wamid nunca llego al bot). Insertar como
+      //    huérfano con message_type='status_update' para no perderlo.
+      const { error } = await supabase
+        .from("lead_whatsapp_conversations" as never)
+        .insert({
+          lead_id: null,
+          phone_normalized: phone,
+          direction: "outbound",
+          message_type: "status_update",
+          body: null,
+          whatsapp_message_id: s.id,
+          metadata: {
+            status: s.status,
+            timestamp: s.timestamp,
+            orphan: true,
+          },
+        } as never);
+      if (!error) count++;
     }
   }
   return count;

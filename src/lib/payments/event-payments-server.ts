@@ -4,9 +4,16 @@
  * Lecturas server-side de pagos del evento para el tab `payments` del
  * admin. Sprint pagos-manuales (2026-07-15).
  *
- * Combina datos de `payments` (provider='manual_admin' | 'stripe' | etc)
- * y `event_confirmations` (con payment_status) para que el admin vea
- * la foto completa de lo cobrado, lo pendiente, y lo revocado.
+ * FIX 2026-07-17 (sprint event-payments manual flow): el codigo original
+ * leia de `payments` (legacy de cursos) y filtraba en memoria por
+ * metadata. PERO todos los pagos de eventos (mark-paid, stripe webhook
+ * de eventos) se insertan en `event_payments` (nueva tabla, FK directa
+ * a `event_confirmations`). Resultado: el dashboard mostraba TODO como
+ * "pendiente" aunque el pago estuviera aprobado en `event_payments`.
+ *
+ * Fix: leer de `event_payments` directamente con join por
+ * `confirmation_id`. La tabla legacy `payments` queda intacta para
+ * pagos de cursos (no tocada).
  *
  * Privacidad: server-only, usa admin client (service role, bypass RLS).
  *
@@ -128,57 +135,34 @@ export async function getEventPaymentsSnapshot(
     .eq("event_id", eventId);
   const confRows = (confRowsRaw ?? []) as unknown as ConfRow[];
 
-  // 2. Todos los payments del evento (manual_admin + stripe que
-  //    matcheen con confirmation_id o con metadata.product_id = eventId).
-  //    Como payments NO tiene event_id directo (solo course_id o null),
-  //    usamos un join manual: leemos payments que tengan
-  //    metadata->>product_id = eventId o que el event_access asociado
-  //    apunte al eventId.
-  // Approach pragmatico: leer todos los payments recientes del sistema
-  //    con provider in ('manual_admin', 'stripe') y filtrar en memoria
-  //    por metadata.product_id. Para volumenes pequenos funciona; si
-  //    crece, agregar un JOIN directo con event_access.
-  type PayRow = {
+  // 2. FIX 2026-07-17: leer de `event_payments` (NO de `payments`).
+  //    `event_payments` es la nueva tabla con FK directa a
+  //    `event_confirmations`. La tabla legacy `payments` es solo
+  //    para cursos.
+  type EventPaymentDbRow = {
     id: string;
-    user_id: string | null;
-    course_id: string | null;
-    provider: string;
-    external_reference: string | null;
-    amount_mxn: number;
-    discount_mxn: number;
-    currency: string;
+    confirmation_id: string;
+    method: string;
     status: string;
-    method: string | null;
+    amount_mxn: number;
+    currency: string;
+    external_reference: string | null;
     idempotency_key: string | null;
     metadata: unknown;
     created_at: string;
   };
-  const { data: payRowsRaw } = await supabase
-    .from("payments")
-    .select(
-      "id, user_id, course_id, provider, external_reference, amount_mxn, discount_mxn, currency, status, method, idempotency_key, metadata, created_at",
-    )
-    .in("provider", ["manual_admin", "stripe"])
-    .order("created_at", { ascending: false })
-    .limit(500);
-  const payRows = (payRowsRaw ?? []) as unknown as PayRow[];
-
-  // Filtramos payments que correspondan a este evento:
-  // - manual_admin: idempotency_key = "manual_admin:<confirmationId>:<ts>",
-  //   donde confirmationId pertenece al evento.
-  // - stripe: metadata.product_id = eventId AND metadata.product_kind = 'event'.
   const confIds = new Set(confRows.map((c) => c.id));
-  const eventPayments = payRows.filter((p) => {
-    if (p.provider === "manual_admin") {
-      // El idem key tiene formato `manual_admin:<confirmationId>:<ts>`.
-      const m = /^manual_admin:([0-9a-f-]+):/.exec(p.idempotency_key ?? "");
-      if (m && confIds.has(m[1])) return true;
-    } else if (p.provider === "stripe") {
-      const md = (p.metadata ?? {}) as Record<string, unknown>;
-      if (md.product_kind === "event" && md.product_id === eventId) return true;
-    }
-    return false;
-  });
+  let eventPayments: EventPaymentDbRow[] = [];
+  if (confIds.size > 0) {
+    const { data: epRowsRaw } = await supabase
+      .from("event_payments" as never)
+      .select(
+        "id, confirmation_id, method, status, amount_mxn, currency, external_reference, idempotency_key, metadata, created_at",
+      )
+      .in("confirmation_id", Array.from(confIds))
+      .order("created_at", { ascending: false });
+    eventPayments = (epRowsRaw ?? []) as unknown as EventPaymentDbRow[];
+  }
 
   // 3. Calcular stats.
   const stats: EventPaymentStats = {
@@ -211,9 +195,11 @@ export async function getEventPaymentsSnapshot(
     if (!stats.byMethod[method]) stats.byMethod[method] = { count: 0, centavos: 0 };
     stats.byMethod[method].count++;
     if (p.status === "approved") stats.byMethod[method].centavos += p.amount_mxn;
-    if (!stats.byProvider[p.provider]) stats.byProvider[p.provider] = { count: 0, centavos: 0 };
-    stats.byProvider[p.provider].count++;
-    if (p.status === "approved") stats.byProvider[p.provider].centavos += p.amount_mxn;
+    // Para `event_payments` no hay columna `provider` separada —
+    // `method` ya distingue online/stripe, cash, transfer, etc.
+    if (!stats.byProvider[method]) stats.byProvider[method] = { count: 0, centavos: 0 };
+    stats.byProvider[method].count++;
+    if (p.status === "approved") stats.byProvider[method].centavos += p.amount_mxn;
   }
 
   // Total pendiente (evento de pago) = confirmados en 'pending' o
@@ -226,41 +212,32 @@ export async function getEventPaymentsSnapshot(
   }
 
   // 4. Construir la lista de payments para la tabla.
-  // Join con confirmations por idempotency_key.
+  // FIX 2026-07-17: join con confirmations por `confirmation_id` (FK
+  // directa, no por `idempotency_key` regex). Mucho mas simple.
   const confById = new Map(confRows.map((c) => [c.id, c]));
   const payments: EventPaymentRow[] = eventPayments.map((p) => {
-    let confId: string | null = null;
-    if (p.provider === "manual_admin") {
-      const m = /^manual_admin:([0-9a-f-]+):/.exec(p.idempotency_key ?? "");
-      if (m) confId = m[1];
-    } else {
-      // Para stripe, el metadata no necesariamente trae el confirmationId.
-      // El event_access.payment_id nos da el camino, pero simplificamos:
-      // si hay course_id=null y metadata.product_id = eventId, sacamos
-      // confirmationId del external_reference que es el session id.
-      // Por ahora, dejamos confirmationId=null en este caso (el admin
-      // puede hacer JOIN manual si necesita).
-      confId = null;
-    }
-    const conf = confId ? confById.get(confId) : null;
+    const conf = confById.get(p.confirmation_id) ?? null;
     const md = (p.metadata ?? {}) as Record<string, unknown>;
     return {
       paymentId: p.id,
-      confirmationId: confId ?? "?",
+      confirmationId: p.confirmation_id,
       confirmationName: conf?.name ?? "(sin nombre)",
       confirmationEmail: conf?.email ?? null,
-      method: p.method ?? "unknown",
+      method: p.method,
       amountCentavos: p.amount_mxn,
       currency: p.currency,
       status: p.status,
-      provider: p.provider,
+      // Para `event_payments`, `provider` no existe separado. Usamos
+      // el metodo como proxy: stripe -> "stripe", cash -> "manual_admin",
+      // etc. Esto preserva la UI del admin (que filtra por provider).
+      provider: p.method === "cash" || p.method === "transfer" || p.method === "card_manual"
+        ? "manual_admin"
+        : p.method,
       externalReference: p.external_reference,
       notes: typeof md.notes === "string" ? md.notes : null,
-      isManual: p.provider === "manual_admin",
+      isManual: p.method === "cash" || p.method === "transfer" || p.method === "card_manual",
       stripeVerified:
-        p.provider === "stripe" && md.verification === undefined
-          ? true
-          : typeof md.stripe_payment_intent_id === "string",
+        p.method === "stripe" && typeof md.session_id === "string",
       createdAt: p.created_at,
     };
   });

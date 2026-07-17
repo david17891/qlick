@@ -175,14 +175,26 @@ export async function notifyLeadPaymentConfirmed(
         const amountText = args.amountTotalMXN
           ? ` de $${args.amountTotalMXN.toLocaleString("es-MX")} MXN `
           : " ";
+        // FIX 2026-07-17 (sprint event-payments manual flow, feedback David):
+        // el mensaje de "pago en puerta" original era confuso ("Tu pago
+        // en puerta quedó registrado") — el usuario no entiende que YA
+        // quedo registrado. Lo cambiamos a un comprobante claro con
+        // los datos del pago (monto, metodo, fecha) + link al QR.
+        // Para pagos online (stripe), mantenemos el mensaje corto de
+        // "pago confirmado" que ya funcionaba.
+        const eventStart = evt?.startsAt ? new Date(evt.startsAt).toLocaleDateString("es-MX", { day: "numeric", month: "long" }) : "";
         const bodyText =
           ps === "paid_manual"
-            ? `✅ Tu pago en puerta quedó registrado${amountText}` +
-              `para *${eventTitle}*. ` +
-              `Te esperamos el día del evento. ` +
-              `Tu pase digital te lo re-enviamos al correo por si lo necesitas.`
+            ? `✅ *Comprobante de pago — ${eventTitle}*\n\n` +
+              `💰 Monto: $${(args.amountTotalMXN ?? 0).toLocaleString("es-MX")} MXN\n` +
+              `💵 Método: Efectivo (pago en puerta)\n` +
+              `📅 Fecha: ${new Date().toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" })}\n` +
+              `🎟 Tu QR de acceso está listo${eventStart ? ` para el ${eventStart}` : ""}.\n\n` +
+              `Te re-enviamos el pase al correo ${leadEmail ?? "(tu email)"} por si lo necesitas. ` +
+              `Nos vemos el día del evento.`
             : `¡Listo! Tu pago${amountText}para *${eventTitle}* se confirmó. ` +
-              `Tu QR ya está validado. Te esperamos el día del evento. ` +
+              `Tu QR ya está validado${eventStart ? ` para el ${eventStart}` : ""}. ` +
+              `Te esperamos el día del evento. ` +
               `Si tienes dudas, responde a este chat.`;
         await provider.send({ to: leadPhone, body: bodyText });
         infoLog(`[${logSource}] WhatsApp enviado`, {
