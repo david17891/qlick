@@ -61,7 +61,7 @@ const stats = {
 };
 for (const c of confs ?? []) {
   const s = c.payment_status ?? "not_required";
-  if (s === "paid") stats.totalPaid++;
+  if (s === "paid" || s === "paid_manual") stats.totalPaid++;
   else if (s === "pending") stats.totalPending++;
   else if (s === "pending_verification") stats.totalPendingVerification++;
   else if (s === "revoked") stats.totalRevoked++;
