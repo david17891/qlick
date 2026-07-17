@@ -180,7 +180,11 @@ export async function getEventPaymentsSnapshot(
 
   for (const c of confRows) {
     const s = c.payment_status ?? "not_required";
-    if (s === "paid") stats.totalPaid++;
+    // FIX 2026-07-17: `paid_manual` (pago en puerta) cuenta como paid
+    // tambien. Antes solo `paid` se contaba → David (paid_manual) no
+    // aparecia en el contador `totalPaid` aunque SÍ estaba aprobado en
+    // event_payments.
+    if (s === "paid" || s === "paid_manual") stats.totalPaid++;
     else if (s === "pending") stats.totalPending++;
     else if (s === "pending_verification") stats.totalPendingVerification++;
     else if (s === "revoked") stats.totalRevoked++;
