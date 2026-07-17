@@ -59,6 +59,7 @@ import { errorLog, infoLog } from "@/lib/log";
 import { grantEventAccess, revokeEventAccess } from "@/lib/lms/event-entitlements";
 import { notifyLeadPaymentConfirmed as notifyLeadPaymentConfirmedLib } from "@/lib/payments/notify-lead-payment-confirmed";
 import { findConfirmationIdForEvent } from "@/lib/events/find-confirmation-id";
+import { ensureEventConfirmation } from "@/lib/events/ensure-event-confirmation";
 import {
   extractProductRefFromMetadata,
   requireStripeWebhookSecret,
@@ -465,22 +466,60 @@ async function handleCheckoutCompleted(
     // El INSERT seguia usando findConfirmationIdForEvent({leadId:userId})
     // que siempre retornaba null → 23502 (NOT NULL). Ahora se hace el
     // email lookup ANTES del INSERT, con el mismo patron que el GRANT.
+    //
+    // FIX 2026-07-17 (sprint event-payments bug 13, David
+    // "después de pagar, esperar que se registre mi pago"): si NO
+    // existe la confirmation (caso de guest checkout directo, sin
+    // flow previo del bot), la CREAMOS con source='public_form' y
+    // payment_status='paid' (porque el cargo ya paso). Esto evita
+    // perder el pago (Stripe ya cobro, Qlick no registro nada, lead
+    // se queda colgado). El helper `ensureEventConfirmation` busca
+    // por email o phone, y si no encuentra, inserta con datos
+    // basicos (nombre del customer, email, etc).
+    //
+    // Caso real David 2026-07-17: pago evento $1000 MXN, sin flow
+    // previo del bot. Webhook retorno mode='confirmation_not_found'
+    // sin crear event_payment, event_access, ni email QR. Recover
+    // manual + fix.
     let confLookup: string | null = null;
     if (sessionEmail) {
-      const { data: confByEmail } = await supabase
-        .from("event_confirmations")
-        .select("id")
-        .eq("event_id", productRef.id)
-        .eq("email", sessionEmail)
-        .order("confirmed_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      confLookup = (confByEmail as { id: string } | null)?.id ?? null;
+      const ensured = await ensureEventConfirmation({
+        eventId: productRef.id,
+        email: sessionEmail,
+        name: (session.customer_details?.name as string | undefined) ?? null,
+        // No tenemos phone del session de Stripe; lo dejamos null.
+        // Si hay una confirmation previa con phone matching, el
+        // helper la encuentra via el lookup por phone.
+        source: "public_form",
+        paymentStatus: "paid",
+      }).catch((err) => {
+        // eslint-disable-next-line no-console
+        console.error("[stripe-webhook] ensureEventConfirmation throw", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return null;
+      });
+      if (ensured) {
+        confLookup = ensured.confirmationId;
+        if (ensured.created) {
+          // eslint-disable-next-line no-console
+          console.log(
+            "[stripe-webhook] event_confirmation creada via ensureEventConfirmation (guest checkout)",
+            {
+              confirmationId: ensured.confirmationId,
+              source: ensured.source,
+              eventId: productRef.id,
+              email: sessionEmail,
+            }
+          );
+        }
+      }
     }
     if (!confLookup) {
-      // Fallback: helper legacy (busca por leads.id con phone/email).
-      // Si userId es auth.user.id, este helper va a fallar (leads.id !=
-      // auth.user.id), pero lo dejamos como safety net.
+      // Fallback final: helper legacy (busca por leads.id con
+      // phone/email). Si userId es auth.user.id, este helper va a
+      // fallar (leads.id != auth.user.id), pero lo dejamos como
+      // safety net.
       confLookup = await findConfirmationIdForEvent({
         eventId: productRef.id,
         leadId: userId,
@@ -489,7 +528,7 @@ async function handleCheckoutCompleted(
     if (!confLookup) {
       // eslint-disable-next-line no-console
       console.error(
-        "[stripe-webhook] no se encontro confirmation para event_payment",
+        "[stripe-webhook] no se encontro/creo confirmation para event_payment",
         {
           event_id: event.id,
           session_id: session.id,
@@ -505,7 +544,7 @@ async function handleCheckoutCompleted(
           mode: "confirmation_not_found",
           event_id: event.id,
           note:
-            "No se encontro event_confirmation por email ni por userId. Investigar (probablemente confirmation creada antes del flow actual).",
+            "No se encontro ni se pudo crear event_confirmation (sin email del session). Investigar manualmente.",
         },
       };
     }
@@ -668,6 +707,14 @@ async function handleCheckoutCompleted(
     // FIX 2026-07-16 (sprint event-payments FK): buscar confirmation
     // por email del customer de Stripe (mas robusto que por userId,
     // que a veces es auth.user.id y no matchea con leads.id).
+    //
+    // FIX 2026-07-17 (sprint event-payments bug 13, David
+    // "después de pagar, esperar que se registre mi pago"): si no
+    // existe confirmation, CREAR via ensureEventConfirmation. Esto
+    // es idempotente con el primer bloque (que ya paso por el mismo
+    // helper), pero lo dejamos explicito aca tambien por si el
+    // codigo se reorganiza. En la practica, el primer bloque ya
+    // garantizo que confLookup != null.
     // FIX 2026-07-15f (auditoria): fallback a findConfirmationIdForEvent
     // si el email lookup falla (caso raro de guest checkout sin email).
     const sessionEmail =
@@ -677,15 +724,20 @@ async function handleCheckoutCompleted(
     const supabaseForLookup = createSupabaseAdminClient();
     let confLookup: string | null = null;
     if (sessionEmail) {
-      const { data: confByEmail } = await supabaseForLookup
-        .from("event_confirmations")
-        .select("id")
-        .eq("event_id", productRef.id)
-        .eq("email", sessionEmail)
-        .order("confirmed_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      confLookup = (confByEmail as { id: string } | null)?.id ?? null;
+      const ensured = await ensureEventConfirmation({
+        eventId: productRef.id,
+        email: sessionEmail,
+        name: (session.customer_details?.name as string | undefined) ?? null,
+        source: "public_form",
+        paymentStatus: "paid",
+      }).catch((err) => {
+        // eslint-disable-next-line no-console
+        console.error("[stripe-webhook] ensureEventConfirmation throw (block 2)", {
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return null;
+      });
+      if (ensured) confLookup = ensured.confirmationId;
     }
     if (!confLookup) {
       // Fallback: intentar con el helper legacy (por userId del lead)
