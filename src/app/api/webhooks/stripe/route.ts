@@ -451,18 +451,69 @@ async function handleCheckoutCompleted(
   let payment: { id: string };
   if (productRef.kind === "event" || productRef.kind === "masterclass") {
     // Evento: INSERT en event_payments. Vinculamos a la confirmation
-    // del lead via `findConfirmationIdForEvent` (mismo lookup que
-    // usamos para grantEventAccess). Si no hay confirmationId, lo
-    // insertamos sin FK (legacy o guest sin confirmation).
-    const confLookup = await findConfirmationIdForEvent({
-      eventId: productRef.id,
-      leadId: userId,
-    }).catch(() => null);
+    // del lead via lookup por EMAIL del customer de Stripe (no por
+    // userId: `userId` aqui es `auth.user.id`, no `leads.id`, y el
+    // helper legacy `findConfirmationIdForEvent` busca por `leads.id`
+    // → no matchea). Fallback al helper legacy si email lookup no
+    // encuentra (caso raro de guest checkout sin email). Si TODO
+    // falla, NO podemos insertar con confirmation_id=null (NOT NULL),
+    // asi que devolvemos 200 con mode explicito para que Stripe no
+    // reintente y el operador investigue.
+    //
+    // FIX 2026-07-16b: el commit c33884a (email lookup) solo se habia
+    // aplicado al GRANT event_access, no al INSERT de event_payments.
+    // El INSERT seguia usando findConfirmationIdForEvent({leadId:userId})
+    // que siempre retornaba null → 23502 (NOT NULL). Ahora se hace el
+    // email lookup ANTES del INSERT, con el mismo patron que el GRANT.
+    let confLookup: string | null = null;
+    if (sessionEmail) {
+      const { data: confByEmail } = await supabase
+        .from("event_confirmations")
+        .select("id")
+        .eq("event_id", productRef.id)
+        .eq("email", sessionEmail)
+        .order("confirmed_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      confLookup = (confByEmail as { id: string } | null)?.id ?? null;
+    }
+    if (!confLookup) {
+      // Fallback: helper legacy (busca por leads.id con phone/email).
+      // Si userId es auth.user.id, este helper va a fallar (leads.id !=
+      // auth.user.id), pero lo dejamos como safety net.
+      confLookup = await findConfirmationIdForEvent({
+        eventId: productRef.id,
+        leadId: userId,
+      }).catch(() => null);
+    }
+    if (!confLookup) {
+      // eslint-disable-next-line no-console
+      console.error(
+        "[stripe-webhook] no se encontro confirmation para event_payment",
+        {
+          event_id: event.id,
+          session_id: session.id,
+          event_id_ref: productRef.id,
+          user_id: userId,
+          session_email: sessionEmail,
+        }
+      );
+      return {
+        status: 200,
+        body: {
+          ok: false,
+          mode: "confirmation_not_found",
+          event_id: event.id,
+          note:
+            "No se encontro event_confirmation por email ni por userId. Investigar (probablemente confirmation creada antes del flow actual).",
+        },
+      };
+    }
     const { data: evPayment, error: evPayErr } = await supabase
       // @ts-ignore — event_payments no esta en el typegen (migration 20260715120000).
       .from("event_payments" as never)
       .insert({
-        confirmation_id: confLookup ?? null,
+        confirmation_id: confLookup,
         method: detectMethodFromSession(session),
         status: "approved",
         amount_mxn: amountTotalMXN,
