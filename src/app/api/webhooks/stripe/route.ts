@@ -91,18 +91,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   let secret: string;
   try {
     secret = requireStripeWebhookSecret();
-    // DEBUG TEMPORAL: imprime el whsec_ completo en base64 para detectar
-    // whitespace invisible (newline al final, etc).
-    // REMOVER después de validar.
-    const whsecB64 = Buffer.from(secret).toString("base64");
-    const whsecLen = secret.length;
-    const whsecTrimmed = secret.trim().length;
-    console.log(
-      "[stripe-webhook DEBUG] whsec_b64=" + whsecB64 +
-      " len=" + whsecLen +
-      " trimmed_len=" + whsecTrimmed +
-      " has_trailing_newline=" + (secret.endsWith("\n") || secret.endsWith("\r"))
-    );
   } catch (err) {
     return NextResponse.json(
       {
@@ -618,15 +606,35 @@ async function handleCheckoutCompleted(
     // bot (sino GRANT busca por userId y como el bot dejo userId=null
     // no encontraria el access existente).
     //
-    // FIX 2026-07-15f (auditoria): tambien necesitamos el
-    // confirmationId aqui. Lo buscamos por (event_id + payment metadata
-    // o por (event_id + lead via user_id)). En la mayoria de los
-    // casos viene del checkout que SI tiene userId, asi que pasamos
-    // ambos y el lookup prioriza confirmationId.
-    const confLookup = await findConfirmationIdForEvent({
-      eventId: productRef.id,
-      leadId: userId,
-    }).catch(() => null);
+    // FIX 2026-07-16 (sprint event-payments FK): buscar confirmation
+    // por email del customer de Stripe (mas robusto que por userId,
+    // que a veces es auth.user.id y no matchea con leads.id).
+    // FIX 2026-07-15f (auditoria): fallback a findConfirmationIdForEvent
+    // si el email lookup falla (caso raro de guest checkout sin email).
+    const sessionEmail =
+      (session.customer_email as string | undefined) ??
+      (session.customer_details?.email as string | undefined) ??
+      null;
+    const supabaseForLookup = createSupabaseAdminClient();
+    let confLookup: string | null = null;
+    if (sessionEmail) {
+      const { data: confByEmail } = await supabaseForLookup
+        .from("event_confirmations")
+        .select("id")
+        .eq("event_id", productRef.id)
+        .eq("email", sessionEmail)
+        .order("confirmed_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      confLookup = (confByEmail as { id: string } | null)?.id ?? null;
+    }
+    if (!confLookup) {
+      // Fallback: intentar con el helper legacy (por userId del lead)
+      confLookup = await findConfirmationIdForEvent({
+        eventId: productRef.id,
+        leadId: userId,
+      }).catch(() => null);
+    }
     await grantEventAccess({
       userId,
       confirmationId: confLookup,
