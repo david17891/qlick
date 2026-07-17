@@ -60,6 +60,7 @@ import { checkEventAccess, grantEventAccess } from "@/lib/lms/event-entitlements
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getPaymentProvider } from "@/lib/payments";
 import type { ProductRef } from "@/lib/payments/payment-provider";
+import { resolveCheckoutUrl } from "@/lib/payments/checkout-url-resolver";
 import type { PaymentMethod } from "@/types";
 
 // Forzar Node.js (Stripe SDK + Supabase necesitan Node APIs).
@@ -75,6 +76,29 @@ interface CreateCheckoutBody {
    */
   productKind?: unknown;
   method?: unknown;
+  /**
+   * FIX 2026-07-17 (sprint event-payments bug 12, David
+   * "después de pagar con tarjeta, me sigue mandando a dashboard
+   * como si me inscribiera al curso"): URLs explícitas de retorno
+   * post-pago. El cliente (CheckoutButton) las manda ya con el
+   * prefijo correcto (`/pagar/evento/[slug]/exito` o
+   * `/pagar/[courseSlug]/exito`). Antes este endpoint las
+   * IGNORABA y armaba sus propias URLs con
+   * `${requestOrigin}/pagar/${productRef.slug}/exito` — que para
+   * eventos matchea la página de éxito del CURSO
+   * (`/pagar/[courseSlug]/exito`), y esa página redirige a
+   * `/dashboard` cuando no encuentra el curso por slug.
+   *
+   * Si el cliente las manda, las usamos. Si NO las manda,
+   * construimos las nuestras con el prefijo correcto según
+   * `productKind` (`/pagar/evento/[slug]/exito` para eventos,
+   * `/pagar/[slug]/exito` para cursos). Validamos que sean URLs
+   * absolutas y del mismo origin del request (defense vs open
+   * redirect).
+   */
+  successUrl?: unknown;
+  cancelUrl?: unknown;
+  pendingUrl?: unknown;
 }
 
 type SupportedProductKind = "course" | "event";
@@ -216,15 +240,55 @@ export async function POST(req: NextRequest) {
   // 4. Crear el checkout en el provider activo.
   const provider = getPaymentProvider();
 
-  // success/cancel URLs: armamos URLs absolutas usando el origin del request
-  // actual. Funciona en local (localhost:3000), preview (hash.vercel.app) y
-  // prod (qlick.digital) sin depender de NEXT_PUBLIC_APP_URL (que no está
-  // seteado en Preview). Stripe API rechaza URLs relativas con "Not a valid
-  // URL", por eso armamos el absoluto acá.
+  // success/cancel/pending URLs:
+  //   1) Si el cliente (CheckoutButton) las manda en el body, las usamos
+  //      (validamos que sean absolutas y del mismo origin del request —
+  //      defense vs open redirect).
+  //   2) Si NO las manda, armamos el default usando el origin del request
+  //      actual. Funciona en local (localhost:3000), preview (hash.vercel.app)
+  //      y prod (qlick.digital) sin depender de NEXT_PUBLIC_APP_URL (que no
+  //      está seteado en Preview). Stripe API rechaza URLs relativas con
+  //      "Not a valid URL", por eso armamos el absoluto acá.
+  //
+  // FIX 2026-07-17 (sprint event-payments bug 12, David "después de
+  // pagar con tarjeta, me sigue mandando a dashboard como si me
+  // inscribiera al curso"): el default AHORA incluye el prefijo
+  // `/evento/` cuando productKind === "event". Antes armaba
+  // `/pagar/${slug}/exito` que matcheaba la página de éxito del CURSO
+  // (`/pagar/[courseSlug]/exito`), y esa página redirigia a
+  // `/dashboard` cuando no encontraba el curso por slug.
   const requestOrigin = new URL(req.url).origin;
-  const successUrl = `${requestOrigin}/pagar/${productRef.slug}/exito?session_id={CHECKOUT_SESSION_ID}`;
-  const cancelUrl = `${requestOrigin}/pagar/${productRef.slug}?cancelled=1`;
-  const pendingUrl = `${requestOrigin}/pagar/${productRef.slug}/exito?status=pending`;
+  const baseExitoPath =
+    productKind === "event"
+      ? `/pagar/evento/${productRef.slug}/exito`
+      : `/pagar/${productRef.slug}/exito`;
+  const baseCancelPath =
+    productKind === "event"
+      ? `/pagar/evento/${productRef.slug}`
+      : `/pagar/${productRef.slug}`;
+
+  const defaultSuccessUrl = `${requestOrigin}${baseExitoPath}?session_id={CHECKOUT_SESSION_ID}`;
+  const defaultCancelUrl = `${requestOrigin}${baseCancelPath}?cancelled=1`;
+  const defaultPendingUrl = `${requestOrigin}${baseExitoPath}?status=pending`;
+
+  const successUrl = resolveCheckoutUrl(
+    body.successUrl,
+    defaultSuccessUrl,
+    requestOrigin,
+    "successUrl"
+  );
+  const cancelUrl = resolveCheckoutUrl(
+    body.cancelUrl,
+    defaultCancelUrl,
+    requestOrigin,
+    "cancelUrl"
+  );
+  const pendingUrl = resolveCheckoutUrl(
+    body.pendingUrl,
+    defaultPendingUrl,
+    requestOrigin,
+    "pendingUrl"
+  );
 
   // 4b. BECAS / CUPON 100% (FASE 2 V3): si course.priceMXN === 0, NO
   // creamos sesion de Stripe (que rechazaria amount=0 con 400 Invalid
