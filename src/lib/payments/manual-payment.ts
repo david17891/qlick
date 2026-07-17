@@ -387,12 +387,41 @@ export async function registerManualPayment(
     }
   }
 
-  // 4. Crear el row en payments.
+  // 4. Crear el row en event_payments.
+  // FIX 2026-07-17 (sprint event-payments manual flow): el codigo
+  // original insertaba en `payments` (legacy de cursos), pero esa
+  // tabla NO tiene columna `metadata` → 23514 silenciosamente
+  // (error visible: "Could not find the 'metadata' column of 'payments'").
+  // `event_payments` (nueva tabla, migration 20260715120000) SI tiene
+  // `metadata` y FK a `event_confirmations`. Movemos el INSERT ahi.
+  //
+  // Mapping de metodos (event_payments_method_check):
+  //   - card       → "card_manual"
+  //   - oxxo       → "other" (no hay categoria especifica)
+  //   - spei       → "other"
+  //   - cash       → "cash" ✓
+  //   - transfer   → "transfer" ✓
+  //
+  // Mapping de status (event_payments_status_check):
+  //   - "paid"               → "paid_manual" (admin confirma a mano)
+  //   - "pending_verification" → "pending" (con metadata que documenta)
+  const eventPaymentMethod = (
+    input.method === "cash" ? "cash" :
+    input.method === "transfer" ? "transfer" :
+    input.method === "card" ? "card_manual" :
+    "other"  // oxxo, spei
+  ) as "cash" | "transfer" | "card_manual" | "other";
+  const eventPaymentStatus = (
+    finalPaymentStatus === "paid" ? "paid_manual" : "pending"
+  ) as "paid_manual" | "pending";
+
   const amountCentavos = Math.round(input.amountMXN * 100);
   const paymentMetadata: Record<string, unknown> = {
     manual: true,
     actor_email: input.actorEmail,
     notes: input.notes ?? null,
+    original_method: input.method,
+    verification_status: finalPaymentStatus,
     verification: verification
       ? {
           ok: verification.ok,
@@ -402,19 +431,18 @@ export async function registerManualPayment(
         }
       : null,
   };
+  const idempotencyKey = `manual_admin:${input.confirmationId}:${Date.now()}`;
+  const externalReference = `manual_admin_${input.confirmationId}_${Date.now()}`;
   const { data: payment, error: payErr } = await supabase
-    .from("payments")
+    .from("event_payments" as never)
     .insert({
-      user_id: null, // admin-triggered; no hay user_id de estudiante aca
-      course_id: null,
-      provider: "manual_admin",
-      external_reference: `manual_admin_${input.confirmationId}_${Date.now()}`,
-      amount_mxn: amountCentavos, // La columna es integer (centavos)
-      discount_mxn: 0,
+      confirmation_id: input.confirmationId,
+      method: eventPaymentMethod,
+      status: eventPaymentStatus,
+      amount_mxn: amountCentavos,
       currency: "MXN",
-      status: finalPaymentStatus === "paid" ? "approved" : "pending",
-      method: input.method,
-      idempotency_key: `manual_admin:${input.confirmationId}:${Date.now()}`,
+      external_reference: externalReference,
+      idempotency_key: idempotencyKey,
       metadata: paymentMetadata,
     } as never)
     .select("id")
@@ -426,6 +454,10 @@ export async function registerManualPayment(
       error: `Error creando payment: ${payErr?.message ?? "unknown"}`,
     };
   }
+  // Cast: el `as never` del insert hace que el response type tambien
+  // sea `never`. Forzamos el shape del row para que el resto del flow
+  // (grantEventAccess, audit log) pueda usar `paymentId`.
+  const paymentId = (payment as unknown as { id: string }).id;
 
   // 5. Crear/actualizar event_access.
   // grantEventAccess ya es idempotente. Si ya habia uno active del mismo
@@ -451,7 +483,7 @@ export async function registerManualPayment(
         userId,
         eventId: input.eventId,
         source: "manual_event_admin",
-        paymentId: payment.id,
+        paymentId: paymentId,
         grantedReason: `manual_admin_${input.method}_${new Date()
           .toISOString()
           .slice(0, 16)}`,
@@ -481,7 +513,7 @@ export async function registerManualPayment(
   if (updateErr) {
     return {
       ok: false,
-      paymentId: payment.id,
+      paymentId: paymentId,
       eventAccessId,
       error: `Error actualizando payment_status: ${updateErr.message}`,
     };
@@ -503,7 +535,7 @@ export async function registerManualPayment(
       final_payment_status: finalPaymentStatus,
     },
     before: { payment_status: confTyped.payment_status },
-    after: { payment_status: finalPaymentStatus, payment_id: payment.id },
+    after: { payment_status: finalPaymentStatus, payment_id: paymentId },
   });
 
   // 8. Email transaccional: "recibimos tu pago". Solo cuando el pago
@@ -558,7 +590,7 @@ export async function registerManualPayment(
 
   return {
     ok: true,
-    paymentId: payment.id,
+    paymentId: paymentId,
     eventAccessId,
     paymentStatus: finalPaymentStatus,
     stripePaymentIntentId: verification?.paymentIntentId,
@@ -687,3 +719,4 @@ export async function revokeManualPayment(params: {
     note: `Pago revocado. Razon: ${params.reason}`,
   };
 }
+
