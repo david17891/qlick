@@ -183,7 +183,9 @@ export type PaymentStatus =
   | "approved"
   | "rejected"
   | "expired"
-  | "refunded";
+  | "refunded"
+  | "failed"
+  | "disputed";
 
 export type PaymentMethod =
   | "card"

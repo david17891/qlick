@@ -60,6 +60,7 @@ import { grantEventAccess, revokeEventAccess } from "@/lib/lms/event-entitlement
 import { notifyLeadPaymentConfirmed as notifyLeadPaymentConfirmedLib } from "@/lib/payments/notify-lead-payment-confirmed";
 import { findConfirmationIdForEvent } from "@/lib/events/find-confirmation-id";
 import { ensureEventConfirmation } from "@/lib/events/ensure-event-confirmation";
+import { logAdminAction } from "@/lib/crm/audit-server";
 import {
   extractProductRefFromMetadata,
   requireStripeWebhookSecret,
@@ -213,6 +214,22 @@ async function processStripeEvent(
       // Fase 4: refund real → revoke. Implementación básica ya incluida
       // para no acumular deuda técnica.
       return await handleChargeRefunded(event, idempotencyKey);
+
+    case "charge.dispute.created":
+      // FIX 2026-07-18 (sprint Stripe Live prep): chargeback/ disputa.
+      // Marcamos el payment como "disputed" y notificamos al admin
+      // para que pueda responder dentro del plazo de Stripe (7-14 días
+      // dependiendo del tipo de disputa). NO revocamos access todavía:
+      // la disputa puede resolverse a favor nuestro.
+      return await handleChargeDispute(event, idempotencyKey);
+
+    case "payment_intent.payment_failed":
+      // FIX 2026-07-18 (sprint Stripe Live prep): tarjeta rechazada con
+      // 3DS failure o fondos insuficientes. El checkout.session puede
+      // expirar después, pero este evento llega antes y permite al
+      // admin ver el motivo exacto. Marcamos como "failed" si tenemos
+      // un payment en DB.
+      return await handlePaymentIntentFailed(event, idempotencyKey);
 
     default:
       // Otros eventos: ignorar pero devolver 200 para no reintentar.
@@ -1101,6 +1118,258 @@ async function handleChargeRefunded(
       mode: "refund_processed",
       event_id: event.id,
       payment_id: paymentId,
+    },
+  };
+}
+
+/**
+ * FIX 2026-07-18 (sprint Stripe Live prep):
+ * `charge.dispute.created` — el cliente inició un chargeback en su banco.
+ *
+ * Comportamiento:
+ *  1. Buscar el payment asociado en `payments` (cursos) o `event_payments`
+ *     (eventos) por el `charge.id` o `payment_intent.id` en
+ *     `external_reference`.
+ *  2. Marcar el payment como `disputed` (NO revocar access todavía: la
+ *     disputa puede resolverse a nuestro favor con evidencia).
+ *  3. Loggear via `logAdminAction` para que aparezca en el admin
+ *     y David pueda responder dentro del plazo de Stripe
+ *     (evidence_due_by date en el payload).
+ *
+ * Si no encontramos payment, devolvemos 200 + `dispute_no_payment` para
+ * no acumular retries (es un caso edge: la disputa es de un charge
+ * creado fuera del flujo de Qlick).
+ */
+async function handleChargeDispute(
+  event: Stripe.Event,
+  _idempotencyKey: string
+): Promise<ProcessOutcome> {
+  const dispute = event.data.object as Stripe.Dispute;
+  const supabase = createSupabaseAdminClient();
+
+  // Resolver el charge para obtener el payment_intent.
+  // Stripe a veces incluye el charge completo en el dispute, pero por
+  // seguridad lo cargamos si solo tenemos el charge id.
+  let chargeId: string | null = null;
+  let paymentIntentId: string | null = null;
+  if (typeof dispute.charge === "string") {
+    chargeId = dispute.charge;
+  } else if (dispute.charge) {
+    chargeId = dispute.charge.id;
+    if (typeof dispute.charge.payment_intent === "string") {
+      paymentIntentId = dispute.charge.payment_intent;
+    } else if (dispute.charge.payment_intent) {
+      paymentIntentId = dispute.charge.payment_intent.id;
+    }
+  }
+
+  // Buscar primero por payment_intent (más preciso) y luego por charge.
+  // El `external_reference` se setea con `session.id` o `payment_intent.id`
+  // en el path de create-checkout (ver `createCheckout` en stripe-provider.ts).
+  let paymentKind: "course" | "event" | null = null;
+  let paymentId: string | null = null;
+
+  if (paymentIntentId) {
+    const { data: coursePay } = await supabase
+      .from("payments")
+      .select("id")
+      .eq("provider", "stripe")
+      .eq("external_reference", paymentIntentId)
+      .maybeSingle();
+    if (coursePay) {
+      paymentKind = "course";
+      paymentId = (coursePay as { id: string }).id;
+    } else {
+      const { data: evPay } = await supabase
+        .from("event_payments")
+        .select("id")
+        .eq("external_reference", paymentIntentId)
+        .maybeSingle();
+      if (evPay) {
+        paymentKind = "event";
+        paymentId = (evPay as { id: string }).id;
+      }
+    }
+  }
+
+  // Fallback: buscar por charge.id.
+  if (!paymentId && chargeId) {
+    const { data: coursePay } = await supabase
+      .from("payments")
+      .select("id")
+      .eq("provider", "stripe")
+      .eq("external_reference", chargeId)
+      .maybeSingle();
+    if (coursePay) {
+      paymentKind = "course";
+      paymentId = (coursePay as { id: string }).id;
+    } else {
+      const { data: evPay } = await supabase
+        .from("event_payments")
+        .select("id")
+        .eq("external_reference", chargeId)
+        .maybeSingle();
+      if (evPay) {
+        paymentKind = "event";
+        paymentId = (evPay as { id: string }).id;
+      }
+    }
+  }
+
+  if (!paymentId || !paymentKind) {
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        mode: "dispute_no_payment",
+        event_id: event.id,
+        note: "Disputa recibida pero sin payment asociado en Qlick. Probablemente creado fuera del flujo.",
+      },
+    };
+  }
+
+  // Marcar como disputed. NO revocar access (la disputa puede ganarse).
+  if (paymentKind === "course") {
+    await supabase
+      .from("payments")
+      .update({ status: "disputed" as PaymentStatus })
+      .eq("id", paymentId);
+  } else {
+    await supabase
+      .from("event_payments")
+      .update({ status: "disputed" })
+      .eq("id", paymentId);
+  }
+
+  // Audit log: queda en el admin para que David lo vea y responda.
+  await logAdminAction({
+    actor_email: "stripe-webhook",
+    action: "payment_dispute_created",
+    entity_type: paymentKind === "course" ? "payment" : "event_payment",
+    entity_id: paymentId,
+    metadata: {
+      dispute_id: dispute.id,
+      reason: dispute.reason,
+      amount_cents: dispute.amount,
+      currency: dispute.currency,
+      evidence_due_by: dispute.evidence_details?.due_by
+        ? new Date(dispute.evidence_details.due_by * 1000).toISOString()
+        : null,
+      charge_id: chargeId,
+      payment_intent_id: paymentIntentId,
+      stripe_event_id: event.id,
+    },
+    before: null,
+    after: { status: "disputed" },
+  });
+
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      mode: "dispute_processed",
+      event_id: event.id,
+      payment_id: paymentId,
+      payment_kind: paymentKind,
+    },
+  };
+}
+
+/**
+ * FIX 2026-07-18 (sprint Stripe Live prep):
+ * `payment_intent.payment_failed` — la tarjeta fue rechazada (3DS
+ * failure, fondos insuficientes, card expired, etc.).
+ *
+ * Llega ANTES de `checkout.session.expired` (que también disparamos
+ * en el switch). Marcamos cualquier payment existente como `failed`
+ * para que el admin pueda ver el motivo exacto en el panel.
+ *
+ * Si no hay payment (porque el checkout nunca completó), devolvemos
+ * 200 + `failed_no_payment` para no acumular retries.
+ */
+async function handlePaymentIntentFailed(
+  event: Stripe.Event,
+  _idempotencyKey: string
+): Promise<ProcessOutcome> {
+  const pi = event.data.object as Stripe.PaymentIntent;
+  const supabase = createSupabaseAdminClient();
+
+  // Buscar en payments (cursos) por external_reference = payment_intent.id.
+  let paymentKind: "course" | "event" | null = null;
+  let paymentId: string | null = null;
+
+  const { data: coursePay } = await supabase
+    .from("payments")
+    .select("id")
+    .eq("provider", "stripe")
+    .eq("external_reference", pi.id)
+    .maybeSingle();
+  if (coursePay) {
+    paymentKind = "course";
+    paymentId = (coursePay as { id: string }).id;
+  } else {
+    const { data: evPay } = await supabase
+      .from("event_payments")
+      .select("id")
+      .eq("external_reference", pi.id)
+      .maybeSingle();
+    if (evPay) {
+      paymentKind = "event";
+      paymentId = (evPay as { id: string }).id;
+    }
+  }
+
+  if (!paymentId || !paymentKind) {
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        mode: "failed_no_payment",
+        event_id: event.id,
+        note: "PaymentIntent.failed recibido pero sin payment en Qlick (probablemente checkout nunca completó).",
+      },
+    };
+  }
+
+  // Marcar como failed. NO crear access ni enviar email (eso lo hace
+  // el handler de checkout.session.completed cuando llega el success).
+  if (paymentKind === "course") {
+    await supabase
+      .from("payments")
+      .update({ status: "failed" as PaymentStatus })
+      .eq("id", paymentId);
+  } else {
+    await supabase
+      .from("event_payments")
+      .update({ status: "failed" })
+      .eq("id", paymentId);
+  }
+
+  // Audit log con el motivo del fallo (decline_code, last_payment_error).
+  await logAdminAction({
+    actor_email: "stripe-webhook",
+    action: "payment_failed",
+    entity_type: paymentKind === "course" ? "payment" : "event_payment",
+    entity_id: paymentId,
+    metadata: {
+      payment_intent_id: pi.id,
+      decline_code: pi.last_payment_error?.code ?? null,
+      decline_message: pi.last_payment_error?.message ?? null,
+      payment_method: pi.payment_method_types?.[0] ?? null,
+      stripe_event_id: event.id,
+    },
+    before: null,
+    after: { status: "failed" },
+  });
+
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      mode: "payment_failed_processed",
+      event_id: event.id,
+      payment_id: paymentId,
+      payment_kind: paymentKind,
     },
   };
 }

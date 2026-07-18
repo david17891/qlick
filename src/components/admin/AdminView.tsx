@@ -31,7 +31,9 @@ const statusTone: Record<PaymentStatus, "success" | "warning" | "danger" | "neut
   pending: "warning",
   rejected: "danger",
   expired: "neutral",
-  refunded: "info"
+  refunded: "info",
+  failed: "danger",
+  disputed: "warning"
 };
 
 const statusLabel: Record<PaymentStatus, string> = {
@@ -39,7 +41,9 @@ const statusLabel: Record<PaymentStatus, string> = {
   pending: "Pendiente",
   rejected: "Rechazado",
   expired: "Vencido",
-  refunded: "Reembolsado"
+  refunded: "Reembolsado",
+  failed: "Falló",
+  disputed: "En disputa"
 };
 
 export function AdminView(
