@@ -5752,6 +5752,27 @@ export async function processInboundMessage(
     const name = body.trim();
     const looksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(name);
     const wordCount = name.split(/\s+/).filter(Boolean).length;
+    // FIX 2026-07-18 (sprint bot, David "guarda el nombre como nombre y
+    // correo"): si el body contiene un email embebido (caso
+    // implicit_capture), el FALLBACK NO debe persistir el body completo
+    // en `leads.name`. El bloque `implicit_capture` (línea 6978+)
+    // maneja la persistencia con el nombre limpio (sin el email).
+    // Antes este FALLBACK pisaba `leads.name` con el body completo
+    // ("David Antonio y David17891@gmail.com"), causando que el bot
+    // saludara después como "Gracias David Antonio y David17891@gmail.com"
+    // en interactive_event_inscribir.
+    //
+    // Detección: usamos el mismo regex que `extractNameAndEmailTogether`
+    // (línea 697) para mantener consistencia. Si el body tiene un email
+    // embebido Y el resto pasa `isValidHumanName`, saltamos este UPDATE
+    // y dejamos que el bloque implicit_capture haga su trabajo.
+    const hasEmbeddedEmail = /[^\s@]+@[^\s@]+\.[^\s@.,;:]+/.test(name);
+    if (hasEmbeddedEmail) {
+      debugLog(
+        "[whatsapp/bot] provide_name FALLBACK: skip update, body tiene email embebido (caso implicit_capture)",
+        { leadId: lead.id, bodyLength: name.length }
+      );
+    }
     // Solo persistir si pasó las validaciones del handler (no email,
     // 2+ palabras, <=100 chars). Si falló la validación, NO actualizamos.
     // FIX 2026-07-10 (sesión David "FALLBACK captura 'Quiero'/'!hola!' como
@@ -5763,6 +5784,7 @@ export async function processInboundMessage(
     // in depth: si NO pasa `isValidHumanName`, NO guardar.
     if (
       !looksLikeEmail &&
+      !hasEmbeddedEmail &&
       wordCount >= 2 &&
       name.length <= 100 &&
       isValidHumanName(name)
