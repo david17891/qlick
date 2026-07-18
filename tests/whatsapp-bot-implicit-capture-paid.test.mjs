@@ -51,8 +51,13 @@ const FAKE_EVENT_PRESENCIAL = {
   short_code: "PYT5",
   title: "Marketing + IA para Emprendedores (Copia - Pago)",
   description: "Taller presencial en Mexicali.",
-  starts_at: "2026-07-17T18:00:00.000Z",
-  ends_at: "2026-07-17T20:00:00.000Z",
+  // FIX 2026-07-18: starts_at en el FUTURO para que el filtro
+  // `gte(now - 6h)` de `loadAllActiveEvents` no lo excluya. Antes
+  // tenía "2026-07-17T18:00:00Z" que con el tiempo quedó en el
+  // pasado y los tests REGRESION fallaban. Mismo fix que el de
+  // production (`loadAllActiveEvents` tiene grace de 6h).
+  starts_at: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
+  ends_at: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000 + 2 * 60 * 60 * 1000).toISOString(),
   location: "Mexicali, BC",
   status: "published",
   requires_name: true,

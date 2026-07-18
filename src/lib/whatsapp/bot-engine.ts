@@ -6621,6 +6621,15 @@ export async function processInboundMessage(
     (intent === "provide_email" || intent === "provide_name") &&
     supabase
   ) {
+    // FIX 2026-07-18 (audit David, regresion test 985/986): el bloque
+    // completo se ejecuta para AMBOS provide_email y provide_name
+    // (necesitamos cargar matchedEvent para setear registrationEvent
+    // y registrationEventSlug). El guard de "requires_name" abajo SOLO
+    // aplica a provide_email (es donde bloqueamos la generación del
+    // QR si falta el nombre). Para provide_name el guard NUNCA se
+    // aplica porque el case provide_name ES donde se captura el
+    // nombre.
+    //
     // Cargamos el evento del registration via findEventInConversation.
     // FIX P0-4 (auditoria 2026-07-02): usar phoneNormalized (siempre
     // seteado desde message.from) en vez de lead.phone ?? "" (que puede
@@ -6636,9 +6645,18 @@ export async function processInboundMessage(
     registrationEventSlug = matchedEvent?.slug ?? null;
     registrationEventTitle = matchedEvent?.title ?? null;
     registrationEventRequiresName = matchedEvent?.requiresName === true;
-    if (registrationEventRequiresName && !lead.name?.trim()) {
-      // El evento requiere nombre y el lead no lo dio. Pedimos nombre
-      // antes de avanzar al QR. NO generamos QR, NO enviamos email.
+    if (
+      intent === "provide_email" &&
+      registrationEventRequiresName &&
+      !lead.name?.trim()
+    ) {
+      // FIX 2026-07-18 (audit David, regresion test 985/986): este
+      // guard SOLO se aplica a provide_email. Para provide_name
+      // NO se bloquea (es donde se captura el nombre).
+      //
+      // El evento requiere nombre y el lead no lo dio. Pedimos
+      // nombre antes de avanzar al QR. NO generamos QR, NO
+      // enviamos email.
       const bodyText =
         `Antes del email necesito tu nombre completo (es para el ` +
         `certificado). Por favor mándamelo así: "Juan Pérez". Después ` +
