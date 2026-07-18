@@ -4094,10 +4094,29 @@ case "interactive_event_inscribir": {
       // responder la pregunta del lead Y cerrar el turno pidiendo el campo
       // pendiente. Inyectamos esa instrucción como un sufijo en
       // lastIncomingMessage para que el LLM la vea en su contexto.
+      //
+      // FIX 2026-07-18 (sprint bot, David "Más info → Gracias, ahora tu
+      // email"): el sufijo se inyectaba SIEMPRE que pendingAwaitingField
+      // estaba set, incluso cuando el body del lead era una PREGUNTA
+      // LIBRE ("Más info", "Qué incluye", "Quién expone") y NO una
+      // respuesta al flow. El LLM priorizaba el sufijo y generaba copy
+      // tipo "Gracias, ahora tu email" pisando la respuesta a la
+      // pregunta. Fix: solo inyectar el sufijo cuando el body PARECE
+      // una respuesta al flow (email válido, nombre válido, o ack
+      // corto). Si el body es texto libre sin estructura de respuesta,
+      // NO inyectar → el LLM responde SOLO a la pregunta y deja el
+      // awaiting_field intacto para el próximo turno.
       const pendingAwaitingField = args.pendingAwaitingField ?? null;
-      const lastIncomingMessageWithReminder = pendingAwaitingField
-        ? `${body}\n\n[Recordatorio interno: el bot está esperando que el lead entregue su ${pendingAwaitingField}. Después de responder la duda, cierra el mensaje pidiendo ese dato.]`
-        : body;
+      const bodyLooksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.trim());
+      const bodyWordCount = body.trim().split(/\s+/).filter(Boolean).length;
+      const bodyLooksLikeName = bodyWordCount >= 2 && isValidHumanName(body.trim());
+      const bodyLooksLikeAck = isAckOnly(body);
+      const bodyLooksLikeFlowResponse =
+        bodyLooksLikeEmail || bodyLooksLikeName || bodyLooksLikeAck;
+      const lastIncomingMessageWithReminder =
+        pendingAwaitingField && bodyLooksLikeFlowResponse
+          ? `${body}\n\n[Recordatorio interno: el bot está esperando que el lead entregue su ${pendingAwaitingField}. Después de responder la duda, cierra el mensaje pidiendo ese dato.]`
+          : body;
       // Sprint v15 PR #2.5b (I-FINAL-5): calculamos tipo de oferta, reglas
       // locales e isFreeEvent ANTES del `if (rateLimit.allowed)` para que
       // estén disponibles en todo el case (también post-AgentResult para
