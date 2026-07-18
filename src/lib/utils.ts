@@ -49,13 +49,24 @@ export function slugify(input: string): string {
  * URL base pública de la app (sin trailing slash).
  *
  * Usada para construir links absolutos (QR check-in, email CTAs, etc.).
- * Prioridad: `NEXT_PUBLIC_APP_URL` env > fallback a qlick.mx.
+ * Prioridad: `NEXT_PUBLIC_APP_URL` env > fallback a qlick.digital.
  *
  * Server-only seguro: el fallback es prod-correcto. En dev local con
  * `npm run dev` la env se setea a `http://localhost:3000`.
+ *
+ * FIX 2026-07-17 (sprint event-payments, David "el qr de confirmacion
+ * llego asi" — broken image en el email): el fallback era
+ * "https://qlick.mx", dominio que NO existe. Como `NEXT_PUBLIC_APP_URL`
+ * estaba vacio en Vercel production, el email del QR se generaba con
+ * un `src` apuntando a `qlick.mx` que no resuelve, y los clientes de
+ * email (Gmail, Apple Mail, etc) NO siguen redirects cross-domain por
+ * defecto → la imagen del QR se rompe (broken image icon, alt text
+ * visible). Cambio el fallback al dominio real `qlick.digital` como
+ * defense-in-depth. Tambien se setea `NEXT_PUBLIC_APP_URL` en Vercel
+ * para que el build lea el valor canonico.
  */
 export function appBaseUrl(): string {
-  return process.env.NEXT_PUBLIC_APP_URL?.trim() || "https://qlick.mx";
+  return process.env.NEXT_PUBLIC_APP_URL?.trim() || "https://qlick.digital";
 }
 
 /**

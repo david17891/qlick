@@ -5685,3 +5685,42 @@ constraints escapan del upsert y caen al codigo de error
 "el input trae un valor valido y el existing tiene un
 placeholder" y actualizar el existing. Caso contrario, el
 placeholder se queda para siempre.
+
+---
+
+## 2026-07-17 — Bug 16: appBaseUrl fallback apunta a dominio inexistente (QR roto en email)
+
+**Síntoma:** David reportó que el email QR llegó pero la imagen del QR se
+mostraba como "broken image" (alt text visible, icono de imagen rota).
+El copy/badge "PAGO CONFIRMADO" sí se veía bien.
+
+**Causa raíz:** \src/lib/utils.ts:appBaseUrl()\ tenía fallback
+\"https://qlick.mx"\, dominio que **NO existe** (el dominio real es
+\qlick.digital\). Como \NEXT_PUBLIC_APP_URL\ estaba VACÍO en Vercel
+production, todos los URLs absolutos construidos por el helper (QR
+check-in, email CTAs, etc) apuntaban a \qlick.mx\. El email cliente
+no podía fetch la imagen del QR → broken image.
+
+**Fix:**
+1. \src/lib/utils.ts\: fallback \"https://qlick.mx"\ → \"https://qlick.digital"\.
+   Defense-in-depth: aunque la env var esté vacía, el fallback correcto
+   evita este bug recurrente.
+2. \.env.local\: \NEXT_PUBLIC_APP_URL="https://qlick.digital"\.
+3. Vercel production: \NEXT_PUBLIC_APP_URL=https://qlick.digital\
+   via API REST (id \ HZTHocWFlozib2e\, type \plain\, target \production\).
+   Necesita redeploy para tomar efecto.
+
+**Verificación:**
+- Re-envío manual del notify para V2 → email llegó con el QR URL
+  apuntando a \qlick.digital\.
+- Curl a \https://www.qlick.digital/api/event-qr/<token>.png\ →
+  200 OK, \Content-Type: image/png\, \Content-Length: 3883\ ✓
+- Curl a \https://qlick.digital/api/event-qr/test-token.png\ →
+  308 redirect a \www.qlick.digital\ (los email clients
+  NO siguen este redirect cross-domain).
+
+**Pendiente (post-deploy):**
+- Verificar que el email del próximo pago salga con QR visible sin
+  tener que re-enviarlo manualmente.
+- Audit: ¿hay otros lugares que asuman \qlick.digital\ hardcodeado
+  en vez de usar \ppBaseUrl()\?
