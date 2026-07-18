@@ -39,7 +39,8 @@ export const leadSourceLabel: Record<LeadSource, string> = {
   event: "Evento",
   manual: "Carga manual",
   organic: "Orgánico",
-  other: "Otro"
+  other: "Otro",
+  synthetic_lab: "Lab sintético"
 };
 
 export const leadIntentLabel: Record<LeadIntent, string> = {

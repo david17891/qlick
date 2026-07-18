@@ -412,6 +412,11 @@ async function handleCheckoutCompleted(
       delta_centavos: actualAmountCentavos - expectedAmountCentavos,
     });
     // Insertar payment como suspicious para auditoria. NO grant access.
+    // FIX 2026-07-18 (audit): payments.metadata NO existe en DB
+    // (verificado via /rest/v1/payments?select=metadata → 42703).
+    // El codigo original metia el campo dentro de un `as any` que
+    // silenciaba TS. Removemos el campo. Si se quiere auditoria
+    // detallada, agregar columna via migration en sprint futuro.
     await supabase.from("payments").insert({
       user_id: userId,
       course_id: productRef.kind === "course" ? productRef.id : null,
@@ -423,13 +428,7 @@ async function handleCheckoutCompleted(
       status: "suspicious_amount_discrepancy",
       method: detectMethodFromSession(session),
       idempotency_key: `suspicious:${idempotencyKey}`,
-      metadata: {
-        flagged: "amount_discrepancy",
-        expected_mxn: productRef.priceMXN,
-        actual_mxn: actualAmountCentavos / 100,
-        flagged_at: new Date().toISOString(),
-      },
-    } as any);
+    });
     return {
       status: 200,
       body: {
@@ -575,8 +574,7 @@ async function handleCheckoutCompleted(
       };
     }
     const { data: evPayment, error: evPayErr } = await supabase
-      // @ts-ignore — event_payments no esta en el typegen (migration 20260715120000).
-      .from("event_payments" as never)
+      .from("event_payments")
       .insert({
         confirmation_id: confLookup,
         // FIX 2026-07-16c (sprint event-payments FK): usar 'stripe'
@@ -598,7 +596,7 @@ async function handleCheckoutCompleted(
           session_id: session.id,
           user_id: userId,
         },
-      } as never)
+      })
       .select("id")
       .single();
     if (evPayErr || !evPayment) {
@@ -623,8 +621,6 @@ async function handleCheckoutCompleted(
     // Curso: INSERT en payments (legacy, no se mueve).
     const { data: coursePayment, error: payErr } = await supabase
       .from("payments")
-      // @ts-ignore — payments.course_id es nullable en DB (migration 20260707110000)
-      // pero el typegen local aún dice NOT NULL.
       .insert({
         user_id: userId,
         course_id: productRef.kind === "course" ? productRef.id : null,
@@ -636,7 +632,7 @@ async function handleCheckoutCompleted(
         status: "approved" as PaymentStatus,
         method: detectMethodFromSession(session),
         idempotency_key: idempotencyKey,
-      } as any)
+      })
       .select("id")
       .single();
 
@@ -907,7 +903,6 @@ async function handleCheckoutFailed(
   // Insertar payment con status rejected (idempotente).
   const { data: payment, error: payErr } = await supabase
     .from("payments")
-    // @ts-ignore — payments.course_id es nullable en DB (migration 20260707110000).
     .insert({
       user_id: userId,
       course_id: null,
@@ -920,7 +915,7 @@ async function handleCheckoutFailed(
       status: "rejected" as PaymentStatus,
       method: detectMethodFromSession(session),
       idempotency_key: idempotencyKey,
-    } as any)
+    })
     .select("id")
     .single();
 
@@ -963,7 +958,6 @@ async function handleCheckoutExpired(
 
   const { error: payErr } = await supabase
     .from("payments")
-    // @ts-ignore — payments.course_id nullable (migration 20260707110000).
     .insert({
       user_id: userId,
       course_id: null,
@@ -976,7 +970,7 @@ async function handleCheckoutExpired(
       status: "expired" as PaymentStatus,
       method: detectMethodFromSession(session),
       idempotency_key: idempotencyKey,
-    } as any);
+    });
 
   if (payErr && payErr.code !== "23505") {
     throw new Error(
@@ -1032,8 +1026,7 @@ async function handleChargeRefunded(
   } else {
     // 2) Buscar en event_payments (eventos).
     const { data: evPay } = await supabase
-      // @ts-ignore — event_payments no esta en el typegen.
-      .from("event_payments" as never)
+      .from("event_payments")
       .select("id, confirmation_id, amount_mxn, status")
       .eq("external_reference", externalRef)
       .maybeSingle();
@@ -1065,10 +1058,9 @@ async function handleChargeRefunded(
       .eq("id", paymentId);
   } else {
     await supabase
-      // @ts-ignore — event_payments no esta en el typegen.
-      .from("event_payments" as never)
-      .update({ status: "refunded" } as never)
-      .eq("id", paymentId as never);
+      .from("event_payments")
+      .update({ status: "refunded" })
+      .eq("id", paymentId);
   }
 
   // Revocar access.
@@ -1083,9 +1075,8 @@ async function handleChargeRefunded(
     });
   } else if (paymentKind === "event") {
     // Evento: buscar event_access por payment_id.
-    const { data: eventAccess } = await (supabase
-      // @ts-ignore — typegen aún sin event_access.
-      .from("event_access") as any)
+    const { data: eventAccess } = await supabase
+      .from("event_access")
       .select("id, user_id, event_id")
       .eq("payment_id", paymentId)
       .eq("access_status", "active")

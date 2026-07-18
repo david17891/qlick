@@ -48,7 +48,8 @@ export type LeadSource =
   | "event"
   | "manual"
   | "organic"
-  | "other";
+  | "other"
+  | "synthetic_lab";
 
 /** Intención detectada (manualmente o por el agente IA futuro). */
 export type LeadIntent =

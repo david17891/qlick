@@ -40,11 +40,6 @@ import type { Database } from "@/types/supabase";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
-// TODO(post-stripe-migration): regenerar typegen de Supabase para incluir
-// `event_access` en `Database['public']['Tables']`. Hasta entonces,
-// usamos un shape local sincronizado manualmente con la migration
-// 20260707100000_event_access.sql. Ver docs/PAYMENTS_STRIPE_SETUP.md.
-
 /* ------------------------------------------------------------------ */
 /* Tipos                                                              */
 /* ------------------------------------------------------------------ */
@@ -211,8 +206,6 @@ export async function checkEventAccess(
   // 3. Cargar el evento para saber su formato (free vs paid).
   const { data: event, error: eventError } = await supabase
     .from("events")
-    // @ts-ignore — events.price_mxn está en DB (migration 20260707000000)
-    // pero aún no se regeneró el typegen local.
     .select("id, price_mxn, status")
     .eq("id", eventId)
     .maybeSingle();
@@ -316,14 +309,10 @@ export async function grantEventAccess(params: {
   let existingId: string | null = null;
 
   if (params.confirmationId) {
-    // @ts-ignore — event_access.confirmation_id agregado en
-    // migration 20260715131000 (auditoria 2026-07-15f). El typegen
-    // local no lo incluye todavia. Regenerar typegen en sprint
-    // futuro (ver memory MEMORY: A-2 Regenerar typegen).
     const { data: byConf } = await supabase
       .from("event_access")
       .select("id")
-      .eq("confirmation_id" as never, params.confirmationId as never)
+      .eq("confirmation_id", params.confirmationId)
       .eq("event_id", params.eventId)
       .eq("access_status", "active")
       .maybeSingle();
@@ -371,18 +360,15 @@ export async function grantEventAccess(params: {
     access_status: "active",
     access_source: params.source,
     payment_id: params.paymentId ?? null,
-    // @ts-ignore — event_access.confirmation_id agregado en
-    // migration 20260715131000 (auditoria 2026-07-15f). Typegen stale.
     confirmation_id: params.confirmationId ?? null,
     starts_at: now,
     expires_at: params.expiresAt ? params.expiresAt.toISOString() : null,
     granted_reason: params.grantedReason,
   };
 
-  // @ts-ignore — typegen stale (mismo motivo que arriba).
   const { data: created, error: insError } = await supabase
     .from("event_access")
-    .insert(insertPayload as never)
+    .insert(insertPayload)
     .select("*")
     .single();
 

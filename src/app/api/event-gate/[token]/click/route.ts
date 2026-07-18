@@ -24,6 +24,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { createAttendee } from "@/lib/events/attendees-server";
 import { logAdminAction } from "@/lib/crm/audit-server";
+import { appBaseUrl } from "@/lib/utils";
 
 // Tokens QR son 32 chars base64url. Validamos para evitar queries absurdas.
 function isValidToken(t: string | undefined): t is string {
@@ -39,14 +40,14 @@ export async function GET(
   // 1) Validar formato del token.
   if (!isValidToken(token)) {
     return NextResponse.redirect(
-      new URL("/eventos", process.env.NEXT_PUBLIC_APP_URL ?? "https://qlick.mx"),
+      new URL("/eventos", appBaseUrl()),
     );
   }
 
   // 2) Sin Supabase → redirect al home (modo demo).
   if (!checkSupabaseConfig().configured) {
     return NextResponse.redirect(
-      new URL("/eventos", process.env.NEXT_PUBLIC_APP_URL ?? "https://qlick.mx"),
+      new URL("/eventos", appBaseUrl()),
     );
   }
 
@@ -55,19 +56,18 @@ export async function GET(
   // 3) Lookup token + evento en una sola query (JOIN via PostgREST
   // sobre la FK event_qr_tokens.event_id → events.id). Esto colapsa
   // Q1+Q2 del audit comprehensivo (4→2 queries bloqueantes).
-  // Cast `as never` por el typegen stale (mismo patrón que event-tokens.ts).
   const { data: tokenRow, error: tokenErr } = await supabase
-    .from("event_qr_tokens" as never)
+    .from("event_qr_tokens")
     .select(
       "id, event_id, attendee_name, attendee_email, attendee_phone_normalized, expires_at, checked_in_at, events:event_id (id, slug, format, streaming_url)",
     )
-    .eq("token" as never, token)
+    .eq("token", token)
     .maybeSingle();
 
   if (tokenErr || !tokenRow) {
     // Token no existe o expirado → redirect a home de eventos.
     return NextResponse.redirect(
-      new URL("/eventos", process.env.NEXT_PUBLIC_APP_URL ?? "https://qlick.mx"),
+      new URL("/eventos", appBaseUrl()),
     );
   }
 
@@ -93,7 +93,7 @@ export async function GET(
   const event = row.events;
   if (!event) {
     return NextResponse.redirect(
-      new URL("/eventos", process.env.NEXT_PUBLIC_APP_URL ?? "https://qlick.mx"),
+      new URL("/eventos", appBaseUrl()),
     );
   }
 
@@ -103,7 +103,7 @@ export async function GET(
     return NextResponse.redirect(
       new URL(
         `/check-in/${encodeURIComponent(token)}`,
-        process.env.NEXT_PUBLIC_APP_URL ?? "https://qlick.mx",
+        appBaseUrl(),
       ),
     );
   }
@@ -115,7 +115,7 @@ export async function GET(
     return NextResponse.redirect(
       new URL(
         `/eventos/${encodeURIComponent(event.slug)}?pending_stream=1`,
-        process.env.NEXT_PUBLIC_APP_URL ?? "https://qlick.mx",
+        appBaseUrl(),
       ),
     );
   }

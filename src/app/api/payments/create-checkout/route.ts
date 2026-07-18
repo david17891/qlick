@@ -470,6 +470,9 @@ async function grantScholarshipInline(
   //    Usamos idempotency_key unico por intento (no se reconcilia contra
   //    eventos externos). En casos reales, hash de (userId, courseId,
   //    timestamp_bucket_5min) previene doble click en UI.
+  // FIX 2026-07-18 (audit): payments.metadata NO existe en DB.
+  // Removemos el campo. La razon de scholarship queda en
+  // external_reference (formato `scholarship_<userId>_<courseId>`).
   const paymentIdemKey = `scholarship:${userId}:${productRef.id}:${Date.now()}`;
   const { data: payment, error: payErr } = await supabase
     .from("payments")
@@ -483,11 +486,7 @@ async function grantScholarshipInline(
       status: "approved",
       external_reference: `scholarship_${userId}_${productRef.id}`,
       idempotency_key: paymentIdemKey,
-      metadata: {
-        scholarship: true,
-        reason: `scholarship_free_${new Date().toISOString().slice(0, 16)}`,
-      },
-    } as any)
+    })
     .select("id")
     .single();
   if (payErr || !payment) {

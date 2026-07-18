@@ -2,7 +2,7 @@
  * Helpers para parsear el contenido de un QR de check-in.
  *
  * El QR puede codificar:
- *   1. La URL completa del pase: `https://qlick.mx/check-in/<token>`
+ *   1. La URL completa del pase: `https://qlick.digital/check-in/<token>`
  *   2. Solo el token: `<32 chars base64url>`
  *
  * Usado por el scanner del staff (Commit B, 2026-07-03) y potencialmente
