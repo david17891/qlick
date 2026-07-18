@@ -56,8 +56,10 @@ export async function generateMetadata({
 
 export default async function PayEventPage({
   params,
+  searchParams,
 }: {
   params: { slug: string };
+  searchParams?: { confirmation?: string | string[] };
 }) {
   const eventSlug = params.slug;
   const event = await getEventBySlug(eventSlug);
@@ -127,6 +129,32 @@ export default async function PayEventPage({
       redirect(`/eventos/${event.slug}?paid=already`);
     }
   }
+
+  // FIX 2026-07-18 (sprint atribución de pagos, David "el link de
+  // pago es generico, como se relaciona con el cliente"): si el
+  // caller del checkout pasó `?confirmation=xxx` (típicamente el
+  // bot al mandar el link de pago después del registro), lo
+  // validamos contra event_confirmations y lo pasamos al
+  // CheckoutButton. El button lo serializa a
+  // `metadata.confirmation_id` en el Checkout Session de Stripe,
+  // y el webhook lo lee PRIMERO para atribuir el cargo a esa
+  // confirmation. Si el query param es inválido (confirmation no
+  // existe o no es de este evento), lo ignoramos y caemos al
+  // path genérico (atribución por email, comportamiento legacy).
+  const rawConfirmation =
+    typeof searchParams?.confirmation === "string"
+      ? searchParams.confirmation
+      : Array.isArray(searchParams?.confirmation)
+        ? searchParams.confirmation[0]
+        : null;
+  const validatedConfirmationId = await resolveConfirmationParam(
+    rawConfirmation,
+    event.id
+  );
+  const confirmedEmail = await getConfirmedEmail(
+    rawConfirmation,
+    event.id
+  );
 
   return (
     <>
@@ -204,7 +232,18 @@ export default async function PayEventPage({
                   eventSlug={event.slug}
                   eventTitle={event.title}
                   amountMxn={event.priceMXN}
+                  // FIX 2026-07-18: pasar confirmationId al
+                  // checkout para que el webhook atribuya el
+                  // cargo a la confirmation correcta.
+                  confirmationId={validatedConfirmationId}
                 />
+              )}
+              {validatedConfirmationId && confirmedEmail && (
+                <p className="mt-4 text-xs text-ink-muted italic">
+                  Vas a pagar por la entrada registrada a{" "}
+                  <strong>{confirmedEmail}</strong>. Si necesitás usar otro
+                  email, contactanos antes de pagar.
+                </p>
               )}
             </Card>
           </div>
@@ -213,4 +252,73 @@ export default async function PayEventPage({
       <Footer />
     </>
   );
+}
+
+/* ------------------------------------------------------------------ */
+/* Helpers internos                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * FIX 2026-07-18 (sprint atribución de pagos): valida que el
+ * `?confirmation=xxx` del query param:
+ * 1. Tenga formato UUID válido.
+ * 2. Exista en `event_confirmations`.
+ * 3. Pertenezca al evento que se está pagando.
+ *
+ * Si todo OK, retorna el confirmationId. Si algo falla, retorna
+ * null y caemos al path genérico (atribución por email en el
+ * webhook).
+ */
+async function resolveConfirmationParam(
+  raw: string | null,
+  eventId: string
+): Promise<string | null> {
+  if (!raw) return null;
+  const UUID_RE =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(raw)) return null;
+  try {
+    const { createSupabaseAdminClient } = await import("@/lib/supabase/admin");
+    const supabase = createSupabaseAdminClient();
+    const { data, error } = await supabase
+      .from("event_confirmations")
+      .select("id, event_id")
+      .eq("id", raw)
+      .maybeSingle();
+    if (error || !data) return null;
+    if (data.event_id !== eventId) return null;
+    return data.id;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * FIX 2026-07-18 (sprint atribución de pagos): si el query param
+ * `?confirmation=xxx` es válido, retornamos el email de la
+ * confirmation para mostrarlo como hint en la página. Si el
+ * cliente va a Stripe y usa otro email, el cargo se atribuye
+ * via `metadata.confirmation_id` (no por email del cargo).
+ */
+async function getConfirmedEmail(
+  raw: string | null,
+  eventId: string
+): Promise<string | null> {
+  if (!raw) return null;
+  const UUID_RE =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(raw)) return null;
+  try {
+    const { createSupabaseAdminClient } = await import("@/lib/supabase/admin");
+    const supabase = createSupabaseAdminClient();
+    const { data } = await supabase
+      .from("event_confirmations")
+      .select("email")
+      .eq("id", raw)
+      .eq("event_id", eventId)
+      .maybeSingle();
+    return data?.email ?? null;
+  } catch {
+    return null;
+  }
 }

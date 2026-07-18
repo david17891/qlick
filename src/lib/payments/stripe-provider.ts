@@ -134,6 +134,15 @@ export const stripeProvider: PaymentProvider = {
       user_email: input.userEmail,
       kind: productRef.kind,
     };
+    // FIX 2026-07-18 (sprint atribución de pagos, David "el link de pago
+    // es generico"): si el caller pasa confirmationId, lo serializamos
+    // a `metadata.confirmation_id` para que el webhook pueda atribuir
+    // el cargo a una confirmation específica del bot (en vez de buscar
+    // por email del customer, que puede no coincidir). Solo relevante
+    // para eventos; cursos lo ignoran.
+    if (input.confirmationId) {
+      metadata.confirmation_id = input.confirmationId;
+    }
 
     // URLs por defecto si el caller no las pasa. El success URL recibe
     // ?session_id={CHECKOUT_SESSION_ID} para que la página de éxito pueda

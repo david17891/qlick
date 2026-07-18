@@ -99,6 +99,16 @@ interface CreateCheckoutBody {
   successUrl?: unknown;
   cancelUrl?: unknown;
   pendingUrl?: unknown;
+  /**
+   * FIX 2026-07-18 (sprint atribución de pagos, David "el link de
+   * pago es generico, como se relaciona con el cliente"): cuando el
+   * caller conoce la `event_confirmation` (bot ya completó el flow),
+   * lo pasa acá. La API lo serializa a `metadata.confirmation_id`
+   * en el Checkout Session de Stripe, y el webhook lo lee PRIMERO
+   * para atribuir el cargo a esa confirmation. Solo relevante para
+   * productos tipo "event" (los cursos no tienen confirmation_id).
+   */
+  confirmationId?: unknown;
 }
 
 type SupportedProductKind = "course" | "event";
@@ -347,6 +357,14 @@ export async function POST(req: NextRequest) {
       successUrl,
       cancelUrl,
       pendingUrl,
+      // FIX 2026-07-18: pasar confirmationId al provider para
+      // serializarlo a `metadata.confirmation_id` en Stripe. El
+      // webhook lo lee PRIMERO para atribuir el cargo a la
+      // confirmation del bot (no al email del customer de Stripe).
+      confirmationId:
+        typeof body.confirmationId === "string" && body.confirmationId
+          ? body.confirmationId
+          : undefined,
     });
 
     return NextResponse.json({

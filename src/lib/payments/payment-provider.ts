@@ -82,6 +82,18 @@ export interface CreateCheckoutInput {
   successUrl?: string;
   cancelUrl?: string;
   pendingUrl?: string;
+  /**
+   * FIX 2026-07-18 (sprint atribución de pagos, David "el link de pago es
+   * generico, como se relaciona con el cliente"): cuando un lead ya
+   * completó el flow del bot y tiene una `event_confirmations` con id
+   * conocido, el caller lo pasa acá. El provider lo serializa a
+   * `metadata.confirmation_id` en el Checkout Session de Stripe, y
+   * el webhook lo lee PRIMERO para atribuir el cargo a esa
+   * confirmation (en vez de buscar por email del customer, que
+   * puede no coincidir). Solo aplica a productos tipo "event" (los
+   * cursos no tienen este concepto).
+   */
+  confirmationId?: string;
 
   /* ----------------- LEGACY (mock provider) ---------------------- *
    * Mantener como opcionales unicamente para que el mock provider

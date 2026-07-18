@@ -24,6 +24,14 @@ interface CheckoutButtonProps {
   eventSlug: string;
   eventTitle: string;
   amountMxn: number;
+  /**
+   * FIX 2026-07-18 (sprint atribución de pagos, David "el link de
+   * pago es generico, como se relaciona con el cliente"): si la
+   * página lo conoce (vía `?confirmation=xxx` en la URL), lo
+   * pasamos al checkout para que el webhook atribuya el cargo a
+   * esa confirmation (no por email del customer de Stripe).
+   */
+  confirmationId?: string | null;
 }
 
 interface CreateCheckoutResponse {
@@ -46,6 +54,7 @@ export function CheckoutButton({
   eventSlug,
   eventTitle,
   amountMxn,
+  confirmationId,
 }: CheckoutButtonProps) {
   const router = useRouter();
   const [method, setMethod] = useState<MethodKind>("card");
@@ -71,6 +80,11 @@ export function CheckoutButton({
           method,
           successUrl: `${baseUrl}/pagar/evento/${eventSlug}/exito?session_id={CHECKOUT_SESSION_ID}`,
           cancelUrl: `${baseUrl}/pagar/evento/${eventSlug}?cancelled=1`,
+          // FIX 2026-07-18: pasar confirmationId al API para
+          // que lo serialice a `metadata.confirmation_id` en
+          // el Checkout Session. El webhook lo lee PRIMERO
+          // para atribuir el cargo a la confirmation correcta.
+          ...(confirmationId ? { confirmationId } : {}),
         }),
       });
       const data: CreateCheckoutResponse = await res.json();

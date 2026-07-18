@@ -481,8 +481,34 @@ async function handleCheckoutCompleted(
     // previo del bot. Webhook retorno mode='confirmation_not_found'
     // sin crear event_payment, event_access, ni email QR. Recover
     // manual + fix.
+    //
+    // FIX 2026-07-18 (sprint atribución de pagos, David "el link de
+    // pago es generico, como se relaciona con el cliente"): si el
+    // checkout session trae `metadata.confirmation_id` (seteado por
+    // el bot al construir el link con `?confirmation=xxx`), lo
+    // usamos DIRECTAMENTE sin pasar por ensureEventConfirmation.
+    // Esto es 100% confiable: el cargo queda atribuido a la
+    // confirmation que el bot ya creó (mismo email, mismo
+    // evento). Si el email del customer de Stripe difiere
+    // (caso edge: esposa paga con su email), igual funciona
+    // porque la atribución es por confirmation_id, no por
+    // email. Fallback a ensureEventConfirmation solo si NO
+    // hay confirmation_id en metadata.
     let confLookup: string | null = null;
-    if (sessionEmail) {
+    const metadataConfirmationId = session.metadata?.confirmation_id;
+    if (metadataConfirmationId && typeof metadataConfirmationId === "string") {
+      confLookup = metadataConfirmationId;
+      // eslint-disable-next-line no-console
+      console.log(
+        "[stripe-webhook] event_confirmation desde metadata.confirmation_id",
+        {
+          confirmationId: confLookup,
+          eventId: productRef.id,
+          sessionId: session.id,
+        }
+      );
+    }
+    if (!confLookup && sessionEmail) {
       const ensured = await ensureEventConfirmation({
         eventId: productRef.id,
         email: sessionEmail,
