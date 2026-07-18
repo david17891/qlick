@@ -72,7 +72,10 @@ export function renderSurveyInviteEmail(
   const safeUrl = esc(input.surveyUrl);
   const eventDate = formatEventDate(input.eventStartsAt);
 
-  const subject = `Confirmanos tu asistencia a "${input.eventTitle}"`;
+  // FIX 2026-07-18 (audit reauditoria XSS): escapamos eventTitle en el
+  // subject porque se inyecta en <title>${subject}</title>. Mismo
+  // patron que payment-confirmed.ts y el resto de templates.
+  const subject = `Confirmanos tu asistencia a "${esc(input.eventTitle)}"`;
 
   const html = `<!DOCTYPE html>
 <html lang="es">

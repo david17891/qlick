@@ -61,6 +61,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getPaymentProvider } from "@/lib/payments";
 import type { ProductRef } from "@/lib/payments/payment-provider";
 import { resolveCheckoutUrl } from "@/lib/payments/checkout-url-resolver";
+import { recordAndCheckRateLimit, getClientIp } from "@/lib/api/rate-limit";
 import type { PaymentMethod } from "@/types";
 
 // Forzar Node.js (Stripe SDK + Supabase necesitan Node APIs).
@@ -125,6 +126,34 @@ function isValidMethod(m: unknown): m is PaymentMethod {
 }
 
 export async function POST(req: NextRequest) {
+  // 0. Rate limit per-IP (5 req/min). FIX 2026-07-18 (reauditoria):
+  // antes este endpoint era público sin rate limit. Un atacante podía
+  // spammear checkout sessions para inflar métricas del dashboard admin
+  // o tirar la quota de Stripe (cada checkout cuenta aunque no se pague).
+  // Mismo helper que submit-survey. 5/min es suficiente para el flow
+  // real de un humano (1 click → 1 checkout) y bloquea abuse.
+  const clientIp = getClientIp(req);
+  const rl = recordAndCheckRateLimit(`create_checkout:${clientIp}`, {
+    maxCalls: 5,
+    windowMs: 60_000,
+  });
+  if (!rl.allowed) {
+    const retryAfterSec = Math.ceil((rl.resetMs ?? 60_000) / 1000);
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Demasiadas solicitudes. Intentá de nuevo en un minuto.",
+        retryAfterMs: rl.resetMs,
+      },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(retryAfterSec),
+        },
+      },
+    );
+  }
+
   // 1. Auth: sesión opcional (guest checkout).
   const session = await getCurrentStudent();
 

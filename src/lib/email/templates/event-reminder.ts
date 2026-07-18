@@ -80,6 +80,16 @@ function formatEventTime(iso: string): string {
  *   - 24h: "te recordamos que mañana es..." + CTA "agregar a calendario"
  *   - 8am / 10am (Phoenix día del evento): "HOY es..." + CTA "abrir mi pase"
  *   - 2h / 1h:  "te recordamos que en N horas..." + CTA "abrir mi pase"
+ *
+ * IMPORTANTE: `subject`, `headline` y `body` retornados por esta
+ * funcion son **HTML safe por construccion**:
+ *   - `subject` se reasigna a `subjectSafe` en el caller.
+ *   - `headline` se inyecta con esc() en el caller.
+ *   - `body` se construye con `titleSafe` y `locSafe` (ya escapados)
+ *     + `eventTime` (toLocaleTimeString, no produce HTML). NO re-escapar
+ *     `body` en el caller porque romperia titleSafe con doble escape
+ *     (e.g. "Marketing &amp; IA" -> "Marketing &amp;amp; IA").
+ *   Para audit: ver "reauditoria 2026-07-18" en PROJECT-LOG.
  */
 function buildReminderCopy(input: EventReminderInput): {
   subject: string;
@@ -162,7 +172,7 @@ export function renderEventReminderEmail(
           <tr>
             <td style="background:linear-gradient(135deg,#6d28d9 0%,#c026d3 50%,#f97316 100%);padding:24px 32px;text-align:center;">
               <h1 style="margin:0;font-size:24px;font-weight:700;color:#ffffff;">Qlick Marketing</h1>
-              <p style="margin:8px 0 0;font-size:14px;color:#ffffff;opacity:0.95;">${headline}</p>
+              <p style="margin:8px 0 0;font-size:14px;color:#ffffff;opacity:0.95;">${esc(headline)}</p>
             </td>
           </tr>
 

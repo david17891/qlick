@@ -90,7 +90,11 @@ function methodLabel(method: string): string {
     case "transfer":
       return "Transferencia";
     default:
-      return method;
+      // FIX 2026-07-18 (audit reauditoria XSS): si el metodo no esta
+      // en el switch, devolvemos literal "Otro" (no el input raw) para
+      // evitar que un valor con HTML/JS se inyecte en el email. Si en
+      // el futuro aparece un metodo nuevo, aniadir case explicito.
+      return "Otro";
   }
 }
 
@@ -112,7 +116,13 @@ export function renderPaymentConfirmedEmail(
   const amountFormatted = `$${input.amountMXN.toFixed(2)} ${currency}`;
   const notes = input.notes ? esc(input.notes) : null;
 
-  const subject = `Pago confirmado · ${input.eventTitle}`;
+  // FIX 2026-07-18 (audit reauditoria XSS): escapamos eventTitle en el
+  // subject porque se inyecta en <title>${subject}</title>. Si el admin
+  // crea un evento con titulo "</title><script>...", el email al cliente
+  // ejecuta JS en el cliente de correo (Outlook, etc.). El resto de
+  // templates (event-certificate, event-qr-pass, event-reminder) ya
+  // usan este patron (subjectEsc = esc(subject) antes de inyectar).
+  const subject = `Pago confirmado · ${esc(input.eventTitle)}`;
 
   // HTML body. Mismo patron visual que event-qr-pass.ts y el resto
   // de templates de Qlick.
