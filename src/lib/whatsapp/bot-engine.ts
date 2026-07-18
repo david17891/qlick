@@ -3470,9 +3470,25 @@ case "interactive_event_inscribir": {
       };
     }
     case "survey_q4_skip": {
+      // FIX 2026-07-18 (sprint bot wizard, David "Saltar repite la
+      // pregunta" en V2): el guard de abajo aceptaba SOLO step 4. Pero
+      // en config dinámico de 5 preguntas (el que usa V2), q_business
+      // es **step 5**, no step 4. El case homólogo `survey_q4_text`
+      // (línea 3362) ya aceptaba `step === 4 || step === 5` para
+      // retrocompat con config legacy. El skip se quedó inconsistente:
+      // cuando David clickeaba "Saltar" en q_business, el guard fallaba
+      // y caía a `nudgeToResendWizard`, que re-enviaba la pregunta
+      // actual. Mismo bug en la segunda pulsación: el wizard quedaba
+      // corrupto y el caso "Saltar" caía al LLM, que generaba copy de
+      // "solo falta definir el pago" sin saber que ya estaba pagado.
+      // Fix: aceptar step 4 (legacy) y step 5 (dinámico) — mismo
+      // patrón que `survey_q4_text`. Defense-in-depth: en el log del
+      // bug, el buttonId fue `survey_q_business_skip` que cae a este
+      // case; antes, lo bloqueábamos por state.step, ahora dejamos
+      // pasar ambos steps.
       if (
         !args.surveyState ||
-        args.surveyState.step !== 4
+        (args.surveyState.step !== 4 && args.surveyState.step !== 5)
       ) {
         return nudgeToResendWizard(provider, phoneNormalized, lead.name, args.surveyState ?? undefined);
       }
