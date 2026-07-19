@@ -491,6 +491,18 @@ Ambos pasaron: type-check ✓ · lint ✓ · 726/726 tests verde · build ✓.
 
 ## 1. Deuda técnica activa
 
+### 🟠 Drift enum `event_confirmation_source` (2026-07-19 sprint human_first)
+
+**Síntoma:** el type TypeScript `EventConfirmationSource` en `src/types/events.ts:43-49` incluye los valores `"whatsapp_safety_net"` y `"otro"`, pero el enum de Postgres `event_confirmation_source` SOLO tiene `imported_excel`, `public_form`, `manual`, `whatsapp_bot`. Resultado: cualquier `createConfirmation({source: "whatsapp_safety_net"})` falla con error 22P02 (invalid input value for enum) silenciosamente.
+
+**Impacto histórico:** el `registrationSafetyNet` del bot-engine (línea 4498) usaba `source: "whatsapp_safety_net"`. La confirmation NUNCA se creaba en producción. David lo reportó en sesión 2026-07-15 ("no me registro de verdad"). El sprint 2026-07-19 (commit siguiente) migra el safety-net a `whatsapp_bot` (que SÍ existe) y replica el flow end-to-end. Pero el drift entre TS y DB sigue.
+
+**Acción:** crear migration `supabase/migrations/2026XXXX_add_safety_net_to_event_confirmation_source.sql` que ejecute `ALTER TYPE event_confirmation_source ADD VALUE IF NOT EXISTS 'whatsapp_safety_net';` y `ALTER TYPE event_confirmation_source ADD VALUE IF NOT EXISTS 'otro';`. Después migrar el safety-net a `whatsapp_safety_net` (semánticamente más correcto que `whatsapp_bot`).
+
+**Severidad:** 🟠 Media. El sprint actual mitiga el bug. La deuda queda como nice-to-have para tener source tracking preciso.
+
+**Verificación:** `node scripts/diag-conf-source-enum.mjs` lista los valores del enum en DB.
+
 ### ✅ Sesión 2026-06-28 (domingo, tarde) — Fase 5 Paquete A+B+C+D+E cerrado
 
 ## 2. Archivo histórico de cierres de fase

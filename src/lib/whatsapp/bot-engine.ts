@@ -4410,25 +4410,34 @@ case "interactive_event_inscribir": {
  * + el flujo de pago manual.
  *
  * Safety net: después de que el LLM responde, si el último mensaje del
- * lead tiene formato "Nombre + email@x.com" (regex en NAME_AND_EMAIL_RE)
- * Y el activeEvent está cargado, extraemos los datos y creamos la
- * confirmation directamente via createConfirmation. Fire-and-forget: no
- * bloquea el response.
+ * lead matchea alguno de los formatos aceptados Y el activeEvent está
+ * cargado, extraemos los datos, creamos la confirmation, actualizamos
+ * al lead, generamos QR y mandamos email. Fire-and-forget: no bloquea
+ * el response.
+ *
+ * FIX 2026-07-19 (sprint human_first end-to-end): el safety-net original
+ * solo cubria el caso "Nombre + email" en el mismo mensaje. Fallaba
+ * cuando el flow era multi-turno (turno 1: "David" → turno 2:
+ * "david@x.com"). Ademas NO actualizaba el lead ni mandaba email con QR.
+ * Esta version cubre ambos paths y replica el flow del `case
+ * "provide_email"` (que SÍ funciona end-to-end).
+ *
+ * Paths soportados:
+ *   A. "Nombre + email@x.com" en el mismo mensaje (caso original).
+ *   B. Solo "email@x.com" cuando lead.name ya esta capturado en historial
+ *      y NO es placeholder.
  *
  * Pre-condiciones para disparar:
  *   1. activeEvent existe (source='db').
  *   2. lead existe (id presente).
- *   3. El body del lead matchea regex de "nombre + email".
+ *   3. El body del lead matchea regex Path A o Path B.
  *   4. NO hay confirmation reciente (<120s) para este phone+evento.
- *
- * Sprint 2026-07-15b: el regex de "registrado" en la respuesta del LLM
- * se elimino. Era fragil: si el LLM decia "perfecto, listo" sin la
- * palabra "registrado", el safety net no disparaba aunque el body
- * tuviera nombre+email. Ahora la unica condicion es que el body del
- * lead tenga el formato, lo que es mucho mas robusto.
  */
 const NAME_AND_EMAIL_RE =
   /^([A-ZÁÉÍÓÚÑa-záéíóúñ][A-ZÁÉÍÓÚÑa-záéíóúñ'.-]+(?:\s+[A-ZÁÉÍÓÚÑa-záéíóúñ'.-]+){1,4})[\s,]+([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})$/i;
+
+// Path B: solo email (lead.name ya capturado en historial).
+const EMAIL_ONLY_RE = /^([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})$/i;
 
 interface RegistrationSafetyNetArgs {
   supabase: SupabaseClient<Database> | null;
@@ -4459,17 +4468,38 @@ async function registrationSafetyNet(args: RegistrationSafetyNetArgs): Promise<v
       return;
     }
 
-    // 1. El body del lead debe matchear "Nombre + email".
-    const m = args.body.trim().match(NAME_AND_EMAIL_RE);
-    if (!m) {
-      infoLog("[bot/safety-net] skip: body no matchea Nombre+email", {
-        leadId: args.lead.id,
-        bodyPreview: args.body.slice(0, 80),
-      });
-      return;
+    // 1. Extraer name + email del body (Path A o Path B).
+    const trimmedBody = args.body.trim();
+    const m = trimmedBody.match(NAME_AND_EMAIL_RE);
+    let extractedName: string;
+    let extractedEmail: string;
+    if (m) {
+      // Path A: "Nombre + email".
+      extractedName = m[1].trim();
+      extractedEmail = m[2].trim().toLowerCase();
+    } else {
+      // Path B: solo email.
+      const emailMatch = trimmedBody.match(EMAIL_ONLY_RE);
+      if (!emailMatch) {
+        infoLog("[bot/safety-net] skip: body no matchea Nombre+email ni email solo", {
+          leadId: args.lead.id,
+          bodyPreview: trimmedBody.slice(0, 80),
+        });
+        return;
+      }
+      extractedEmail = emailMatch[1].trim().toLowerCase();
+      // Usar lead.name del historial si esta seteado y NO es placeholder.
+      const leadName = (args.lead.name ?? "").trim();
+      if (!leadName || isPlaceholderNameUI(leadName)) {
+        infoLog(
+          "[bot/safety-net] skip: body es email solo pero lead sin nombre capturado",
+          { leadId: args.lead.id }
+        );
+        return;
+      }
+      extractedName = leadName;
     }
-    const extractedName = m[1].trim();
-    const extractedEmail = m[2].trim().toLowerCase();
+
     infoLog("[bot/safety-net] match detectado, verificando duplicados", {
       leadId: args.lead.id,
       eventId: args.activeEvent.id,
@@ -4509,22 +4539,115 @@ async function registrationSafetyNet(args: RegistrationSafetyNetArgs): Promise<v
       name: extractedName,
       email: extractedEmail,
       phoneRaw: args.lead.phone_normalized,
-      source: "whatsapp_safety_net",
+      // FIX 2026-07-19 (sprint human_first end-to-end): el type TS
+      // incluye "whatsapp_safety_net" pero el enum de Postgres NO
+      // (ver `scripts/diag-conf-source-enum.mjs`). El insert fallaba
+      // con 22P02 silenciosamente. Usamos "whatsapp_bot" (que SÍ
+      // existe en el enum) hasta que se cree la migration que
+      // agregue el valor faltante al enum de Postgres. Documentado
+      // en docs/OPEN_ITEMS.md.
+      source: "whatsapp_bot",
     });
 
-    if (result.ok) {
-      infoLog("[bot/safety-net] OK: confirmation creada", {
-        leadId: args.lead.id,
-        eventId: args.activeEvent.id,
-        confirmationId: result.confirmation?.id,
-        extractedName,
-        extractedEmail,
-      });
-    } else {
+    if (!result.ok || !result.confirmation) {
       infoLog("[bot/safety-net] FAIL: createConfirmation rechazo", {
         leadId: args.lead.id,
         eventId: args.activeEvent.id,
         note: result.note,
+      });
+      return;
+    }
+
+    infoLog("[bot/safety-net] OK: confirmation creada", {
+      leadId: args.lead.id,
+      eventId: args.activeEvent.id,
+      confirmationId: result.confirmation.id,
+      extractedName,
+      extractedEmail,
+    });
+
+    // 4. FIX 2026-07-19: actualizar el lead con el name + email
+    //    (mismo path que `case "provide_email"`). Sin esto, el próximo
+    //    flow del bot no tiene el email disponible y el admin no ve
+    //    el name del lead en el panel.
+    try {
+      const { error: leadUpdErr } = await args.supabase
+        .from("leads")
+        .update({ name: extractedName, email: extractedEmail } as never)
+        .eq("id", args.lead.id);
+      if (leadUpdErr) {
+        infoLog("[bot/safety-net] update lead fallo (no fatal)", {
+          leadId: args.lead.id,
+          error: leadUpdErr.message,
+        });
+      }
+    } catch (err) {
+      infoLog("[bot/safety-net] update lead EXCEPTION (no fatal)", {
+        leadId: args.lead.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    // 5. FIX 2026-07-19: generar QR token + mandar email con QR pass.
+    //    Mismo path que el `case "provide_email"` (linea 6809+).
+    try {
+      const qr = await generateQrToken(
+        args.supabase,
+        args.lead.phone_normalized,
+        extractedName,
+        extractedEmail,
+        args.activeEvent.slug
+      );
+      const qrUrl = qr?.url ?? null;
+      // FIX 2026-07-19: usar URL publico del QR (mismo patron que
+      // `case "provide_email"` linea 7033). El template hace
+      // `input.qrImageUrl.startsWith("http")` y NO maneja null.
+      const qrImageUrl = qr
+        ? `${appBaseUrl()}/api/event-qr/${qr.token}.png`
+        : null;
+
+      // FIX 2026-07-19: payment_status='pending' para eventos de pago
+      // (mismo fix que `case "provide_email"` linea 6860+).
+      const { data: evtRow } = await args.supabase
+        .from("events")
+        .select("price_mxn, format, starts_at, location")
+        .eq("id", args.activeEvent.id)
+        .maybeSingle();
+      const isPaid =
+        typeof (evtRow as { price_mxn?: number } | null)?.price_mxn ===
+          "number" &&
+        ((evtRow as { price_mxn?: number }).price_mxn ?? 0) > 0;
+      if (isPaid) {
+        await args.supabase
+          .from("event_confirmations")
+          .update({ payment_status: "pending" } as never)
+          .eq("id", result.confirmation.id);
+      }
+
+      // Mandar el email con QR pass.
+      await sendEventQrPassEmail(
+        {
+          attendeeName: extractedName,
+          attendeeEmail: extractedEmail,
+          eventTitle: args.activeEvent.title ?? "el evento",
+          eventStartsAt:
+            (evtRow as { starts_at?: string } | null)?.starts_at ??
+            new Date().toISOString(),
+          eventLocation:
+            (evtRow as { location?: string | null } | null)?.location ?? null,
+          qrImageUrl: qrImageUrl ?? `${appBaseUrl()}/api/event-qr/${qr?.token ?? "x"}.png`,
+          checkInUrl: qrUrl,
+          format:
+            (evtRow as { format?: string } | null)?.format ?? "in_person",
+          gateUrl: undefined,
+          streamingAccessNote: undefined,
+        },
+        { eventId: args.activeEvent.id, eventQrTokenId: null }
+      );
+    } catch (err) {
+      infoLog("[bot/safety-net] generateQrToken/sendEventQrPassEmail fallo (no fatal)", {
+        leadId: args.lead.id,
+        error: err instanceof Error ? err.message : String(err),
       });
     }
   } catch (err) {
