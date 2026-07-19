@@ -1936,6 +1936,48 @@ multi-agente, dividir en <8 archivos o aceptar partial-state.
 
 ## 6. Resueltos reciente
 
+### ✅ Sprint bot final con DeepSeek real (2026-07-19)
+
+**Tag de release:** `bot-final-pre-ab-2026-07-19` (HEAD `44cc089`, merge a main).
+
+**Commits incluidos:**
+- `e1221d2` fix(bot+admin): sprint bot final con DeepSeek real (12/19 OK) — 6 bugs críticos arreglados.
+- `44cc089` docs(open-items): acción requerida de revocar API key de DeepSeek expuesta en repo.
+
+**Bugs arreglados (todos verificados con DeepSeek real):**
+1. `buildSuperExecutiveV2Prompt is not defined` — import faltante en `deepseek-provider.ts`.
+2. `BotMode` union drift con `BotGlobalMode` — 3 archivos no incluían `super_executive_v2`.
+3. `readSystemSetting` no des-escapa values con comillas extras — `value.slice(1, -1)` fix.
+4. `case "provide_email"` sin confirmation cuando `registrationEventSlug` es null — fallback a `loadActiveEventContext()`.
+5. `sendEventQrPassEmail` TS errors — `checkInUrl` null + `format` union estricto.
+6. `NAME_AND_EMAIL_RE` requería 2+ palabras — `{0,4}` para nombres de 1 palabra.
+
+**Bug latente aceptado:** S5 multi-evento (safety-net del `case "question"` crea confirmation en el evento equivocado). Workaround: admin reasigna a mano. Sprint futuro: `findEventInConversation` para multi-evento.
+
+**Verificación:** 1469/1469 tests pass, typecheck verde, lint verde, build verde (~1m), comprehensive matrix 12/19 OK con DeepSeek real.
+
+### A/B test v2 vs human_first (2026-07-19, en curso)
+
+**Protocolo (semanas alternadas):**
+- **Semana 1 (2026-07-19 → 2026-07-26)**: `bot_global_mode = "super_executive_v2"` (default actual). Medir baseline.
+- **Semana 2 (2026-07-26 → 2026-08-02)**: `bot_global_mode = "human_first"`. Medir.
+- Comparar métricas al final de cada semana.
+
+**Cambio de modo:** `node scripts/diag-bot-mode.mjs human_first` (el script hace el upsert + invalida cache).
+
+**Métricas a medir (queries SQL vía Supabase):**
+- `event_confirmations` creadas por semana (conversion rate).
+- `event_email_log` con `ok=true` por semana (entrega QR).
+- `lead_whatsapp_log` con `intent='provide_email'` vs `'question'` (engagement).
+- `lead_whatsapp_log` total por semana (volumen de tráfico).
+- `event_email_log` con `error IS NOT NULL` (errores del bot).
+
+**Criterio de éxito:** el modo que tenga mayor `conversion_rate = confirmations / leads` después de 2 semanas se promueve a default permanente. El otro se queda como opt-in.
+
+**Tag de rollback:** `bot-final-pre-ab-2026-07-19` (HEAD pre-A/B test). Si el A/B test degrada la experiencia, `git reset --hard bot-final-pre-ab-2026-07-19` + force-push.
+
+**Cron de monitoreo:** un cron cada 1h verifica `bot_global_mode` y alerta si cambia inesperadamente. **Configurar en la próxima sesión** (no en este sprint).
+
 ### ✅ B-2 — Cierre de paperwork (2026-06-27 ~17:00)
 
 B-2 ya estaba **resuelto en código** desde el commit `3d56caa` (David,
