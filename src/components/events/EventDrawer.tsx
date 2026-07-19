@@ -76,6 +76,16 @@ interface FormState {
    * de la moneda.
    */
   currency: string;
+  /**
+   * FIX 2026-07-18 (sprint Stripe Live prep): modo de Stripe para
+   * este evento. Default "test" (sin cargo real). Solo el admin
+   * puede setear "live" para hacer pruebas con dinero real.
+   *
+   * IMPORTANTE: "live" cobra dinero real a la tarjeta del cliente.
+   * El admin debe confirmar que entiende esto antes de cambiarlo.
+   * Se persiste en `event.event_rules.payment_mode` (Json libre).
+   */
+  paymentMode: "test" | "live";
 }
 
 function eventToForm(e: Event): FormState {
@@ -116,6 +126,9 @@ function eventToForm(e: Event): FormState {
         ? e.priceMXN.toString()
         : "",
     currency: e.currency ?? "MXN",
+    // FIX 2026-07-18: leer payment_mode de event_rules (default test).
+    paymentMode:
+      e.eventRules?.payment_mode === "live" ? "live" : "test",
   };
 }
 
@@ -143,6 +156,10 @@ function emptyForm(): FormState {
     // gratis, o el numero si quiere cobrar. Currency default 'MXN'.
     priceMXN: "",
     currency: "MXN",
+    // FIX 2026-07-18: default "test" (conservador). El admin debe
+    // cambiar explicitamente a "live" para hacer pruebas con cargo
+    // real. UI muestra confirmacion antes de guardar.
+    paymentMode: "test",
   };
 }
 
@@ -321,7 +338,11 @@ export function EventDrawer({
           status: form.status,
           eventRules: {
             personality: form.botPersonality.trim(),
-            rules: rulesArr
+            rules: rulesArr,
+            // FIX 2026-07-18: persistir el modo de Stripe del evento.
+            // El create-checkout route lo lee y pasa al provider.
+            // Default "test" si el admin no lo cambia.
+            payment_mode: form.paymentMode,
           },
           // Streaming (migration 20260707000000). Solo mandamos si format
           // != in_person para no contaminar requests innecesariamente.
@@ -354,7 +375,11 @@ export function EventDrawer({
           location: form.location.trim() || undefined,
           eventRules: {
             personality: form.botPersonality.trim(),
-            rules: rulesArr
+            rules: rulesArr,
+            // FIX 2026-07-18: persistir el modo de Stripe del evento.
+            // El create-checkout route lo lee y pasa al provider.
+            // Default "test" si el admin no lo cambia.
+            payment_mode: form.paymentMode,
           },
           coverImageUrl: form.coverImageUrl.trim() || undefined,
           // Streaming: mandamos siempre los nuevos valores para que cambiar
@@ -816,6 +841,83 @@ export function EventDrawer({
               );
             })()}
           </fieldset>
+
+          {/*
+            FIX 2026-07-18 (sprint Stripe Live prep): selector de modo
+            de pago (test | live). Default "test" (sin cargo real).
+            "live" cobra dinero real a tarjeta y requiere que David
+            haya agregado STRIPE_SECRET_KEY_LIVE y
+            STRIPE_WEBHOOK_SECRET_LIVE en Vercel.
+
+            Solo visible si el evento tiene precio > 0 (porque si es
+            gratuito, no hay checkout y el modo es irrelevante).
+          */}
+          {(() => {
+            const raw = form.priceMXN.trim();
+            const n = raw ? Number(raw) : 0;
+            if (!(raw && Number.isFinite(n) && n > 0)) return null;
+            return (
+              <fieldset className="border-t border-brand-100 pt-4 mt-2 space-y-3">
+                <legend className="text-xs font-bold uppercase tracking-wider text-brand-600 px-2">
+                  Modo de Pago (Stripe)
+                </legend>
+                <Field
+                  label="Modo de Stripe"
+                  htmlFor="evt-payment-mode"
+                  hint={
+                    form.paymentMode === "live"
+                      ? "⚠️ LIVE: cobra dinero real. Asegúrate de que esto es una prueba controlada."
+                      : "Test: usa sk_test_*. Sin cargo real (tarjeta 4242 4242 4242 4242)."
+                  }
+                  error={fieldErrors.paymentMode}
+                >
+                  <div className="space-y-2">
+                    <label className="flex items-start gap-3 rounded-xl border border-brand-100 bg-white px-4 py-3 cursor-pointer hover:border-brand-300 transition-colors">
+                      <input
+                        type="radio"
+                        name="paymentMode"
+                        value="test"
+                        checked={form.paymentMode === "test"}
+                        onChange={() => set("paymentMode", "test")}
+                        disabled={saving}
+                        className="mt-1"
+                      />
+                      <div>
+                        <div className="font-semibold text-ink">Test (por defecto)</div>
+                        <div className="text-xs text-ink-muted">
+                          Stripe en modo prueba. No cobra dinero real. Usa tarjeta
+                          4242 4242 4242 4242.
+                        </div>
+                      </div>
+                    </label>
+                    <label className="flex items-start gap-3 rounded-xl border border-brand-100 bg-white px-4 py-3 cursor-pointer hover:border-brand-300 transition-colors">
+                      <input
+                        type="radio"
+                        name="paymentMode"
+                        value="live"
+                        checked={form.paymentMode === "live"}
+                        onChange={() => set("paymentMode", "live")}
+                        disabled={saving}
+                        className="mt-1"
+                      />
+                      <div>
+                        <div className="font-semibold text-ink flex items-center gap-2">
+                          Live
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                            ⚠️ Cobra dinero real
+                          </span>
+                        </div>
+                        <div className="text-xs text-ink-muted">
+                          Stripe en modo real. El cliente paga con su tarjeta. Solo
+                          usar para pruebas controladas (ej. compra de $10 MXN).
+                        </div>
+                      </div>
+                    </label>
+                  </div>
+                </Field>
+              </fieldset>
+            );
+          })()}
 
           <Field label="Imagen de portada (URL)" htmlFor="evt-cover" hint="Opcional. Se mostrará en la card del admin.">
             <Input

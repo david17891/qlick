@@ -59,6 +59,19 @@ export interface CreateCheckoutInput {
   /** Lo que se compra (polimórfico). OBLIGATORIO en providers nuevos. */
   productRef: ProductRef;
   /**
+   * FIX 2026-07-18 (sprint Stripe Live prep): modo de Stripe.
+   * - "test" (default): usa `STRIPE_SECRET_KEY` (sk_test_*). Sin cargo real.
+   * - "live": usa `STRIPE_SECRET_KEY_LIVE` (sk_live_*). Cargo real.
+   *
+   * El caller (create-checkout route) decide el modo leyendo
+   * `event.event_rules.payment_mode` del evento. Si no se setea,
+   * el provider asume "test" (default conservador).
+   *
+   * Solo el provider de Stripe usa este campo; mock/mercadopago/conekta
+   * lo ignoran (esos providers no tienen dual-mode todavía).
+   */
+  mode?: "test" | "live";
+  /**
    * Identidad del comprador.
    * - Si hay sesión: el userId del estudiante logueado (se guarda en
    *   metadata del Checkout Session para que el webhook pueda resolverlo

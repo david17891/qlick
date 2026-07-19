@@ -63,7 +63,7 @@ import { ensureEventConfirmation } from "@/lib/events/ensure-event-confirmation"
 import { logAdminAction } from "@/lib/crm/audit-server";
 import {
   extractProductRefFromMetadata,
-  requireStripeWebhookSecret,
+  verifyStripeWebhookSignature,
 } from "@/lib/payments/stripe-provider";
 // ProductRef viene del barrel público (también re-exportado por stripe-provider
 // para uso interno).
@@ -90,35 +90,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  let secret: string;
-  try {
-    secret = requireStripeWebhookSecret();
-  } catch (err) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error:
-          err instanceof Error
-            ? err.message
-            : "STRIPE_WEBHOOK_SECRET no configurado.",
-      },
-      { status: 500 }
-    );
-  }
-
   // 2. Leer raw body (Stripe necesita el buffer literal para verificar firma).
   const rawBody = await req.text();
-  const Stripe = (await import("stripe")).default;
-  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "", {
-    apiVersion: "2025-09-30.clover" as never,
-  });
 
+  // FIX 2026-07-18 (sprint Stripe Live prep): 2 secrets (test + live).
+  // El helper erifyStripeWebhookSignature prueba con ambos y
+  // retorna el evento + el modo (test | live) que verifico. Si
+  // ninguno matchea, tira error 401.
   let event: Stripe.Event;
+  let verifiedMode: "test" | "live" = "test";
   try {
-    // Tolerance = 300s (default de Stripe SDK). Previene replay attacks con
-    // webhooks viejos firmados pero fuera de la ventana. Si querés más
-    // estricto, bajalo a 60-120s.
-    event = stripe.webhooks.constructEvent(rawBody, signature, secret, 300);
+    const outcome = await verifyStripeWebhookSignature(rawBody, signature, 300);
+    event = outcome.event;
+    verifiedMode = outcome.mode;
   } catch (err) {
     return NextResponse.json(
       {

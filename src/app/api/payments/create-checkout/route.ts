@@ -378,6 +378,28 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // FIX 2026-07-18 (sprint Stripe Live prep): leer el modo de Stripe
+    // del evento (event_rules.payment_mode). Default "test" si el
+    // evento no tiene el flag o si no es un evento (cursos siempre
+    // en test por ahora — solo eventos tienen el flujo dual).
+    let stripeMode: "test" | "live" = "test";
+    if (productKind === "event") {
+      // Re-leemos el evento para obtener event_rules (el productRef
+      // que tenemos ya tiene id, slug, title, priceMXN, pero NO
+      // event_rules). Single query para no duplicar.
+      const supabaseMode = createSupabaseAdminClient();
+      const { data: ev } = await supabaseMode
+        .from("events")
+        .select("event_rules")
+        .eq("id", productRef.id)
+        .maybeSingle();
+      const rules = (ev as { event_rules?: { payment_mode?: string } } | null)
+        ?.event_rules;
+      if (rules?.payment_mode === "live") {
+        stripeMode = "live";
+      }
+    }
+
     const result = await provider.createCheckout({
       productRef,
       userId: session?.userId ?? null,
@@ -394,6 +416,9 @@ export async function POST(req: NextRequest) {
         typeof body.confirmationId === "string" && body.confirmationId
           ? body.confirmationId
           : undefined,
+      // FIX 2026-07-18: pasar el modo de Stripe (test o live) al
+      // provider. Default "test" si no se setea (conservador).
+      mode: stripeMode,
     });
 
     return NextResponse.json({

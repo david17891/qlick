@@ -256,6 +256,12 @@ export interface EventFormInput {
   eventRules?: {
     personality: string;
     rules: string[];
+    /**
+     * FIX 2026-07-18 (sprint Stripe Live prep): modo de Stripe para
+     * este evento. Default "test" (sin cargo real). Solo el admin
+     * puede setear "live" para hacer pruebas con dinero real.
+     */
+    payment_mode?: "test" | "live";
   };
   /**
    * Modalidad del evento (migration 20260707000000). Default `in_person`.

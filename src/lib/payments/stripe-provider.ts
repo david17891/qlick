@@ -35,13 +35,35 @@ import type { PaymentStatus } from "@/types";
 
 const STRIPE_API_VERSION = "2025-09-30.clover";
 
-function getStripeClient(): Stripe {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key) {
-    throw new Error(
-      "Stripe no está configurado. Define STRIPE_SECRET_KEY en .env.local o Vercel."
-    );
-  }
+/**
+ * FIX 2026-07-18 (sprint Stripe Live prep): modo de Stripe.
+ *
+ * - "test"  → usa STRIPE_SECRET_KEY (test mode). Default. Sin cargo real.
+ * - "live"  → usa STRIPE_SECRET_KEY_LIVE (live mode). Cargo real a tarjeta.
+ *
+ * El caller elige el modo en funcion del evento:
+ *   - eventos sin flag o con event_rules.payment_mode = "test" -> test
+ *   - eventos con event_rules.payment_mode = "live"        -> live
+ *
+ * Default conservador: "test". Si la env var de live no esta seteada
+ * pero el caller pide live, el provider tira error explicito.
+ */
+export type StripeMode = "test" | "live";
+
+/**
+ * FIX 2026-07-18 (sprint Stripe Live prep): 2 clientes Stripe.
+ *
+ * Stripe permite tener test y live activos en paralelo: cada uno usa
+ * su propio par de keys. Documentacion oficial:
+ *   https://docs.stripe.com/keys#sandbox-versus-live-mode
+ *
+ * - `getStripeClientTest()` lee `STRIPE_SECRET_KEY` (sk_test_*).
+ * - `getStripeClientLive()` lee `STRIPE_SECRET_KEY_LIVE` (sk_live_*).
+ *
+ * El wrapper `getStripeClient(mode?)` mantiene backward compat: si
+ * no se pasa mode, retorna el cliente de test (default seguro).
+ */
+function makeClient(key: string): Stripe {
   // Cast al union de apiVersion del SDK. Si Stripe deprecia esta versión,
   // el casteo aquí será el único lugar a tocar.
   return new Stripe(key, {
@@ -52,6 +74,38 @@ function getStripeClient(): Stripe {
       version: "1.0.0",
     },
   });
+}
+
+function getStripeClientTest(): Stripe {
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (!key) {
+    throw new Error(
+      "Stripe test no está configurado. Define STRIPE_SECRET_KEY en .env.local o Vercel."
+    );
+  }
+  return makeClient(key);
+}
+
+function getStripeClientLive(): Stripe {
+  const key = process.env.STRIPE_SECRET_KEY_LIVE;
+  if (!key) {
+    throw new Error(
+      "Stripe live no está configurado. Define STRIPE_SECRET_KEY_LIVE en Vercel (sk_live_*) para usar este modo."
+    );
+  }
+  return makeClient(key);
+}
+
+export function getStripeClient(mode: StripeMode = "test"): Stripe {
+  return mode === "live" ? getStripeClientLive() : getStripeClientTest();
+}
+
+/**
+ * Backward compat: callers viejos que importan `getStripeClient()` sin
+ * argumento siguen funcionando. Devuelve el cliente de test (default).
+ */
+function _legacyGetStripeClient(): Stripe {
+  return getStripeClientTest();
 }
 
 /**
@@ -123,7 +177,12 @@ export const stripeProvider: PaymentProvider = {
       input.coupon
     );
 
-    const stripe = getStripeClient();
+    // FIX 2026-07-18 (sprint Stripe Live prep): elegir el cliente
+    // (test o live) segun el modo del input. Default: "test".
+    // El caller (create-checkout route) decide el modo leyendo
+    // event.event_rules.payment_mode del evento.
+    const mode: StripeMode = input.mode === "live" ? "live" : "test";
+    const stripe = getStripeClient(mode);
 
     const productRef = input.productRef;
     // Metadata: serializamos lo que tenemos. Si userId es null (guest checkout)
@@ -133,6 +192,10 @@ export const stripeProvider: PaymentProvider = {
       user_id: input.userId ?? "",
       user_email: input.userEmail,
       kind: productRef.kind,
+      // FIX 2026-07-18: persistir el modo en metadata del session
+      // para que el webhook sepa con qué Stripe client (test o live)
+      // tiene que verificar la firma + leer el payment.
+      payment_mode: mode,
     };
     // FIX 2026-07-18 (sprint atribución de pagos, David "el link de pago
     // es generico"): si el caller pasa confirmationId, lo serializamos
@@ -370,8 +433,11 @@ export function extractProductRefFromMetadata(
 }
 
 /**
- * Helper: lee el `STRIPE_WEBHOOK_SECRET`. Lanza si falta — el route
- * handler lo usa para verificar firma de cada request entrante.
+ * Helper: lee el `STRIPE_WEBHOOK_SECRET` (test). Lanza si falta.
+ *
+ * Backward compat: callers viejos que importan este helper siguen
+ * funcionando. Para el nuevo flujo dual (test + live simultaneos),
+ * ver `verifyStripeWebhookSignature()` abajo.
  */
 export function requireStripeWebhookSecret(): string {
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -381,6 +447,77 @@ export function requireStripeWebhookSecret(): string {
     );
   }
   return secret;
+}
+
+/**
+ * FIX 2026-07-18 (sprint Stripe Live prep): el webhook endpoint puede
+ * recibir requests firmadas con CUALQUIERA de los 2 secrets:
+ *   - `STRIPE_WEBHOOK_SECRET` (test mode, del webhook configurado en
+ *     Stripe dashboard en test mode).
+ *   - `STRIPE_WEBHOOK_SECRET_LIVE` (live mode, del webhook en live).
+ *
+ * Stripe permite tener 2 webhooks apuntando al mismo endpoint con
+ * diferentes secrets. El codigo intenta con cada uno y retorna el
+ * evento + el modo correspondiente. Si ninguno verifica, rechaza.
+ *
+ * Documentacion oficial: https://docs.stripe.com/webhooks#verify-official-libraries
+ */
+export type WebhookVerifyOutcome = {
+  event: import("stripe").default.Event;
+  mode: StripeMode;
+};
+
+/**
+ * Verifica la firma del webhook probando ambos secrets.
+ *
+ * @param rawBody - body crudo del request (debe ser exactamente lo
+ *                  que Stripe envio, NO JSON.parseado, porque la
+ *                  firma se calcula sobre el body literal).
+ * @param signature - valor del header `stripe-signature`.
+ * @param tolerance - ventana de tolerancia de timestamp en segundos
+ *                    (default 300 = 5 min, default de Stripe SDK).
+ * @returns evento verificado + el modo (test | live) que verifico.
+ * @throws si la firma no verifica con ninguno de los 2 secrets.
+ */
+export async function verifyStripeWebhookSignature(
+  rawBody: string,
+  signature: string,
+  tolerance: number = 300
+): Promise<WebhookVerifyOutcome> {
+  const candidates: { mode: StripeMode; secret: string | undefined }[] = [
+    { mode: "test", secret: process.env.STRIPE_WEBHOOK_SECRET },
+    { mode: "live", secret: process.env.STRIPE_WEBHOOK_SECRET_LIVE },
+  ];
+
+  const Stripe = (await import("stripe")).default;
+  const lastErrs: unknown[] = [];
+  for (const { mode, secret } of candidates) {
+    if (!secret) continue;
+    try {
+      // Crea un cliente de Stripe con apiVersion solo para verificar firma.
+      // No importa el key aqui, lo importante es el secret.
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "sk_placeholder", {
+        apiVersion: STRIPE_API_VERSION as never,
+      });
+      const event = stripe.webhooks.constructEvent(
+        rawBody,
+        signature,
+        secret,
+        tolerance
+      );
+      return { event, mode };
+    } catch (err) {
+      lastErrs.push({ mode, err: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  // Si llegamos aqui, ninguno verifico.
+  const errsSummary = lastErrs
+    .map((e) => (e as { mode: string; err: string }).mode + ": " + (e as { mode: string; err: string }).err)
+    .join(" | ");
+  throw new Error(
+    `Webhook signature did not verify. Tried: ${errsSummary || "no secrets configured"}`
+  );
 }
 
 export type { Stripe };

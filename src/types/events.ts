@@ -102,6 +102,18 @@ export interface EventBotRules {
   personality: string;
   /** Lista de reglas. Una por línea en la UI. */
   rules: string[];
+  /**
+   * FIX 2026-07-18 (sprint Stripe Live prep): modo de Stripe para este
+   * evento. Default "test" si no está seteado (el provider de Stripe
+   * lo lee via `event.event_rules?.payment_mode` en create-checkout).
+   *
+   * - "test"  → usa STRIPE_SECRET_KEY (sk_test_*). Sin cargo real.
+   * - "live"  → usa STRIPE_SECRET_KEY_LIVE (sk_live_*). Cargo real.
+   *
+   * Solo el admin puede setear este campo (via /admin/eventos). El
+   * bot NO lo modifica (es decision de David). Default seguro: "test".
+   */
+  payment_mode?: "test" | "live";
 }
 
 /* ------------------------------------------------------------------ */
