@@ -491,6 +491,27 @@ Ambos pasaron: type-check ✓ · lint ✓ · 726/726 tests verde · build ✓.
 
 ## 1. Deuda técnica activa
 
+### 🔴 CRÍTICO: `case "provide_email"` miente al lead (Sprint 2026-07-19, comprehensive matrix)
+
+**Síntoma:** cuando un lead manda un email en cualquier modo (v2, human_first), el bot:
+- ✅ Detecta el email.
+- ✅ Manda el email con QR (Brevo sendEmail se invoca con el email del lead).
+- ✅ Retorna al lead "Listo David, te registramos para el evento" + link de check-in.
+- ❌ **NO crea la fila en `event_confirmations`**.
+- ❌ **NO actualiza `leads.email`** (falla con `code 23505` unique violation si el email ya existe en otro lead).
+
+**Reproducible:** ver `scripts/diag-provide-email-flow.mjs`. Setup: lead con nombre válido ("David Test"), email único placeholder, body = "david@x.com", modo `super_executive_v2`. Resultado: `event_confirmations` queda VACÍA, `leads.email` NO se actualiza, `event_email_log` SÍ tiene entry con `recipient=david@x.com` y `ok=true`.
+
+**Impacto:** el bot promete al lead que está registrado sin realmente registrarlo. No se manda el QR real. El admin no ve la confirmation en su panel. Si el lead llega al evento, no tiene QR válido. **Bloquea producción.**
+
+**Acción:** investigar el side-effect fire-and-forget del sub-bloque `if (qr && registrationEventSlug)` en `src/lib/whatsapp/bot-engine.ts` línea 6932+. Hipótesis: el `createConfirmation` se ejecuta después de retornar la respuesta al lead (fire-and-forget), y algo falla silenciosamente. Agregar logs detallados al createConfirmation para diagnosticar. Considerar mover el `createConfirmation` antes del `sendEventQrPassEmail` (atomicidad: o ambos o ninguno).
+
+**Severidad:** 🔴 Crítico. El bot miente al lead. No promover a producción hasta arreglar.
+
+**Test de regresión:** `tests/bot-comprehensive-matrix.test.mjs` (sprint 2026-07-19) cubre 20 escenarios (2 modos × 2 eventos × 5 flows). S4 (email solo) y S5 (nombre+email mismo mensaje) deben pasar después del fix.
+
+**Verificación:** `node scripts/diag-provide-email-flow.mjs` con `$env:DEEPSEEK_API_KEY` seteada. Después del fix: `Confirmation: { id, name, email, ... }` (no null).
+
 ### 🟠 Drift enum `event_confirmation_source` (2026-07-19 sprint human_first)
 
 **Síntoma:** el type TypeScript `EventConfirmationSource` en `src/types/events.ts:43-49` incluye los valores `"whatsapp_safety_net"` y `"otro"`, pero el enum de Postgres `event_confirmation_source` SOLO tiene `imported_excel`, `public_form`, `manual`, `whatsapp_bot`. Resultado: cualquier `createConfirmation({source: "whatsapp_safety_net"})` falla con error 22P02 (invalid input value for enum) silenciosamente.
