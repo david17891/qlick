@@ -2192,6 +2192,20 @@ El commit `9c606de` ("captura universal de nombre humano en cualquier turno", me
 ### Pendiente para próxima fase
 
 - 🔴 **Búsqueda exhaustiva de over-parcheo** en `bot-engine.ts`. Hoy se rompió el flujo general por arreglar un caso (Mari mandó nombre completo en segundo turno). Necesitamos revisar las otras reglas deterministas que se interponen entre el usuario y el LLM. Probablemente hay más bugs latentes del mismo patrón.
+
+### 🟠 ACCIÓN REQUERIDA: Revocar API key de DeepSeek expuesta en repo (2026-07-14)
+
+**Síntoma:** la key `sk-26261d4559c0475ea12b16cb418f09c9` quedó visible en commits del repo (data/PROJECT-LOG.md y docs/STATUS.md) durante el sprint v0.10 (commit `95a7398`).
+
+**Acción inmediata de David:**
+1. Ir a https://platform.deepseek.com/api_keys
+2. Revocar la key `sk-26261d4559c0475ea12b16cb418f09c9`.
+3. Generar una nueva key con el mismo nombre o nuevo.
+4. Actualizar la key en `.env.local` + Vercel env vars.
+
+**Severidad:** 🟠 Media. La key ya está expuesta en el historial del repo. Asumimos que el repo es privado (o que David ya rotó esta key). El sprint 2026-07-19 usa una key DIFERENTE (`sk-cebe535c92ec4e5fa9d9baac02efee3f`) que NO está en el repo (verificado via `git grep`).
+
+**Lección:** nunca pegar keys reales en PROJECT-LOG ni en docs. Solo decir "key temporal sk-..." sin el valor completo. Aplicar a partir de ahora.
 - 🟠 **Caso Mari (captura tardía de nombre)**: queda sin resolver. Diseño 2.0 con LLM en el loop, NO heurística. Mantener `isValidHumanName` y los sets (CONVERSATIONAL_FILLER_WORDS, QLICK_DOMAIN_WORDS, PLACEHOLDER_NAMES_UI) como contexto para el LLM, no como gates duros.
 - 🟡 **Test runner roto**: `whatsapp-bot-universal-name.test.mjs` no corría por path aliases. Cualquier test que importe `.ts` con `@/` aliases está en la misma situación. Investigar si los tests `.mjs` actuales cubren solo archivos `.mjs` planos o si hay tests que pretendían cubrir código `.ts` y nunca corrieron.
 - 🟢 **Limpieza de leads contaminados**: si hay leads en producción con nombre capturado por el fix roto (probablemente algunos entre 19:33 y 22:27 PHX del 2026-07-09), hay que identificarlos y limpiarlos. Query de diagnóstico: `SELECT id, name, phone FROM leads WHERE updated_at > '2026-07-09 19:33:00-07' AND name ~ '^[¡¿]|^[A-Z][a-z]+\s+más\s+información' AND length(name) > 25;`. Decidir con David si limpieza automática o manual.
