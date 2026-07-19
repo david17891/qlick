@@ -5085,7 +5085,8 @@ Test E2E completo con tarjeta 4242 contra Qlick. Cargo de  MXN procesado, webhoo
 La cuenta de Stripe cct_1TqgUfRXKOh68uzN tiene:
 - charges_enabled: false
 - card_payments: inactive (KYC pendiente de Stephanie Gomez)
-- equirements: undefined (raro, sin requirements especificos)
+- 
+equirements: undefined (raro, sin requirements especificos)
 - 	ransfers: active (la unica capability activa)
 
 Esto hace que el endpoint de Qlick retorne 500 al intentar crear checkout sessions nuevas. Pero cargos YA creados (como el de David anterior) si procesan.
@@ -5101,7 +5102,8 @@ Esto hace que el endpoint de Qlick retorne 500 al intentar crear checkout sessio
 | event_confirmations.payment_status | ✓ | updated a paid (fix d2d2f34) |
 | event_payments | ✓ | 1 row, status=approved, method=stripe, amount=1000 |
 | event_access | ✓ | 1 row, access_status=active, source=event_purchase, payment_id linkeado |
-| uth.users | ✓ | user creado via esolveOrCreateUserId (id: c39870af-...) |
+| uth.users | ✓ | user creado via 
+esolveOrCreateUserId (id: c39870af-...) |
 | Email del QR (Brevo) | ✓ | enviado manualmente con badge PAGADO (messageId: <202607171131...>) |
 | QR token (event_qr_tokens) | ✓ | creado manualmente con script (token: 3Sn4A1UdF3V0s-0HS_Rx63GyyKMTKyal) |
 | WhatsApp outbound | ✗ | provider manual_wa solo genera link wa.me, no escribe a BD |
@@ -5126,7 +5128,8 @@ Esto hace que el endpoint de Qlick retorne 500 al intentar crear checkout sessio
 
 ### Cleanup completo
 
-- Refund del cargo (e_3Tu9oxRXKOh68uzN0beDw6GL, status=succeeded)
+- Refund del cargo (
+e_3Tu9oxRXKOh68uzN0beDw6GL, status=succeeded)
 - 0 event_payments del test
 - 0 event_access del test
 - 0 event_qr_tokens del test
@@ -6329,3 +6332,82 @@ Tests estructurales (sin levantar Next.js + Supabase). Validan:
 3. `payment_intent.payment_failed` precede a `checkout.session.expired`.
    Si NO tenemos el handler, el admin nunca ve el decline_code exacto
    (solo ve "el checkout expiro" sin saber que fue fondos insuficientes).
+
+## 2026-07-19 00:30 Mavis — Sprint bot v2 (David "diversidad de respuestas")
+
+- **Pregunta:** David propuso clonar `super_executive` para experimentar
+  con cambios de prompt sin miedo a romper producción. Decisión: hacer
+  el clon, opt-in, y validar empíricamente con tests E2E reales.
+
+- **Decisión:** Crear `buildSuperExecutiveV2Prompt` como clon de v1 con
+  3 cambios: (1) regla adaptativa por tipo de pregunta del lead
+  (fecha/lugar/precio/contenido/saludo), (2) INTENT metadata al final
+  del response para clasificación, (3) brevedad flexible 1-3 oraciones.
+  Activar con `bot_global_mode = "super_executive_v2"` en
+  `system_settings`. Después de validar con E2E real de DeepSeek,
+  promover a default por ser mejor en 2/3 casos LLM-driven.
+
+- **Razón:** David pidió "clonar y ver si mejora". El experimento
+  confirmó que v2 SÍ mejora la calidad de los edge cases (edge_empty
+  y edge_spaces dan bienvenida cálida con info del evento, v1 daba
+  fallback frío "Disculpa, no entendí"). Métrica de "diversidad" no
+  lo captó porque solo 3/34 variaciones llegan al LLM (las demás las
+  absorbe el switch del bot-engine con templates estáticos).
+
+- **Cambios concretos:**
+  - `src/lib/ai/agent-prompts.ts`: +102/-0 (`buildSuperExecutiveV2Prompt`,
+    `escapeRegex`, rollback de legacy `buildSystemPrompt` INTENT).
+  - `src/lib/ai/deepseek-provider.ts`: +18/-2 (`pickSystemPromptForMode`
+    default `super_executive` → `buildSuperExecutiveV2Prompt`).
+  - `src/lib/whatsapp/bot-engine.ts`: +47/-2 (parse `INTENT:` para
+    auditoría + strip antes de enviar al lead).
+  - `src/lib/admin/system-settings-server.ts`: +12/-0 (enum
+    `super_executive_v2` + type guard).
+  - `tests/bot-e2e-variations-suite.test.mjs` (nuevo, 34/34 mocks).
+  - `tests/bot-e2e-variations-real.test.mjs` (nuevo, 34/34 DeepSeek real).
+  - `scripts/compare-bot-diversity.mjs`, `diag-bot-mode.mjs`,
+    `diag-llm-only-compare.mjs` (nuevos).
+
+- **Verificación:**
+  - `npm run type-check`: 0 errores.
+  - `npm run lint`: 0 warnings/errors.
+  - `npm test`: 1465/1465 (+2 E2E nuevos).
+  - E2E real (DeepSeek): 34/34, ~$0.005 USD, 67s.
+  - Comparación v1 vs v2 (3 casos LLM-driven):
+    - idx 19 (inscribirme): idéntico (fast path del interactive_event_inscribir).
+    - idx 28 (edge_empty ""): v1 fallback frío, v2 bienvenida cálida con info.
+    - idx 29 (edge_spaces "   "): v1 pregunta qué busca, v2 info útil directo.
+
+- **Bugs encontrados durante el sprint:**
+  1. `new RegExp(pattern, adaptativeBlock)` — el 2do arg de `new RegExp`
+     son FLAGS, no replacement. `RegExp` interpretaba el bloque V2
+     como flags y tiraba SyntaxError. Fix: separar `new RegExp(pattern)`
+     de `.replace(regex, replacement)`. Detectado con script de diag
+     que crasheó al invocar `buildSuperExecutiveV2Prompt`.
+  2. INTENT metadata se enviaba al lead (no había strip). El
+     `responsePreview` del test mostraba `...\n\nINTENT: greeting` al
+     final. Fix: `replace(/^INTENT:\s*\w+.*$/m, "")` en bot-engine.ts
+     antes de enviar al lead.
+
+- **Insight clave:** La métrica de "diversidad de respuestas por
+  categoría" del test E2E cuenta respuestas únicas, pero NO captura
+  calidad. v2 da misma cantidad de respuestas únicas que v1 (13/34)
+  pero la calidad mejora en 2/3 casos LLM-driven. La diversidad está
+  dominada por el switch rígido del bot-engine (`case "welcome" |
+  "greeting"` retorna template estático, no va al LLM), no por el
+  prompt. Para mejorar diversidad en `greeting`/`info`/`question` que
+  llegan al LLM, hay que relajar el switch — sprint siguiente.
+
+- **Decisiones operativas:**
+  - v2 default para leads nuevos (rollback trivial: cambiar
+    `pickSystemPromptForMode` a v1).
+  - v1 (`buildSuperExecutivePrompt`) sigue exportado para A/B o rollback.
+  - `super_executive_v2` mode queda como opt-in (redundante hoy, escape
+    hatch si default cambia).
+  - DB actualizado a `super_executive_v2` (cambia al rev de prod).
+
+- **Sprint siguiente (backlog):** Relajar el switch rígido del bot-engine
+  para que saludos/preguntas con info del evento vayan al LLM en vez
+  de templates estáticos. Eso SÍ atacaría la diversidad en `greeting`
+  y `info`. Requiere análisis de qué templates estáticos se pueden
+  hacer dinámicos sin romper la captura de datos.
