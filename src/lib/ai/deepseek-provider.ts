@@ -1023,7 +1023,23 @@ export async function pickSystemPromptForMode(
   void supabase;
 
   if (mode === "super_executive") {
-    return buildSuperExecutivePrompt(context);
+    // FIX 2026-07-19 (sprint bot v2, promoción a default): v2 probó ser
+    // mejor que v1 en los 3 casos LLM-driven del E2E (edge_empty y
+    // edge_spaces dan bienvenida cálida con info en vez de fallback
+    // frío "Disculpa, no entendí"). Mantenemos v1 en código por
+    // seguridad / rollback; v2 es el default ahora. Si querés
+    // experimentar con v1, setear `bot_global_mode = "super_executive_legacy"`
+    // — no implementado, solo v1 sigue accesible vía la función
+    // exportada `buildSuperExecutivePrompt` (no la borramos).
+    return buildSuperExecutiveV2Prompt(context);
+  }
+  // FIX 2026-07-18 (sprint bot, David "diversidad de respuestas"):
+  // opt-in por si queremos iterar v2 sin afectar el default.
+  // Activar seteando `bot_global_mode = "super_executive_v2"`
+  // en system_settings (hoy es redundante con v2 default, pero
+  // queda como escape hatch si el default cambia en el futuro).
+  if (mode === "super_executive_v2") {
+    return buildSuperExecutiveV2Prompt(context);
   }
   // Sprint v0.9.x PR #1: 4to modo opt-in `human_first`. LLM-first total,
   // sin capa de intents rígida. Ver `buildHumanFirstPrompt` en

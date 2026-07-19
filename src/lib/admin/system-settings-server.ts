@@ -80,7 +80,14 @@ export type BotGlobalMode =
   // experimentar con LLM-first total (sin capa de intents rígida).
   // Mantener alineado con `BotMode` en `src/components/admin/BotConfigTab.tsx`
   // y con los 4 system prompts en `src/lib/ai/agent-prompts.ts`.
-  | "human_first";
+  | "human_first"
+  // FIX 2026-07-18 (sprint bot, David "diversidad de respuestas"):
+  // clon experimental de super_executive con 3 cambios para validar
+  // empíricamente si el LLM genera respuestas más matizadas. Activar
+  // seteando `bot_global_mode = "super_executive_v2"` en
+  // `system_settings` (via admin UI o SQL). NO es default — los leads
+  // actuales siguen con v1 hasta que validemos.
+  | "super_executive_v2";
 
 /**
  * Type guard runtime: ¿es `x` un `BotGlobalMode` válido?
@@ -94,7 +101,8 @@ export function isBotGlobalMode(x: unknown): x is BotGlobalMode {
     x === "socratic_autopilot_v2" ||
     x === "socratic_no_tools_v1" ||
     x === "super_executive" ||
-    x === "human_first"
+    x === "human_first" ||
+    x === "super_executive_v2"
   );
 }
 

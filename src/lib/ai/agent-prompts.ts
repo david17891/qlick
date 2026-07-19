@@ -318,6 +318,32 @@ export function buildTaskPrompt(
 
   ctxBlocks.push(`Tarea: ${instructions[task]}`);
 
+  // FIX 2026-07-18 (sprint bot, David "diversidad de respuestas"):
+  // pedimos al LLM que clasifique el intent del lead en una linea
+  // separada al final de su respuesta. Esto le da al bot-engine una
+  // clasificacion mas precisa que las regex (entiende sinonimos,
+  // typos, contexto). Si el LLM no sigue la instruccion, fallback
+  // a la heuristica regex existente.
+  //
+  // IMPORTANTE: esta instruccion se inyecta SOLO en task="suggest_reply"
+  // (los otros call sites de `instructions` no la verian).
+  if (task === "suggest_reply") {
+    instructions.suggest_reply +=
+      "\n- ADAPTA tu respuesta al TIPO de pregunta del lead. " +
+      "Si pregunta por FECHA/HORA ('cuando es?', 'a que hora'): enfocate en eso, no listes todo el evento. " +
+      "Si pregunta por LUGAR ('donde es?', 'ubicacion'): enfocate en el lugar, no repitas el precio. " +
+      "Si pregunta por PRECIO ('cuanto cuesta?', 'que precio tiene'): respondelo directo sin rodeos. " +
+      "Si pregunta por CONTENIDO ('que incluye?', 'de que trata'): describe temario o expositor. " +
+      "Si el lead SALUDA sin pregunta concreta ('hola', 'buenas', 'que tal'): da la bienvenida + 1-2 opciones (Info evento, Proximos eventos). " +
+      "No des la misma respuesta generica para todo.\n" +
+      "- Al FINAL de tu respuesta, en una NUEVA linea, escribe EXACTAMENTE: " +
+      "`INTENT: <una de: greeting | info | register | question | off_topic>`. " +
+      "Clasifica lo que el lead PREGUNTA o PIDE (no lo que tu respuesta hace). " +
+      "Ejemplos: 'hola' -> greeting, 'cuando es?' -> question, 'quiero inscribirme' -> register, " +
+      "'tienen eventos?' -> info, 'no me interesa' -> off_topic.";
+    ctxBlocks[ctxBlocks.length - 1] = `Tarea: ${instructions[task]}`;
+  }
+
   // Si hay evento activo, agregar recordatorio final.
   // FIX 2026-07-02: reforzar que NO invente datos, y que use la
   // plantilla de "no tengo el dato" si falta info.
@@ -609,6 +635,81 @@ export function buildSuperExecutivePrompt(context: AgentContext): string {
   ];
 
   return lines.join("\n");
+}
+
+/* ------------------------------------------------------------------ */
+/*  FIX 2026-07-18 (sprint bot, David "diversidad de respuestas"):  */
+/*  Clon experimental de Super Ejecutivo v2 (cambios opt-in).       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Clon de `buildSuperExecutivePrompt` con 3 cambios para validar
+ * empíricamente si el LLM genera respuestas más matizadas:
+ *
+ *  1. Regla de brevedad REEMPLAZADA por regla ADAPTATIVA: el LLM
+ *     adapta la respuesta al tipo de pregunta del lead (fecha,
+ *     lugar, precio, contenido). No más template genérico.
+ *  2. Regla final AGREGADA: el LLM debe escribir `INTENT: <x>` al
+ *     final del response, donde x es uno de
+ *     `greeting | info | register | question | off_topic`.
+ *  3. Regla de brevedad FLEXIBILIZADA: permite 2-3 oraciones
+ *     cuando el contenido lo requiere (precio + URL + cierre).
+ *
+ * Activar seteando `bot_global_mode = "super_executive_v2"` en
+ * `system_settings`. NO es default — los leads actuales siguen con
+ * v1 hasta que validemos con data.
+ *
+ * Si los tests E2E muestran que v2 tiene más diversidad sin perder
+ * calidad, lo promovemos a default y depreciamos v1.
+ */
+export function buildSuperExecutiveV2Prompt(context: AgentContext): string {
+  const v1 = buildSuperExecutivePrompt(context);
+
+  // Cambio 1: agregar regla adaptativa ANTES de la regla de brevedad.
+  // Cambio 2: pedir INTENT al final.
+  // Cambio 3: flexibilizar brevedad.
+  const adaptativeBlock = [
+    "=== REGLAS DE FORMATO Y ESTILO WHATSAPP (V2 — ADAPTATIVO, NO NEGOCIABLE) ===",
+    "- ADAPTATIVIDAD: Responde según el TIPO de pregunta del lead, NO con template genérico.",
+    "  * Si pregunta por FECHA/HORA ('cuando es?', 'a que hora'): enfocate en fecha y hora, no listes todo el evento.",
+    "  * Si pregunta por LUGAR ('donde es?', 'ubicacion'): enfocate en el lugar, no repitas el precio.",
+    "  * Si pregunta por PRECIO ('cuanto cuesta?', 'que precio tiene'): respondelo directo en una línea, sin rodeos.",
+    "  * Si pregunta por CONTENIDO ('que incluye?', 'de que trata'): describe temario o expositor.",
+    "  * Si SALUDA sin pregunta concreta ('hola', 'buenas', 'que tal'): bienvenida breve + 1-2 opciones (info evento / próximos eventos).",
+    "- BREVEDAD FLEXIBLE: 1 oración para saludos/preguntas simples. Hasta 3 oraciones para contenido denso (precio + cierre de inscripción).",
+    "- CERO VERBOSIDAD: no repitas el título del evento si ya se sabe de qué evento hablan.",
+    "- Tono: cálido, mexicano, tuteo. Max 1 emoji por mensaje.",
+    "",
+  ].join("\n");
+
+  // Reemplazar el bloque v1 por el bloque v2.
+  // FIX 2026-07-19: el segundo arg de `new RegExp` son FLAGS, no el
+  // replacement. Antes pasaba `adaptativeBlock` como segundo arg y
+  // `RegExp` lo tomaba como flags (tiraba SyntaxError al construir
+  // el regex). El replacement va en el segundo arg de `.replace`.
+  const v1BlockHeader = "=== REGLAS DE FORMATO Y ESTILO WHATSAPP (NO NEGOCIABLE) ===";
+  const v1BlockRegex = new RegExp(
+    `${escapeRegex(v1BlockHeader)}[\\s\\S]*?(?=\\n=== |$)`
+  );
+  const v2Result = v1.replace(v1BlockRegex, adaptativeBlock);
+
+  // Cambio 4: agregar regla del INTENT al final (después de la
+  // regla de fallback).
+  const intentRule = [
+    "",
+    "=== METADATA DE DEBUG (no enviar al lead) ===",
+    "Al FINAL de tu respuesta, en una NUEVA linea, escribe EXACTAMENTE:",
+    "`INTENT: <una de: greeting | info | register | question | off_topic>`",
+    "Clasifica lo que el lead PREGUNTA o PIDE (no lo que tu respuesta hace).",
+    "El orquestador lo strippea antes de mandar al lead (no lo va a ver).",
+    "Esta metadata ayuda a iterar el prompt — no la omitas.",
+  ].join("\n");
+
+  return v2Result + "\n" + intentRule;
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /* ------------------------------------------------------------------ */

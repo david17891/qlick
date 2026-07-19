@@ -4207,12 +4207,57 @@ case "interactive_event_inscribir": {
             `Rate limited: ${rateLimit.callCount} calls in 60s window for phone; resetMs=${rateLimit.resetMs}. DeepSeek not called.`
         };
       }
+      // FIX 2026-07-18 (sprint bot, David "diversidad de respuestas"):
+      // el LLM ahora devuelve el intent detectado en una linea final
+      // `INTENT: <x>` (ver agent-prompts.ts). Lo extraemos aqui y lo
+      // loggeamos como auditoria. NO cambiamos el flow del bot aun:
+      // queremos data para decidir si vale la pena migrar del todo a
+      // LLM-as-classifier en un sprint futuro.
+      //
+      // Si difiere del intent del case actual, marcamos un flag de
+      // discrepancia que se loggea junto con el response. Asi tenemos
+      // data real para decidir el rollout.
+      const intentFromLlm = (() => {
+        const m = (result.content ?? "").match(/^INTENT:\s*(\w+)/m);
+        if (!m) return null;
+        const tag = m[1].toLowerCase();
+        if (
+          [
+            "greeting",
+            "info",
+            "register",
+            "question",
+            "off_topic",
+          ].includes(tag)
+        ) {
+          return tag;
+        }
+        return null;
+      })();
+      if (intentFromLlm && intentFromLlm !== "welcome") {
+        // Solo loggeamos si el LLM disintio del default welcome.
+        // La mayoria de las veces va a coincidir, esto es data de
+        // discrepancia para mejorar el sistema.
+        debugLog("[whatsapp/bot] llm-classified intent (vs case default)", {
+          leadId: lead.id,
+          bodyPreview: body.slice(0, 60),
+          intentFromLlm,
+        });
+      }
       // Sprint v15 PR #2.5b (I-FINAL-5): strip del flag [[ESCALATE_HUMAN]]
       // post-AgentResult. El orquestador usa la presencia del flag para
       // inyectar handoff a humano (más abajo). El texto que SÍ se le
       // manda al lead ya viene sin el flag.
       const escalated = (result.content ?? "").includes("[[ESCALATE_HUMAN]]");
-      let content = stripEscalateFlag(result.content ?? "").trim();
+      // FIX 2026-07-19 (sprint bot v2): strip también el `INTENT: <x>`
+      // que el prompt `buildSuperExecutiveV2Prompt` pide al LLM al
+      // final del response. Es metadata de debug que el LLM agregó
+      // para nosotros — el lead NO debe verlo. Lo extrajimos arriba
+      // (línea `intentFromLlm`) y loggeamos si difiere de welcome.
+      // Aquí limpiamos el contenido que SÍ va al lead.
+      let content = stripEscalateFlag(result.content ?? "")
+        .replace(/^INTENT:\s*\w+.*$/m, "")
+        .trim();
       if (!content) {
         content =
           "Disculpa, no pude procesar tu mensaje. ¿Me lo puedes reformular? Si necesitas atención personalizada escríbenos a hola@qlick.marketing.";
