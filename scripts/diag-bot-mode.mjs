@@ -65,11 +65,11 @@ async function main() {
     process.exit(1);
   }
 
-  // Upsert.
+  // Upsert (FIX 2026-07-19: ya no usar JSON.stringify, leer hace des-escape).
   const body = [
     {
       key: "bot_global_mode",
-      value: JSON.stringify(targetMode),
+      value: targetMode,
       updated_at: new Date().toISOString(),
     },
   ];

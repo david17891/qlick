@@ -153,7 +153,6 @@ export async function readSystemSetting(
   if (cached && cached.expiresAt > now) {
     return cached.value;
   }
-
   // Cache miss / expired → consultar DB. Cada llamada individual hace
   // su propio READ (no batch) porque las tools típicamente consultan
   // 1 flag a la vez. Si en el futuro hay >3 flags por request, conviene
@@ -184,8 +183,16 @@ export async function readSystemSetting(
     // Supabase no configurado → null (caller usa fallback).
   }
 
-  box.map[key] = { value: ok ? value : null, expiresAt: now + CACHE_TTL_MS };
-  return ok ? value : null;
+  // FIX 2026-07-19 (sprint bot comprehensive): des-escapar value si
+  // es un string (viene con comillas extras de jsonb). El `setSystemSetting`
+  // o callers externos pueden pasar `JSON.stringify(mode)` que guarda
+  // el string con comillas INTERNAS. Sin este fix, `v === "human_first"`
+  // siempre retorna false porque `v` es `'"human_first"'`.
+  const finalValue = ok && typeof value === "string" && value.startsWith('"') && value.endsWith('"')
+    ? value.slice(1, -1)
+    : value;
+  box.map[key] = { value: ok ? finalValue : null, expiresAt: now + CACHE_TTL_MS };
+  return ok ? finalValue : null;
 }
 
 /**

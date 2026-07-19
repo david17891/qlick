@@ -31,7 +31,13 @@ import {
 /* Constantes y tipos                                                   */
 /* ------------------------------------------------------------------ */
 
-type BotMode = "socratic_autopilot_v2" | "socratic_no_tools_v1" | "super_executive" | "human_first";
+type BotMode =
+  | "socratic_autopilot_v2"
+  | "socratic_no_tools_v1"
+  | "super_executive"
+  | "human_first"
+  // FIX 2026-07-19 (sprint bot v2): sync con BotGlobalMode.
+  | "super_executive_v2";
 // FIXME: SSOT vive en `src/lib/admin/system-settings-server.ts` (`BotGlobalMode`).
 // Refactor pendiente: unificar en un solo archivo de types.
 

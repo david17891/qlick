@@ -55,11 +55,18 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 /* ------------------------------------------------------------------ */
 
 /** SSOT del modo del bot. Re-exportamos desde la lib de system-settings. */
-export type BotMode = "socratic_autopilot_v2" | "socratic_no_tools_v1" | "super_executive" | "human_first";
+export type BotMode =
+  | "socratic_autopilot_v2"
+  | "socratic_no_tools_v1"
+  | "super_executive"
+  | "human_first"
+  // FIX 2026-07-19 (sprint bot v2): sync con BotGlobalMode.
+  | "super_executive_v2";
 // FIXME: la SSOT vive en `src/lib/admin/system-settings-server.ts` (`BotGlobalMode`).
 // Esta declaración está duplicada en `BotConfigTab.tsx` y `BotSimulatorTab.tsx`.
 // Refactor pendiente: unificar en `src/lib/ai/bot-mode.ts` (solo types, sin imports runtime).
 // Sprint v0.9.x PR #1 agregó `human_first` a las 4 declaraciones en sync manual.
+// Sprint v0.9.x PR #2 agregó `super_executive_v2` a las 3 declaraciones.
 
 /** Un mensaje del historial simulado (in-memory, NO viene de la DB). */
 export interface SimulateHistoryMessage {

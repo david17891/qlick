@@ -69,6 +69,11 @@ import type { ActiveEventContext } from "./event-context-loader";
 import {
   buildSystemPrompt,
   buildSuperExecutivePrompt,
+  // FIX 2026-07-19 (sprint bot v2): import faltante que causaba
+  // `ReferenceError: buildSuperExecutiveV2Prompt is not defined`
+  // en los tests comprehensive matrix. v2 es el default actual
+  // (sprint v0.9.x PR #2) pero nunca se importó acá.
+  buildSuperExecutiveV2Prompt,
   // Sprint v0.9.x PR #1: 4to modo opt-in `human_first` (LLM-first total).
   buildHumanFirstPrompt,
   buildTaskPrompt

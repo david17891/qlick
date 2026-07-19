@@ -34,7 +34,13 @@ import { Card, CardBody, CardHeader, Button, Input, Badge } from "@/components/u
 /* Tipos espejo del endpoint (ver `src/lib/ai/simulator.ts`)            */
 /* ------------------------------------------------------------------ */
 
-type BotMode = "socratic_autopilot_v2" | "socratic_no_tools_v1" | "super_executive" | "human_first";
+type BotMode =
+  | "socratic_autopilot_v2"
+  | "socratic_no_tools_v1"
+  | "super_executive"
+  | "human_first"
+  // FIX 2026-07-19 (sprint bot v2): sync con BotGlobalMode.
+  | "super_executive_v2";
 // FIXME: SSOT vive en `src/lib/admin/system-settings-server.ts` (`BotGlobalMode`).
 // Refactor pendiente: unificar en un solo archivo de types.
 
@@ -88,14 +94,17 @@ const MODE_LABELS: Record<BotMode, string> = {
   super_executive: "🚀 Súper Ejecutivo",
   // Sprint v0.9.x PR #1: 4to modo opt-in `human_first` (LLM-first total).
   // Aparece en el selector del simulador y en la UI de telemetría.
-  human_first: "🧪 Estilo Humano (Conversacional)"
+  human_first: "🧪 Estilo Humano (Conversacional)",
+  // FIX 2026-07-19 (sprint bot v2): agregado al selector del simulador.
+  super_executive_v2: "🚀 Súper Ejecutivo v2 (default)",
 };
 
 const MODE_EMOJI: Record<BotMode, string> = {
   socratic_autopilot_v2: "🟢",
   socratic_no_tools_v1: "🔵",
   super_executive: "🚀",
-  human_first: "🧪"
+  human_first: "🧪",
+  super_executive_v2: "🚀",
 };
 
 /* ------------------------------------------------------------------ */

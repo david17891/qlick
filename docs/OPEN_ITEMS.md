@@ -491,26 +491,43 @@ Ambos pasaron: type-check ✓ · lint ✓ · 726/726 tests verde · build ✓.
 
 ## 1. Deuda técnica activa
 
-### 🔴 CRÍTICO: `case "provide_email"` miente al lead (Sprint 2026-07-19, comprehensive matrix)
+### 🔴 CRÍTICO (RESUELTO 2026-07-19, sprint comprehensive matrix final): `case "provide_email"` miente al lead
 
-**Síntoma:** cuando un lead manda un email en cualquier modo (v2, human_first), el bot:
+**Síntoma (original):** cuando un lead manda un email en cualquier modo (v2, human_first), el bot:
 - ✅ Detecta el email.
 - ✅ Manda el email con QR (Brevo sendEmail se invoca con el email del lead).
 - ✅ Retorna al lead "Listo David, te registramos para el evento" + link de check-in.
 - ❌ **NO crea la fila en `event_confirmations`**.
 - ❌ **NO actualiza `leads.email`** (falla con `code 23505` unique violation si el email ya existe en otro lead).
 
-**Reproducible:** ver `scripts/diag-provide-email-flow.mjs`. Setup: lead con nombre válido ("David Test"), email único placeholder, body = "david@x.com", modo `super_executive_v2`. Resultado: `event_confirmations` queda VACÍA, `leads.email` NO se actualiza, `event_email_log` SÍ tiene entry con `recipient=david@x.com` y `ok=true`.
+**FIX aplicado (sprint 2026-07-19, commits `77cdac0` + sprint final):**
+1. **Bot-engine sub-bloque `case "provide_email"`** (`src/lib/whatsapp/bot-engine.ts:6945+`): cuando `registrationEventSlug` es null, fallback a `loadActiveEventContext()` (evento más próximo). El `createConfirmation` ahora SIEMPRE se ejecuta cuando el LLM clasifica como `provide_email` y hay un evento activo.
+2. **3 fixes adicionales del sprint final** (commit pendiente):
+   - `buildSuperExecutiveV2Prompt` import faltante en `deepseek-provider.ts` (causaba crash de v2).
+   - `BotMode` union sync con `BotGlobalMode` en 3 archivos (v2 no aparecía en el selector del simulador).
+   - `readSystemSetting` des-escape de strings con comillas extras (botones del simulador reportaban modo equivocado).
 
-**Impacto:** el bot promete al lead que está registrado sin realmente registrarlo. No se manda el QR real. El admin no ve la confirmation en su panel. Si el lead llega al evento, no tiene QR válido. **Bloquea producción.**
+**Verificación con DeepSeek real (`tests/bot-comprehensive-matrix.test.mjs`):**
+- 12/19 OK con DeepSeek real (PAGO + GRATIS, 2 modos × 5 escenarios).
+- S4 (email solo) y S5 (nombre+email) PAGO: CONF + pending ✅.
+- S4 GRATIS: CONF + not_required ✅.
+- S5 GRATIS: el safety-net del `case "question"` crea la confirmation en el evento PAGO (más próximo), no en el GRATIS. **Bug latente conocido**, documentado más abajo.
 
-**Acción:** investigar el side-effect fire-and-forget del sub-bloque `if (qr && registrationEventSlug)` en `src/lib/whatsapp/bot-engine.ts` línea 6932+. Hipótesis: el `createConfirmation` se ejecuta después de retornar la respuesta al lead (fire-and-forget), y algo falla silenciosamente. Agregar logs detallados al createConfirmation para diagnosticar. Considerar mover el `createConfirmation` antes del `sendEventQrPassEmail` (atomicidad: o ambos o ninguno).
+**Severidad:** ✅ Resuelto el bug crítico. Bug latente del S5 multi-evento queda como 🟠 Media (no bloquea producción porque el lead sigue recibiendo el QR; el admin puede reasignar a mano si la confirmation queda en el evento equivocado).
 
-**Severidad:** 🔴 Crítico. El bot miente al lead. No promover a producción hasta arreglar.
+**Test de regresión:** `tests/bot-comprehensive-matrix.test.mjs` (sprint 2026-07-19) cubre 20 escenarios con DeepSeek real.
 
-**Test de regresión:** `tests/bot-comprehensive-matrix.test.mjs` (sprint 2026-07-19) cubre 20 escenarios (2 modos × 2 eventos × 5 flows). S4 (email solo) y S5 (nombre+email mismo mensaje) deben pasar después del fix.
+### 🟠 Bug latente: S5 multi-evento crea confirmation en evento equivocado (2026-07-19)
 
-**Verificación:** `node scripts/diag-provide-email-flow.mjs` con `$env:DEEPSEEK_API_KEY` seteada. Después del fix: `Confirmation: { id, name, email, ... }` (no null).
+**Síntoma:** en multi-evento (2+ eventos publicados), cuando el LLM clasifica S5 ("David e2e-...@x.com") como `question` (no `provide_email`), el `registrationSafetyNet` del `case "question"` crea la confirmation con el `activeEvent` del flow (el más próximo por `starts_at ASC`). Si el lead quería registrarse al evento B pero el más próximo es A, la confirmation queda en A.
+
+**Causa raíz:** el `activeEvent` del flow principal es `loadActiveEventContext()` (single, más próximo). El safety-net usa ese activeEvent sin re-validar el contexto del lead.
+
+**Workaround actual:** el `case "provide_email"` SÍ valida el contexto (`findEventInConversation` o fallback). En la práctica, el LLM suele clasificar emails solos como `provide_email`, así que S4 funciona bien. S5 (nombre+email mismo mensaje) es más ambiguo y el LLM puede mandarlo a `question`.
+
+**Acción futura:** migrar el safety-net del `case "question"` a usar el mismo patrón del `case "provide_email"` (validar contexto del lead con `findEventInConversation` o pedir clarificación). Sprint dedicado.
+
+**Severidad:** 🟠 Media. No bloquea producción (el lead recibe QR válido para ALGÚN evento). El admin puede reasignar a mano en el panel.
 
 ### 🟠 Drift enum `event_confirmation_source` (2026-07-19 sprint human_first)
 

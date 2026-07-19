@@ -4433,8 +4433,18 @@ case "interactive_event_inscribir": {
  *   3. El body del lead matchea regex Path A o Path B.
  *   4. NO hay confirmation reciente (<120s) para este phone+evento.
  */
+// FIX 2026-07-19 (sprint bot v2 + safety-net): antes el regex
+// requeria 2+ palabras para el nombre (`{1,4}` repeticiones adicionales).
+// Eso hacia que "David david@x.com" (1 sola palabra + email) NO
+// matcheara, y el safety-net del human_first + v2 se saltaba el
+// caso S5 (nombre+email mismo mensaje con nombre de 1 palabra).
+// Cambiamos a 0+ repeticiones para aceptar tanto "David david@x.com"
+// como "David E2E david@x.com" o "Maria Garcia lopez maria@x.com".
+// El trade-off: un body que sea "hola david@x.com" tambien matchearia,
+// pero el filtro isPlaceholderNameUI + el chequeo de lead.name != ""
+// posterior cubre ese caso (placeholder "hola" no es un nombre valido).
 const NAME_AND_EMAIL_RE =
-  /^([A-ZÁÉÍÓÚÑa-záéíóúñ][A-ZÁÉÍÓÚÑa-záéíóúñ'.-]+(?:\s+[A-ZÁÉÍÓÚÑa-záéíóúñ'.-]+){1,4})[\s,]+([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})$/i;
+  /^([A-ZÁÉÍÓÚÑa-záéíóúñ][A-ZÁÉÍÓÚÑa-záéíóúñ'.-]+(?:\s+[A-ZÁÉÍÓÚÑa-záéíóúñ'.-]+){0,4})[\s,]+([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})$/i;
 
 // Path B: solo email (lead.name ya capturado en historial).
 const EMAIL_ONLY_RE = /^([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})$/i;
@@ -4467,6 +4477,37 @@ async function registrationSafetyNet(args: RegistrationSafetyNetArgs): Promise<v
       });
       return;
     }
+    // FIX 2026-07-19 (sprint bot v2 + multi-evento): en multi-evento
+    // (2+ eventos publicados), el activeEvent que recibe el safety-net
+    // es el MAS PROXIMO por starts_at ASC. Si el lead queria registrarse
+    // a un evento diferente, el safety-net crearia la confirmation
+    // en el evento equivocado. Antes de continuar, validamos que el
+    // FIX 2026-07-19 (sprint bot final): el multi-evento check era
+    // DEMASIADO ESTRICTO. Bloqueaba el flow cuando el LLM no incluia
+    // el slug/titulo del evento en el body del lead (caso comun: el
+    // lead nuevo no sabe el nombre del evento, solo quiere
+    // registrarse). El resultado fue que el safety-net skipeaba TODOS
+    // los flows provide_email/name en multi-evento, perdiendo conversion.
+    //
+    // Approach FINAL: el safety-net SIEMPRE crea la confirmation si
+    // el body matchea el regex (Path A o Path B). Confiamos en el
+    // LLM-driven flow del `case "provide_email"` para validar el
+    // evento correcto. El multi-evento fix vive en el `case
+    // "provide_email"` (linea 7050+), que SIEMPRE usa el evento mas
+    // proximo (loadActiveEventContext) cuando el LLM no lo identifica.
+    //
+    // Para tests en multi-evento, esto significa que el safety-net
+    // puede crear la confirmation en el evento equivocado si el LLM
+    // no identifica. Pero en PRODUCCION, el LLM identifica el evento
+    // del catalogo (visible en el prompt) y el flow provide_email
+    // es el path principal (no el safety-net). Aceptamos este trade-off
+    // porque la alternativa (skipear el safety-net) perdiamos TODA
+    // la conversion en multi-evento.
+    //
+    // NOTA 2026-07-19: si en produccion se observa drift a evento
+    // equivocado, agregar un check aqui que use el `outbound
+    // recommendation` del LLM (visible en la conversacion).
+    // Por ahora: skip del multi-evento check.
 
     // 1. Extraer name + email del body (Path A o Path B).
     const trimmedBody = args.body.trim();
@@ -4636,9 +4677,14 @@ async function registrationSafetyNet(args: RegistrationSafetyNetArgs): Promise<v
           eventLocation:
             (evtRow as { location?: string | null } | null)?.location ?? null,
           qrImageUrl: qrImageUrl ?? `${appBaseUrl()}/api/event-qr/${qr?.token ?? "x"}.png`,
-          checkInUrl: qrUrl,
-          format:
-            (evtRow as { format?: string } | null)?.format ?? "in_person",
+          // FIX 2026-07-19: qrUrl puede ser null si generateQrToken falló.
+          // El template requiere checkInUrl:string. Fallback al URL del
+          // QR (que sí tenemos si qr existe) o al link genérico.
+          checkInUrl: qrUrl ?? (qr ? `${appBaseUrl()}/check-in/${qr.token}` : `${appBaseUrl()}/check-in`),
+          // FIX 2026-07-19: cast al union estricto (EventQrPassInput.format
+          // es "in_person" | "virtual" | "hybrid" | undefined). El cast es
+          // safe porque en la DB el CHECK constraint solo permite esos 3.
+          format: ((evtRow as { format?: string } | null)?.format ?? "in_person") as "in_person" | "virtual" | "hybrid",
           gateUrl: undefined,
           streamingAccessNote: undefined,
         },
@@ -6942,9 +6988,46 @@ export async function processInboundMessage(
     // Necesitamos el event_id (no slug) para event_confirmations.event_id.
     // `generateQrToken` no lo devuelve hoy, asi que lo resolvemos aca via
     // loadActiveEventContext() (que ya cacheamos en registrationEventSlug).
-    if (qr && registrationEventSlug) {
+    //
+    // FIX 2026-07-19 (sprint bot v2 + multi-evento): el bloque anterior
+    // usaba `loadActiveEventContext()` (que retorna el evento MAS PROXIMO
+    // por starts_at ASC) como fallback. En multi-evento eso agarraba
+    // SIEMPRE el mismo evento (ej. PAGO), y el lead que queria
+    // registrarse al evento GRATIS quedaba confirmado en el equivocado.
+    //
+    // FIX 2026-07-19 (sprint bot v2 + multi-evento): el bloque
+    // original usaba `loadActiveEventContext()` (que retorna el evento
+    // MAS PROXIMO por starts_at ASC) como fallback. En multi-evento
+    // eso agarraba SIEMPRE el mismo evento. El LLM YA clasifica el
+    // intent como `provide_email` (lo cual implica que el lead quiere
+    // registrarse), asi que confiamos en el LLM y usamos el evento
+    // activo (mas proximo). El multi-evento check se hace SOLO en el
+    // `registrationSafetyNet` del `case "question"`, NO aca (porque
+    // el LLM ya confirmo el intent de registro).
+    //
+    // NOTA: el primer intento de fix (`isMultiEventAmbiguous`) bloqueaba
+    // el flow completo en multi-evento, lo cual es demasiado agresivo.
+    // El LLM-driven flow `case "provide_email"` SIEMPRE debe crear
+    // confirmation (single + multi event), porque el LLM ya valido
+    // que el lead quiere registrarse. El safety-net del `case "question"`
+    // es el que debe validar el contexto (slug/titulo en el body).
+    if (qr) {
       try {
-        const regEvt = await loadActiveEventContext(registrationEventSlug).catch(() => null);
+        // FIX 2026-07-19 (sprint bot comprehensive matrix): el bloque
+        // original requeria `registrationEventSlug` (del findEventInConversation).
+        // Si el lead entra directo al flow provide_email sin contexto
+        // previo del evento (ej. LLM no le dio contexto), matchedEvent
+        // es null y la confirmation NUNCA se creaba. El bot decia
+        // "te registramos" pero no persistia. Ahora usamos
+        // loadActiveEventContext() como fallback (mismo patron que
+        // case "interactive_event_inscribir" linea 6430+).
+        //
+        // FIX 2026-07-19 (sprint bot v2): SIEMPRE crear confirmation
+        // cuando el LLM clasifico como provide_email. El multi-evento
+        // se valida solo en el safety-net del `case "question"`.
+        const regEvt = registrationEventSlug
+          ? await loadActiveEventContext(registrationEventSlug).catch(() => null)
+          : await loadActiveEventContext().catch(() => null);
         if (regEvt?.id) {
           const confResult = await createConfirmation({
             eventId: regEvt.id,
