@@ -6411,3 +6411,99 @@ Tests estructurales (sin levantar Next.js + Supabase). Validan:
   de templates estáticos. Eso SÍ atacaría la diversidad en `greeting`
   y `info`. Requiere análisis de qué templates estáticos se pueden
   hacer dinámicos sin romper la captura de datos.
+
+## 2026-07-19 09:00 Mavis — Sprint human_first end-to-end (David "no estaba registrando en DB")
+
+- **Pregunta:** David reportó que el modo `human_first` (sprint v0.9.x
+  PR #1) "respondía muy bien" pero NO estaba registrando en la base
+  de datos. Tampoco mandaba los QR ni la información fija. El modo
+  estaba opt-in, no se usaba en producción, pero quería dejarlo a
+  punto para que funcione end-to-end.
+
+- **Decisión:** Sprint dedicado a arreglar el safety-net del bot-engine
+  con TDD: (1) test E2E rojo primero, (2) fix end-to-end, (3) validar
+  con mocks + DeepSeek real. NO tocar v2 (que David explícitamente
+  dijo "lo dejamos así" — funciona semi-funcional). Modo `human_first`
+  queda opt-in hasta tener data de conversión.
+
+- **Razón:** David quería invertir en `human_first` porque el prompt
+  está pulido (mejor que v2 en estructura) y porque el LLM responde
+  bien. El bug era de integración (registro + email), no del LLM.
+  Vale la pena arreglarlo y comparar contra v2 cuando tengamos data
+  de conversión real.
+
+- **Bugs encontrados durante el sprint:**
+
+  1. **Drift enum `event_confirmation_source`**: el type TypeScript
+     incluye `whatsapp_safety_net` y `otro` pero el enum de Postgres
+     solo tiene 4 valores (`imported_excel`, `public_form`, `manual`,
+     `whatsapp_bot`). El safety-net usaba `source: "whatsapp_safety_net"`
+     y el `createConfirmation` fallaba con 22P02 silenciosamente. Esa
+     es la raíz histórica del "no estaba registrando en DB". FIX:
+     usar `whatsapp_bot` (que SÍ existe) y documentar el drift en
+     OPEN_ITEMS como sprint futuro (migration que agregue los valores
+     faltantes al enum).
+
+  2. **Safety-net no replicaba el flow end-to-end**: solo creaba la
+     confirmation (que ademas fallaba por el bug #1). NO actualizaba
+     el lead, NO generaba QR, NO mandaba email. El case `provide_email`
+     SÍ hace todo eso, pero el safety-net se llama solo desde el
+     `case "question"`. FIX: agregar al safety-net el mismo patron
+     del case provide_email (update lead + generateQrToken +
+     sendEventQrPassEmail).
+
+  3. **Path B (email solo) del safety-net es dead code**: el bot
+     clasifica "email solo" como intent `provide_email` (no
+     `question`), asi que el safety-net Path B nunca dispara. El
+     flow normal ya cubre ese caso. Dejamos el Path B en el
+     safety-net como defense-in-depth pero documentamos que no
+     es el path real.
+
+- **Cambios concretos:**
+
+  - `src/lib/whatsapp/bot-engine.ts` `registrationSafetyNet` reescrito:
+    - `source: "whatsapp_bot"` (drift fix).
+    - Nuevo `EMAIL_ONLY_RE` (Path B defense-in-depth).
+    - Update `leads.name` + `leads.email` despues de createConfirmation.
+    - `generateQrToken` + `sendEventQrPassEmail` con `qrImageUrl`
+      publico (`${appBaseUrl()}/api/event-qr/${qr.token}.png`).
+    - `payment_status='pending'` para eventos de pago.
+    - Fire-and-forget con try/catch granular (no rompe el flow).
+
+  - `tests/human-first-end-to-end.test.mjs` (nuevo, 2/2 verde con mocks).
+  - `tests/human-first-end-to-end-real.test.mjs` (nuevo, 2/2 verde
+    con DeepSeek real, ~$0.01 USD, 18s).
+  - `docs/OPEN_ITEMS.md`: drift enum documentado.
+  - `scripts/diag-{conf-source-enum,create-conf,lead-source-enum,
+    payment-status,table-columns}.mjs` (nuevos, diagnosticos one-off).
+
+- **Verificación:**
+
+  - `npm run type-check`: 0 errores.
+  - `npm run lint`: 0 warnings/errors.
+  - `npm test`: 1468/1468 (+3 E2E nuevos).
+  - E2E #1 (Nombre + email mismo mensaje): safety-net dispara,
+    confirmation creada, lead actualizado, email con QR enviado.
+  - E2E #2 (email solo, lead.name ya capturado): bot clasifica como
+    `provide_email`, flow normal persiste, email con QR enviado.
+
+- **Tags git de rollback:**
+
+  - `bot-v2-baseline` (HEAD `ca5d35a`): estado antes de sprint human_first.
+  - `human-first-e2e-baseline` (HEAD `beb274e`): estado con safety-net
+    end-to-end. Para volver: `git reset --hard human-first-e2e-baseline`.
+
+- **Decisiones operativas:**
+
+  - `human_first` queda opt-in (DB restaurada a `super_executive_v2`).
+  - `v2` (default actual) NO se toca. Funciona semi-funcional como
+    dijo David.
+  - Drift del enum documentado como sprint futuro (migration
+    que agregue `whatsapp_safety_net` y `otro`).
+  - Si v2 convierte mejor que human_first con data real, v2 se
+    mantiene. Si human_first convierte mejor, lo promovemos a
+    default en sprint futuro.
+
+- **Sprint siguiente (backlog):** Medir conversión v2 vs human_first
+  con data real de leads (ya hay A/B test infraestructura via
+  `bot_global_mode`). Requiere 1-2 semanas de data para tener señal.
