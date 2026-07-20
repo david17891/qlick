@@ -679,6 +679,21 @@ export function buildSuperExecutiveV2Prompt(context: AgentContext): string {
     "- BREVEDAD FLEXIBLE: 1 oración para saludos/preguntas simples. Hasta 3 oraciones para contenido denso (precio + cierre de inscripción).",
     "- CERO VERBOSIDAD: no repitas el título del evento si ya se sabe de qué evento hablan.",
     "- Tono: cálido, mexicano, tuteo. Max 1 emoji por mensaje.",
+    // FIX 2026-07-19 (feedback David E2E, "no los pongas todos de
+    // corrido"): WhatsApp NO renderiza markdown estándar pero SÍ
+    // interpreta *asterisco simple* como negrita y _guion bajo_ como
+    // cursiva. Para mensajes largos (>3 oraciones) o que mezclan
+    //多条 información (fecha+lugar+precio), usa saltos de línea
+    // dobles y viñetas. La brevedad no debe chocar con legibilidad:
+    // 1 párrafo corto y bien formateado > 5 oraciones pegadas.
+    "- FORMATO DE MENSAJES LARGOS (>3 oraciones o que mezclan varios datos):",
+    "  * Separa en párrafos con una línea en blanco entre ellos (\\n\\n).",
+    "  * Usa *negrita con asterisco* para resaltar el dato clave (ej. '*Cuesta $1000 MXN*', '*21 de julio, 6 PM*').",
+    "  * Si enumeras requisitos u opciones, usa guion + espacio ('- Opción 1: ...').",
+    "  * No uses **dobles asteriscos** (WhatsApp no los renderiza, los muestra literales).",
+    "  * No uses # para títulos, no uses [corchetes] para emphasis.",
+    "  * Cierra cada bloque largo con una pregunta o CTA ('¿Te aparto lugar?').",
+    "- FORMATO DE MENSAJES CORTOS (≤2 oraciones): texto plano, sin formato. No agregues saltos innecesarios.",
     "",
   ].join("\n");
 
@@ -899,6 +914,19 @@ export function buildHumanFirstPrompt(context: AgentContext): string {
     `- Si el lead dice 'inscríbeme' o 'quiero entrar', acógelo con calidez y pide su nombre y correo sin párrafos de descargo de responsabilidad.`,
     `- CERO VERBOSIDAD: una pregunta clara a la vez, no cuatro juntas.`,
     `- CADENCIA SUAVE DE CIERRE: si ya pediste nombre y correo en el turno anterior y el prospecto te hizo otra pregunta, responde su duda SIN repetir la pregunta de datos en turnos consecutivos.`,
+    // FIX 2026-07-19 (feedback David E2E, "no los pongas todos de
+    // corrido"): WhatsApp NO renderiza markdown estándar pero SÍ
+    // interpreta *asterisco simple* como negrita y _guion bajo_ como
+    // cursiva. Para mensajes largos (>3 oraciones) o que mezclan
+    //多条 información, usa saltos de línea dobles y viñetas.
+    `- FORMATO DE MENSAJES LARGOS (>3 oraciones o que mezclan varios datos):`,
+    `  * Separa en párrafos con una línea en blanco entre ellos (\\n\\n).`,
+    `  * Usa *negrita con asterisco* para resaltar el dato clave (ej. '*Cuesta $1000 MXN*', '*21 de julio, 6 PM*').`,
+    `  * Si enumeras requisitos u opciones, usa guion + espacio ('- Opción 1: ...').`,
+    `  * No uses **dobles asteriscos** (WhatsApp no los renderiza, los muestra literales).`,
+    `  * No uses # para títulos, no uses [corchetes] para emphasis.`,
+    `  * Cierra cada bloque largo con una pregunta o CTA.`,
+    `- FORMATO DE MENSAJES CORTOS (≤2 oraciones): texto plano, sin formato. No agregues saltos innecesarios.`,
     ``,
     `=== HERRAMIENTAS DISPONIBLES (las 2 tools reales, no inventes otras) ===`,
     `- extract_and_save_contact_info(name?, email?): guarda nombre y/o email del lead. Llama SOLO cuando el lead los haya dado explícitamente. NO inventes datos.`,
