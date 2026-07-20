@@ -807,20 +807,21 @@ async function handleCheckoutCompleted(
     // pago se confirmo. Tambien re-enviar el email del QR con el
     // estado actualizado (badge "PAGADO"). El email se manda via
     // sendQrPassForConfirmation (helper que ya existe y que el form
-    // publico usa). Fire-and-forget: no bloquea el response del
-    // webhook de Stripe.
-    void notifyLeadPaymentConfirmed({
-      confirmationId: confLookup ?? "",
-      eventId: productRef.id,
-      amountTotalMXN,
-    }).catch((notifyErr) => {
-      errorLog("[stripe-webhook] notifyLeadPaymentConfirmed throw", {
-        error:
-          notifyErr instanceof Error
-            ? notifyErr.message
-            : String(notifyErr),
+    // publico usa).
+    //
+    // FIX 2026-07-20: Await the notification to prevent Vercel from
+    // terminating the serverless function before the background tasks complete.
+    try {
+      await notifyLeadPaymentConfirmed({
+        confirmationId: confLookup ?? "",
+        eventId: productRef.id,
+        amountTotalMXN,
       });
-    });
+    } catch (notifyErr) {
+      errorLog("[stripe-webhook] notifyLeadPaymentConfirmed throw", {
+        error: notifyErr instanceof Error ? notifyErr.message : String(notifyErr),
+      });
+    }
   }
 
   return {

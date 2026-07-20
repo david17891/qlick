@@ -524,27 +524,25 @@ export async function POST(req: NextRequest) {
     // recibia email ni WhatsApp. Ahora pasamos confirmationId
     // directo (que SI existe) y el helper hace SELECT por PK.
     const eventId = (confRow as unknown as { event_id: string }).event_id;
-    void (async () => {
-      try {
-        const { notifyLeadPaymentConfirmed } = await import(
-          "@/lib/payments/notify-lead-payment-confirmed"
-        );
-        await notifyLeadPaymentConfirmed({
-          confirmationId: body.confirmation_id,
-          eventId,
-          amountTotalMXN: amountMXN,
-          paymentStatusOverride: "paid_manual",
-          logSource: "staff-mark-paid",
-        });
-      } catch (notifErr) {
-        errorLog("[staff/mark-paid] notifyLead fallo (no fatal)", {
-          error:
-            notifErr instanceof Error
-              ? notifErr.message
-              : String(notifErr),
-        });
-      }
-    })();
+    try {
+      const { notifyLeadPaymentConfirmed } = await import(
+        "@/lib/payments/notify-lead-payment-confirmed"
+      );
+      await notifyLeadPaymentConfirmed({
+        confirmationId: body.confirmation_id,
+        eventId,
+        amountTotalMXN: amountMXN,
+        paymentStatusOverride: "paid_manual",
+        logSource: "staff-mark-paid",
+      });
+    } catch (notifErr) {
+      errorLog("[staff/mark-paid] notifyLead fallo (no fatal)", {
+        error:
+          notifErr instanceof Error
+            ? notifErr.message
+            : String(notifErr),
+      });
+    }
 
     return NextResponse.json(
       {
