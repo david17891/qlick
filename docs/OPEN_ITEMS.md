@@ -1936,6 +1936,26 @@ multi-agente, dividir en <8 archivos o aceptar partial-state.
 
 ## 6. Resueltos reciente
 
+### ✅ Kill-switch diario outbounds disparado (2026-07-20)
+
+**Síntoma:** "el bot no contesta". David sospechó que era Flash (red herring). El otro agente que David mandó a investigar encontró la causa real.
+
+**Causa raíz:** `bot_daily_outbound_limit` (system_settings) tenía `200` (default del sprint v16 PR #2.4). Los tests E2E intensivos del sprint bot final (commits `e1221d2`, `cb4b0d4`) consumieron 222+ outbounds en 24h. El kill-switch en `bot-engine.ts:5099/5138` abortó antes de llamar al LLM.
+
+**Por qué no era Flash:** el kill-switch aborta ANTES de la llamada al LLM (línea 5138 retorna `responseKind: "none"`). El modelo que uses es irrelevante. `readSystemSetting` del `bot_daily_outbound_limit` es lo único que se chequea.
+
+**Fix:** `UPDATE system_settings SET value = 1000 WHERE key = 'bot_daily_outbound_limit'` (5x el original). CUIDADO: el value debe guardarse como **number** (no string), porque `bot-engine.ts:5099` tiene fallback a 50 si `typeof !== "number"`.
+
+**Lección:** cuando vea un log con `outboundToday: N, dailyLimit: M` en este proyecto, ES el kill-switch interno (no rate limit de DeepSeek). El log usa el formato `[whatsapp/bot] daily limit reached, abort`.
+
+**Acción preventiva:** considerar un cron semanal que resetee el counter o aumente el límite dinámicamente en función del tráfico real. Backlog.
+
+### ✅ Sprint flash default (2026-07-20)
+
+**Commit:** `778c1db` (chore(ai): default tool loop a flash).
+
+David pidió invertir el default del tool loop de `pro` (`deepseek-reasoner`) a `flash` (`deepseek-chat`). El sprint bot final ya validó Flash para function calling. Rollback via `DEEPSEEK_TOOL_LOOP_TIER=pro` en Vercel env vars (sin redeploy).
+
 ### ✅ Sprint notify-fix BUG 24 (2026-07-19)
 
 **Síntoma reportado por David:** "ya marca pagado, pero no me envío ni
