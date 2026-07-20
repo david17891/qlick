@@ -29,6 +29,24 @@ function isRealMode(): boolean {
   return checkSupabaseConfig().configured;
 }
 
+// FIX 2026-07-19 (sprint bot feedback E2E David, "WhatsApp Lead" no se
+// actualiza a "David Martinez"): detecta nombres placeholder que el bot
+// asigna por default cuando el lead se registra sin nombre. Si el
+// existing tiene un placeholder y el input trae un nombre real,
+// el caller debe actualizarlo.
+function isPlaceholderConfirmationName(name: string | null | undefined): boolean {
+  if (!name) return true;
+  const normalized = name.trim().toLowerCase();
+  return (
+    normalized === "" ||
+    normalized === "whatsapp lead" ||
+    normalized === "asistente" ||
+    normalized === "pendiente" ||
+    normalized === "por confirmar" ||
+    normalized.startsWith("wa.")
+  );
+}
+
 // ─────────────────────────────────────────────────────────────
 // Tipos públicos
 // ─────────────────────────────────────────────────────────────
@@ -153,12 +171,22 @@ export async function createConfirmation(
   const supabase = createSupabaseAdminClient();
   // ON CONFLICT DO NOTHING: si ya existe (UNIQUE constraint), no inserta.
   // Devolvemos la fila existente para que el caller sepa el id.
+  //
+  // FIX 2026-07-19 (sprint bot feedback E2E David, "WhatsApp Lead" no
+  // se actualiza a "David Martinez"): el upsert con `ignoreDuplicates:
+  // true` no actualiza el name cuando la fila ya existe. Resultado: el
+  // bot decia "David Martinez" en el chat pero la confirmation quedaba
+  // con el name placeholder del primer registro. FIX: si el input.name
+  // es un nombre real (no placeholder) y difiere del existing.name,
+  // actualizamos el name del existing al input. Esto preserva el dedup
+  // por email/phone pero limpia los placeholders.
+  const desiredName = input.name.trim();
   const { data, error } = await supabase
     .from("event_confirmations")
     .upsert(
       {
         event_id: input.eventId,
-        name: input.name.trim(),
+        name: desiredName,
         email,
         phone_raw: input.phoneRaw?.trim() || null,
         phone_normalized: phoneNormalized,
@@ -222,9 +250,52 @@ export async function createConfirmation(
             existingEmail.trim().toLowerCase() ===
               (existing as { name?: string }).name?.trim().toLowerCase());
         if (needsEmailFix) {
+          // FIX 2026-07-19: ademas del email, si el existing.name es
+          // placeholder y el input.name es real, actualizar el name
+          // tambien. Esto arregla el bug "WhatsApp Lead" no se
+          // actualiza a "David Martinez" en el panel admin.
+          const updateFields: { email?: string; name?: string } = { email: email as string };
+          if (
+            desiredName &&
+            desiredName !== (existing as { name?: string }).name &&
+            isPlaceholderConfirmationName((existing as { name?: string }).name)
+          ) {
+            updateFields.name = desiredName;
+          }
           const { data: updated, error: updateErr } = await supabase
             .from("event_confirmations" as never)
-            .update({ email: email as string } as never)
+            .update(updateFields as never)
+            .eq("id", (existing as { id: string }).id)
+            .select("*")
+            .maybeSingle();
+          if (!updateErr && updated) {
+            const fixedFields: string[] = [];
+            if (updateFields.email) fixedFields.push(`email "${existingEmail}" -> "${email}"`);
+            if (updateFields.name) fixedFields.push(`name "${(existing as { name?: string }).name}" -> "${desiredName}"`);
+            return {
+              ok: true,
+              confirmation: mapEventConfirmationRowToEventConfirmation(
+                updated as EventConfirmationRow,
+              ),
+              created: false,
+              persisted: true,
+              demo: false,
+              note: `Placeholder detectado y corregido (${fixedFields.join(", ")}).`,
+            };
+          }
+        }
+        // FIX 2026-07-19: si solo el name es placeholder (email ya
+        // es valido), actualizar solo el name. Caso comun: el email
+        // del existing es valido (david@x.com) pero el name es
+        // "WhatsApp Lead" del primer registro.
+        else if (
+          desiredName &&
+          desiredName !== (existing as { name?: string }).name &&
+          isPlaceholderConfirmationName((existing as { name?: string }).name)
+        ) {
+          const { data: updated, error: updateErr } = await supabase
+            .from("event_confirmations" as never)
+            .update({ name: desiredName } as never)
             .eq("id", (existing as { id: string }).id)
             .select("*")
             .maybeSingle();
@@ -237,7 +308,7 @@ export async function createConfirmation(
               created: false,
               persisted: true,
               demo: false,
-              note: `Email actualizado de "${existingEmail}" a "${email}" (placeholder detectado).`,
+              note: `Name actualizado de "${(existing as { name?: string }).name}" a "${desiredName}" (placeholder detectado).`,
             };
           }
         }
@@ -294,9 +365,51 @@ export async function createConfirmation(
           existingEmail.trim().toLowerCase() ===
             (existing as { name?: string }).name?.trim().toLowerCase());
       if (needsEmailFix) {
+        // FIX 2026-07-19: ademas del email, si el existing.name es
+        // placeholder y el input.name es real, actualizar el name
+        // tambien (mismo fix que el bloque 23505 arriba).
+        const updateFields: { email?: string; name?: string } = { email: email as string };
+        if (
+          desiredName &&
+          desiredName !== (existing as { name?: string }).name &&
+          isPlaceholderConfirmationName((existing as { name?: string }).name)
+        ) {
+          updateFields.name = desiredName;
+        }
         const { data: updated, error: updateErr } = await supabase
           .from("event_confirmations" as never)
-          .update({ email: email as string } as never)
+          .update(updateFields as never)
+          .eq("id", (existing as { id: string }).id)
+          .select("*")
+          .maybeSingle();
+        if (!updateErr && updated) {
+          const fixedFields: string[] = [];
+          if (updateFields.email) fixedFields.push(`email "${existingEmail}" -> "${email}"`);
+          if (updateFields.name) fixedFields.push(`name "${(existing as { name?: string }).name}" -> "${desiredName}"`);
+          return {
+            ok: true,
+            confirmation: mapEventConfirmationRowToEventConfirmation(
+              updated as EventConfirmationRow,
+            ),
+            created: false,
+            persisted: true,
+            demo: false,
+            note: `Placeholder detectado y corregido (${fixedFields.join(", ")}).`,
+          };
+        }
+      }
+      // FIX 2026-07-19: si solo el name es placeholder (email ya
+      // es valido), actualizar solo el name. Caso comun: el email
+      // del existing es valido (david@x.com) pero el name es
+      // "WhatsApp Lead" del primer registro.
+      else if (
+        desiredName &&
+        desiredName !== (existing as { name?: string }).name &&
+        isPlaceholderConfirmationName((existing as { name?: string }).name)
+      ) {
+        const { data: updated, error: updateErr } = await supabase
+          .from("event_confirmations" as never)
+          .update({ name: desiredName } as never)
           .eq("id", (existing as { id: string }).id)
           .select("*")
           .maybeSingle();
@@ -309,7 +422,7 @@ export async function createConfirmation(
             created: false,
             persisted: true,
             demo: false,
-            note: `Email actualizado de "${existingEmail}" a "${email}" (placeholder detectado).`,
+            note: `Name actualizado de "${(existing as { name?: string }).name}" a "${desiredName}" (placeholder detectado).`,
           };
         }
       }

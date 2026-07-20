@@ -1413,7 +1413,14 @@ async function generateQrToken(
   phoneNormalized: string,
   attendeeName: string,
   attendeeEmail: string | null,
-  eventSlug?: string | null
+  eventSlug?: string | null,
+  // FIX 2026-07-19 (sprint bot feedback E2E David, "LINK vacío" en
+  // panel admin): el QR no estaba linkeado a la confirmation porque
+  // el parametro confirmationId no se pasaba. Sin el link, el panel
+  // admin muestra la columna LINK como vacia aunque el QR exista.
+  // FIX: aceptar confirmationId opcional y setearlo en el INSERT
+  // (y reusarlo si encuentra un token existente via dedup).
+  confirmationId?: string | null
 ): Promise<{ token: string; url: string; confirmationId: string | null } | null> {
   // Buscar el evento: si nos pasan slug, ESE; si no, el primero published.
   let evt: { id: string; ends_at: string | null } | null = null;
@@ -1471,7 +1478,7 @@ async function generateQrToken(
   // mejor hacer el SELECT antes para evitar 23505 ruidoso en logs.
   const { data: existing } = await supabase
     .from("event_qr_tokens" as never)
-    .select("token")
+    .select("token, confirmation_id")
     .eq("event_id" as never, eventId)
     .eq("attendee_phone_normalized" as never, phoneNormalized)
     .gt("expires_at" as never, new Date().toISOString())
@@ -1480,7 +1487,27 @@ async function generateQrToken(
     .maybeSingle();
   if (existing) {
     const existingToken = (existing as { token: string }).token;
-    const existingConfirmationId = (existing as { confirmation_id: string | null }).confirmation_id ?? null;
+    let existingConfirmationId = (existing as { confirmation_id: string | null }).confirmation_id ?? null;
+    // FIX 2026-07-19: si el token existe pero NO tiene confirmation_id
+    // (caso David: registros previos al fix) y el caller pasa uno,
+    // actualizamos el token para que el panel admin muestre el link.
+    if (!existingConfirmationId && confirmationId) {
+      try {
+        await supabase
+          .from("event_qr_tokens" as never)
+          .update({ confirmation_id: confirmationId } as never)
+          .eq("token" as never, existingToken);
+        existingConfirmationId = confirmationId;
+        infoLog("[whatsapp/bot] generateQrToken: confirmation_id retroactivo aplicado", {
+          token: existingToken.slice(0, 8),
+          confirmationId,
+        });
+      } catch (updErr) {
+        infoLog("[whatsapp/bot] generateQrToken: confirmation_id retroactivo fallo (no fatal)", {
+          error: updErr instanceof Error ? updErr.message : String(updErr),
+        });
+      }
+    }
     const url = `${appBaseUrl()}/check-in/${existingToken}`;
     return { token: existingToken, url, confirmationId: existingConfirmationId };
   }
@@ -1493,7 +1520,11 @@ async function generateQrToken(
       attendee_name: attendeeName,
       attendee_email: attendeeEmail,
       token,
-      expires_at: expiresAt.toISOString()
+      expires_at: expiresAt.toISOString(),
+      // FIX 2026-07-19: vincular el QR a la confirmation para que el
+      // panel admin muestre el link en la columna LINK. Antes quedaba
+      // null y el panel mostraba "LINK: vacio".
+      ...(confirmationId ? { confirmation_id: confirmationId } : {}),
     } as never);
   if (error) {
     // Si el error es 23505 (unique violation) significa que otro proceso
@@ -1526,8 +1557,10 @@ async function generateQrToken(
   // `src/lib/qr/event-tokens.ts:94` (que construye la misma URL).
   // FIX 2026-07-17: incluimos confirmationId en el return para que el
   // caller pueda re-validar que la confirmation existe.
+  // FIX 2026-07-19: ahora pasamos el confirmationId real (no null) para
+  // que el panel admin muestre el link en la columna LINK.
   const url = `${appBaseUrl()}/check-in/${token}`;
-  return { token, url, confirmationId: null };
+  return { token, url, confirmationId: confirmationId ?? null };
 }
 
 /**
@@ -4607,6 +4640,12 @@ async function registrationSafetyNet(args: RegistrationSafetyNetArgs): Promise<v
       extractedEmail,
     });
 
+    // FIX 2026-07-19: el fix del name cuando hay dedup vive en
+    // `createConfirmation` (src/lib/events/confirmations-server.ts).
+    // Si el existing tiene placeholder ("WhatsApp Lead" / "Pendiente"
+    // / etc) y el input trae un nombre real, el createConfirmation
+    // lo actualiza automaticamente. Aca solo loggeamos.
+
     // 4. FIX 2026-07-19: actualizar el lead con el name + email
     //    (mismo path que `case "provide_email"`). Sin esto, el próximo
     //    flow del bot no tiene el email disponible y el admin no ve
@@ -4637,7 +4676,11 @@ async function registrationSafetyNet(args: RegistrationSafetyNetArgs): Promise<v
         args.lead.phone_normalized,
         extractedName,
         extractedEmail,
-        args.activeEvent.slug
+        args.activeEvent.slug,
+        // FIX 2026-07-19: pasar el confirmationId para que el panel
+        // admin muestre el link en la columna LINK (antes quedaba
+        // null por bug del generateQrToken).
+        result.confirmation?.id ?? null
       );
       const qrUrl = qr?.url ?? null;
       // FIX 2026-07-19: usar URL publico del QR (mismo patron que
@@ -6939,6 +6982,28 @@ export async function processInboundMessage(
     // arriba la movimos). El `email` solo se usa en este sub-bloque
     // de side-effects de provide_email.
     const email = extractEmailFromText(body)?.toLowerCase() ?? body.trim().toLowerCase();
+    // FIX 2026-07-19 (sprint bot feedback E2E David, "WhatsApp Lead"
+    // no se actualiza a "David Martinez"): el bot decia "David Martinez"
+    // en el chat pero la confirmation quedaba con "WhatsApp Lead"
+    // porque el `case "provide_email"` usaba `lead.name` (que era
+    // "WhatsApp Lead") en vez del name del body. FIX: si el body
+    // matchea un regex de "Nombre + email" (Path A del safety-net),
+    // usar el name extraido. Si no, fallback a `lead.name`.
+    let extractedNameFromBody: string | null = null;
+    try {
+      const allEmailsStripped = body
+        .replace(/[^\s@]+@[^\s@]+\.[^\s@.,;:]+/g, "")
+        .replace(/[,;]+\s*/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      // El name es valido si tiene al menos 2 chars y NO es solo
+      // una palabra placeholder ("hola", "registrame", etc).
+      if (allEmailsStripped.length >= 2 && /[A-Za-zÁÉÍÓÚáéíóúÑñ]/.test(allEmailsStripped)) {
+        extractedNameFromBody = allEmailsStripped;
+      }
+    } catch {
+      // best-effort
+    }
     // FIX P1-3 (auditoria 2026-07-02): capturar error del update de lead.
     // Si falla (FK, constraint, network), el email queda desactualizado
     // y los siguientes pasos usan el email viejo. Loggeamos para debug
@@ -6974,6 +7039,9 @@ export async function processInboundMessage(
       lead.name,
       email,
       registrationEventSlug
+      // FIX 2026-07-19: el confirmationId se setea en un UPDATE
+      // posterior (despues de createConfirmation). Ver bloque
+      // "FIX 2026-07-19: vincular QR a confirmation" abajo.
     );
     qrUrl = qr?.url ?? null;
 
@@ -7031,7 +7099,13 @@ export async function processInboundMessage(
         if (regEvt?.id) {
           const confResult = await createConfirmation({
             eventId: regEvt.id,
-            name: lead.name?.trim() || "Asistente",
+            // FIX 2026-07-19: preferir el name del body sobre el
+            // `lead.name` (que puede ser placeholder). Si el body
+            // no trae un name claro, fallback a `lead.name`.
+            name:
+              extractedNameFromBody ??
+              (lead.name?.trim() && !isPlaceholderNameUI(lead.name) ? lead.name.trim() : null) ??
+              "Asistente",
             email,
             phoneRaw: phoneNormalized,
             phoneNormalized,
@@ -7044,6 +7118,34 @@ export async function processInboundMessage(
             persisted: confResult.persisted,
             note: confResult.note,
           });
+
+          // FIX 2026-07-19 (sprint bot feedback E2E David, "LINK
+          // vacio" en panel admin): vincular el QR a la confirmation.
+          // El generateQrToken se llama ANTES del createConfirmation
+          // (por orden logico del flow), entonces el QR se crea sin
+          // confirmation_id. Aqui hacemos un UPDATE retroactivo para
+          // setear el FK. Best-effort: si falla, el admin igual ve el
+          // confirmation pero el link del QR queda null.
+          if (confResult?.ok && confResult.confirmation && qr) {
+            try {
+              const { error: linkErr } = await supabase
+                .from("event_qr_tokens" as never)
+                .update({ confirmation_id: confResult.confirmation.id } as never)
+                .eq("token" as never, qr.token);
+              if (linkErr) {
+                infoLog("[whatsapp/bot] provide_email: QR<->confirmation link fallo (no fatal)", {
+                  leadId: lead.id,
+                  confirmationId: confResult.confirmation.id,
+                  token: qr.token.slice(0, 8),
+                  error: linkErr.message,
+                });
+              }
+            } catch (linkEx) {
+              infoLog("[whatsapp/bot] provide_email: QR<->confirmation link threw (no fatal)", {
+                error: linkEx instanceof Error ? linkEx.message : String(linkEx),
+              });
+            }
+          }
 
           // FIX 2026-07-16 (sprint pago-en-puerta): si el evento del
           // registro es de pago (priceMxn > 0), forzar
@@ -7340,6 +7442,9 @@ export async function processInboundMessage(
         capturedName,
         capturedEmail,
         icEventSlug
+        // FIX 2026-07-19: el confirmationId se setea via UPDATE
+        // retroactivo despues del createConfirmation (orden logico
+        // del flow: QR primero, confirmation despues).
       ).catch((qrErr) => {
         errorLog("[whatsapp/bot] implicit_capture: generateQrToken threw", {
           leadId: lead.id,
@@ -7368,6 +7473,20 @@ export async function processInboundMessage(
               persisted: confResult.persisted,
               note: confResult.note
             });
+            // FIX 2026-07-19: vincular QR a la confirmation
+            // (mismo fix que en case "provide_email" + safety-net).
+            if (confResult?.ok && confResult.confirmation && qr) {
+              try {
+                await supabase
+                  .from("event_qr_tokens" as never)
+                  .update({ confirmation_id: confResult.confirmation.id } as never)
+                  .eq("token" as never, qr.token);
+              } catch (linkEx) {
+                infoLog("[whatsapp/bot] implicit_capture: QR<->confirmation link threw (no fatal)", {
+                  error: linkEx instanceof Error ? linkEx.message : String(linkEx),
+                });
+              }
+            }
           }
         } catch (confErr) {
           errorLog("[whatsapp/bot] implicit_capture: createConfirmation falló", {
