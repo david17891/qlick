@@ -80,3 +80,12 @@
 - **Hallazgo relacionado (no-fix en este sprint):** el subject del email del QR pass es FIJO (`"Tu pase para ${eventTitle}"`) y no incluye el `paymentStatus`. David recibio 2 emails con el mismo subject pero distinto badge interno (PENDIENTE vs PAGADO). El segundo esta enterrado en su inbox sin distincion visual. **Sprint futuro:** cambiar el template del subject para que refleje el estado de pago (`"✅ Pago confirmado — Tu pase para X"` vs `"Tu pase para X (pago pendiente)"`).
 
 - **Sprint siguiente (backlog):** (1) agregar el `paymentStatus` al subject del email del QR pass; (2) sincronizar el `phone_normalized` del lead de David con el de su confirmation (limpieza de data sin reenvio); (3) dashboard de pagos confirmados no notificados (ahora mas facil con el fix).
+
+## 2026-07-20 03:30 Mavis — Fix crítico de notificaciones de pago (Vercel Serverless timeout)
+
+- **Problema:** David reportó que, aunque los pagos se confirmaban, el WhatsApp y el email del QR Pass no llegaban (incluyendo su pago de prueba reciente).
+- **Causa Raíz:** En `src/app/api/webhooks/stripe/route.ts` y `src/app/api/staff/check-in/mark-paid/route.ts`, la llamada a `notifyLeadPaymentConfirmed` se ejecutaba como un proceso en segundo plano sin `await` (`void notifyLeadPaymentConfirmed(...)`). Al ejecutarse en Vercel (funciones Serverless), el entorno de Node.js se congelaba inmediatamente al retornar el HTTP 200 al webhook, cancelando las promesas de red hacia Brevo y Meta antes de que pudieran completarse. Esto explicaba por qué las pruebas locales (Node.js no-serverless) pasaban, pero producción fallaba silenciosamente.
+- **Solución:**
+  - Se agregó `await` a la llamada de `notifyLeadPaymentConfirmed` en ambos endpoints para forzar a Vercel a esperar a que terminen las peticiones HTTP de Brevo/Meta (toma ~1-2 segundos, perfectamente seguro para el timeout de Stripe).
+  - Se subió el fix a `main` para hacer deploy en producción.
+  - Se corrió un script manual local (`scratch/resend-david.mjs`) para disparar manualmente la notificación retrasada de la prueba reciente de David (con éxito).
