@@ -595,13 +595,14 @@ async function runWithToolLoop(
   const userPrompt = buildTaskPrompt(task, context);
   const tools = noToolsMode ? [] : getAgentTools();
 
-  // 1ª vuelta: tier configurable vía env var. Default "pro" para prod
-  // (sprint bot-feedback David 2026-07-20: probamos Flash como default
-  // pero el bot dejo de responder a los leads en prod — revertimos
-  // a Pro como safety net). Si se quiere forzar Flash, setear
-  // DEEPSEEK_TOOL_LOOP_TIER=flash en Vercel env vars.
+  // 1ª vuelta: tier configurable vía env var. Default "flash" (sprint
+  // bot-feedback David 2026-07-20: deepseek-v4-flash es ~10x más barato
+  // que deepseek-v4-pro y suficiente para function calling según los
+  // E2E tests con data real del sprint bot final). Si se quiere forzar
+  // Pro explícitamente (rollback de calidad), setear
+  // DEEPSEEK_TOOL_LOOP_TIER=pro en .env.local + Vercel env vars.
   const toolLoopTier =
-    (process.env.DEEPSEEK_TOOL_LOOP_TIER === "flash" ? "flash" : "pro") as
+    (process.env.DEEPSEEK_TOOL_LOOP_TIER === "pro" ? "pro" : "flash") as
       | "flash"
       | "pro";
   const first = await callDeepSeekChat({
