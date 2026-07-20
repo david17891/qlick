@@ -1936,7 +1936,66 @@ multi-agente, dividir en <8 archivos o aceptar partial-state.
 
 ## 6. Resueltos reciente
 
-### ✅ Sprint bot final con DeepSeek real (2026-07-19)
+### ✅ Sprint notify-fix BUG 24 (2026-07-19)
+
+**Síntoma reportado por David:** "ya marca pagado, pero no me envío ni
+WhatsApp ni correo" — el webhook de Stripe confirmó el pago de David
+en `event_confirmations` (payment_status=paid, confirmed_at
+2026-07-20T04:02:24 UTC) pero el helper `notifyLeadPaymentConfirmed`
+no le envió el WhatsApp.
+
+**Diagnóstico (3 bugs reales):**
+1. El helper no capturaba `result.ok` del `provider.send` y loggeaba
+   "WhatsApp enviado" siempre (incluso si Meta retornaba `ok:false`).
+   Sin `result.ok`, no había forma de diagnosticar fallos.
+2. El helper NO loggeaba en `lead_whatsapp_log`, así que el admin
+   no veía el outbound del pago confirmado desde el panel del lead.
+3. **Sub-bug detectado en review:** el código usaba `markWhatsAppStatus`
+   que tiene un early-return cuando `prev_status === new_status`. Caso
+   real de David: el lead ya estaba `contactado` por el inbound "Hola"
+   previo. Cuando el webhook confirmó el pago, el helper trataba de ir
+   `contactado → contactado`, early-return, NO INSERT. Outbound invisible.
+
+**Fix (`fcf4a05`):**
+- `src/lib/payments/notify-lead-payment-confirmed.ts`: captura
+  `sendResult`, distingue `ok=true` vs `ok=false`. Si falla, errorLog
+  con el `note` exacto de Meta.
+- INSERT directo en `lead_whatsapp_log` (no depender de
+  `markWhatsAppStatus` early-return). Trail forense SIEMPRE.
+- Búsqueda del lead: `phone_normalized` primero, fallback por `email`
+  (caso real de David: `leads.phone_normalized = "+526531742365"`,
+  `event_confirmations.phone_normalized = "+526532935492"`, mismatch
+  pre-existente).
+- UPDATE `leads.whatsapp_status` solo si cambia (no churn).
+- Fire-and-forget: si falla el log, NO rompe el flow principal del
+  webhook de Stripe.
+
+**Tests (`tests/payment-notify-lead-whatsapp.test.mjs`, 3/3 verde):**
+1. `result.ok=true` + lead `no_contactado` → log con `new_status=contactado`.
+2. `result.ok=false` + lead `contactado` → log con `new_status=no_contactado`
+   + `metadata.providerNote` exacto de Meta.
+3. **CASO EXACTO DE DAVID:** `result.ok=true` + lead YA `contactado` → log
+   con `new_status=contactado` (sub-bug del early-return).
+
+**Verificación:** 1474/1474 tests pass (1472 verde + 2 fallos pre-existentes:
+matrix requiere evento gratis que ya no existe + human_first tiene
+duplicación de phone por leftover data, ambos NO son del fix).
+Type-check verde, push `cb4b0d4..fcf4a05 main`, deploy `qlick-d1yygpf0p`
+Ready, alias `qlick.digital` reasignado, smoke test `www.qlick.digital` 200.
+
+**Sin reenvío del pago de David:** explícitamente pidió "no hagas que
+reenvíe nada". El pago actual ya está confirmado, los emails anteriores
+se enviaron OK (event_email_log con `ok=true` × 2 a david17891@gmail.com),
+y el QR token está linkeado. Este fix protege los **próximos pagos** que
+lleguen por Stripe.
+
+**Hallazgo relacionado (no-fix en este sprint):** el subject del email
+del QR pass es FIJO (`"Tu pase para ${eventTitle}"`) y no incluye el
+`paymentStatus`. David recibió 2 emails con el mismo subject pero
+distinto badge interno (PENDIENTE vs PAGADO). El segundo está enterrado
+en su inbox sin distinción visual. **Sprint futuro:** cambiar el
+template del subject para que refleje el estado de pago
+("✅ Pago confirmado — Tu pase para X" vs "Tu pase para X (pago pendiente)").
 
 **Tag de release:** `bot-final-pre-ab-2026-07-19` (HEAD `44cc089`, merge a main).
 

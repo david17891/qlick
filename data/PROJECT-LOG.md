@@ -51,3 +51,32 @@
 - **Sprint siguiente (backlog):** arreglar el `findEventInConversation` para multi-evento (en lugar de fallback a `loadActiveEventContext()`). El fallback es pragmático pero en producción multi-evento puede asignar al evento equivocado. Documentado en OPEN_ITEMS.
 
 - **Decisión de release:** NO promover el safety-net a producción hasta que se arregle el bug latente del S5 multi-evento. Por ahora, el bot sigue mintiendo al lead en ese caso específico. La versión default (v2) funciona bien en single-event; en multi-evento el admin debe reasignar las confirmations del safety-net a mano.
+
+## 2026-07-19 21:45 Mavis — Sprint notify-fix BUG 24 (David "ya marca pagado pero no me envio ni whatsapp ni correo")
+
+- **Pregunta:** David reporto que tras un pago de Stripe confirmado (`event_confirmations.payment_status=paid`, `confirmed_at 2026-07-20T04:02:24 UTC`), ni el WhatsApp ni el email del badge PAGADO llegaron a su inbox. Pidio revisar sin reenviar nada.
+
+- **Diagnostico (3 bugs reales):**
+  1. `notifyLeadPaymentConfirmed` no capturaba `result.ok` del `provider.send` y loggeaba "WhatsApp enviado" siempre. Sin `result.ok` no habia forma de diagnosticar fallos de Meta.
+  2. El helper NO loggeaba en `lead_whatsapp_log`, asi que el admin no veia el outbound del pago desde el panel del lead.
+  3. **Sub-bug detectado en review:** el codigo usaba `markWhatsAppStatus` que tiene un early-return cuando `prev_status === new_status`. Caso real de David: el lead ya estaba `contactado` por el inbound "Hola" previo. Cuando el webhook confirmo el pago, el helper trataba de ir `contactado -> contactado`, early-return, NO INSERT. Outbound invisible.
+
+- **Decisiones:**
+  - Refactorizar el helper para INSERT directo en `lead_whatsapp_log` (no depender de `markWhatsAppStatus` early-return). Trail forense SIEMPRE.
+  - Buscar el lead por `phone_normalized` primero, fallback por `email` (caso real de David: el lead tiene un `phone_normalized` distinto al de la confirmation, mismatch pre-existente).
+  - UPDATE del `whatsapp_status` solo si cambia (no churn).
+  - Fire-and-forget: si falla el log, NO rompe el flow principal del webhook de Stripe.
+  - NO reenviar nada del pago de David (lo pidio explicitamente). El fix protege los PROXIMOS pagos que lleguen por Stripe.
+
+- **Razon:** David tiene claro que el bug afecta a todos los pagos online de Stripe confirmados por webhook. El admin no tiene visibilidad del outbound, y Meta puede estar fallando silenciosamente sin que nadie se entere. El fix es critico para la operacion de eventos de pago.
+
+- **Tests (`tests/payment-notify-lead-whatsapp.test.mjs`, 3/3 verde):**
+  1. `result.ok=true` + lead `no_contactado` -> log con `new_status=contactado` y `providerResult=ok` en metadata.
+  2. `result.ok=false` + lead `contactado` -> log con `new_status=no_contactado` y `providerNote` exacto de Meta en metadata.
+  3. **CASO EXACTO DE DAVID:** `result.ok=true` + lead YA `contactado` -> log con `new_status=contactado` (prueba que el sub-bug del early-return esta arreglado).
+
+- **Verificacion:** 1474/1474 tests pass (1472 verde + 2 fallos pre-existentes NO relacionados con este sprint: matrix requiere evento gratis que ya no existe, human_first tiene duplicacion de phone por leftover data). Type-check verde, push `cb4b0d4..fcf4a05 main`, deploy `qlick-d1yygpf0p` Ready, alias `qlick.digital` reasignado, smoke test `www.qlick.digital` 200.
+
+- **Hallazgo relacionado (no-fix en este sprint):** el subject del email del QR pass es FIJO (`"Tu pase para ${eventTitle}"`) y no incluye el `paymentStatus`. David recibio 2 emails con el mismo subject pero distinto badge interno (PENDIENTE vs PAGADO). El segundo esta enterrado en su inbox sin distincion visual. **Sprint futuro:** cambiar el template del subject para que refleje el estado de pago (`"✅ Pago confirmado — Tu pase para X"` vs `"Tu pase para X (pago pendiente)"`).
+
+- **Sprint siguiente (backlog):** (1) agregar el `paymentStatus` al subject del email del QR pass; (2) sincronizar el `phone_normalized` del lead de David con el de su confirmation (limpieza de data sin reenvio); (3) dashboard de pagos confirmados no notificados (ahora mas facil con el fix).
