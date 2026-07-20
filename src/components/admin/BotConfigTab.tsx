@@ -487,12 +487,11 @@ export function BotConfigTab() {
               />
               <ModeTarjeta
                 icon="🚀"
-                titulo="Agente Comercial Súper Ejecutivo"
-                descripcion="Closer consultivo proactivo con Directiva UX Hook y escalación semántica."
-                activo={mode === "super_executive"}
+                titulo="Agente Comercial Súper Ejecutivo v2"
+                descripcion="Closer consultivo proactivo con adaptive prompt + INTENT strip + safety-net. Default actual (sprint bot final 2026-07-19)."
+                activo={mode === "super_executive_v2" || mode === "super_executive"}
                 disabled={modeSaving}
-                badge="⚡ LISTO / ACTIVO"
-                onClick={() => void onSelectMode("super_executive")}
+                onClick={() => void onSelectMode("super_executive_v2")}
               />
               <ModeTarjeta
                 icon="🧪"
