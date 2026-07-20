@@ -196,13 +196,147 @@ export async function notifyLeadPaymentConfirmed(
               `Tu QR ya está validado${eventStart ? ` para el ${eventStart}` : ""}. ` +
               `Te esperamos el día del evento. ` +
               `Si tienes dudas, responde a este chat.`;
-        await provider.send({ to: leadPhone, body: bodyText });
-        infoLog(`[${logSource}] WhatsApp enviado`, {
-          confirmationId: conf.id,
-          phone: leadPhone,
-          eventTitle,
-          paymentStatus: ps,
-        });
+
+        // FIX 2026-07-19 (sprint bot feedback E2E David, "ya marca
+        // pagado pero no me envio ni whatsapp"): el codigo anterior
+        // ignoraba el `result` del provider.send y loggeaba
+        // "WhatsApp enviado" siempre (incluso si Meta retornaba
+        // ok:false). Ademas NO loggeaba en lead_whatsapp_log, asi
+        // que el admin no veia el outbound. FIX:
+        //   1. Capturar el result del provider.send.
+        //   2. Si ok=false, loggear el `note` exacto de Meta (ej.
+        //      "Cloud API error: Invalid parameter"). Sin esto
+        //      diagnostico es un black box.
+        //   3. Loggear SIEMPRE en lead_whatsapp_log (via
+        //      markWhatsAppStatus) para que el admin vea el
+        //      outbound desde el panel.
+        //   4. Si ok=false, errorLog con severity alta para que
+        //      Vercel lo capture y David lo pueda revisar.
+        const sendResult = await provider.send({ to: leadPhone, body: bodyText });
+        if (!sendResult.ok) {
+          errorLog(`[${logSource}] WhatsApp fallo (provider retorno ok:false)`, {
+            confirmationId: conf.id,
+            phone: leadPhone,
+            paymentStatus: ps,
+            provider: sendResult.provider ?? "unknown",
+            note: sendResult.note ?? "sin note",
+            externalId: sendResult.externalId ?? null,
+          });
+        } else {
+          infoLog(`[${logSource}] WhatsApp enviado OK`, {
+            confirmationId: conf.id,
+            phone: leadPhone,
+            eventTitle,
+            paymentStatus: ps,
+            externalId: sendResult.externalId ?? null,
+          });
+        }
+
+        // FIX 2026-07-19: loggear en lead_whatsapp_log para que
+        // el admin vea el outbound desde el panel del lead. Antes
+        // el outbound del pago confirmado era invisible.
+        //
+        // Sub-fix 2026-07-19 (mismo sprint): NO usamos
+        // `markWhatsAppStatus` porque tiene un early-return cuando
+        // `prev_status === new_status` (caso normal: el lead YA
+        // estaba `contactado` por el inbound "Hola"). En ese flow
+        // el outbound del pago NUNCA quedaba en el log, y el admin
+        // no veía nada. Aquí hacemos INSERT directo + UPDATE del
+        // status solo si cambia.
+        //
+        // Búsqueda del lead: intentamos primero por
+        // `phone_normalized` (match exacto con la confirmation);
+        // si no hay match (caso real de David, donde el lead se
+        // creó con un phone_raw distinto y `phone_normalized` se
+        // actualizó a otro), fallback por email. Si tampoco, loggeamos
+        // warning y seguimos sin romper el flow principal.
+        try {
+          // Cast local: el typegen de leads tiene `whatsapp_status: string`
+          // (no nullable), pero defensivamente lo tratamos como `string | null`
+          // para no romper si la fila no trae el campo por algún drift.
+          type LeadRowLocal = { id: string; whatsapp_status: string | null };
+          let leadRow: LeadRowLocal | null = null;
+          const { data: leadByPhone } = await supabase
+            .from("leads")
+            .select("id, whatsapp_status")
+            .eq("phone_normalized", leadPhone)
+            .maybeSingle();
+          leadRow = (leadByPhone as unknown as LeadRowLocal | null) ?? null;
+          if (!leadRow && leadEmail) {
+            const { data: leadByEmail } = await supabase
+              .from("leads")
+              .select("id, whatsapp_status")
+              .eq("email", leadEmail)
+              .maybeSingle();
+            leadRow = (leadByEmail as unknown as LeadRowLocal | null) ?? null;
+          }
+          if (leadRow?.id) {
+            const newStatus = sendResult.ok ? "contactado" : "no_contactado";
+            // INSERT directo del log (no depende del early-return
+            // de markWhatsAppStatus, así que SIEMPRE queda traza).
+            const { error: logInsErr } = await supabase
+              .from("lead_whatsapp_log")
+              .insert({
+                lead_id: leadRow.id,
+                event_id: eventId ?? null,
+                prev_status: leadRow.whatsapp_status ?? null,
+                new_status: newStatus,
+                actor_email: `${logSource}@qlick.digital`,
+                message_preview: bodyText.slice(0, 200),
+                metadata: {
+                  source: "payment-notify",
+                  confirmationId: conf.id,
+                  paymentStatus: ps,
+                  providerResult: sendResult.ok ? "ok" : "fail",
+                  providerNote: sendResult.note ?? null,
+                  externalId: sendResult.externalId ?? null,
+                },
+              });
+            if (logInsErr) {
+              errorLog(
+                `[${logSource}] lead_whatsapp_log INSERT fallo (no fatal)`,
+                {
+                  confirmationId: conf.id,
+                  leadId: leadRow.id,
+                  error: logInsErr.message,
+                },
+              );
+            }
+            // UPDATE solo si el status realmente cambia (no churn).
+            if (leadRow.whatsapp_status !== newStatus) {
+              const { error: updErr } = await supabase
+                .from("leads")
+                .update({
+                  whatsapp_status: newStatus,
+                  last_contacted_at: new Date().toISOString(),
+                })
+                .eq("id", leadRow.id);
+              if (updErr) {
+                errorLog(
+                  `[${logSource}] leads.whatsapp_status UPDATE fallo (no fatal)`,
+                  {
+                    leadId: leadRow.id,
+                    error: updErr.message,
+                  },
+                );
+              }
+            }
+          } else {
+            // No encontramos lead por phone ni email. No es fatal
+            // (el WhatsApp SÍ se envió al phone del confirmation), pero
+            // loggeamos para que David pueda hacer match manual.
+            infoLog(`[${logSource}] no se encontro lead para loggear outbound`, {
+              confirmationId: conf.id,
+              phone: leadPhone,
+              email: leadEmail,
+            });
+          }
+        } catch (logEx) {
+          errorLog(`[${logSource}] lead_whatsapp_log throw (no fatal)`, {
+            confirmationId: conf.id,
+            error: logEx instanceof Error ? logEx.message : String(logEx),
+          });
+        }
       } else {
         infoLog(`[${logSource}] no hay WhatsApp provider activo`, {
           confirmationId: conf.id,
