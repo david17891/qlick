@@ -1,8 +1,5 @@
-import Link from "next/link";
-import Image from "next/image";
 import { Container, Badge } from "@/components/ui";
-import { Logo, Isotipo } from "@/components/brand";
-import { QlickBadge } from "@/components/web-templates/QlickBadge";
+import { Navbar, Footer } from "@/components/layout";
 import { CheckoutButton } from "@/components/web-templates/CheckoutButton";
 
 type Package = {
@@ -138,37 +135,8 @@ const DEMOS = [
 
 export default function DisenoPaginasPage() {
   return (
-    <div className="min-h-screen bg-[#fbf9ff] text-ink">
-      <QlickBadge />
-
-      {/* ── Navbar Qlick ── */}
-      <header className="border-b border-brand-100 bg-white/80 backdrop-blur">
-        <Container className="flex items-center justify-between py-4">
-          <Link href="/" className="flex items-center gap-2">
-            <Logo className="h-7 w-auto" />
-            <span className="hidden text-sm font-semibold tracking-tight text-ink sm:inline">
-              Qlick Marketing Integral
-            </span>
-          </Link>
-          <nav className="flex items-center gap-5 text-sm">
-            <a href="#paquetes" className="hidden text-ink-soft hover:text-ink sm:inline">
-              Paquetes
-            </a>
-            <a href="#demos" className="hidden text-ink-soft hover:text-ink sm:inline">
-              Demos
-            </a>
-            <a href="#proceso" className="hidden text-ink-soft hover:text-ink sm:inline">
-              Proceso
-            </a>
-            <a
-              href="#cotizar"
-              className="rounded-full bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-glow transition hover:bg-brand-600"
-            >
-              Cotizar
-            </a>
-          </nav>
-        </Container>
-      </header>
+    <>
+      <Navbar />
 
       {/* ── Hero ── */}
       <section className="relative overflow-hidden">
@@ -259,9 +227,7 @@ export default function DisenoPaginasPage() {
             {PACKAGES.map((pkg) => (
               <div
                 key={pkg.id}
-                className={`relative flex flex-col rounded-3xl border-2 bg-white p-8 shadow-card ${
-                  pkg.accent
-                }`}
+                className={`relative flex flex-col rounded-3xl border-2 bg-white p-8 shadow-card ${pkg.accent}`}
               >
                 {pkg.featured ? (
                   <span className="absolute -top-3 right-6 rounded-full bg-brand-500 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-white">
@@ -328,7 +294,7 @@ export default function DisenoPaginasPage() {
           </div>
           <div className="mt-10 grid gap-6 sm:grid-cols-2">
             {DEMOS.map((demo) => (
-              <Link
+              <a
                 key={demo.id}
                 href={`/diseno-paginas/${demo.id}`}
                 className="group block overflow-hidden rounded-3xl border border-brand-100 bg-[#fbf9ff] transition hover:-translate-y-0.5 hover:shadow-card"
@@ -368,7 +334,7 @@ export default function DisenoPaginasPage() {
                     Ver demo →
                   </span>
                 </div>
-              </Link>
+              </a>
             ))}
           </div>
         </Container>
@@ -444,18 +410,7 @@ export default function DisenoPaginasPage() {
         </Container>
       </section>
 
-      {/* ── Footer ── */}
-      <footer className="border-t border-brand-100 bg-white">
-        <Container className="flex flex-col items-center justify-between gap-3 py-6 sm:flex-row">
-          <div className="flex items-center gap-2 text-sm text-ink-soft">
-            <Logo className="h-5 w-auto" />
-            <span>Qlick Marketing Integral</span>
-          </div>
-          <p className="text-xs text-ink-muted">
-            Hecho con cariño en México · Servicio de diseño de páginas
-          </p>
-        </Container>
-      </footer>
-    </div>
+      <Footer />
+    </>
   );
 }

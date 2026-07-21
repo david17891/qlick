@@ -15,6 +15,7 @@ import type { User } from "@/types";
 const links = [
   { href: "/cursos", label: "Cursos" },
   { href: "/eventos", label: "Eventos" },
+  { href: "/diseno-paginas", label: "Diseño de páginas" },
   { href: "/acerca", label: "Acerca de" },
   { href: "/beneficios", label: "Beneficios" },
   { href: "/faq", label: "Preguntas" },
