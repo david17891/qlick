@@ -81,8 +81,51 @@ h1, h2, h3, h4, h5 {
   animation: toast-progress 5s linear forwards;
 }
 
-/* Respeto por prefers-reduced-motion: desactiva la animación del countdown. */
+/* === Sección utilities ===
+   Alternar entre fondos light/dark/brand de forma consistente. */
+.section-light {
+  @apply bg-white text-ink;
+}
+.section-dark {
+  @apply bg-ink text-white;
+}
+.section-brand {
+  @apply bg-brand-50 text-ink;
+}
+.section-mesh {
+  @apply bg-hero-mesh text-ink;
+}
+
+/* === SectionHeading variants ===
+   Aplicar al SectionHeading (o cualquier heading) para evitar el hack
+   `[&_h2]:text-white [&_p]:text-white/70` que se usaba antes. */
+.heading-on-dark h1,
+.heading-on-dark h2,
+.heading-on-dark h3 {
+  @apply text-white;
+}
+.heading-on-dark p {
+  @apply text-white/80;
+}
+
+/* === Glass utility (opt-in, no se usa por default) ===
+   Para CTAs sobre fondos mesh si David pide glass en el futuro. */
+.glass {
+  @apply bg-white/10 backdrop-blur-md border border-white/20;
+}
+
+/* === Reduced motion GLOBAL ===
+   Respeto por la preferencia del usuario. Desactiva TODAS las animaciones
+   y transiciones, no solo el toast-progress. */
 @media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
   .toast-progress {
     animation: none;
     width: 0%;

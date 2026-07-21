@@ -45,9 +45,26 @@ const config: Config = {
         sans: ["var(--font-sans)", "system-ui", "sans-serif"],
         display: ["var(--font-display)", "system-ui", "sans-serif"]
       },
+      // Radio scale estandarizado: usar `rounded-sm/md/lg/xl/2xl` para
+      // mantener jerarquía visual consistente entre primitivos.
+      borderRadius: {
+        sm: "8px",
+        md: "12px",
+        lg: "16px",
+        xl: "20px",
+        "2xl": "24px"
+      },
       boxShadow: {
         glow: "0 0 60px -15px rgba(171, 63, 234, 0.45)",
-        card: "0 8px 30px -12px rgba(15, 10, 26, 0.18)"
+        "glow-accent": "0 0 60px -15px rgba(239, 159, 8, 0.45)",
+        card: "0 8px 30px -12px rgba(15, 10, 26, 0.18)",
+        soft: "0 4px 20px -8px rgba(15, 10, 26, 0.10)"
+      },
+      ringColor: {
+        DEFAULT: "rgba(171, 63, 234, 0.4)"
+      },
+      ringOffsetColor: {
+        DEFAULT: "#ffffff"
       },
       backgroundImage: {
         "brand-gradient":
@@ -55,21 +72,65 @@ const config: Config = {
         "brand-radial":
           "radial-gradient(circle at 20% 20%, rgba(171,63,234,0.25), transparent 50%), radial-gradient(circle at 80% 0%, rgba(239,159,8,0.18), transparent 45%)",
         "hero-mesh":
-          "radial-gradient(circle at 15% 20%, rgba(171,63,234,0.35), transparent 40%), radial-gradient(circle at 85% 15%, rgba(161,64,220,0.30), transparent 40%), radial-gradient(circle at 50% 100%, rgba(239,159,8,0.20), transparent 45%)"
+          "radial-gradient(circle at 15% 20%, rgba(171,63,234,0.35), transparent 40%), radial-gradient(circle at 85% 15%, rgba(161,64,220,0.30), transparent 40%), radial-gradient(circle at 50% 100%, rgba(239,159,8,0.20), transparent 45%)",
+        "shimmer":
+          "linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)"
       },
       keyframes: {
         "fade-up": {
           "0%": { opacity: "0", transform: "translateY(12px)" },
           "100%": { opacity: "1", transform: "translateY(0)" }
         },
+        "fade-in": {
+          "0%": { opacity: "0" },
+          "100%": { opacity: "1" }
+        },
+        "slide-in-right": {
+          "0%": { transform: "translateX(100%)" },
+          "100%": { transform: "translateX(0)" }
+        },
+        "slide-in-left": {
+          "0%": { transform: "translateX(-100%)" },
+          "100%": { transform: "translateX(0)" }
+        },
+        "scale-in": {
+          "0%": { opacity: "0", transform: "scale(0.96)" },
+          "100%": { opacity: "1", transform: "scale(1)" }
+        },
+        "shimmer": {
+          "0%": { backgroundPosition: "-200% 0" },
+          "100%": { backgroundPosition: "200% 0" }
+        },
         float: {
           "0%, 100%": { transform: "translateY(0)" },
           "50%": { transform: "translateY(-8px)" }
+        },
+        "pulse-soft": {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0.7" }
         }
       },
       animation: {
         "fade-up": "fade-up 0.5s ease-out both",
-        float: "float 6s ease-in-out infinite"
+        "fade-in": "fade-in 0.4s ease-out both",
+        "slide-in-right": "slide-in-right 0.3s ease-out both",
+        "slide-in-left": "slide-in-left 0.3s ease-out both",
+        "scale-in": "scale-in 0.2s ease-out both",
+        "shimmer": "shimmer 2s linear infinite",
+        float: "float 6s ease-in-out infinite",
+        "pulse-soft": "pulse-soft 2.5s ease-in-out infinite"
+      },
+      // Delays escalonados para stagger animations.
+      // Usar con Reveal o cualquier elemento que necesite `animation-delay`.
+      transitionDelay: {
+        0: "0ms",
+        75: "75ms",
+        100: "100ms",
+        150: "150ms",
+        200: "200ms",
+        300: "300ms",
+        400: "400ms",
+        500: "500ms"
       }
     }
   },
