@@ -94,7 +94,7 @@ export default function GraciasPage({
 
           <div className="mt-8 flex flex-wrap gap-3">
             <Link
-              href="/web"
+              href="/diseno-paginas"
               className="inline-flex items-center justify-center rounded-full bg-[#0f4c4c] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#0a3939]"
             >
               Ver los demos

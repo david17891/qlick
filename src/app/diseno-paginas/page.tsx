@@ -1,6 +1,7 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Container, Badge } from "@/components/ui";
-import { Logo } from "@/components/brand";
+import { Logo, Isotipo } from "@/components/brand";
 import { QlickBadge } from "@/components/web-templates/QlickBadge";
 import { CheckoutButton } from "@/components/web-templates/CheckoutButton";
 
@@ -31,7 +32,7 @@ const PACKAGES: readonly Package[] = [
       "1 ronda de revisión",
       "Entrega en 3-5 días",
     ],
-    accent: "border-[#0f4c4c]/15",
+    accent: "border-brand-200",
   },
   {
     id: "negocio",
@@ -49,7 +50,7 @@ const PACKAGES: readonly Package[] = [
       "2 rondas de revisión",
       "Entrega en 7-10 días",
     ],
-    accent: "border-[#0f4c4c] ring-1 ring-[#0f4c4c]/20",
+    accent: "border-brand-500 ring-1 ring-brand-500/20",
     featured: true,
   },
 ];
@@ -135,33 +136,33 @@ const DEMOS = [
   },
 ] as const;
 
-export default function WebServicePage() {
+export default function DisenoPaginasPage() {
   return (
-    <div className="min-h-screen bg-white text-neutral-900">
+    <div className="min-h-screen bg-[#fbf9ff] text-ink">
       <QlickBadge />
 
       {/* ── Navbar Qlick ── */}
-      <header className="border-b border-black/5 bg-white/80 backdrop-blur">
+      <header className="border-b border-brand-100 bg-white/80 backdrop-blur">
         <Container className="flex items-center justify-between py-4">
           <Link href="/" className="flex items-center gap-2">
             <Logo className="h-7 w-auto" />
-            <span className="hidden text-sm font-semibold tracking-tight text-neutral-800 sm:inline">
-              Qlick Marketing Digital
+            <span className="hidden text-sm font-semibold tracking-tight text-ink sm:inline">
+              Qlick Marketing Integral
             </span>
           </Link>
           <nav className="flex items-center gap-5 text-sm">
-            <a href="#paquetes" className="hidden text-neutral-700 hover:text-neutral-950 sm:inline">
+            <a href="#paquetes" className="hidden text-ink-soft hover:text-ink sm:inline">
               Paquetes
             </a>
-            <a href="#demos" className="hidden text-neutral-700 hover:text-neutral-950 sm:inline">
+            <a href="#demos" className="hidden text-ink-soft hover:text-ink sm:inline">
               Demos
             </a>
-            <a href="#proceso" className="hidden text-neutral-700 hover:text-neutral-950 sm:inline">
+            <a href="#proceso" className="hidden text-ink-soft hover:text-ink sm:inline">
               Proceso
             </a>
             <a
               href="#cotizar"
-              className="rounded-full bg-[#0f4c4c] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#0a3939]"
+              className="rounded-full bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-glow transition hover:bg-brand-600"
             >
               Cotizar
             </a>
@@ -170,21 +171,21 @@ export default function WebServicePage() {
       </header>
 
       {/* ── Hero ── */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-[#f4f8f8] via-white to-white">
+      <section className="relative overflow-hidden">
         <div
-          className="pointer-events-none absolute -right-20 top-0 h-72 w-72 rounded-full bg-[#0f4c4c]/10 blur-3xl"
+          className="pointer-events-none absolute -right-20 top-0 h-72 w-72 rounded-full bg-brand-500/10 blur-3xl"
           aria-hidden="true"
         />
         <div
-          className="pointer-events-none absolute -left-32 top-40 h-80 w-80 rounded-full bg-amber-200/30 blur-3xl"
+          className="pointer-events-none absolute -left-32 top-40 h-80 w-80 rounded-full bg-brand-accent/15 blur-3xl"
           aria-hidden="true"
         />
         <Container className="relative py-20 sm:py-28">
-          <Badge className="mb-5">Servicio de páginas web · México</Badge>
-          <h1 className="max-w-3xl font-display text-4xl font-bold leading-[1.05] tracking-tight text-neutral-950 sm:text-6xl">
-            Páginas web que <span className="text-[#0f4c4c]">atraen clientes</span>, no solo que se ven bonitas.
+          <Badge className="mb-5">Diseño de páginas · México</Badge>
+          <h1 className="display-1 max-w-3xl text-ink">
+            Páginas web que <span className="text-brand-gradient">atraen clientes</span>, no solo que se ven bonitas.
           </h1>
-          <p className="mt-6 max-w-2xl text-lg leading-relaxed text-neutral-700">
+          <p className="mt-6 max-w-2xl text-lg leading-relaxed text-ink-soft">
             Diseño con asistencia de IA, precios claros desde $2,500 MXN, entrega
             en 5-10 días. Tu web queda con dominio propio, WhatsApp conectado y lista
             para generar leads desde el día uno.
@@ -192,45 +193,51 @@ export default function WebServicePage() {
           <div className="mt-8 flex flex-wrap gap-3">
             <a
               href="#cotizar"
-              className="inline-flex items-center justify-center rounded-full bg-[#0f4c4c] px-6 py-3 text-sm font-semibold text-white shadow-md shadow-[#0f4c4c]/20 transition hover:bg-[#0a3939]"
+              className="inline-flex items-center justify-center rounded-full bg-brand-500 px-6 py-3 text-sm font-semibold text-white shadow-glow transition hover:bg-brand-600"
             >
               Cotiza tu página
             </a>
             <a
               href="#demos"
-              className="inline-flex items-center justify-center rounded-full border border-neutral-300 bg-white px-6 py-3 text-sm font-semibold text-neutral-800 transition hover:border-neutral-400"
+              className="inline-flex items-center justify-center rounded-full border border-brand-200 bg-white px-6 py-3 text-sm font-semibold text-ink transition hover:border-brand-500"
             >
               Ver ejemplos
             </a>
           </div>
-          <p className="mt-6 text-sm text-neutral-500">
+          <p className="mt-6 text-sm text-ink-muted">
             50% de anticipo para arrancar · resto contra entrega · 3-10 días según paquete.
           </p>
         </Container>
       </section>
 
       {/* ── Por qué Qlick ── */}
-      <section className="border-y border-black/5 bg-neutral-50/50 py-16 sm:py-20">
+      <section className="border-y border-brand-100 bg-white py-16 sm:py-20">
         <Container>
           <div className="max-w-2xl">
-            <h2 className="font-display text-2xl font-bold tracking-tight text-neutral-950 sm:text-3xl">
+            <h2 className="display-2 text-ink">
               Por qué las páginas de Qlick se venden solas
             </h2>
-            <p className="mt-3 text-neutral-700">
+            <p className="mt-3 text-ink-soft">
               No somos una agencia que te cobra $30,000 y desaparece. Somos un
               equipo que entrega rápido, con precios honestos y diseño cuidado.
             </p>
           </div>
           <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {REASONS.map((reason) => (
+            {REASONS.map((reason, i) => (
               <div
                 key={reason.title}
-                className="rounded-2xl border border-black/5 bg-white p-6 shadow-sm"
+                className="rounded-2xl border border-brand-100 bg-[#fbf9ff] p-6"
               >
-                <h3 className="font-display text-base font-semibold text-[#0f4c4c]">
+                <div
+                  className="mb-3 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500/10 font-display text-sm font-bold text-brand-500"
+                  aria-hidden="true"
+                >
+                  {String(i + 1).padStart(2, "0")}
+                </div>
+                <h3 className="font-display text-base font-semibold text-brand-500">
                   {reason.title}
                 </h3>
-                <p className="mt-2 text-sm leading-relaxed text-neutral-700">
+                <p className="mt-2 text-sm leading-relaxed text-ink-soft">
                   {reason.body}
                 </p>
               </div>
@@ -243,10 +250,8 @@ export default function WebServicePage() {
       <section id="paquetes" className="py-20 sm:py-24">
         <Container>
           <div className="max-w-2xl">
-            <h2 className="font-display text-2xl font-bold tracking-tight text-neutral-950 sm:text-3xl">
-              Dos paquetes, precios claros
-            </h2>
-            <p className="mt-3 text-neutral-700">
+            <h2 className="display-2 text-ink">Dos paquetes, precios claros</h2>
+            <p className="mt-3 text-ink-soft">
               Sin contratos largos ni letras chiquitas. Lo que ves es lo que pagas.
             </p>
           </div>
@@ -254,26 +259,26 @@ export default function WebServicePage() {
             {PACKAGES.map((pkg) => (
               <div
                 key={pkg.id}
-                className={`relative flex flex-col rounded-3xl border-2 bg-white p-8 shadow-sm ${
-                  pkg.featured ? "ring-1 ring-[#0f4c4c]/20" : ""
-                } ${pkg.accent}`}
+                className={`relative flex flex-col rounded-3xl border-2 bg-white p-8 shadow-card ${
+                  pkg.accent
+                }`}
               >
                 {pkg.featured ? (
-                  <span className="absolute -top-3 right-6 rounded-full bg-[#0f4c4c] px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-white">
+                  <span className="absolute -top-3 right-6 rounded-full bg-brand-500 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-white">
                     Más vendido
                   </span>
                 ) : null}
                 <div>
-                  <h3 className="font-display text-xl font-semibold text-neutral-950">
+                  <h3 className="font-display text-xl font-semibold text-ink">
                     {pkg.name}
                   </h3>
                   <div className="mt-2 flex items-baseline gap-2">
-                    <span className="font-display text-4xl font-bold text-[#0f4c4c]">
+                    <span className="font-display text-4xl font-bold text-brand-500">
                       {pkg.price}
                     </span>
-                    <span className="text-sm text-neutral-500">{pkg.period}</span>
+                    <span className="text-sm text-ink-muted">{pkg.period}</span>
                   </div>
-                  <p className="mt-3 text-sm leading-relaxed text-neutral-700">
+                  <p className="mt-3 text-sm leading-relaxed text-ink-soft">
                     {pkg.description}
                   </p>
                 </div>
@@ -281,11 +286,11 @@ export default function WebServicePage() {
                   {pkg.features.map((feature) => (
                     <li
                       key={feature}
-                      className="flex items-start gap-2 text-sm text-neutral-800"
+                      className="flex items-start gap-2 text-sm text-ink"
                     >
                       <svg
                         viewBox="0 0 20 20"
-                        className="mt-0.5 h-4 w-4 flex-shrink-0 fill-[#0f4c4c]"
+                        className="mt-0.5 h-4 w-4 flex-shrink-0 fill-brand-500"
                         aria-hidden="true"
                       >
                         <path d="M16.7 5.3a1 1 0 0 1 0 1.4l-7 7a1 1 0 0 1-1.4 0l-3-3a1 1 0 1 1 1.4-1.4L9 11.6l6.3-6.3a1 1 0 0 1 1.4 0Z" />
@@ -304,20 +309,18 @@ export default function WebServicePage() {
               </div>
             ))}
           </div>
-          <p className="mt-6 text-center text-sm text-neutral-500">
+          <p className="mt-6 text-center text-sm text-ink-muted">
             ¿Necesitas algo más grande? Escríbenos y armamos un alcance a la medida.
           </p>
         </Container>
       </section>
 
       {/* ── Demos / Showcase ── */}
-      <section id="demos" className="border-t border-black/5 bg-neutral-50/50 py-20 sm:py-24">
+      <section id="demos" className="border-t border-brand-100 bg-white py-20 sm:py-24">
         <Container>
           <div className="max-w-2xl">
-            <h2 className="font-display text-2xl font-bold tracking-tight text-neutral-950 sm:text-3xl">
-              Mira lo que entregamos
-            </h2>
-            <p className="mt-3 text-neutral-700">
+            <h2 className="display-2 text-ink">Mira lo que entregamos</h2>
+            <p className="mt-3 text-ink-soft">
               Cuatro ejemplos reales de sitios que armamos para clientes como
               tú. Cada demo es navegable, hecho con la misma plantilla que
               usamos para producción.
@@ -327,17 +330,15 @@ export default function WebServicePage() {
             {DEMOS.map((demo) => (
               <Link
                 key={demo.id}
-                href={`/web/${demo.id}`}
-                className="group block overflow-hidden rounded-3xl border border-black/5 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
+                href={`/diseno-paginas/${demo.id}`}
+                className="group block overflow-hidden rounded-3xl border border-brand-100 bg-[#fbf9ff] transition hover:-translate-y-0.5 hover:shadow-card"
               >
                 <div
                   className={`relative h-44 overflow-hidden bg-gradient-to-br ${demo.accent}`}
                 >
                   <div className="absolute inset-0 flex items-center justify-center">
                     <div className="text-center">
-                      <div
-                        className={`font-display text-3xl font-bold ${demo.accentText}`}
-                      >
+                      <div className={`font-display text-3xl font-bold ${demo.accentText}`}>
                         {demo.name}
                       </div>
                       <div
@@ -356,14 +357,14 @@ export default function WebServicePage() {
                 </div>
                 <div className="flex items-center justify-between p-5">
                   <div>
-                    <div className="font-display text-base font-semibold text-neutral-950">
+                    <div className="font-display text-base font-semibold text-ink">
                       {demo.name}
                     </div>
-                    <div className="text-xs text-neutral-500">
+                    <div className="text-xs text-ink-muted">
                       {demo.rubro} · Paquete {demo.paquete}
                     </div>
                   </div>
-                  <span className="text-sm font-semibold text-[#0f4c4c] transition group-hover:translate-x-0.5">
+                  <span className="text-sm font-semibold text-brand-500 transition group-hover:translate-x-0.5">
                     Ver demo →
                   </span>
                 </div>
@@ -377,10 +378,8 @@ export default function WebServicePage() {
       <section id="proceso" className="py-20 sm:py-24">
         <Container>
           <div className="max-w-2xl">
-            <h2 className="font-display text-2xl font-bold tracking-tight text-neutral-950 sm:text-3xl">
-              Cómo trabajamos
-            </h2>
-            <p className="mt-3 text-neutral-700">
+            <h2 className="display-2 text-ink">Cómo trabajamos</h2>
+            <p className="mt-3 text-ink-soft">
               Cero enredos. Una sola persona te acompaña de principio a fin.
             </p>
           </div>
@@ -388,15 +387,15 @@ export default function WebServicePage() {
             {PROCESS.map((p) => (
               <div
                 key={p.step}
-                className="relative rounded-2xl border border-black/5 bg-white p-6"
+                className="relative rounded-2xl border border-brand-100 bg-white p-6"
               >
-                <div className="font-display text-3xl font-bold text-[#0f4c4c]/30">
+                <div className="font-display text-3xl font-bold text-brand-500/30">
                   {p.step}
                 </div>
-                <h3 className="mt-2 font-display text-base font-semibold text-neutral-950">
+                <h3 className="mt-2 font-display text-base font-semibold text-ink">
                   {p.title}
                 </h3>
-                <p className="mt-2 text-sm leading-relaxed text-neutral-700">
+                <p className="mt-2 text-sm leading-relaxed text-ink-soft">
                   {p.body}
                 </p>
               </div>
@@ -406,19 +405,22 @@ export default function WebServicePage() {
       </section>
 
       {/* ── CTA Final ── */}
-      <section id="cotizar" className="border-t border-black/5 bg-[#0f4c4c] py-16 text-white sm:py-20">
+      <section
+        id="cotizar"
+        className="border-t border-brand-100 bg-gradient-to-br from-brand-500 via-brand-secondary to-brand-700 py-16 text-white sm:py-20"
+      >
         <Container className="text-center">
           <h2 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">
             ¿Listo para tener tu página?
           </h2>
-          <p className="mx-auto mt-3 max-w-xl text-white/80">
+          <p className="mx-auto mt-3 max-w-xl text-white/85">
             Mándanos WhatsApp con el nombre de tu negocio y qué te gustaría
             tener. Te respondemos hoy mismo con el alcance y precio.
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <a
               href="https://wa.me/5215512345678?text=Hola%20Qlick%2C%20me%20interesa%20cotizar%20una%20p%C3%A1gina%20web"
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-[#0f4c4c] shadow-md transition hover:bg-neutral-100"
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-brand-500 shadow-md transition hover:bg-brand-50"
             >
               <svg
                 viewBox="0 0 24 24"
@@ -436,21 +438,21 @@ export default function WebServicePage() {
               hola@qlick.digital
             </a>
           </div>
-          <p className="mt-6 text-xs text-white/60">
+          <p className="mt-6 text-xs text-white/70">
             O si prefieres, agenda una llamada de 15 minutos para platicar tu proyecto.
           </p>
         </Container>
       </section>
 
       {/* ── Footer ── */}
-      <footer className="border-t border-black/5 bg-white">
+      <footer className="border-t border-brand-100 bg-white">
         <Container className="flex flex-col items-center justify-between gap-3 py-6 sm:flex-row">
-          <div className="flex items-center gap-2 text-sm text-neutral-600">
+          <div className="flex items-center gap-2 text-sm text-ink-soft">
             <Logo className="h-5 w-auto" />
-            <span>Qlick Marketing Digital</span>
+            <span>Qlick Marketing Integral</span>
           </div>
-          <p className="text-xs text-neutral-500">
-            Hecho con cariño en México · Servicio de páginas web
+          <p className="text-xs text-ink-muted">
+            Hecho con cariño en México · Servicio de diseño de páginas
           </p>
         </Container>
       </footer>

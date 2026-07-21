@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
 
     if (isTestMode) {
       // Modo test: simular checkout exitoso y devolver URL de gracias.
-      const graciasUrl = new URL("/web/gracias", req.nextUrl.origin);
+      const graciasUrl = new URL("/diseno-paginas/gracias", req.nextUrl.origin);
       graciasUrl.searchParams.set("test", "1");
       graciasUrl.searchParams.set("paquete", paquete);
       graciasUrl.searchParams.set("monto", String(pkg.amount / 100));
