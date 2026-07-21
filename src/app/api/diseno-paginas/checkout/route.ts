@@ -11,12 +11,12 @@ import { NextRequest, NextResponse } from "next/server";
  *   - Si env STRIPE_SECRET_KEY empieza con "sk_test_" o no existe → modo test
  *   - Si empieza con "sk_live_" → modo producción (TODO: cablear Stripe real)
  *
- * Body esperado: { paquete: "esencial" | "negocio", email?: string }
+ * Body esperado: { paquete: "esencial" | "profesional", email?: string }
  */
 
 const PACKAGE_PRICES: Record<string, { name: string; amount: number; currency: string }> = {
-  "mi-pagina": { name: "Mi página", amount: 250000, currency: "mxn" },
-  "mi-sitio": { name: "Mi sitio", amount: 550000, currency: "mxn" },
+  esencial: { name: "Esencial", amount: 250000, currency: "mxn" },
+  profesional: { name: "Profesional", amount: 550000, currency: "mxn" },
 };
 
 export async function POST(req: NextRequest) {
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
 
     if (!(paquete in PACKAGE_PRICES)) {
       return NextResponse.json(
-        { error: "Paquete inválido. Usa 'mi-pagina' o 'mi-sitio'." },
+        { error: "Paquete inválido. Usa 'esencial' o 'profesional'." },
         { status: 400 }
       );
     }

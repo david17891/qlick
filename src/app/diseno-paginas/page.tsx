@@ -15,11 +15,11 @@ type Package = {
 
 const PACKAGES: readonly Package[] = [
   {
-    id: "mi-pagina",
-    name: "Mi página",
+    id: "esencial",
+    name: "Esencial",
     price: "$2,500",
     period: "MXN · pago único",
-    description: "Para que te encuentren en Google.",
+    description: "Tu página para aparecer en internet.",
     features: [
       "2 páginas: tu información + contacto",
       "Diseño responsivo (celular y computadora)",
@@ -31,11 +31,11 @@ const PACKAGES: readonly Package[] = [
     accent: "border-brand-200",
   },
   {
-    id: "mi-sitio",
-    name: "Mi sitio",
+    id: "profesional",
+    name: "Profesional",
     price: "$5,500",
     period: "MXN · pago único",
-    description: "Para que te contraten desde la web.",
+    description: "Tu sitio completo para captar clientes.",
     features: [
       "5 páginas: inicio, sobre ti, servicios, galería, contacto",
       "Diseño responsivo profesional",
@@ -46,7 +46,7 @@ const PACKAGES: readonly Package[] = [
       "2 rondas de revisión",
       "Listo en 7-10 días",
     ],
-    accent: "border-brand-500 ring-1 ring-brand-500/20",
+    accent: "border-brand-500",
     featured: true,
   },
 ];
@@ -116,7 +116,7 @@ const DEMOS = [
     id: "demo-2a",
     name: "Sonrisa Plus",
     rubro: "Consultorio dental",
-    paquete: "Negocio",
+    paquete: "Profesional",
     accent: "from-sky-100 via-white to-cyan-50",
     accentText: "text-sky-900",
     swatch: "#0284c7",
@@ -125,7 +125,7 @@ const DEMOS = [
     id: "demo-2b",
     name: "Bufete Mendoza",
     rubro: "Despacho de abogados",
-    paquete: "Negocio",
+    paquete: "Profesional",
     accent: "from-slate-200 via-slate-50 to-amber-50",
     accentText: "text-slate-900",
     swatch: "#1e3a5f",
@@ -226,7 +226,7 @@ export default function DisenoPaginasPage() {
             {PACKAGES.map((pkg) => (
               <div
                 key={pkg.id}
-                className={`group relative flex flex-col rounded-3xl border-2 bg-white p-8 shadow-card transition-all duration-300 hover:-translate-y-1 hover:shadow-glow ${pkg.accent}`}
+                className={`group relative flex h-full flex-col rounded-3xl border-2 bg-white p-8 shadow-card transition-all duration-300 hover:-translate-y-2 hover:border-brand-500 hover:ring-4 hover:ring-brand-500/30 hover:shadow-2xl hover:shadow-brand-500/30 ${pkg.accent}`}
               >
                 {pkg.featured ? (
                   <span className="absolute -top-3 right-6 rounded-full bg-brand-500 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-white">
@@ -269,7 +269,7 @@ export default function DisenoPaginasPage() {
                   paqueteLabel={pkg.name}
                   variant={pkg.featured ? "primary" : "outline"}
                   fullWidth
-                  className="mt-8"
+                  className="mt-auto pt-8"
                 />
               </div>
             ))}

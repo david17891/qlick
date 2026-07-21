@@ -14,7 +14,7 @@ export const metadata = {
 
 const PACKAGE_LABELS: Record<string, string> = {
   esencial: "Esencial",
-  negocio: "Negocio",
+  profesional: "Profesional",
 };
 
 export default function GraciasPage({

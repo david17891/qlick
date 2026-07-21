@@ -12,18 +12,18 @@ type CheckoutButtonProps = {
 };
 
 const PACKAGE_DETAILS: Record<string, { price: string; description: string; bullets: string[] }> = {
-  "mi-pagina": {
+  esencial: {
     price: "$2,500 MXN",
     description: "Tu página lista en 3-5 días.",
     bullets: [
       "2 páginas con tu información y contacto",
       "Diseño responsivo (celular y computadora)",
       "Botón de WhatsApp directo",
-      "Tu dominio propio (.com o .mx)",
+      "Tu dominio propio",
       "Aparece en Google (SEO básico)",
     ],
   },
-  "mi-sitio": {
+  profesional: {
     price: "$5,500 MXN",
     description: "Tu sitio completo listo en 7-10 días.",
     bullets: [
