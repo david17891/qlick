@@ -54,6 +54,7 @@ const LAWYERS = [
     years: "32 años",
     specialty: "Mercantil y corporativo",
     bio: "Maestría en Derecho Empresarial por la UNAM. Ex presidente del Colegio de Abogados de CDMX.",
+    image: "/servicios/web/mendoza-abogado.jpg",
   },
   {
     name: "Lic. Patricia Aguilar",
@@ -61,6 +62,7 @@ const LAWYERS = [
     years: "18 años",
     specialty: "Civil y familiar",
     bio: "Especialista en mediación familiar. Certificada por el Instituto de la Judicatura Federal.",
+    image: "/servicios/web/mendoza-aguilar.jpg",
   },
   {
     name: "Lic. Jorge Ramírez",
@@ -68,6 +70,7 @@ const LAWYERS = [
     years: "12 años",
     specialty: "Penal y amparo",
     bio: "Doctor en Ciencias Penales. Profesor de Derecho Procesal en la Universidad Iberoamericana.",
+    image: "/servicios/web/mendoza-ramirez.jpg",
   },
   {
     name: "Lic. Fernanda Castro",
@@ -75,6 +78,7 @@ const LAWYERS = [
     years: "7 años",
     specialty: "Propiedad intelectual",
     bio: "Maestría en Propiedad Intelectual por la Universidad de Alicante. Agente registrado ante IMPI.",
+    image: "/servicios/web/mendoza-castro.jpg",
   },
 ] as const;
 
@@ -306,29 +310,19 @@ export default function Demo2B() {
             </p>
           </div>
           <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {LAWYERS.map((lawyer, i) => (
+            {LAWYERS.map((lawyer) => (
               <div
                 key={lawyer.name}
                 className="overflow-hidden rounded-2xl border border-neutral-200 bg-white"
               >
                 <div className="relative aspect-[4/5] w-full">
-                  {i === 0 ? (
-                    <Image
-                      src="/servicios/web/mendoza-abogado.jpg"
-                      alt={`Lic. ${lawyer.name}`}
-                      fill
-                      sizes="(max-width: 768px) 50vw, 25vw"
-                      className="object-cover"
-                    />
-                  ) : (
-                    <div
-                      className="h-full w-full"
-                      style={{
-                        background:
-                          "linear-gradient(160deg, #1e3a5f 0%, #0f1f3a 100%)",
-                      }}
-                    />
-                  )}
+                  <Image
+                    src={lawyer.image}
+                    alt={lawyer.name}
+                    fill
+                    sizes="(max-width: 768px) 50vw, 25vw"
+                    className="object-cover"
+                  />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
                   <div className="absolute inset-x-0 bottom-0 p-5 text-white">
                     <div

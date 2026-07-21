@@ -58,19 +58,19 @@ const DOCTORS = [
     name: "Dra. Andrea Mendoza",
     specialty: "Directora · Diseño de sonrisa",
     bio: "15 años de experiencia. Certificada en carillas E-max por la American Academy of Cosmetic Dentistry.",
-    color: "#bae6fd",
+    image: "/servicios/web/sonrisa-doctor.jpg",
   },
   {
     name: "Dr. Roberto Salinas",
     specialty: "Implantología y cirugía",
     bio: "Especialista en implantes por la UNAM. Más de 800 implantes colocados con éxito.",
-    color: "#7dd3fc",
+    image: "/servicios/web/sonrisa-doctor-roberto.jpg",
   },
   {
     name: "Dra. Carolina Vega",
     specialty: "Ortodoncia invisible",
     bio: "Diamond Provider de Invisalign. 400+ casos tratados con alineadores.",
-    color: "#a5f3fc",
+    image: "/servicios/web/sonrisa-doctor-carolina.jpg",
   },
 ] as const;
 
@@ -174,11 +174,6 @@ export default function Demo2A() {
                 </div>
               </div>
             </div>
-            <div
-              className="absolute -bottom-6 -left-6 hidden h-24 w-24 rounded-full shadow-lg sm:block"
-              style={{ backgroundColor: ACCENT }}
-              aria-hidden="true"
-            />
           </div>
         </div>
       </section>
@@ -263,20 +258,13 @@ export default function Demo2A() {
                 className="overflow-hidden rounded-2xl border border-neutral-200 bg-white"
               >
                 <div className="relative aspect-[4/3] w-full">
-                  {i === 0 ? (
-                    <Image
-                      src="/servicios/web/sonrisa-doctor.jpg"
-                      alt={`Dra. ${doc.name}`}
-                      fill
-                      sizes="(max-width: 768px) 100vw, 33vw"
-                      className="object-cover"
-                    />
-                  ) : (
-                    <div
-                      className="h-full w-full"
-                      style={{ backgroundColor: doc.color }}
-                    />
-                  )}
+                  <Image
+                    src={doc.image}
+                    alt={doc.name}
+                    fill
+                    sizes="(max-width: 768px) 100vw, 33vw"
+                    className="object-cover"
+                  />
                 </div>
                 <div className="p-5">
                   <h3 className="font-display text-lg font-semibold text-neutral-950">
@@ -338,31 +326,23 @@ export default function Demo2A() {
                 ))}
               </ul>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               {[
                 { name: "Escáner 3D", src: "/servicios/web/sonrisa-escaner.jpg" },
                 { name: "Clínica", src: "/servicios/web/sonrisa-clinica.jpg" },
                 { name: "Consultorio", src: "/servicios/web/sonrisa-consultorio.jpg" },
-                { name: "Atención", color: "#e0f2fe" },
               ].map((tech) => (
                 <div
                   key={tech.name}
                   className="relative aspect-square overflow-hidden rounded-2xl"
                 >
-                  {tech.src ? (
-                    <Image
-                      src={tech.src}
-                      alt={tech.name}
-                      fill
-                      sizes="(max-width: 768px) 50vw, 25vw"
-                      className="object-cover"
-                    />
-                  ) : (
-                    <div
-                      className="h-full w-full"
-                      style={{ backgroundColor: tech.color }}
-                    />
-                  )}
+                  <Image
+                    src={tech.src}
+                    alt={tech.name}
+                    fill
+                    sizes="(max-width: 768px) 33vw, 25vw"
+                    className="object-cover"
+                  />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
                   <span className="absolute inset-x-0 bottom-0 p-3 font-display text-sm font-semibold text-white">
                     {tech.name}
@@ -466,21 +446,21 @@ export default function Demo2A() {
                 date: "12 junio 2026",
                 excerpt:
                   "Hábitos simples para mantener tus alineadores transparentes limpios, sin manchas y sin mal olor.",
-                src: "/servicios/web/sonrisa-consultorio.jpg",
+                src: "/servicios/web/sonrisa-blog-alineadores.jpg",
               },
               {
                 title: "5 señales de que necesitas una limpieza profesional",
                 date: "28 mayo 2026",
                 excerpt:
                   "Sangrado de encías, mal aliento persistente, sarro visible: cuándo pedir cita sin pensarlo.",
-                src: "/servicios/web/sonrisa-clinica.jpg",
+                src: "/servicios/web/sonrisa-blog-limpieza.jpg",
               },
               {
                 title: "Implantes dentales: lo que debes saber antes de decidir",
                 date: "8 abril 2026",
                 excerpt:
                   "Tiempos, costos, cuidados post-operatorios. Respondemos las preguntas más frecuentes.",
-                src: "/servicios/web/sonrisa-escaner.jpg",
+                src: "/servicios/web/sonrisa-blog-implantes.jpg",
               },
             ].map((post) => (
               <article

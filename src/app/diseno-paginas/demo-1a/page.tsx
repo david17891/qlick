@@ -153,11 +153,6 @@ export default function Demo1A() {
                 </div>
               </div>
             </div>
-            <div
-              className="absolute -bottom-6 -left-6 hidden h-24 w-24 rounded-full shadow-lg sm:block"
-              style={{ backgroundColor: ACCENT }}
-              aria-hidden="true"
-            />
           </div>
         </div>
       </section>
@@ -216,16 +211,53 @@ export default function Demo1A() {
         </div>
       </section>
 
-      {/* ── Sobre nosotros (mini) ── */}
+      {/* ── Sobre nosotras ── */}
       <section
         id="nosotros"
-        className="py-12 sm:py-16"
-        style={{ backgroundColor: "#fdf8f5" }}
+        className="py-20 sm:py-24"
+        style={{ backgroundColor: "#fce8e9" }}
       >
         <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
-          <p className="text-base leading-relaxed text-neutral-700">
-            Estudio en la <strong>Roma Norte desde 2016</strong>. Cortes, color, manicura y faciales con cita con horario real y productos profesionales de verdad.
+          <span
+            className="inline-block text-[10px] font-semibold uppercase tracking-[0.3em]"
+            style={{ color: ACCENT_DARK }}
+          >
+            Sobre nosotras
+          </span>
+          <h2 className="mt-2 font-display text-3xl font-bold tracking-tight text-neutral-950 sm:text-4xl">
+            Estudio de la Roma Norte desde 2016
+          </h2>
+          <p className="mt-5 text-base leading-relaxed text-neutral-700">
+            Cortes, color, manicura y faciales con cita con horario real y
+            productos profesionales de verdad. No es un spa impersonal: te
+            atiende siempre la misma estilista que conoce tu cabello.
           </p>
+          <div className="mt-8 grid grid-cols-3 gap-4 border-t border-neutral-300/50 pt-6 text-center">
+            <div>
+              <div className="font-display text-2xl font-bold" style={{ color: ACCENT_DARK }}>
+                10+
+              </div>
+              <div className="mt-1 text-xs uppercase tracking-[0.15em] text-neutral-600">
+                años
+              </div>
+            </div>
+            <div>
+              <div className="font-display text-2xl font-bold" style={{ color: ACCENT_DARK }}>
+                2,400
+              </div>
+              <div className="mt-1 text-xs uppercase tracking-[0.15em] text-neutral-600">
+                clientas felices
+              </div>
+            </div>
+            <div>
+              <div className="font-display text-2xl font-bold" style={{ color: ACCENT_DARK }}>
+                4.9
+              </div>
+              <div className="mt-1 text-xs uppercase tracking-[0.15em] text-neutral-600">
+                Google Reviews
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
