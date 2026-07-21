@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Container, Badge } from "@/components/ui";
 import { PageHero, CTABanner } from "@/components/layout";
 import { ServiceDetailInteractive } from "@/components/services/ServiceDetailInteractive";
+import { ServiceDemosSection } from "@/components/services/ServiceDemosSection";
 import { getServiceBySlug } from "@/lib/services";
 import { formatMXN } from "@/lib/utils";
 
@@ -76,6 +77,12 @@ export default async function ServicioDetallePage({ params }: PageProps) {
           </Container>
         </section>
       )}
+
+      {/* FIX 2026-07-21 (David): para /servicios/sitio-web, mostramos el
+          portafolio de 4 demos como ejemplos del trabajo. Los demos siguen
+          accesibles en /diseno-paginas/demo-* (no se mueven, no se
+          rompe nada). El cliente ve el resultado antes de contratar. */}
+      {service.slug === "sitio-web" && <ServiceDemosSection />}
 
       {/* Variants — client component para el modal */}
       <ServiceDetailInteractive service={service} />
