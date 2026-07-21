@@ -51,7 +51,6 @@ export default function Demo1BMenu() {
         links={[
           { label: "Inicio", href: "/diseno-paginas/demo-1b" },
           { label: "Menú", href: "#menu" },
-          { label: "Historia", href: "/diseno-paginas/demo-1b#historia" },
           { label: "Contacto", href: "/diseno-paginas/demo-1b#contacto" },
         ]}
         ctaLabel="Pedir a domicilio"
@@ -79,7 +78,7 @@ export default function Demo1BMenu() {
             <span style={{ color: ACCENT_DARK }}>menú</span>.
           </h1>
           <p className="mt-4 max-w-lg text-lg leading-relaxed text-neutral-800">
-            16 tacos diferentes, consomé, guacamole, aguas. Todo preparado al momento.
+            12 tacos diferentes más 4 para acompañar. Todo preparado al momento.
           </p>
         </div>
       </section>

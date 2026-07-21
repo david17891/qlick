@@ -41,7 +41,7 @@ const MENU = [
 
 const STATS = [
   { number: "37", label: "años sirviendo" },
-  { number: "12", label: "tipos de taco" },
+  { number: "9", label: "tipos de taco" },
   { number: "5", label: "salsas de la casa" },
   { number: "∞", label: "consomé gratis" },
 ] as const;
@@ -56,8 +56,6 @@ export default function Demo1B() {
         accentColor={ACCENT_DARK}
         links={[
           { label: "Menú", href: "#menu" },
-          { label: "Historia", href: "#historia" },
-          { label: "Cómo llegar", href: "#llegar" },
           { label: "Contacto", href: "#contacto" },
         ]}
         ctaLabel="Pedir a domicilio"

@@ -51,24 +51,6 @@ const SERVICES = [
   },
 ] as const;
 
-const TESTIMONIALS = [
-  {
-    name: "Mariana R.",
-    quote:
-      "El mejor balayage que me han hecho en CDMX. Salí con el cabello como en revista y la atención es de primera.",
-  },
-  {
-    name: "Sofía C.",
-    quote:
-      "Voy cada 3 semanas por manicura en gel. Puntuales, limpias y siempre con café mientras me atienden.",
-  },
-  {
-    name: "Daniela P.",
-    quote:
-      "Mi paquete de novia fue perfecto. Llegué sin estrés y salí con todo hecho. Lo recomiendo cerrado.",
-  },
-] as const;
-
 export default function Demo1A() {
   return (
     <div id="top" className="min-h-screen bg-[#fdf8f5] text-neutral-900">
@@ -80,8 +62,6 @@ export default function Demo1A() {
         links={[
           { label: "Servicios", href: "#servicios" },
           { label: "Sobre nosotros", href: "#nosotros" },
-          { label: "Galería", href: "#galeria" },
-          { label: "Reseñas", href: "#resenas" },
           { label: "Contacto", href: "#contacto" },
         ]}
         ctaLabel="Reservar cita"
@@ -134,7 +114,7 @@ export default function Demo1A() {
             <div className="mt-8 flex items-center gap-6 text-xs text-neutral-600">
               <div>
                 <div className="font-display text-xl font-bold" style={{ color: ACCENT_DARK }}>
-                  8+
+                  10+
                 </div>
                 <div>años</div>
               </div>
@@ -256,7 +236,7 @@ export default function Demo1A() {
         style={{ backgroundColor: ACCENT_DARK }}
       >
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
-          <div className="grid gap-10 md:grid-cols-2">
+          <div className="grid gap-10 md:grid-cols-[1.1fr,1fr]">
             <div>
               <span className="inline-block text-[10px] font-semibold uppercase tracking-[0.3em] text-white/70">
                 Contacto
@@ -268,7 +248,22 @@ export default function Demo1A() {
                 Respondemos por WhatsApp en menos de 2 horas en horario de
                 atención. Si es urgente, también puedes llamarnos directo.
               </p>
-              <div className="mt-6 space-y-3 text-sm">
+              <div className="mt-7 flex flex-wrap gap-3">
+                <a
+                  href="https://wa.me/5215512345678?text=Hola%20Lumi%C3%A8re%2C%20quiero%20agendar%20una%20cita"
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold transition hover:bg-neutral-100"
+                  style={{ color: ACCENT_DARK }}
+                >
+                  Escribir por WhatsApp
+                </a>
+                <a
+                  href="tel:+5215512345678"
+                  className="inline-flex items-center justify-center rounded-full border border-white/30 bg-transparent px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+                >
+                  Llamar al salón
+                </a>
+              </div>
+              <div className="mt-8 space-y-4 text-sm">
                 <div className="flex items-start gap-3">
                   <span className="text-white/60">📍</span>
                   <div>
@@ -276,13 +271,6 @@ export default function Demo1A() {
                     <div className="text-white/80">
                       Av. Álvaro Obregón 121, Roma Norte, CDMX 06700
                     </div>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <span className="text-white/60">📞</span>
-                  <div>
-                    <div className="font-semibold">WhatsApp</div>
-                    <div className="text-white/80">+52 55 1234 5678</div>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
@@ -298,51 +286,24 @@ export default function Demo1A() {
                 </div>
               </div>
             </div>
-            <div className="rounded-2xl bg-white p-6 text-neutral-900">
-              <h3 className="font-display text-lg font-semibold">Reserva rápida</h3>
-              <p className="mt-1 text-sm text-neutral-600">
-                Déjanos tus datos y te contactamos hoy mismo.
+            <div className="rounded-2xl bg-white/10 p-6 backdrop-blur">
+              <h3 className="font-display text-lg font-semibold">
+                ¿Prefieres reservar en línea?
+              </h3>
+              <p className="mt-2 text-sm text-white/80">
+                Te llevamos a nuestro formulario de reserva con selección de
+                servicio, fecha y horario preferido. Sin llamadas, sin esperas.
               </p>
-              <form className="mt-5 space-y-3">
-                <input
-                  type="text"
-                  placeholder="Tu nombre"
-                  className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-[#b76e79] focus:ring-2 focus:ring-[#b76e79]/20"
-                />
-                <input
-                  type="tel"
-                  placeholder="WhatsApp (10 dígitos)"
-                  className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-[#b76e79] focus:ring-2 focus:ring-[#b76e79]/20"
-                />
-                <select
-                  className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#b76e79] focus:ring-2 focus:ring-[#b76e79]/20"
-                  defaultValue=""
-                >
-                  <option value="" disabled>
-                    Servicio de interés
-                  </option>
-                  {SERVICES.map((s) => (
-                    <option key={s.name} value={s.name}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-                <textarea
-                  placeholder="Cuéntanos brevemente qué te gustaría"
-                  rows={3}
-                  className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-[#b76e79] focus:ring-2 focus:ring-[#b76e79]/20"
-                />
-                <button
-                  type="submit"
-                  className="w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-                  style={{ backgroundColor: ACCENT_DARK }}
-                >
-                  Solicitar cita
-                </button>
-                <p className="text-center text-xs text-neutral-500">
-                  Te respondemos por WhatsApp en menos de 2 horas.
-                </p>
-              </form>
+              <a
+                href="/diseno-paginas/demo-1a/contacto"
+                className="mt-5 inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                style={{ backgroundColor: ACCENT }}
+              >
+                Ir al formulario de reserva →
+              </a>
+              <p className="mt-3 text-xs text-white/60">
+                Te respondemos en menos de 2 horas hábiles.
+              </p>
             </div>
           </div>
         </div>

@@ -87,6 +87,7 @@ export default function Demo2A() {
           { label: "Equipo", href: "#equipo" },
           { label: "Tecnología", href: "#tecnologia" },
           { label: "Reseñas", href: "#resenas" },
+          { label: "Blog", href: "#blog" },
           { label: "Contacto", href: "#contacto" },
         ]}
         ctaLabel="Agendar cita"
@@ -435,6 +436,88 @@ export default function Demo2A() {
                   — {t.name}
                 </figcaption>
               </figure>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Blog ── */}
+      <section id="blog" className="bg-white py-20 sm:py-24">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+          <div className="max-w-2xl">
+            <span
+              className="inline-block text-[10px] font-semibold uppercase tracking-[0.3em]"
+              style={{ color: ACCENT_DARK }}
+            >
+              Blog
+            </span>
+            <h2 className="mt-2 font-display text-3xl font-bold tracking-tight text-neutral-950 sm:text-4xl">
+              Consejos de nuestros dentistas
+            </h2>
+            <p className="mt-3 text-neutral-700">
+              Artículos cortos sobre cuidados, tratamientos y cómo aprovechar
+              al máximo tu próxima cita.
+            </p>
+          </div>
+          <div className="mt-10 grid gap-6 sm:grid-cols-3">
+            {[
+              {
+                title: "Cómo cuidar tus alineadores invisibles día a día",
+                date: "12 junio 2026",
+                excerpt:
+                  "Hábitos simples para mantener tus alineadores transparentes limpios, sin manchas y sin mal olor.",
+                src: "/servicios/web/sonrisa-consultorio.jpg",
+              },
+              {
+                title: "5 señales de que necesitas una limpieza profesional",
+                date: "28 mayo 2026",
+                excerpt:
+                  "Sangrado de encías, mal aliento persistente, sarro visible: cuándo pedir cita sin pensarlo.",
+                src: "/servicios/web/sonrisa-clinica.jpg",
+              },
+              {
+                title: "Implantes dentales: lo que debes saber antes de decidir",
+                date: "8 abril 2026",
+                excerpt:
+                  "Tiempos, costos, cuidados post-operatorios. Respondemos las preguntas más frecuentes.",
+                src: "/servicios/web/sonrisa-escaner.jpg",
+              },
+            ].map((post) => (
+              <article
+                key={post.title}
+                className="overflow-hidden rounded-2xl border border-neutral-200 bg-white transition hover:shadow-md"
+              >
+                <div className="relative aspect-[16/9] w-full">
+                  <Image
+                    src={post.src}
+                    alt={post.title}
+                    fill
+                    sizes="(max-width: 768px) 100vw, 33vw"
+                    className="object-cover"
+                  />
+                </div>
+                <div className="p-5">
+                  <div
+                    className="text-[10px] font-semibold uppercase tracking-[0.2em]"
+                    style={{ color: ACCENT_DARK }}
+                  >
+                    {post.date}
+                  </div>
+                  <h3 className="mt-2 font-display text-base font-semibold text-neutral-950">
+                    {post.title}
+                  </h3>
+                  <p className="mt-2 text-sm leading-relaxed text-neutral-700">
+                    {post.excerpt}
+                  </p>
+                  <a
+                    href="#"
+                    className="mt-3 inline-block text-sm font-semibold"
+                    style={{ color: ACCENT_DARK }}
+                  >
+                    Leer artículo →
+                  </a>
+                </div>
+              </article>
             ))}
           </div>
         </div>
