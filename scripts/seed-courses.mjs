@@ -12,6 +12,16 @@
  * los cambios. Cuando el catálogo venga de otro lado (CMS, partner), este
  * script se reemplaza.
  *
+ * STATUS DE LOS CURSOS (2026-07-21):
+ * - Todos los cursos del demo se insertan con `status='proximamente'`.
+ *   Los cursos del LMS todavía no están listos para matrícula pública
+ *   (David lo pidió así: "Aun no hay curso, pongamos por ahora todos
+ *   proximamente"). El sitio los muestra con badge "Próximamente" y CTA
+ *   deshabilitado, y al hacer click llevan a WhatsApp para avisar.
+ * - `ensureProximamenteStatus` al final hace UPDATE de cualquier curso
+ *   existente con `status='published'` (de seeds previos) a `proximamente`,
+ *   para que la DB quede consistente con la nueva política. Idempotente.
+ *
  * REQUISITOS:
  *   - .env.local con NEXT_PUBLIC_SUPABASE_URL y SUPABASE_SECRET_KEY
  *   - Migración v0.7.0 (LMS Real Foundation) aplicada
@@ -824,7 +834,7 @@ async function seedCourse(course) {
         subtitle: course.subtitle,
         description: course.description,
         cover_image_url: course.coverImageUrl,
-        status: "published",
+        status: "proximamente", // 2026-07-21: todos en modo próximamente.
         level: course.level,
         category: course.category,
         duration_minutes: course.durationMinutes,
@@ -969,6 +979,49 @@ async function ensureAccessConfig() {
   console.log(`🔧 ensureAccessConfig: ${updated} actualizados, ${skipped} sin cambios\n`);
 }
 
+/**
+ * ensureProximamenteStatus (2026-07-21)
+ * Actualiza `status='published'` → `status='proximamente'` para los cursos
+ * del catálogo demo. Idempotente: si ya están en 'proximamente' (o cualquier
+ * otro valor intencional como 'draft'/'archived'), no se tocan.
+ *
+ * Solo afecta a los slugs de este seed; cualquier curso que David haya
+ * creado manualmente con `status='published'` NO se modifica.
+ */
+async function ensureProximamenteStatus() {
+  const slugs = COURSES.map((c) => c.slug);
+
+  const { data: existing, error: fetchError } = await supabase
+    .from("courses")
+    .select("slug, status")
+    .in("slug", slugs);
+
+  if (fetchError) {
+    console.log(`  ✗ Error leyendo cursos: ${fetchError.message}`);
+    return;
+  }
+
+  const toUpdate = (existing ?? []).filter((c) => c.status === "published");
+  if (toUpdate.length === 0) {
+    console.log(`🔧 ensureProximamenteStatus: 0 a actualizar (ya están en 'proximamente' u otro)\n`);
+    return;
+  }
+
+  for (const c of toUpdate) {
+    const { error } = await supabase
+      .from("courses")
+      .update({ status: "proximamente" })
+      .eq("slug", c.slug);
+
+    if (error) {
+      console.log(`  ✗ Error actualizando ${c.slug}: ${error.message}`);
+    } else {
+      console.log(`  ✓ ${c.slug}: published → proximamente`);
+    }
+  }
+  console.log(`🔧 ensureProximamenteStatus: ${toUpdate.length} actualizados\n`);
+}
+
 // =============================================================
 // 4. Main
 // =============================================================
@@ -980,6 +1033,11 @@ async function main() {
   // Pre-paso (v1.0.0): asegurar access_type + price_mxn correctos para cursos
   // que ya existían antes de esta migración. Idempotente (no-op si ya están OK).
   await ensureAccessConfig();
+
+  // Pre-paso (2026-07-21): asegurar que los cursos del demo estén en
+  // 'proximamente' (migración nueva `courses_status_proximamente`).
+  // Idempotente.
+  await ensureProximamenteStatus();
 
   const results = {};
   let successCount = 0;

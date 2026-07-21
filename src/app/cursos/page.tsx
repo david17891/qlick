@@ -33,6 +33,13 @@ function lmsToLegacyAdapter(c: LmsCourse): FilterableCourse {
     paid: "pago",
     freemium: "gratis", // freemium = gratis en legacy
   };
+  // El status del LMS manda por encima del accessType. Si el curso está
+  // marcado como "proximamente" en la DB, la UI lo muestra con badge
+  // "Próximamente" independientemente de si es free/paid/freemium.
+  const legacyStatus: "gratis" | "pago" | "proximamente" =
+    c.status === "proximamente"
+      ? "proximamente"
+      : (statusMap[c.accessType] ?? "gratis");
   return {
     id: c.id,
     slug: c.slug,
@@ -50,7 +57,7 @@ function lmsToLegacyAdapter(c: LmsCourse): FilterableCourse {
     priceMXN: c.priceMXN ?? 0,
     originalPriceMXN: null,
     isFeatured: c.isFeatured,
-    status: statusMap[c.accessType] ?? "gratis",
+    status: legacyStatus,
     accessType: c.accessType,
   } as unknown as FilterableCourse;
 }

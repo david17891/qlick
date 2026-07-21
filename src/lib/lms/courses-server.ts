@@ -96,9 +96,15 @@ function legacyCourseToLms(legacy: {
 /* ------------------------------------------------------------------ */
 
 /**
- * Devuelve los cursos publicados del LMS (catálogo público).
+ * Devuelve los cursos visibles del catálogo público del LMS.
  *
- * Si Supabase está configurado: query a `courses WHERE status='published'`.
+ * Incluye `status IN ('published', 'proximamente')`:
+ * - "published"   → con CTA de inscripción/compra activo.
+ * - "proximamente"→ con CTA deshabilitado y badge "Próximamente".
+ *
+ * Excluye `draft` y `archived` (no son parte del catálogo público).
+ *
+ * Si Supabase está configurado: query a `courses WHERE status IN (...)`.
  * Si no: devuelve derivación de `lib/data/courses.ts` para mantener el
  *        home y `/cursos` funcionando en modo demo.
  */
@@ -107,14 +113,14 @@ export async function getPublishedCourses(): Promise<Course[]> {
     const { courses } = await import("@/lib/data/courses");
     return (courses as Array<Parameters<typeof legacyCourseToLms>[0]>)
       .map(legacyCourseToLms)
-      .filter((c) => c.status === "published");
+      .filter((c) => c.status === "published" || c.status === "proximamente");
   }
 
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase
     .from("courses")
     .select("*")
-    .eq("status", "published")
+    .in("status", ["published", "proximamente"])
     .order("is_featured", { ascending: false })
     .order("display_order", { ascending: true });
 
@@ -126,7 +132,7 @@ export async function getPublishedCourses(): Promise<Course[]> {
     const { courses } = await import("@/lib/data/courses");
     return (courses as Array<Parameters<typeof legacyCourseToLms>[0]>)
       .map(legacyCourseToLms)
-      .filter((c) => c.status === "published");
+      .filter((c) => c.status === "published" || c.status === "proximamente");
   }
   return (data as CourseRow[]).map(mapCourseRow);
 }
@@ -159,7 +165,7 @@ export async function getCourseBySlug(
     .from("courses")
     .select("*")
     .eq("slug", slug)
-    .eq("status", "published")
+    .in("status", ["published", "proximamente"])
     .maybeSingle();
 
   if (error) {

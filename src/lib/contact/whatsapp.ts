@@ -45,8 +45,22 @@ function cleanNumber(raw: string | undefined): string | null {
   return digits;
 }
 
+/**
+ * Número de WhatsApp de Qlick (wa.me) usado como fallback cuando no hay env var.
+ *
+ * Es el número real de David para contacto comercial de Qlick. Si en el futuro
+ * se separa de un número dedicado de la empresa, cambiar aquí o setear
+ * NEXT_PUBLIC_WHATSAPP_SALES_NUMBER en .env.local.
+ *
+ * Formato wa.me: solo dígitos, con código de país, sin + ni espacios.
+ */
+const DEFAULT_SALES_NUMBER = "5216532935492";
+
 export function getSalesNumber(): string | null {
-  return cleanNumber(process.env.NEXT_PUBLIC_WHATSAPP_SALES_NUMBER);
+  return (
+    cleanNumber(process.env.NEXT_PUBLIC_WHATSAPP_SALES_NUMBER) ??
+    DEFAULT_SALES_NUMBER
+  );
 }
 
 export function getSupportNumber(): string | null {

@@ -23,7 +23,18 @@
 /* Enums del LMS                                                       */
 /* ------------------------------------------------------------------ */
 
-export type CourseStatus = "draft" | "published" | "archived";
+/**
+ * Estado de publicación de un curso.
+ * - "draft":       borrador. No se muestra en /cursos (RLS lo oculta).
+ * - "published":   público e inscribible. Aparece en /cursos con CTA activo.
+ * - "archived":    retirado. No se muestra en /cursos.
+ * - "proximamente": público pero sin inscripción. Aparece en /cursos con
+ *                   badge "Próximamente" y CTA deshabilitado. Distinto de
+ *                   draft (que es privado) y de published (que es comprable).
+ *
+ * Refleja el CHECK constraint `courses_status_check` en la DB.
+ */
+export type CourseStatus = "draft" | "published" | "archived" | "proximamente";
 export type CourseLevel = "beginner" | "intermediate" | "advanced";
 export type EnrollmentStatus = "active" | "completed" | "cancelled";
 

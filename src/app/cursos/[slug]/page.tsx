@@ -104,8 +104,12 @@ export default async function CourseDetailPage({
   // CTA dinámico.
   // Bug fix 2026-07-08: cursos pagos van a /pagar (no /inscripcion, que es
   // solo para cursos gratis vía Google login).
-  const cta =
-    alreadyHasAccess && firstLessonHref
+  // 2026-07-21: si el curso está marcado como "proximamente" en la DB, el
+  // CTA se deshabilita y se muestra un banner "Próximamente" en el hero.
+  const isComingSoon = course.status === "proximamente";
+  const cta = isComingSoon
+    ? { href: null, label: "Próximamente", tone: "primary" as const }
+    : alreadyHasAccess && firstLessonHref
       ? { href: firstLessonHref, label: "Continuar curso", tone: "primary" as const }
       : course.accessType === "paid"
         ? { href: `/pagar/${course.slug}`, label: `Comprar curso · ${formatMXN(course.priceMXN ?? 0)}`, tone: "primary" as const }
@@ -119,6 +123,26 @@ export default async function CourseDetailPage({
       <section className="bg-ink text-white relative overflow-hidden">
         <div className="absolute inset-0 bg-hero-mesh opacity-40" />
         <Container size="wide" className="py-14 relative">
+          {isComingSoon && (
+            <div className="mb-6 rounded-xl border border-amber-400/40 bg-amber-500/15 px-5 py-4 backdrop-blur-sm">
+              <p className="text-sm font-semibold uppercase tracking-wide text-amber-300">
+                Próximamente
+              </p>
+              <p className="mt-1 text-base text-white/90">
+                Estamos preparando este curso. Dejanos tu WhatsApp y te
+                avisamos en cuanto abramos inscripciones.
+              </p>
+              <div className="mt-3">
+                <WhatsAppButton
+                  intent="course_interest"
+                  courseName={course.title}
+                  variant="accent"
+                  size="sm"
+                  label="Avísame cuando abra"
+                />
+              </div>
+            </div>
+          )}
           <div className="grid lg:grid-cols-3 gap-10">
             <div className="lg:col-span-2">
               <div className="flex flex-wrap items-center gap-2 mb-4">
@@ -217,7 +241,7 @@ export default async function CourseDetailPage({
                         Próximamente
                       </Button>
                     )}
-                    {firstLessonHref && !alreadyHasAccess && course.accessType === "paid" && (
+                    {firstLessonHref && !alreadyHasAccess && course.accessType === "paid" && !isComingSoon && (
                       <Button
                         variant="outline"
                         size="lg"
@@ -227,7 +251,7 @@ export default async function CourseDetailPage({
                         Ver primera lección gratis
                       </Button>
                     )}
-                    {course.accessType === "free" && firstLessonHref && !alreadyHasAccess && (
+                    {course.accessType === "free" && firstLessonHref && !alreadyHasAccess && !isComingSoon && (
                       <Button
                         variant="outline"
                         size="lg"
@@ -255,9 +279,11 @@ export default async function CourseDetailPage({
                   </ul>
 
                   <p className="mt-4 text-xs text-ink-muted border-t border-brand-100 pt-4">
-                    {course.accessType === "paid"
-                      ? "Pago seguro · tarjeta, SPEI u OXXO · facturación disponible"
-                      : "Curso sin costo · acceso inmediato · soporte incluido"}
+                    {isComingSoon
+                      ? "Te avisamos por WhatsApp en cuanto abramos inscripciones."
+                      : course.accessType === "paid"
+                        ? "Pago seguro · tarjeta, SPEI u OXXO · facturación disponible"
+                        : "Curso sin costo · acceso inmediato · soporte incluido"}
                   </p>
                 </div>
               </Card>
@@ -267,7 +293,7 @@ export default async function CourseDetailPage({
       </section>
 
       {/* Contenido del curso */}
-      {lmsModules.length > 0 ? (
+      {!isComingSoon && lmsModules.length > 0 ? (
         <section className="py-14">
           <Container size="wide">
             <h2 className="text-2xl font-bold text-ink mb-6">Contenido del curso</h2>
