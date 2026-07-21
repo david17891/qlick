@@ -18,6 +18,8 @@ export type { TooltipProps } from "./Tooltip";
 export { Modal } from "./Modal";
 export type { ModalProps } from "./Modal";
 export { Drawer } from "./Drawer";
+export { Tabs } from "./Tabs";
+export type { TabsProps, TabItem } from "./Tabs";
 export { Table, THead, TBody, TRow, TH, TD } from "./Table";
 export { Icon, LucideIcon } from "./Icon";
 export type { IconProps, IconSize, LucideIconProps } from "./Icon";

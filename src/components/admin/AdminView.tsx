@@ -18,6 +18,7 @@ import {
   MessageCircle,
   Rocket,
   School,
+  ShoppingBag,
   Ticket,
   TrendingUp,
   UserCog,
@@ -40,9 +41,10 @@ import { formatMXN, formatDate, initials, formatDuration } from "@/lib/utils";
 import { CRMView } from "@/components/crm";
 import { BotConfigTab } from "@/components/admin/BotConfigTab";
 import { ConversationsTab } from "@/components/admin/ConversationsTab";
+import { OrdersTab } from "@/components/admin/OrdersTab";
 import Link from "next/link";
 
-type Tab = "resumen" | "cursos" | "alumnos" | "inscripciones" | "pagos" | "crm" | "conversations" | "bot" | "futuro";
+type Tab = "resumen" | "cursos" | "alumnos" | "inscripciones" | "pagos" | "pedidos" | "crm" | "conversations" | "bot" | "futuro";
 
 const statusTone: Record<PaymentStatus, "success" | "warning" | "danger" | "neutral" | "info"> = {
   approved: "success",
@@ -188,6 +190,8 @@ export function AdminView(
     { id: "alumnos", label: "Alumnos", icon: Users },
     { id: "inscripciones", label: "Inscripciones", icon: UserCog },
     { id: "pagos", label: "Pagos", icon: CreditCard },
+    // FASE 8E (2026-07-21): gestión integral de pedidos de servicios.
+    { id: "pedidos", label: "Pedidos", icon: ShoppingBag },
     { id: "crm", label: "CRM", icon: Magnet },
     // Sprint v16 (PR #1.7): pestaña de Nivel 1 para el buzón de conversaciones.
     { id: "conversations", label: "Conversaciones", icon: MessageCircle },
@@ -550,6 +554,9 @@ export function AdminView(
 
       {/* ----------------------- CRM ----------------------- */}
       {tab === "crm" && <CRMView initialLeadId={initialLeadId} />}
+
+      {/* ----------------------- Pedidos (FASE 8E) ----------------------- */}
+      {tab === "pedidos" && <OrdersTab />}
 
       {/* Sprint v16 (PR #1.7): 💬 Conversaciones elevado a pestaña
           principal de Nivel 1. Reemplaza al subcomponente ConversationsView

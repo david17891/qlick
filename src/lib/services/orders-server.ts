@@ -336,15 +336,37 @@ export async function createOrder(
 /* Listar orders (admin)                                               */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Shape extendido de un order con datos hidratados del service y variant.
+ * Útil para listas en el admin panel (evita N+1 queries).
+ */
+export interface ServiceOrderListItem extends ServiceOrder {
+  serviceName: string;
+  serviceSlug: string;
+  serviceIcon: string | null;
+  variantLabel: string;
+  variantSlug: string;
+}
+
 export async function listOrders(
   filters: ListOrdersFilters = {},
-): Promise<{ ok: boolean; orders?: ServiceOrder[]; total?: number; error?: string }> {
+): Promise<{
+  ok: boolean;
+  orders?: ServiceOrderListItem[];
+  total?: number;
+  error?: string;
+}> {
   if (!isRealMode()) return { ok: false, error: "Supabase no configurado." };
 
   const supabase = createSupabaseAdminClient();
+  // Join con services y service_variants para no hacer N+1 queries en
+  // la UI del admin. Los datos hidratados van en campos extra del item.
   let q = supabase
     .from("service_orders")
-    .select("*", { count: "exact" })
+    .select(
+      "*, services!inner(slug, display_name, icon), service_variants!inner(slug, label)",
+      { count: "exact" },
+    )
     .order("created_at", { ascending: false });
 
   if (filters.status) {
@@ -377,9 +399,26 @@ export async function listOrders(
     return { ok: false, error: `Error listando pedidos: ${error.message}` };
   }
 
+  const orders: ServiceOrderListItem[] = ((data as unknown[]) ?? []).map(
+    (row) => {
+      const r = row as ServiceOrderRow & {
+        services: { slug: string; display_name: string; icon: string | null };
+        service_variants: { slug: string; label: string };
+      };
+      return {
+        ...mapServiceOrderRow(r),
+        serviceName: r.services.display_name,
+        serviceSlug: r.services.slug,
+        serviceIcon: r.services.icon,
+        variantLabel: r.service_variants.label,
+        variantSlug: r.service_variants.slug,
+      };
+    },
+  );
+
   return {
     ok: true,
-    orders: ((data as ServiceOrderRow[] | null) ?? []).map(mapServiceOrderRow),
+    orders,
     total: count ?? 0,
   };
 }

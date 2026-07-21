@@ -45,4 +45,5 @@ export {
   addOrderEvent,
   type OpResult,
   type AddEventInput,
+  type ServiceOrderListItem,
 } from "./orders-server";

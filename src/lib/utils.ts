@@ -91,6 +91,29 @@ export function formatDate(iso: string | null | undefined): string {
   }
 }
 
+/**
+ * Formatea una fecha ISO a fecha + hora legible en español MX.
+ *
+ * Mismo timezone fix que formatDate: fuerza `UTC` para evitar mismatches
+ * de hidratación server/client. Usado en timelines, fechas de pedidos,
+ * fechas de admin (creado/editado/agendado).
+ */
+export function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString("es-MX", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "UTC",
+    });
+  } catch {
+    return iso;
+  }
+}
+
 /** Devuelve iniciales (para avatares). */
 export function initials(name: string): string {
   return name
