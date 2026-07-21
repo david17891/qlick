@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Container, Badge, LucideIcon } from "@/components/ui";
+import { Container, Badge } from "@/components/ui";
 import { PageHero, CTABanner } from "@/components/layout";
 import { ServiceDetailInteractive } from "@/components/services/ServiceDetailInteractive";
-import { resolveIcon } from "@/components/services/ServiceIcon";
 import { getServiceBySlug } from "@/lib/services";
 import { formatMXN } from "@/lib/utils";
 
@@ -39,7 +38,6 @@ export default async function ServicioDetallePage({ params }: PageProps) {
     service.variants.length > 0
       ? Math.min(...service.variants.map((v) => v.priceMXN))
       : null;
-  const IconComponent = resolveIcon(service.icon);
 
   return (
     <>
@@ -58,18 +56,10 @@ export default async function ServicioDetallePage({ params }: PageProps) {
             {service.requiresScheduling && <span>· Agendamiento requerido</span>}
           </div>
         }
-      >
-        {/* Icono grande del service */}
-        <div className="mt-8 flex justify-center">
-          <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-white/15 backdrop-blur-sm shadow-glow-accent">
-            <LucideIcon
-              icon={IconComponent}
-              size="2xl"
-              className="text-white"
-            />
-          </div>
-        </div>
-      </PageHero>
+      />
+      {/* FIX 2026-07-21 (David): quitado el icono grande (`h-20 w-20`) del
+          hero del detalle. Ocupaba mucho espacio sin aportar info. La
+          brand ya está en el gradiente del PageHero. */}
 
       {/* Descripción larga */}
       {service.longDescription && (
