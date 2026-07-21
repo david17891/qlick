@@ -38,6 +38,9 @@ import {
   EmptyState,
   Badge,
 } from "@/components/ui";
+import { LucideIcon } from "@/components/ui/Icon";
+import { Award, BookOpen, GraduationCap, KeyRound, TrendingUp } from "lucide-react";
+import type { ComponentType, SVGProps } from "react";
 import { initials } from "@/lib/utils";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { isValidSupabaseUrl } from "@/lib/supabase/config";
@@ -153,7 +156,7 @@ export function DashboardView({
             {initials(userName)}
           </div>
           <div>
-            <p className="text-sm text-ink-muted">Hola de nuevo 👋</p>
+            <p className="text-sm text-ink-muted">Hola de nuevo</p>
             <h1 className="text-2xl font-bold text-ink">{userName}</h1>
             <p className="text-xs text-ink-muted">{userEmail}</p>
           </div>
@@ -169,21 +172,21 @@ export function DashboardView({
           label="Progreso general"
           value={`${overall}%`}
           hint={`${enrollments.length} cursos inscritos`}
-          icon="📈"
+          icon={TrendingUp}
         />
         <StatBox
           label="Cursos completados"
           value={completedCount}
           hint={`${enrollments.length - completedCount} en curso`}
-          icon="🏆"
+          icon={Award}
         />
         <StatBox
           label="Certificados"
           value={0}
           hint="disponibles al completar"
-          icon="🎓"
+          icon={GraduationCap}
         />
-        <StatBox label="ID de sesión" value={userId.slice(0, 8) + "…"} hint="auth.uid()" icon="🔐" />
+        <StatBox label="ID de sesión" value={userId.slice(0, 8) + "…"} hint="auth.uid()" icon={KeyRound} />
       </div>
 
       {/* Continuar aprendiendo */}
@@ -211,7 +214,7 @@ export function DashboardView({
         <h2 className="text-xl font-bold text-ink mb-4">Mis cursos</h2>
         {enrollments.length === 0 ? (
           <EmptyState
-            icon="📚"
+            icon={<LucideIcon icon={BookOpen} size="xl" tone="brand" />}
             title="Aún no estás inscrito en ningún curso"
             description="Explora el catálogo y empieza tu primera formación hoy."
             action={<Button href="/cursos">Ver catálogo</Button>}
@@ -319,12 +322,12 @@ function StatBox({
   label,
   value,
   hint,
-  icon,
+  icon: IconCmp,
 }: {
   label: string;
   value: string | number;
   hint?: string;
-  icon?: string;
+  icon?: ComponentType<SVGProps<SVGSVGElement>>;
 }) {
   return (
     <Card className="p-5">
@@ -336,7 +339,11 @@ function StatBox({
           <p className="mt-1 text-2xl font-bold text-ink truncate">{value}</p>
           {hint && <p className="mt-1 text-xs text-ink-muted">{hint}</p>}
         </div>
-        {icon && <span className="text-2xl">{icon}</span>}
+        {IconCmp && (
+          <div className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
+            <LucideIcon icon={IconCmp} size="md" tone="inherit" />
+          </div>
+        )}
       </div>
     </Card>
   );

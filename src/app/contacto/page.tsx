@@ -4,6 +4,7 @@ import { Container, Card, Button, Badge } from "@/components/ui";
 import { ContactForm } from "@/components/contact/ContactForm";
 import { WhatsAppButton } from "@/components/contact/WhatsAppButton";
 import { getContactEmail, getMailtoLink } from "@/lib/contact/whatsapp";
+import { Lock } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Contacto",
@@ -66,7 +67,7 @@ export default function ContactoPage() {
             </Card>
             <Card className="p-6 border-amber-200 bg-amber-50/50">
               <h3 className="font-bold text-ink mb-2 flex items-center gap-2">
-                <span>🔒</span> Privacidad y consentimiento
+                <Lock className="h-4 w-4" /> Privacidad y consentimiento
               </h3>
               <p className="text-sm text-ink-soft leading-relaxed">
                 Al enviarnos tu información aceptas ser contactado por Qlick por

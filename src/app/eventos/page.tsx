@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Navbar, Footer } from "@/components/layout";
 import { Badge, Card, Container } from "@/components/ui";
+import { LucideIcon } from "@/components/ui/Icon";
+import { Calendar, MapPin, Ticket } from "lucide-react";
 import { listPublishedEvents } from "@/lib/events";
 import type { Event } from "@/types/events";
 
@@ -167,13 +169,13 @@ function EventCard({
             </p>
           )}
           <div className="space-y-1 pt-2 border-t border-brand-50 text-sm">
-            <p className="text-ink-soft">
-              <span className="mr-1">📅</span>
+            <p className="text-ink-soft flex items-center gap-1">
+              <LucideIcon icon={Calendar} size="sm" tone="muted" />
               {formatEventDate(event.startsAt)}
             </p>
             {event.location && (
-              <p className="text-ink-muted">
-                <span className="mr-1">📍</span>
+              <p className="text-ink-muted flex items-center gap-1">
+                <LucideIcon icon={MapPin} size="sm" tone="muted" />
                 {event.location}
               </p>
             )}
@@ -220,7 +222,9 @@ function formatMXN(value: number): string {
 function EmptyState() {
   return (
     <div className="rounded-2xl border border-dashed border-brand-200 bg-white p-10 text-center">
-      <p className="text-3xl mb-3">🎟️</p>
+      <div className="mb-3 inline-flex justify-center">
+        <LucideIcon icon={Ticket} size="2xl" tone="brand" />
+      </div>
       <h3 className="text-lg font-bold text-ink mb-2">
         Aún no hay eventos publicados
       </h3>

@@ -30,6 +30,8 @@ import {
   Badge,
   Container,
 } from "@/components/ui";
+import { LucideIcon } from "@/components/ui/Icon";
+import { Calendar, Check, MapPin, Video } from "lucide-react";
 import type { Event } from "@/types/events";
 import { submitEventRegistration } from "./actions";
 import { EVENT_TIMEZONE } from "@/lib/datetime";
@@ -172,8 +174,8 @@ export function EventView({ event, pastEvent }: Props) {
             </p>
           )}
           <ul className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm text-ink-soft">
-            <li>
-              📅 <strong>Cuándo:</strong> {startsAtFormatted}
+            <li className="flex items-center gap-2">
+              <LucideIcon icon={Calendar} size="sm" tone="muted" /> <strong>Cuándo:</strong> {startsAtFormatted}
               {endsAtFormatted && (
                 <>
                   {" — "}
@@ -248,8 +250,8 @@ export function EventView({ event, pastEvent }: Props) {
           ) : status === "success" || status === "already-registered" ? (
             <Card className="p-8">
               <div className="text-center py-4">
-                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 text-2xl">
-                  ✓
+                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                  <LucideIcon icon={Check} size="xl" tone="inherit" />
                 </div>
                 <h2 className="text-2xl font-bold text-ink">
                   {status === "success"
@@ -263,10 +265,10 @@ export function EventView({ event, pastEvent }: Props) {
                       : "Te esperamos en el evento.")}
                 </p>
                 <p className="mt-4 text-xs text-ink-muted">
-                  📅 {startsAtFormatted}
+                  <LucideIcon icon={Calendar} size="sm" tone="muted" className="inline mr-1" /> {startsAtFormatted}
                   {event.location && (
                     <>
-                      <br />📍 {event.location}
+                      <br /><LucideIcon icon={MapPin} size="sm" tone="muted" className="inline mr-1" /> {event.location}
                     </>
                   )}
                 </p>
@@ -276,8 +278,8 @@ export function EventView({ event, pastEvent }: Props) {
                     action devolvió una URL del gate. */}
                 {gateUrl && event.format && event.format !== "in_person" && (
                   <div className="mt-6 rounded-2xl border-2 border-brand-500 bg-gradient-to-br from-brand-50 to-pink-50 p-6 text-left">
-                    <p className="text-xs font-bold uppercase tracking-wider text-brand-600">
-                      🎥 Acceso al evento virtual
+                    <p className="text-xs font-bold uppercase tracking-wider text-brand-600 flex items-center gap-2">
+                      <LucideIcon icon={Video} size="sm" tone="inherit" /> Acceso al evento virtual
                     </p>
                     <p className="mt-2 text-sm text-ink-soft">
                       Cuando estés listo para entrar al stream, haz click en
@@ -295,7 +297,7 @@ export function EventView({ event, pastEvent }: Props) {
                       rel="noopener noreferrer"
                       className="mt-4 inline-block w-full text-center bg-gradient-to-r from-brand-600 to-pink-600 hover:from-brand-700 hover:to-pink-700 text-white font-bold text-lg py-3 px-6 rounded-full shadow-lg transition"
                     >
-                      🎥 SÍ, VOY A ENTRAR
+                      <LucideIcon icon={Video} size="md" tone="inherit" className="inline mr-2 -mt-1" /> SÍ, VOY A ENTRAR
                     </a>
                     <p className="mt-3 text-[11px] text-ink-muted text-center">
                       Al confirmar, te llevamos al stream. Solo se cuenta 1 vez.

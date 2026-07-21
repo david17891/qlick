@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
+import type { ComponentType, SVGProps } from "react";
 import { Navbar, Footer } from "@/components/layout";
 import { Container, Card, Button, SectionHeading, Badge } from "@/components/ui";
 import { Logo } from "@/components/brand";
+import { LucideIcon } from "@/components/ui/Icon";
+import { Handshake, MapPin, Target, TrendingUp } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Acerca de Qlick",
@@ -10,24 +13,24 @@ export const metadata: Metadata = {
   alternates: { canonical: "/acerca" }
 };
 
-const values = [
+const values: Array<{ icon: ComponentType<SVGProps<SVGSVGElement>>; title: string; body: string }> = [
   {
-    icon: "🎯",
+    icon: Target,
     title: "Resultados antes que apariencia",
     body: "No nos enamoramos de campañas bonitas. Medimos y decidimos por lo que mueve el negocio."
   },
   {
-    icon: "🤝",
+    icon: Handshake,
     title: "Cercanía humana",
     body: "Operamos como extensión de tu equipo. Hablas con personas, no con chatbots (aunque enseñemos a hacerlos)."
   },
   {
-    icon: "📈",
+    icon: TrendingUp,
     title: "Mejora continua",
     body: "El marketing cambia todos los meses. Actualizamos el contenido y nuestra práctica en consecuencia."
   },
   {
-    icon: "🇲🇽",
+    icon: MapPin,
     title: "Hecho en México",
     body: "Entendemos el mercado local: hábitos, pagos, estacionales y forma de comprar."
   }
@@ -110,7 +113,9 @@ export default function AcercaPage() {
           <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {values.map((v) => (
               <Card key={v.title} className="p-6">
-                <div className="text-3xl mb-3">{v.icon}</div>
+                <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+                  <LucideIcon icon={v.icon} size="lg" tone="inherit" />
+                </div>
                 <h3 className="font-bold text-ink">{v.title}</h3>
                 <p className="mt-2 text-sm text-ink-muted">{v.body}</p>
               </Card>

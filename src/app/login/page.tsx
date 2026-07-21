@@ -28,6 +28,7 @@ import { Navbar, Footer } from "@/components/layout";
 import { Container, Card, Badge } from "@/components/ui";
 import { Logo } from "@/components/brand";
 import { StudentLoginCard } from "./StudentLoginCard";
+import { Lock } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Acceso alumnos",
@@ -55,7 +56,7 @@ export default function StudentLoginPage() {
 
               <div className="mb-5">
                 <Badge tone="info">
-                  🔒 Acceso seguro · sin contraseñas
+                  <Lock className="h-3 w-3" /> Acceso seguro · sin contraseñas
                 </Badge>
               </div>
 
