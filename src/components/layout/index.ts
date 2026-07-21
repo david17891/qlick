@@ -12,3 +12,8 @@ export { Navbar as NavbarClient } from "./Navbar";
 // lo necesitan (e.g. tests).
 export type { NavbarIdentity } from "./Navbar";
 export { Footer } from "./Footer";
+// Hero estándar y CTA final reutilizables (FASE 3 plan estético).
+export { PageHero } from "./PageHero";
+export type { PageHeroProps } from "./PageHero";
+export { CTABanner } from "./CTABanner";
+export type { CTABannerProps } from "./CTABanner";
