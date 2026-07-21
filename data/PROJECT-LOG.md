@@ -336,3 +336,27 @@ ote_type + is_pinned).
   - E2E test del flujo completo en prod con Stripe test mode (David lo puede probar: admin → generar link → pagar con tarjeta 4242 4242 4242 4242 → ver order avanzar).
   - Borrar 'CursosClient.tsx' ahora que '/cursos' es landing estática (rollback trivial antes, ahora seguro).
   - Documentar patrón 1-click payment link en handoff FASE 8.
+
+
+## 2026-07-21 16:35 Mavis — Auditoría autogestionable completa (David 'auditoría autogestionable')
+
+- **Pregunta:** David pidió 'auditoría autogestionable donde revises y repares y documentes todos los diferentes errores problemas que puedas manejar los que requieran mi autorización los vas documentando'.
+
+- **Lo aplicado (commit 9dc51d7):** 7 archivos modificados, 1 reporte nuevo. Sin nuevas features, solo housekeeping:
+  - voseo: 2 hits en OrderDetailDrawer.tsx → 'vos' → 'tú' / 'mandáselo' → 'mándaselo' (audit:voseo post-fix: 0/295).
+  - Bug: scripts/audit-{admin-routes,public-routes}.mjs eran Python en archivos .mjs. Renombrados a .py. Agregados a .gitignore (no en package.json).
+  - Dead code: src/app/cursos/CursosClient.tsx (111 líneas) borrado — la landing 'Próximamente' (commits fb3b4af+872ac49) no lo usa. Único importer era el archivo mismo.
+  - console.log debug: 2 sitios migrados a lib/log.ts (infoLog/errorLog/debugLog) — debt mecánico pendiente.
+  - Scripts debug noise: 50+ archivos untracked gitignored via allowlist. Solo los ~12 permanentes (registrados en package.json o AGENTS.md) se trackean. Working tree: 50+ untracked → 0.
+  - OPEN_ITEMS.md refresh: snapshot 2026-07-12 → 2026-07-21. HEAD correcto. 3 items cerrados con verificación (F, G-6, G-7, A-2 parcial). 3 items nuevos (AUD-1, AUD-2, AUD-3) que requieren decisión/scope de David.
+  - docs/AUDIT_REPORT_2026-07-21.md: reporte completo de 73 findings (63 arreglados, 8 documentados, 13 ya cerrados).
+
+- **Documentado (requiere decisión de David):**
+  - **AUD-1:** 2 tests human_first E2E fallan (pre-existing, no regresión). Debug profundo de bot-engine.ts (~2-3h).
+  - **AUD-2:** legacy /api/diseno-paginas/checkout stub. Decisión A (borrar) / B (mantener + deprecation) / C (cablear live).
+  - **AUD-3:** 4 FIXME 'SSOT BotGlobalMode' en BotSimulatorTab, BotConfigTab, simulator. Refactor 20min.
+  - **A-1:** Next.js 14.2.35 → 15/16 (12+ CVEs). Decisión vigente 'esperar Q4 2026 o incidente'.
+  - **H-2:** Rate limit in-memory → Upstash Redis. ~2h. Requiere decisión de costo.
+  - **C-6:** Check-in 5-7 queries seriales (~900ms). Promise.all + audit fire-and-forget. ~1h.
+
+- **Verificación:** type-check 0, lint 0, voseo 0, tests 1482/1484 (2 pre-existing fail sin cambio). Push OK (9dc51d7). Deploy 'qlick-jo8ak5uw5' Ready en 1m. Alias qlick.digital reasignado.
