@@ -89,3 +89,111 @@
   - Se agregÃ³ `await` a la llamada de `notifyLeadPaymentConfirmed` en ambos endpoints para forzar a Vercel a esperar a que terminen las peticiones HTTP de Brevo/Meta (toma ~1-2 segundos, perfectamente seguro para el timeout de Stripe).
   - Se subiÃ³ el fix a `main` para hacer deploy en producciÃ³n.
   - Se corriÃ³ un script manual local (`scratch/resend-david.mjs`) para disparar manualmente la notificaciÃ³n retrasada de la prueba reciente de David (con Ã©xito).
+
+## 2026-07-21 04:53 Mavis — FASE 8A: WhatsApp directo + cursos "próximamente" (David "Luz verde")
+
+- **Pregunta:** David aprobó el plan integral (A) y dio 3 confirmaciones puntuales:
+  1. "Si, es algo que se tiene que hacer, vamos por A" — luz verde para el sistema
+     completo de pedidos/servicios (FASE 8A-8F).
+  2. "Aun no hay curso, pongamos por ahora todos proximamente" — los 5 cursos del
+     demo del LMS deben mostrarse con badge "Próximamente" y CTA deshabilitado.
+  3. "No te preocupes, usa el whatsapp directo" — fallback duro al wa.me real
+     de David (+52 1 653 293 5492) sin depender de la env var.
+
+- **Decisión:** FASE 8A = fixes puntuales sin tocar el sistema de orders aún.
+  FASE 8B (schema SQL de service_orders) viene después, con OK previo de David
+  antes de aplicar a prod.
+
+- **Cambios:**
+
+  - **WhatsApp directo** (src/lib/contact/whatsapp.ts):
+    - getSalesNumber() ahora retorna +5216532935492 como fallback hardcoded
+      cuando NEXT_PUBLIC_WHATSAPP_SALES_NUMBER no está seteada.
+    - getSupportNumber() cae a getSalesNumber() si su env var está vacía.
+    - .env.example documenta el valor como override opcional.
+
+  - **Cursos "próximamente"** (David "todavía no hay curso"):
+    - **Migration nueva** 20260721044345_courses_status_proximamente.sql:
+      agrega 'proximamente' al CHECK constraint de public.courses.status
+      (antes solo aceptaba 'draft' | 'published' | 'archived'). Aplicada a
+      prod via Management API (status 201).
+    - src/types/lms.ts: CourseStatus ahora es "draft" | "published" |
+      "archived" | "proximamente" con doc explicando el matiz.
+    - src/lib/lms/courses-server.ts: getPublishedCourses() y
+      getCourseBySlug() traen tanto 'published' como 'proximamente'
+      (los draft y rchived siguen ocultos). El nombre mental es ahora
+      "cursos visibles del catálogo público".
+    - src/app/cursos/page.tsx (adapter legacy): si el LMS devuelve
+      status='proximamente', el card muestra badge "Próximamente"
+      independientemente del ccessType (free/paid/freemium).
+    - src/app/cursos/[slug]/page.tsx (detalle): si el curso es próximamente,
+      el hero muestra un banner ámbar con WhatsApp "Avísame cuando abra",
+      el CTA principal se deshabilita, los CTAs secundarios ("Vista previa" /
+      "Ver primera lección gratis") se ocultan, y la sección "Contenido del
+      curso" no se renderiza (queda el EmptyState "Volvé pronto").
+    - scripts/seed-courses.mjs: el INSERT inicial usa status='proximamente'
+      y se agrega ensureProximamenteStatus() que actualiza los 5 slugs del
+      demo de 'published' ? 'proximamente' (idempotente).
+
+  - **DB post-seed** (verificado via REST):
+    - 5 cursos del demo: proximamente ?
+    - masterclass-marketing-ia (externo al seed): sigue en published
+      (correcto, no debe tocarse automáticamente).
+
+  - **Cleanup**: commit previo borra src/app/servicios/web/* y
+    src/app/api/servicios/web/* (8 archivos de la migración vieja a
+    /diseno-paginas). También se agrega /tests/output/ al .gitignore
+    para que las simulaciones del bot no se filtren.
+
+- **Verificación:**
+  - 
+pm run type-check ? 0 errores
+  - 
+pm run lint ? 0 warnings
+  - 
+pm test ? 1473/1473 pasan
+  - 
+pm run build ? ? Compiled successfully
+  - Migration aplicada via Management API (status 201)
+  - Seed corrió: ensureProximamenteStatus: 0 a actualizar (ya están en
+    'proximamente' u otro) — la DB ya refleja el cambio
+  - https://qlick.digital ? 200 OK
+
+## 2026-07-21 04:57 Mavis — FASE 8B: schema service_orders aplicado (David "01 — Aplica el schema completo")
+
+- **Pregunta:** David aprobó opción 01 del menú binario: aplicar el schema completo de 6 tablas con RLS, índices, triggers y seed de 3 servicios digitales (cada uno con sus variants).
+
+- **Decisión:** Construir el sistema de pedidos sobre un modelo explícito de catálogo (services + variants) y pedidos (orders + timeline + notes + documents). Cada servicio es un producto independiente, no una variante de un producto genérico — extensible desde día 1.
+
+- **Cambios en DB** (migration 20260721045701_service_orders.sql, aplicada via Management API, status 201):
+
+  - **6 tablas** con timestamps, RLS, índices y triggers de updated_at:
+    - services (catálogo público, lectura solo activos).
+    - service_variants (Esencial/Profesional, Zoom/Presencial, VideoIA/VideoPersonas). FK a services.
+    - service_orders (cabecera del pedido con customer_{name,email,phone,notes} snapshot-eados, lead_id FK opcional, status con CHECK 7 valores, payment_mode con CHECK 5 valores).
+    - service_order_events (timeline append-only con 	ype, ctor_type admin/system/customer, payload jsonb).
+    - service_order_notes (notas internas con 
+ote_type + is_pinned).
+    - service_order_documents (archivos con ile_type receipt/certificate/brief/deliverable/contract/other).
+
+  - **RLS**:
+    - services + service_variants: lectura pública solo activos.
+    - service_orders + events + notes + documents: service-role only (CRUD via /api/admin/orders/*).
+
+  - **Seed inicial idempotente** (ON CONFLICT DO UPDATE):
+    1. **Sitio Web Express** (\,500) — Esencial \,500 (2-3d) / Profesional \,500 (5-7d).
+    2. **Auditoría & Diagnóstico 1a1** (\,000) — Zoom \,000 / Presencial SLR-MXL \,000.
+    3. **Kickstart de Meta Ads** (\,500) — Video IA \,500 / Video Personas \,500.
+
+  - **Decisión sobre el estado inicial del order**: pending_contact (no confirmed). El admin valida al cliente antes de confirmar, especialmente para auditoría 1a1 (donde el scheduling es manual) y para evitar fraude con tarjeta de prueba.
+
+- **Verificación post-migration** (vía REST con anon + service role):
+  - 6 tablas creadas (orders/events/notes/documents vacías, OK).
+  - 3 services + 6 variants en seed.
+  - RLS: anon lee services (3) + variants (6), NO lee service_orders. service_role bypasea RLS correctamente.
+
+- **Pendiente para FASE 8C-8F** (siguiente sprint):
+  - 8C: APIs REST (POST /api/services/checkout, GET/POST /api/admin/orders, GET/PATCH /api/admin/orders/[id], sub-rutas para notes/documents/timeline).
+  - 8D: Catálogo público /servicios + /servicios/[slug] + ServiceCheckoutModal.
+  - 8E: Admin tab "Pedidos" + OrderDetailDrawer con tabs (Info, Cliente, Notas, Documentos, Timeline).
+  - 8F: Integración CRM — LeadDetailDrawer muestra "Servicios contratados".
