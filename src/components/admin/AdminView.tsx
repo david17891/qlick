@@ -1,11 +1,29 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { ComponentType, SVGProps } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { User, PaymentStatus } from "@/types";
 import { getCurrentUser } from "@/lib/auth/mock-auth";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { Container, Card, Button, Badge, EmptyState, ProgressBar, Skeleton } from "@/components/ui";
+import { LucideIcon } from "@/components/ui/Icon";
+import {
+  BarChart3,
+  Bot,
+  Check,
+  CreditCard,
+  Lock,
+  Magnet,
+  MessageCircle,
+  Rocket,
+  School,
+  Ticket,
+  TrendingUp,
+  UserCog,
+  Users,
+  Wallet
+} from "lucide-react";
 import { StatCard } from "@/components/dashboard";
 import {
   getAllCourses,
@@ -164,17 +182,17 @@ export function AdminView(
       )
     : 0;
 
-  const tabs: { id: Tab; label: string; icon: string }[] = [
-    { id: "resumen", label: "Resumen", icon: "📊" },
-    { id: "cursos", label: "Cursos", icon: "📚" },
-    { id: "alumnos", label: "Alumnos", icon: "👥" },
-    { id: "inscripciones", label: "Inscripciones", icon: "📝" },
-    { id: "pagos", label: "Pagos", icon: "💳" },
-    { id: "crm", label: "CRM", icon: "🧲" },
+  const tabs: { id: Tab; label: string; icon: ComponentType<SVGProps<SVGSVGElement>> }[] = [
+    { id: "resumen", label: "Resumen", icon: BarChart3 },
+    { id: "cursos", label: "Cursos", icon: School },
+    { id: "alumnos", label: "Alumnos", icon: Users },
+    { id: "inscripciones", label: "Inscripciones", icon: UserCog },
+    { id: "pagos", label: "Pagos", icon: CreditCard },
+    { id: "crm", label: "CRM", icon: Magnet },
     // Sprint v16 (PR #1.7): pestaña de Nivel 1 para el buzón de conversaciones.
-    { id: "conversations", label: "Conversaciones", icon: "💬" },
-    { id: "bot", label: "Configuración Bot", icon: "🤖" },
-    { id: "futuro", label: "Próximas integraciones", icon: "🚀" }
+    { id: "conversations", label: "Conversaciones", icon: MessageCircle },
+    { id: "bot", label: "Configuración Bot", icon: Bot },
+    { id: "futuro", label: "Próximas integraciones", icon: Rocket }
   ];
 
   // FIX 2026-07-03 (sesion David, agujero de seguridad): si Supabase
@@ -186,7 +204,9 @@ export function AdminView(
     return (
       <Container size="wide" className="py-20">
         <Card className="p-8 text-center max-w-md mx-auto">
-          <div className="text-5xl mb-4">🔒</div>
+          <div className="mb-4 inline-flex justify-center h-12 w-12 items-center rounded-full bg-brand-50 text-brand-600">
+            <Lock className="h-6 w-6" />
+          </div>
           <h1 className="text-xl font-bold text-ink mb-2">Sesion requerida</h1>
           <p className="text-sm text-ink-muted mb-4">
             El panel admin no esta disponible sin una sesion valida.
@@ -228,7 +248,7 @@ export function AdminView(
                 : "text-ink-soft hover:bg-brand-50")
             }
           >
-            <span className="mr-1.5">{t.icon}</span>
+            <LucideIcon icon={t.icon} size="sm" tone="inherit" className="mr-1.5" />
             {t.label}
           </button>
         ))}
@@ -236,7 +256,7 @@ export function AdminView(
           href="/admin/eventos"
           className="ml-auto px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap text-ink-soft hover:bg-brand-50 border border-brand-200"
         >
-          🎟️ Eventos →
+          <LucideIcon icon={Ticket} size="sm" tone="inherit" className="inline mr-1.5" /> Eventos →
         </Link>
         {/* FIX 2026-07-11 (Sprint v15 PR #1): el botón legacy "🧠 Bot v2 →"
             se eliminó. Ahora el toggle del bot vive dentro de la pestaña
@@ -252,27 +272,27 @@ export function AdminView(
               label="Alumnos"
               value={students.length}
               hint={`${users.length} usuarios totales`}
-              icon="👥"
+              icon={<Users className="h-5 w-5" />}
             />
             <StatCard
               label="Cursos activos"
               value={courses.filter((c) => c.status !== "proximamente").length}
               hint={`${courses.length} en catálogo`}
-              icon="📚"
+              icon={<School className="h-5 w-5" />}
               tone="accent"
             />
             <StatCard
               label="Ingresos (aprobado)"
               value={formatMXN(revenue.approvedMXN)}
               hint={`${formatMXN(revenue.pendingMXN)} pendiente`}
-              icon="💰"
+              icon={<Wallet className="h-5 w-5" />}
               tone="neutral"
             />
             <StatCard
               label="Progreso promedio"
               value={`${avgProgress}%`}
               hint={`${enrollments.length} inscripciones`}
-              icon="📈"
+              icon={<TrendingUp className="h-5 w-5" />}
             />
           </div>
 
@@ -580,7 +600,7 @@ export function AdminView(
                   <p className="text-sm text-ink-muted mt-1">{f.body}</p>
                   <ul className="mt-3 space-y-1 text-xs text-emerald-700">
                     {f.done.map((d) => (
-                      <li key={d}>✓ {d}</li>
+                      <li key={d} className="flex items-start gap-1"><Check className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" /> {d}</li>
                     ))}
                   </ul>
                 </div>

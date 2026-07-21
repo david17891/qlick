@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { ComponentType, SVGProps } from "react";
 import type {
   Lead,
   SalesOwner,
@@ -11,6 +12,35 @@ import type {
   Conversation
 } from "@/types";
 import { Container, Card, Badge, Button, Input, Textarea, EmptyState } from "@/components/ui";
+import { LucideIcon } from "@/components/ui/Icon";
+import {
+  AlertTriangle,
+  Archive,
+  ArrowRight,
+  BarChart3,
+  Bot,
+  Calendar,
+  Check,
+  Download,
+  Flame,
+  LayoutGrid,
+  MessageCircle,
+  Phone,
+  Send,
+  Settings,
+  Snowflake,
+  Sparkles,
+  Target,
+  Thermometer,
+  Ticket,
+  Trash2,
+  TrendingDown,
+  TrendingUp,
+  UserPlus,
+  Users,
+  Wallet,
+  X
+} from "lucide-react";
 import { StatCard } from "@/components/dashboard";
 import {
   getLeads,
@@ -70,19 +100,19 @@ type Section =
   | "agente"
   | "whatsapp";
 
-const SECTIONS: { id: Section; label: string; icon: string }[] = [
-  { id: "resumen", label: "Resumen", icon: "📊" },
-  { id: "pipeline", label: "Pipeline", icon: "🧩" },
-  { id: "leads", label: "Leads", icon: "👤" },
+const SECTIONS: { id: Section; label: string; icon: ComponentType<SVGProps<SVGSVGElement>> }[] = [
+  { id: "resumen", label: "Resumen", icon: BarChart3 },
+  { id: "pipeline", label: "Pipeline", icon: LayoutGrid },
+  { id: "leads", label: "Leads", icon: UserPlus },
   // Sprint v16 (PR #1.7): "Conversaciones" salió de CRM y se elevó a
   // pestaña de Nivel 1 en /admin?tab=conversations. El handler onClick
   // del Sidebar redirige (ver más abajo). El render del ConversationsView
   // antiguo sigue existiendo como fallback (marcado DEPRECATED) hasta
   // que se confirme que la nueva tab cubre todos los casos de uso.
-  { id: "conversaciones", label: "Conversaciones (Nivel 1)", icon: "💬" },
-  { id: "calendario", label: "Calendario", icon: "📅" },
-  { id: "agente", label: "Agente IA", icon: "🤖" },
-  { id: "whatsapp", label: "WhatsApp", icon: "💚" }
+  { id: "conversaciones", label: "Conversaciones (Nivel 1)", icon: MessageCircle },
+  { id: "calendario", label: "Calendario", icon: Calendar },
+  { id: "agente", label: "Agente IA", icon: Bot },
+  { id: "whatsapp", label: "WhatsApp", icon: MessageCircle }
 ];
 
 /**
@@ -456,7 +486,7 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
                 : "text-ink-soft hover:bg-brand-50")
             }
           >
-            <span className="mr-1">{s.icon}</span>
+            <LucideIcon icon={s.icon} size="sm" tone="inherit" className="mr-1" />
             {s.label}
           </button>
         ))}
@@ -466,14 +496,14 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
       {section === "resumen" && (
         <div className="space-y-6">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard label="Leads totales" value={overview.totalLeads} hint="en el CRM" icon="👤" />
-            <StatCard label="Nuevos" value={overview.newLeads} hint="sin contactar" icon="✨" tone="accent" />
-            <StatCard label="Contactados" value={overview.contactedLeads} icon="📞" tone="neutral" />
-            <StatCard label="Pagos pendientes" value={overview.paymentPending} hint="requieren acción" icon="💳" tone="neutral" />
-            <StatCard label="Inscritos" value={overview.enrolled} icon="🎓" />
-            <StatCard label="Alumnos activos" value={overview.activeStudents} icon="📚" />
-            <StatCard label="Conversión (simulada)" value={`${overview.conversionRate}%`} hint="ganados / activos" icon="📈" tone="accent" />
-            <StatCard label="Seguimientos vencidos" value={overview.overdueFollowUps} hint="tareas atrasadas" icon="⚠️" tone="neutral" />
+            <StatCard label="Leads totales" value={overview.totalLeads} hint="en el CRM" icon={<UserPlus className="h-5 w-5" />} />
+            <StatCard label="Nuevos" value={overview.newLeads} hint="sin contactar" icon={<Sparkles className="h-5 w-5" />} tone="accent" />
+            <StatCard label="Contactados" value={overview.contactedLeads} icon={<Phone className="h-5 w-5" />} tone="neutral" />
+            <StatCard label="Pagos pendientes" value={overview.paymentPending} hint="requieren acción" icon={<Wallet className="h-5 w-5" />} tone="neutral" />
+            <StatCard label="Inscritos" value={overview.enrolled} icon={<TrendingUp className="h-5 w-5" />} />
+            <StatCard label="Alumnos activos" value={overview.activeStudents} icon={<Users className="h-5 w-5" />} />
+            <StatCard label="Conversión (simulada)" value={`${overview.conversionRate}%`} hint="ganados / activos" icon={<TrendingUp className="h-5 w-5" />} tone="accent" />
+            <StatCard label="Seguimientos vencidos" value={overview.overdueFollowUps} hint="tareas atrasadas" icon={<AlertTriangle className="h-5 w-5" />} tone="neutral" />
           </div>
 
           {/* Fase 3 — Inteligencia comercial: LVR, SLA, Heat, Hot Desatendidos */}
@@ -600,7 +630,7 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
         // exportado más abajo (marcado DEPRECATED) por si alguna URL
         // externa todavía lo referencia.
         <Card className="p-6 space-y-3">
-          <h2 className="text-xl font-bold text-ink">💬 Conversaciones se movió</h2>
+          <h2 className="text-xl font-bold text-ink flex items-center gap-2"><MessageCircle className="h-5 w-5" /> Conversaciones se movió</h2>
           <p className="text-ink-muted text-sm">
             El buzón de conversaciones 1 a 1 se elevó a una pestaña de
             Nivel 1 en el panel admin. Funcionalidad equivalente (orden
@@ -616,7 +646,7 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
               }
             }}
           >
-            Abrir 💬 Conversaciones
+            Abrir <MessageCircle className="h-4 w-4 inline mx-1" /> Conversaciones
           </Button>
         </Card>
       )}
@@ -753,7 +783,7 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
               <h4 className="font-bold text-ink mb-2 text-emerald-700">Acciones permitidas</h4>
               <ul className="space-y-1 text-sm text-ink-soft">
                 {profile.allowedActions.map((a) => (
-                  <li key={a}>✓ {a}</li>
+                  <li key={a} className="flex items-start gap-1"><Check className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" /> {a}</li>
                 ))}
               </ul>
             </Card>
@@ -761,7 +791,7 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
               <h4 className="font-bold text-ink mb-2 text-red-700">Acciones prohibidas</h4>
               <ul className="space-y-1 text-sm text-ink-soft">
                 {profile.forbiddenActions.map((a) => (
-                  <li key={a}>✗ {a}</li>
+                  <li key={a} className="flex items-start gap-1"><X className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" /> {a}</li>
                 ))}
               </ul>
             </Card>
@@ -1170,7 +1200,7 @@ function LeadsTable({
           onClick={exportCsv}
           title="Descarga todos los leads con consentimiento a CSV"
         >
-          📥 Exportar CSV
+          <Download className="h-4 w-4 inline mr-1" /> Exportar CSV
         </Button>
       </div>
       {/* Bulk Action Bar — visible solo cuando hay selección */}
@@ -1205,7 +1235,7 @@ function LeadsTable({
               onClick={() => setConfirmArchiveOpen(true)}
               disabled={bulkFeedback?.kind === "running"}
             >
-              🗄️ Archivar Seleccionados
+              <Archive className="h-4 w-4 inline mr-1" /> Archivar Seleccionados
             </Button>
           </div>
         </div>
@@ -1296,7 +1326,7 @@ function LeadsTable({
                             if (!eventSlug) return null;
                             return (
                               <Badge key={tag} tone="info" className="text-[8px] tracking-wide px-1 py-0 uppercase">
-                                🎟️ {formatEventSlug(eventSlug)}
+                                <Ticket className="h-4 w-4 inline mr-1" /> {formatEventSlug(eventSlug)}
                               </Badge>
                             );
                           })}
@@ -1316,7 +1346,7 @@ function LeadsTable({
                           tone={qualificationTone[l.qualification]}
                           title={`Score ${l.score}/100`}
                         >
-                          🌡 {qualificationLabel[l.qualification]}
+                          <Thermometer className="h-3.5 w-3.5 inline mr-1" /> {qualificationLabel[l.qualification]}
                         </Badge>
                       )}
                     </div>
@@ -1364,7 +1394,7 @@ function LeadsTable({
         >
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
             <h2 id="confirm-archive-title" className="text-lg font-bold text-ink mb-2">
-              ⚠️ Archivar {selectedIds.size} lead{selectedIds.size === 1 ? "" : "s"}
+              <AlertTriangle className="h-4 w-4 inline mr-1" /> Archivar {selectedIds.size} lead{selectedIds.size === 1 ? "" : "s"}
             </h2>
             <p className="text-sm text-ink-soft mb-4">
               Esta acción cambia el status de los leads seleccionados a{" "}
@@ -1511,10 +1541,10 @@ function IntelligenceCards({
               }
             >
               {intelligence.lvrPercentage === null
-                ? "📊"
+                ? <BarChart3 className="h-3.5 w-3.5 inline mr-1" />
                 : intelligence.lvrPercentage >= 0
-                ? "📈"
-                : "📉"}
+                ? <TrendingUp className="h-3.5 w-3.5 inline mr-1" />
+                : <TrendingDown className="h-3.5 w-3.5 inline mr-1" />}
             </span>
           </div>
         </Card>
@@ -1540,7 +1570,7 @@ function IntelligenceCards({
                 Sin contacto en 48h y sin tarea pendiente
               </p>
             </div>
-            <span className="text-2xl">⚠️</span>
+            <AlertTriangle className="h-6 w-6" />
           </div>
         </Card>
 
@@ -1557,11 +1587,11 @@ function IntelligenceCards({
                   : `${Math.round(intelligence.heat.hotPercentage)}% hot`}
               </p>
               <p className="text-[11px] text-ink-muted mt-1">
-                🔥 {intelligence.heat.hot} · 🌡 {intelligence.heat.warm} · ❄️{" "}
+                <Flame className="h-3.5 w-3.5 inline mr-1" /> {intelligence.heat.hot} · <Thermometer className="h-3.5 w-3.5 inline mr-1" /> {intelligence.heat.warm} · <Snowflake className="h-3.5 w-3.5 inline mr-1" />{" "}
                 {intelligence.heat.cold}
               </p>
             </div>
-            <span className="text-2xl">🌡️</span>
+            <Thermometer className="h-6 w-6" />
           </div>
         </Card>
       </div>
@@ -1570,7 +1600,7 @@ function IntelligenceCards({
       <Card className="p-5">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-bold text-ink">
-            🎯 Acciones Recomendadas para Hoy
+            <Target className="h-4 w-4 inline mr-1" /> Acciones Recomendadas para Hoy
           </h3>
           <span className="text-xs text-ink-muted">
             Top {Math.min(5, intelligence.hotDesatendidos.length)} leads Hot
@@ -1579,7 +1609,7 @@ function IntelligenceCards({
         </div>
         {intelligence.hotDesatendidos.length === 0 ? (
           <p className="text-sm text-ink-muted">
-            🎉 No hay leads Hot desatendidos. Todo bajo control.
+            <Sparkles className="h-4 w-4 inline mr-1" /> No hay leads Hot desatendidos. Todo bajo control.
           </p>
         ) : (
           <ul className="space-y-3">
@@ -1595,7 +1625,7 @@ function IntelligenceCards({
                       <span className="font-semibold text-ink">{l.name}</span>
                       {typeof l.score === "number" && (
                         <span className="text-[10px] font-bold uppercase bg-orange-500 text-white px-1.5 py-0.5 rounded">
-                          🔥 {l.score}
+                          <Flame className="h-3.5 w-3.5 inline mr-1" /> {l.score}
                         </span>
                       )}
                     </div>
@@ -1614,7 +1644,7 @@ function IntelligenceCards({
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-emerald-500 text-white text-xs font-semibold hover:bg-emerald-600 transition"
                       >
-                        💚 Abrir WhatsApp
+                        <MessageCircle className="h-4 w-4 inline mr-1" /> Abrir WhatsApp
                       </a>
                     ) : (
                       <span className="text-xs text-ink-muted">sin teléfono</span>
@@ -1632,7 +1662,7 @@ function IntelligenceCards({
                         );
                       }}
                     >
-                      📅 Agendar Seguimiento
+                      <Calendar className="h-4 w-4 inline mr-1" /> Agendar Seguimiento
                     </Button>
                   </div>
                 </li>
@@ -1745,7 +1775,7 @@ function ConversationsView({
         ? ` · ${data.externalId.slice(0, 12)}…`
         : "";
       setComposeMsg(
-        `✓ Enviado por ${data.provider ?? "WhatsApp"}${demoTag}${idTag}`,
+        `Enviado por ${data.provider ?? "WhatsApp"}${demoTag}${idTag}`,
       );
       setComposeBody("");
       // Refetch conversaciones para que el nuevo mensaje aparezca en la
@@ -1961,13 +1991,13 @@ function ConversationsView({
                 refleja la razón de la pausa (keyword / semantic / manual). */}
             {lead && botPaused && (
               lead.botPausedReason === "keyword_escalation" ? (
-                <Badge tone="danger" title="Pausa por palabra clave">🚨 Pausa (Palabra Clave)</Badge>
+                <Badge tone="danger" title="Pausa por palabra clave"><AlertTriangle className="h-3 w-3 inline mr-1" /> Pausa (Palabra Clave)</Badge>
               ) : lead.botPausedReason === "ai_semantic_escalation" ? (
-                <Badge tone="warning" title="Pausa por inferencia IA">🤖 Pausa (Inferencia IA)</Badge>
+                <Badge tone="warning" title="Pausa por inferencia IA"><Bot className="h-3 w-3 inline mr-1" /> Pausa (Inferencia IA)</Badge>
               ) : lead.botPausedReason === "manual" ? (
                 <Badge tone="info" title="Pausa manual">⏸️ Pausa (Manual)</Badge>
               ) : (
-                <Badge tone="warning" title="Bot pausado">🤖 bot en pausa</Badge>
+                <Badge tone="warning" title="Bot pausado"><Bot className="h-3 w-3 inline mr-1" /> bot en pausa</Badge>
               )
             )}
             {lead && (
@@ -2009,7 +2039,7 @@ function ConversationsView({
                     }}
                     className="animate-pulse"
                   >
-                    ⚠️ ¿Confirmar?
+                    <AlertTriangle className="h-4 w-4 inline mr-1" /> ¿Confirmar?
                   </Button>
                 ) : (
                   <Button
@@ -2018,7 +2048,7 @@ function ConversationsView({
                     onClick={() => setIsConfirmingDelete(true)}
                     title="Eliminar conversación"
                   >
-                    🗑️ Eliminar
+                    <Trash2 className="h-4 w-4 inline mr-1" /> Eliminar
                   </Button>
                 )}
               </div>
@@ -2073,7 +2103,7 @@ function ConversationsView({
               htmlFor="crm-compose-body"
               className="block text-[11px] font-bold uppercase text-brand-600 mb-1"
             >
-              ✉️ Enviar WhatsApp al lead
+              <MessageCircle className="h-4 w-4 inline mr-1" /> Enviar WhatsApp al lead
             </label>
             <Textarea
               id="crm-compose-body"
@@ -2100,7 +2130,7 @@ function ConversationsView({
                   composeState === "sending" || composeBody.trim().length === 0
                 }
               >
-                {composeState === "sending" ? "Enviando…" : "📤 Enviar"}
+                {composeState === "sending" ? "Enviando…" : <><Send className="h-4 w-4 inline mr-1" /> Enviar</>}
               </Button>
               {composeMsg && (
                 <span
@@ -2125,7 +2155,7 @@ function ConversationsView({
         {suggestions.length > 0 && (
           <div className="mt-auto space-y-2">
             <p className="text-xs font-bold uppercase text-brand-600">
-              🤖 Sugerencias del Agente IA ({suggestions.length})
+              <Bot className="h-4 w-4 inline mr-1" /> Sugerencias del Agente IA ({suggestions.length})
             </p>
             {suggestions.map((s, idx) => (
               <div
@@ -2153,7 +2183,7 @@ function ConversationsView({
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-emerald-500 text-white text-xs font-semibold hover:bg-emerald-600 transition"
                     >
-                      💚 Enviar por WhatsApp
+                      <MessageCircle className="h-4 w-4 inline mr-1" /> Enviar por WhatsApp
                     </a>
                   ) : (
                     <span className="text-[10px] text-ink-muted">
@@ -2169,7 +2199,7 @@ function ConversationsView({
             </p>
             {aiError && (
               <p className="text-[10px] text-rose-600">
-                ⚠️ AI endpoint: {aiError} (mostrando sugerencias demo).
+                <AlertTriangle className="h-3.5 w-3.5 inline mr-1" /> AI endpoint: {aiError} (mostrando sugerencias demo).
               </p>
             )}
           </div>
@@ -2363,7 +2393,7 @@ function LeadActionsMenu({
         className="p-1.5 rounded-lg border border-brand-200 text-ink-muted hover:bg-brand-50 hover:text-brand-600 transition text-xs flex items-center justify-center bg-white"
         title="Acciones rápidas"
       >
-        ⚙️
+        <Settings className="h-4 w-4" />
       </button>
       {showMenu && (
         <>
@@ -2386,7 +2416,7 @@ function LeadActionsMenu({
                 }}
                 className="w-full text-left px-2 py-1.5 hover:bg-brand-50 rounded text-ink-soft transition font-medium"
               >
-                ➡️ {leadStatusLabel[status]}
+                <ArrowRight className="h-3.5 w-3.5 inline mr-1" /> {leadStatusLabel[status]}
               </button>
             ))}
             <div className="border-t border-brand-50 my-1"></div>
@@ -2400,7 +2430,7 @@ function LeadActionsMenu({
               }}
               className="w-full text-left px-2 py-1.5 hover:bg-red-50 text-red-600 rounded font-semibold transition"
             >
-              📥 Archivar lead
+              <Archive className="h-3.5 w-3.5 inline mr-1" /> Archivar lead
             </button>
             <button
               onClick={(e) => {
@@ -2410,7 +2440,7 @@ function LeadActionsMenu({
               }}
               className="w-full text-left px-2 py-1.5 hover:bg-red-50 text-red-600 rounded font-semibold transition"
             >
-              💬 Eliminar conversación
+              <MessageCircle className="h-3.5 w-3.5 inline mr-1" /> Eliminar conversación
             </button>
           </div>
         </>

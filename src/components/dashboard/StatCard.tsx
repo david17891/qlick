@@ -21,6 +21,12 @@ export function StatCard({
       : tone === "neutral"
         ? "from-slate-100"
         : "from-brand-100";
+  const iconBg =
+    tone === "accent"
+      ? "bg-amber-100 text-amber-700"
+      : tone === "neutral"
+        ? "bg-slate-100 text-slate-700"
+        : "bg-brand-100 text-brand-700";
   return (
     <Card className={cn("p-5 bg-gradient-to-br to-white", ring)}>
       <div className="flex items-start justify-between">
@@ -31,7 +37,16 @@ export function StatCard({
           <p className="mt-1 text-2xl font-bold text-ink font-display">{value}</p>
           {hint && <p className="mt-1 text-xs text-ink-muted">{hint}</p>}
         </div>
-        {icon && <div className="text-2xl opacity-70">{icon}</div>}
+        {icon && (
+          <div
+            className={cn(
+              "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg",
+              iconBg
+            )}
+          >
+            {icon}
+          </div>
+        )}
       </div>
     </Card>
   );
