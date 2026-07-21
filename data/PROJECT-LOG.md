@@ -272,3 +272,44 @@ ote_type + is_pinned).
 - **Pregunta:** David pidiÃ³ actualizar y documentar el cierre del sprint completo.
 - **DecisiÃ³n:** handoff canÃ³nico detallado en `docs/HANDOFF_FASE_8_SERVICE_ORDERS.md` (~600 lÃ­neas) con TL;DR, arquitectura, schema, APIs, UI, tests, verificaciÃ³n, commits, pendientes, archivos clave y glosario. STATUS.md snapshot del sprint (14 commits, 1480 tests, E2E real verificado). ROADMAP.md con FASE 8 marcada como cerrada. PROJECT-LOG con las 5 entradas de la sesiÃ³n (8A, 8B, 8C-1, 8C-2, 8D, 8E, 8F, cierre).
 - **Por quÃ© importa:** el sprint entrega la base de facturaciÃ³n de servicios profesionales de Qlick. David puede ahora recibir pedidos de clientes reales vÃ­a `/servicios`, gestionarlos desde el panel admin, y linkearlos al CRM. Es el habilitador del cobro real.
+
+
+## 2026-07-21 07:50 Mavis — Catálogo de servicios v2 + Google Business Profile (David "actualización del módulo de Servicios")
+
+- **Pregunta:** David pidió (07:40) un sprint grande: agregar Google Business Profile como servicio nuevo, reformular el copy de los 4 servicios con enfoque al cliente final, eliminar jerga técnica (UX, SEO On Page, Analytics, Capacitación incluida, Pixel, Conversiones), y que la arquitectura permita agregar más paquetes sin tocar código. Inspiarse en un diseño de cards con bullets, badge 'X paquetes' dinámico, y 'MÁS POPULAR' en la card estratégica.
+
+- **Decisión:** Commit atómico \4bf432f\ con migration + tipos + mappers + UI + tests en 1 solo paso. Todo data-driven via DB (bullets, includes, is_popular como JSONB/boolean en services + service_variants). El service 'google-business-profile' tiene 1 solo paquete Básico por ahora — agregar más paquetes en el futuro es solo INSERT a service_variants sin código.
+
+- **Razón:** David quiere facturar ASAP con la nueva estrategia comercial de la agencia. Google Business Profile es el servicio de entrada más barato (\,500) y resuelve el problema típico del cliente local (no aparece en Google Maps). El 'is_popular' badge es la palanca de marketing para empujar el servicio que la agencia quiere vender más. Los variants existentes pasan de 'Esencial/Profesional' a 'Básico/Pro' para tener naming consistente entre los 3 servicios multi-paquete.
+
+- **Schema aditivo (migration \20260721074500_service_catalog_v2.sql\):**
+  - \services.bullets JSONB\: features comunes del servicio (5 bullets en cada card del catálogo)
+  - \services.is_popular BOOLEAN\: badge 'MÁS POPULAR' en la card
+  - \service_variants.includes JSONB\': qué incluye cada paquete específico (reemplaza el campo \description\ texto plano)
+
+- **Catálogo final (4 servicios, 7 variants, 100% data-driven):**
+  | slug | display | popular | variants | prices |
+  |---|---|---|---|---|
+  | sitio-web | Diseño web | false | básico / pro | \,500 / \,500 MXN |
+  | google-business-profile | Google Business Profile | true | básico | \,500 MXN |
+  | auditoria-1a1 | Auditoría y diagnóstico de negocio | false | online / presencial | \,000 / \,000 MXN |
+  | kickstart-meta-ads | Kickstart de Meta Ads | false | básico / pro | \,500 / \,500 MXN |
+
+- **UI (ServiceCard rediseñado):**
+  - Header brand-gradient: badge 'X paquete(s)' top-right + 'MÁS POPULAR' top-center (verde con estrella) cuando is_popular=true
+  - Body blanco: top 5 bullets de \service.bullets\ con CheckCircle2 verde + precio 'Desde \ MXN' + CTA 'Ver paquetes'
+
+- **UI (VariantCard en ServiceDetailInteractive):**
+  - \ariant.includes[]\ se renderiza como bullets (preferencia). Fallback a \ariant.description\ (legacy) si \includes\ está vacío.
+  - Label 'Esencial/Profesional/Con Video IA/...' ? 'Básico/Pro/Online (Zoom)/Presencial' según spec
+
+- **Verificación:** type-check 0, lint 0, build OK, **1484/1484 tests** (1480 ? 1484, +4 tests para mapServiceRow con bullets/is_popular y mapServiceVariantRow con includes, casos null/undefined/no-string). Vercel deployó en 90s. Live check: /servicios muestra los 4 servicios con bullets + badge 'MÁS POPULAR' en GBP, /servicios/sitio-web y /servicios/kickstart-meta-ads muestran variants con bullets nuevos sin jerga técnica. '/servicios/google-business-profile' muestra solo Básico \,500. Google Business Profile pasa de 0 ? 1 servicio activo.
+
+- **Archivos tocados (8):**
+  - 1 migration: \20260721074500_service_catalog_v2.sql\ (+278 líneas, schema + seed)
+  - 2 types: \src/types/services.ts\ (Service: +bullets, +isPopular), \src/lib/services/mappers.ts\ (ServiceRow/VariantRow: +bullets, +includes, +is_popular; mapServiceRow/Row filtran no-strings del array)
+  - 3 componentes: ServiceCard (rediseñado con bullets + MÁS POPULAR), ServiceIcon (+MapPin), ServiceDetailInteractive.VariantCard (includes como bullets)
+  - 1 typegen: \src/types/supabase.ts\ regenerado vía \scripts/regen-supabase-types.mjs\
+  - 1 test: \	ests/services-orders.test.mjs\ (+4 tests)
+
+- **Lección operativa:** "1 servicio = N variants es el modelo correcto. 1 variant = 1 row con includes[] = arquitectura extensible sin código. Si hubiera modelado 'paquete' como un campo enum en services, hoy tendría que migrar para agregar el paquete Pro de Google Business Profile. El servicio GBP hereda TODO: el modal de checkout, el admin tab, el email de notificación, el flujo de Stripe. Solo es INSERT a la DB. 0 líneas de código."
