@@ -52,6 +52,7 @@ export interface ServiceRow {
   display_name: string;
   short_description: string | null;
   long_description: string | null;
+  bullets: string[] | null;
   icon: string | null;
   default_price_mxn: number | string | null;
   default_currency: string;
@@ -59,6 +60,7 @@ export interface ServiceRow {
   requires_documents: boolean;
   deliverable_type: string | null;
   is_active: boolean;
+  is_popular: boolean;
   display_order: number;
   created_at: string;
   updated_at: string;
@@ -72,6 +74,7 @@ export function mapServiceRow(row: ServiceRow): Service {
     displayName: row.display_name,
     shortDescription: row.short_description,
     longDescription: row.long_description,
+    bullets: Array.isArray(row.bullets) ? row.bullets.filter((b) => typeof b === "string") : [],
     icon: row.icon,
     defaultPriceMXN: num(row.default_price_mxn),
     defaultCurrency: row.default_currency,
@@ -79,6 +82,7 @@ export function mapServiceRow(row: ServiceRow): Service {
     requiresDocuments: row.requires_documents,
     deliverableType: (row.deliverable_type ?? null) as OrderDeliverableType,
     isActive: row.is_active,
+    isPopular: Boolean(row.is_popular),
     displayOrder: row.display_order,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -95,6 +99,7 @@ export interface ServiceVariantRow {
   slug: string;
   label: string;
   description: string | null;
+  includes: string[] | null;
   price_mxn: number | string;
   delivery_days_min: number | null;
   delivery_days_max: number | null;
@@ -111,6 +116,7 @@ export function mapServiceVariantRow(row: ServiceVariantRow): ServiceVariant {
     slug: row.slug,
     label: row.label,
     description: row.description,
+    includes: Array.isArray(row.includes) ? row.includes.filter((b) => typeof b === "string") : [],
     priceMXN: num(row.price_mxn) ?? 0,
     deliveryDaysMin: row.delivery_days_min,
     deliveryDaysMax: row.delivery_days_max,

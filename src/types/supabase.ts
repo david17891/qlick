@@ -2284,6 +2284,7 @@ export type Database = {
           description: string | null
           display_order: number
           id: string
+          includes: Json
           is_active: boolean
           label: string
           price_mxn: number
@@ -2298,6 +2299,7 @@ export type Database = {
           description?: string | null
           display_order?: number
           id?: string
+          includes?: Json
           is_active?: boolean
           label: string
           price_mxn: number
@@ -2312,6 +2314,7 @@ export type Database = {
           description?: string | null
           display_order?: number
           id?: string
+          includes?: Json
           is_active?: boolean
           label?: string
           price_mxn?: number
@@ -2331,6 +2334,7 @@ export type Database = {
       }
       services: {
         Row: {
+          bullets: Json
           category: string
           created_at: string
           default_currency: string
@@ -2341,6 +2345,7 @@ export type Database = {
           icon: string | null
           id: string
           is_active: boolean
+          is_popular: boolean
           long_description: string | null
           requires_documents: boolean
           requires_scheduling: boolean
@@ -2349,6 +2354,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          bullets?: Json
           category?: string
           created_at?: string
           default_currency?: string
@@ -2359,6 +2365,7 @@ export type Database = {
           icon?: string | null
           id?: string
           is_active?: boolean
+          is_popular?: boolean
           long_description?: string | null
           requires_documents?: boolean
           requires_scheduling?: boolean
@@ -2367,6 +2374,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          bullets?: Json
           category?: string
           created_at?: string
           default_currency?: string
@@ -2377,6 +2385,7 @@ export type Database = {
           icon?: string | null
           id?: string
           is_active?: boolean
+          is_popular?: boolean
           long_description?: string | null
           requires_documents?: boolean
           requires_scheduling?: boolean

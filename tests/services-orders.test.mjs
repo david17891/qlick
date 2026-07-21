@@ -146,6 +146,135 @@ describe("FASE 8C — mappers (sanity)", () => {
   });
 });
 
+describe("FASE 8C v2 — mappers: bullets, isPopular, includes", () => {
+  it("mapServiceRow convierte bullets JSONB a string[] y castea isPopular", async () => {
+    const { mapServiceRow } = await import(
+      "../src/lib/services/mappers.ts"
+    );
+    const row = {
+      id: "00000000-0000-0000-0000-000000000020",
+      slug: "google-business-profile",
+      category: "digital",
+      display_name: "Google Business Profile",
+      short_description: "Haz que tus clientes te encuentren en Google.",
+      long_description: "Creamos y optimizamos tu perfil.",
+      bullets: [
+        "Creación o reclamación del perfil",
+        "Optimización completa del perfil",
+        "Enlace a WhatsApp y sitio web",
+      ],
+      icon: "MapPin",
+      default_price_mxn: "1500.00",
+      default_currency: "MXN",
+      requires_scheduling: false,
+      requires_documents: false,
+      deliverable_type: null,
+      is_active: true,
+      is_popular: true,
+      display_order: 20,
+      created_at: "2026-07-21T10:00:00Z",
+      updated_at: "2026-07-21T10:00:00Z",
+    };
+    const out = mapServiceRow(row);
+    assert.equal(out.slug, "google-business-profile");
+    assert.equal(out.isPopular, true);
+    assert.ok(Array.isArray(out.bullets));
+    assert.equal(out.bullets.length, 3);
+    assert.equal(out.bullets[0], "Creación o reclamación del perfil");
+    assert.equal(typeof out.defaultPriceMXN, "number");
+    assert.equal(out.defaultPriceMXN, 1500);
+  });
+
+  it("mapServiceRow maneja bullets null o no-array como []", async () => {
+    const { mapServiceRow } = await import(
+      "../src/lib/services/mappers.ts"
+    );
+    const baseRow = {
+      id: "00000000-0000-0000-0000-000000000020",
+      slug: "test",
+      category: "digital",
+      display_name: "Test",
+      short_description: null,
+      long_description: null,
+      icon: null,
+      default_price_mxn: null,
+      default_currency: "MXN",
+      requires_scheduling: false,
+      requires_documents: false,
+      deliverable_type: null,
+      is_active: true,
+      is_popular: false,
+      display_order: 0,
+      created_at: "2026-07-21T10:00:00Z",
+      updated_at: "2026-07-21T10:00:00Z",
+    };
+    // null → []
+    assert.deepEqual(mapServiceRow({ ...baseRow, bullets: null }).bullets, []);
+    // undefined → []
+    assert.deepEqual(mapServiceRow({ ...baseRow, bullets: undefined }).bullets, []);
+    // array con valores no-string → filtra y deja solo strings
+    const out = mapServiceRow({
+      ...baseRow,
+      bullets: ["ok", 42, "also-ok", null, true],
+    });
+    assert.deepEqual(out.bullets, ["ok", "also-ok"]);
+  });
+
+  it("mapServiceVariantRow convierte includes JSONB a string[]", async () => {
+    const { mapServiceVariantRow } = await import(
+      "../src/lib/services/mappers.ts"
+    );
+    const row = {
+      id: "00000000-0000-0000-0000-000000000030",
+      service_id: "00000000-0000-0000-0000-000000000020",
+      slug: "basico",
+      label: "Básico",
+      description: null,
+      includes: [
+        "Creación o reclamación del perfil",
+        "Optimización completa del perfil",
+      ],
+      price_mxn: 1500,
+      delivery_days_min: 2,
+      delivery_days_max: 3,
+      is_active: true,
+      display_order: 1,
+      created_at: "2026-07-21T10:00:00Z",
+      updated_at: "2026-07-21T10:00:00Z",
+    };
+    const out = mapServiceVariantRow(row);
+    assert.equal(out.label, "Básico");
+    assert.equal(out.description, null);
+    assert.ok(Array.isArray(out.includes));
+    assert.equal(out.includes.length, 2);
+    assert.equal(out.includes[0], "Creación o reclamación del perfil");
+  });
+
+  it("mapServiceVariantRow maneja includes null como []", async () => {
+    const { mapServiceVariantRow } = await import(
+      "../src/lib/services/mappers.ts"
+    );
+    const baseRow = {
+      id: "00000000-0000-0000-0000-000000000030",
+      service_id: "00000000-0000-0000-0000-000000000020",
+      slug: "basico",
+      label: "Básico",
+      description: "legacy",
+      price_mxn: "1500",
+      delivery_days_min: null,
+      delivery_days_max: null,
+      is_active: true,
+      display_order: 1,
+      created_at: "2026-07-21T10:00:00Z",
+      updated_at: "2026-07-21T10:00:00Z",
+    };
+    const out1 = mapServiceVariantRow({ ...baseRow, includes: null });
+    assert.deepEqual(out1.includes, []);
+    // Fallback: description se preserva para variants legacy sin includes
+    assert.equal(out1.description, "legacy");
+  });
+});
+
 // NOTA: el email helper (service-order-notification) arrastra el módulo
 // de Brevo (brevo-client.ts), y node --experimental-strip-types no
 // resuelve imports sin extensión `.ts` cuando hay cadenas. Los tests

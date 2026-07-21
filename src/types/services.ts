@@ -80,6 +80,10 @@ export interface Service {
   displayName: string;
   shortDescription: string | null;
   longDescription: string | null;
+  /** Features comunes del servicio (lo que el cliente obtiene al contratar
+   *  CUALQUIER paquete). Se renderiza como bullets en la card del catálogo
+   *  público. Array vacío = no mostrar bullets. */
+  bullets: string[];
   icon: string | null;
   defaultPriceMXN: number | null;
   defaultCurrency: string;
@@ -87,6 +91,9 @@ export interface Service {
   requiresDocuments: boolean;
   deliverableType: OrderDeliverableType;
   isActive: boolean;
+  /** Badge "MÁS POPULAR" en la card. Sirve para destacar el servicio
+   *  estratégico del momento (ej. Google Business Profile al lanzar). */
+  isPopular: boolean;
   displayOrder: number;
   createdAt: string;
   updatedAt: string;
@@ -98,6 +105,10 @@ export interface ServiceVariant {
   slug: string;
   label: string;
   description: string | null;
+  /** Qué incluye este paquete específico. Se renderiza como bullets en
+   *  el variant card del detalle. Array vacío = no mostrar bullets
+   *  (cae al `description` legacy). */
+  includes: string[];
   priceMXN: number;
   deliveryDaysMin: number | null;
   deliveryDaysMax: number | null;

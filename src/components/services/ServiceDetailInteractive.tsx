@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Container, Badge, LucideIcon } from "@/components/ui";
+import { CheckCircle2, Package } from "lucide-react";
 import { ServiceCheckoutModal } from "./ServiceCheckoutModal";
 import { resolveIcon } from "./ServiceIcon";
 import type { ServiceWithVariants, ServiceVariant } from "@/types/services";
@@ -10,6 +11,10 @@ import { formatMXN } from "@/lib/utils";
 /**
  * Sección interactiva del detalle de servicio: lista de variants con
  * botón "Lo quiero" que abre el modal de checkout.
+ *
+ * v2 (2026-07-21): los variants ahora muestran `includes` como bullets
+ * en vez de `description` (texto plano). El `description` queda como
+ * fallback legacy para filas que aún no tengan `includes`.
  *
  * Client Component (necesita useState para el modal).
  * El hero y la descripción larga se renderizan en el page.tsx (Server).
@@ -96,12 +101,9 @@ function VariantCard({
   serviceSlug: string;
   onSelect: () => void;
 }) {
-  // Variants con precio "profesional" (el más caro del set) se marcan featured.
-  // Heurística: el variant con mayor priceMXN del set se considera "top".
-  // El padre pasa el flag por contexto, pero acá usamos position en el set
-  // (no la tenemos). Hacemos una versión simple: badge "Recomendado" si el
-  // label incluye "profesional" o "personas" (las tiers altas del seed).
-  const isFeatured = /profesional|personas|completo/i.test(variant.label);
+  // Variants con tier alta (label "Pro", "Profesional", "Personas" o
+  // "Completo") se marcan como featured para resaltar visualmente.
+  const isFeatured = /pro|profesional|personas|completo/i.test(variant.label);
   const deliveryLabel = formatDeliveryLabel(variant);
 
   return (
@@ -122,7 +124,7 @@ function VariantCard({
       <div className="flex items-start gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50">
           <LucideIcon
-            icon={resolveIcon("Package")}
+            icon={Package}
             size="md"
             tone="brand"
           />
@@ -137,11 +139,25 @@ function VariantCard({
         </div>
       </div>
 
-      {variant.description && (
+      {/* v2: bullets `includes` (preferencia). Fallback: `description` legacy. */}
+      {variant.includes.length > 0 ? (
+        <ul className="mt-4 space-y-2">
+          {variant.includes.map((line, i) => (
+            <li key={i} className="flex items-start gap-2 text-sm text-ink-soft">
+              <LucideIcon
+                icon={CheckCircle2}
+                size="sm"
+                className="mt-0.5 shrink-0 text-brand-500"
+              />
+              <span>{line}</span>
+            </li>
+          ))}
+        </ul>
+      ) : variant.description ? (
         <p className="mt-4 text-sm text-ink-soft line-clamp-4">
           {variant.description}
         </p>
-      )}
+      ) : null}
 
       <div className="mt-6 flex items-baseline gap-2">
         <span className="font-display text-3xl font-bold text-ink">
