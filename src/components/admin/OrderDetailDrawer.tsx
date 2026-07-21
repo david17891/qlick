@@ -37,6 +37,10 @@ import {
   Calendar,
   Package,
   CreditCard,
+  Link2,
+  Copy,
+  ExternalLink,
+  Check,
 } from "lucide-react";
 
 /**
@@ -193,6 +197,10 @@ export function OrderDetailDrawer({
               onChangeStatus={(s) => void patchOrder({ status: s })}
               onAssign={(email) => void patchOrder({ assignedTo: email })}
               onCancel={(reason) => void patchOrder({ status: "cancelled", cancellationReason: reason })}
+              onPaymentLinkGenerated={() => {
+                void fetchOrder();
+                onUpdated?.();
+              }}
             />
           ),
         },
@@ -300,12 +308,14 @@ function InfoTab({
   onChangeStatus,
   onAssign,
   onCancel,
+  onPaymentLinkGenerated,
 }: {
   order: ServiceOrderWithRelations;
   saving: boolean;
   onChangeStatus: (s: OrderStatus) => void;
   onAssign: (email: string | null) => void;
   onCancel: (reason: string) => void;
+  onPaymentLinkGenerated: () => void;
 }) {
   const [assignEmail, setAssignEmail] = useState(order.assignedTo ?? "");
   const [cancelReason, setCancelReason] = useState("");
@@ -322,8 +332,28 @@ function InfoTab({
     } as Record<OrderStatus, OrderStatus[]>
   )[order.status];
 
+  // El botón "Generar link de pago" aplica cuando:
+  //   - El modo de pago es 'pending' (nadie generó un link todavía)
+  //   - El status NO es terminal (delivered/closed/cancelled)
+  //   - El método de pago del catálogo es stripe (o sea, la variante permite
+  //     pago con tarjeta). Por ahora todos los servicios usan Stripe, pero
+  //     dejamos la puerta abierta a "manual" en el futuro.
+  const canGeneratePaymentLink =
+    order.paymentMode === "pending" &&
+    order.status !== "delivered" &&
+    order.status !== "closed" &&
+    order.status !== "cancelled";
+
   return (
     <div className="space-y-6">
+      {/* Cobrar al cliente (1-click payment link) */}
+      {canGeneratePaymentLink && (
+        <PaymentLinkCard
+          order={order}
+          onGenerated={onPaymentLinkGenerated}
+        />
+      )}
+
       {/* Acciones de status */}
       <Card className="p-5">
         <h3 className="font-display text-base font-bold text-ink">
@@ -878,4 +908,203 @@ function labelForEventType(t: string): string {
     default:
       return t;
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* 1-click payment link (Cobrar al cliente)                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Card de "Cobrar al cliente" — genera un Stripe Checkout Session para
+ * un `service_order` en estado `pending_contact` y le permite al admin:
+ *   - copiar el link al portapapeles
+ *   - enviarlo por WhatsApp pre-armado
+ *   - abrirlo en una nueva pestaña
+ *
+ * Solo aparece cuando `order.paymentMode === 'pending'` (nadie generó
+ * un link todavía) y el status NO es terminal. Una vez generado, el
+ * estado se refresca via `onGenerated` y la card muestra la URL
+ * resultante + acciones. Si el admin quiere regenerar (link viejo
+ * expiró o cliente perdió el mensaje), cierra y reabre el drawer.
+ *
+ * Si el admin clickea "Generar" y ya había un link antes, el endpoint
+ * crea uno NUEVO. El anterior queda en la timeline del order.
+ */
+function PaymentLinkCard({
+  order,
+  onGenerated,
+}: {
+  order: ServiceOrderWithRelations;
+  onGenerated: () => void;
+}) {
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [paymentLink, setPaymentLink] = useState<string | null>(
+    order.paymentReference && order.paymentMode === "stripe"
+      ? // Si ya teníamos un link previo (recargando el drawer), NO tenemos
+        // la redirectUrl — solo el session_id. El admin debe regenerar
+        // para tener la URL. Mostramos estado "pendiente de regenerar".
+        null
+      : null
+  );
+  const [copied, setCopied] = useState(false);
+
+  async function generate() {
+    setGenerating(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/admin/orders/${order.id}/payment-link`,
+        { method: "POST" }
+      );
+      const data = await res.json();
+      if (!data.ok) {
+        setError(data.error ?? "Error generando el link.");
+        return;
+      }
+      setPaymentLink(data.redirectUrl as string);
+      onGenerated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error de red");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  async function copyLink() {
+    if (!paymentLink) return;
+    try {
+      await navigator.clipboard.writeText(paymentLink);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setError("No se pudo copiar. Copialo manualmente.");
+    }
+  }
+
+  // WhatsApp pre-armado: si hay teléfono del cliente, le mandamos el link
+  // con un mensaje corto y profesional.
+  const waPhone = order.customerPhone?.replace(/[^\d]/g, "") ?? null;
+  const waMessage = paymentLink
+    ? encodeURIComponent(
+        `Hola ${order.customerName}, te paso el link para que puedas pagar ${order.service.displayName} — ${order.variant.label} (${formatMXN(order.amountMXN)} ${order.currency}):\n\n${paymentLink}\n\nCualquier duda, me decís.`
+      )
+    : "";
+  const waLink = waPhone ? `https://wa.me/${waPhone}?text=${waMessage}` : null;
+
+  return (
+    <Card className="p-5 border-brand-200 bg-gradient-to-br from-brand-50/60 to-white">
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-500 text-white">
+          <LucideIcon icon={CreditCard} size="md" />
+        </div>
+        <div className="flex-1">
+          <h3 className="font-display text-base font-bold text-ink">
+            Cobrar al cliente
+          </h3>
+          <p className="mt-1 text-xs text-ink-muted">
+            Generá un link de pago con tarjeta (Stripe) y mandáselo al
+            cliente por WhatsApp. El pedido avanza a &quot;contactado&quot;
+            automáticamente cuando el cliente paga.
+          </p>
+
+          {!paymentLink ? (
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                onClick={() => void generate()}
+                disabled={generating}
+              >
+                {generating ? (
+                  <>
+                    <Spinner className="h-4 w-4 border-2" />
+                    Generando...
+                  </>
+                ) : (
+                  <>
+                    <LucideIcon icon={Link2} size="sm" />
+                    Generar link de pago
+                  </>
+                )}
+              </Button>
+              <span className="text-xs text-ink-muted">
+                {formatMXN(order.amountMXN)} {order.currency}
+              </span>
+            </div>
+          ) : (
+            <div className="mt-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Input
+                  readOnly
+                  value={paymentLink}
+                  className="flex-1 font-mono text-xs"
+                  onClick={(e) => (e.target as HTMLInputElement).select()}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void copyLink()}
+                  aria-label="Copiar link"
+                >
+                  {copied ? (
+                    <>
+                      <LucideIcon icon={Check} size="sm" />
+                      ¡Copiado!
+                    </>
+                  ) : (
+                    <>
+                      <LucideIcon icon={Copy} size="sm" />
+                      Copiar
+                    </>
+                  )}
+                </Button>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <a
+                  href={paymentLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-full border-2 border-brand-500 px-4 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50"
+                >
+                  <LucideIcon icon={ExternalLink} size="sm" />
+                  Abrir link
+                </a>
+                {waLink && (
+                  <a
+                    href={waLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-600"
+                  >
+                    <LucideIcon icon={MessageCircle} size="sm" />
+                    Enviar por WhatsApp
+                  </a>
+                )}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setPaymentLink(null);
+                    setError(null);
+                  }}
+                >
+                  Regenerar
+                </Button>
+              </div>
+              <p className="text-xs text-ink-muted">
+                Cuando el cliente pague, este pedido avanza automáticamente
+                a &quot;contactado&quot; y queda registrado en la timeline.
+              </p>
+            </div>
+          )}
+
+          {error && (
+            <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
 }

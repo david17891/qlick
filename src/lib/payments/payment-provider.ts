@@ -50,10 +50,29 @@ export interface ProductRefMasterclass extends ProductRefBase {
   videoUrl?: string;
 }
 
+/**
+ * FIX 2026-07-21 (sprint pago con tarjeta en servicios FASE 8 follow-up):
+ * cuando el admin genera un link de pago para un `service_order` existente,
+ * el productRef lleva el ID del order para que el webhook lo vincule.
+ *
+ * El precio (`priceMXN`) viene de la VARIANT específica del servicio que
+ * el cliente eligió, no del `service.priceMXN` (que es el base de la
+ * tabla `services` si existiera). En FASE 8 cada variant tiene su
+ * `priceMXN` propio.
+ */
+export interface ProductRefService extends ProductRefBase {
+  kind: "service";
+  /** ID del `service_order` que se está pagando. */
+  orderId: string;
+  /** Email del cliente — prellenado en checkout (ya validado por admin). */
+  customerEmail: string;
+}
+
 export type ProductRef =
   | ProductRefCourse
   | ProductRefEvent
-  | ProductRefMasterclass;
+  | ProductRefMasterclass
+  | ProductRefService;
 
 export interface CreateCheckoutInput {
   /** Lo que se compra (polimórfico). OBLIGATORIO en providers nuevos. */
