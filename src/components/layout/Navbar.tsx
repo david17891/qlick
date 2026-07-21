@@ -15,7 +15,11 @@ import type { User } from "@/types";
 const links = [
   { href: "/cursos", label: "Cursos" },
   { href: "/eventos", label: "Eventos" },
-  { href: "/diseno-paginas", label: "Diseño de páginas" },
+  // FASE 8 (2026-07-21): el catálogo público de servicios comerciales
+  // (diseño, auditoría 1a1, kickstart Meta Ads) vive en /servicios.
+  // /diseno-paginas era la landing legacy sin checkout; la reemplazamos
+  // por el nuevo catálogo que tiene modal de checkout real.
+  { href: "/servicios", label: "Servicios" },
   { href: "/acerca", label: "Acerca de" },
   { href: "/beneficios", label: "Beneficios" },
   { href: "/faq", label: "Preguntas" },

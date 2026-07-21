@@ -16,6 +16,11 @@ const cols = [
     title: "Empresa",
     links: [
       { href: "/acerca", label: "Acerca de Qlick" },
+      // FASE 8 (2026-07-21): catálogo público de servicios comerciales
+      // (diseño web, auditoría 1a1, kickstart Meta Ads). Label "Servicios
+      // profesionales" para diferenciarlo de "Plataforma" (que es sobre
+      // cursos/eventos del LMS, no sobre la oferta comercial).
+      { href: "/servicios", label: "Servicios profesionales" },
       { href: "/beneficios", label: "Beneficios" },
       { href: "/contacto", label: "Contacto" },
       { href: "/privacidad", label: "Aviso de Privacidad" }
