@@ -125,6 +125,9 @@ dev-*.log
 # `output/` se usa para redirigir la salida de scripts de validación
 # end-to-end. No aportan al producto; son evidencia de corrida.
 /output/
+# `tests/output/` es el mismo patrón pero dentro de tests/. Cubre
+# simulaciones, matrices de bot, etc. que se regeneran en cada corrida.
+/tests/output/
 # --- Scripts temporales generados por sesiones Mavis (cookies, evals, etc.) ---
 # Patr+�n: archivos en scripts/ que arrancan con tmp- (cookies, login JSON, etc.).
 /scripts/tmp-*.json
