@@ -48,6 +48,7 @@ import type { LeadEventContext } from "@/lib/crm";
 import { formatDate, formatMXN } from "@/lib/utils";
 import { WhatsAppButton } from "@/components/contact/WhatsAppButton";
 import { AIBotFeedbackSection } from "@/components/crm/AIBotFeedbackSection";
+import { LeadServicesCard } from "@/components/crm/LeadServicesCard";
 
 /**
  * Drawer (panel lateral) con el detalle completo de un lead.
@@ -1007,6 +1008,10 @@ export function LeadDetailDrawer({
               ))}
             </ul>
           </Card>
+
+          {/* FASE 8F (2026-07-21): servicios contratados del lead. 1 lead →
+              N orders via FK lead_id. Click en un row abre el OrderDetailDrawer. */}
+          <LeadServicesCard leadId={currentLead.id} />
 
           {/* Acciones WhatsApp */}
           <section>

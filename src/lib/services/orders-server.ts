@@ -723,6 +723,56 @@ export async function addOrderDocument(
 }
 
 /* ------------------------------------------------------------------ */
+/* Listar orders por lead (para el CRM)                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Devuelve los orders asociados a un lead (1 lead → N orders via lead_id FK).
+ * Usado por el endpoint `/api/admin/leads/[id]/orders` y por la sección
+ * 'Servicios contratados' del LeadDetailDrawer del CRM.
+ *
+ * Devuelve shape ServiceOrderListItem[] (con service + variant hidratados
+ * vía join, mismo patrón que listOrders()).
+ */
+export async function getOrdersByLeadId(
+  leadId: string,
+): Promise<ServiceOrderListItem[]> {
+  if (!isRealMode()) return [];
+
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("service_orders")
+    .select(
+      "*, services!inner(slug, display_name, icon), service_variants!inner(slug, label)",
+    )
+    .eq("lead_id", leadId)
+    .order("created_at", { ascending: false });
+
+  if (error || !data) {
+    // eslint-disable-next-line no-console
+    console.error("[orders-server] getOrdersByLeadId falló", {
+      code: error?.code,
+    });
+    return [];
+  }
+
+  return (data as unknown[]).map((row) => {
+    const r = row as ServiceOrderRow & {
+      services: { slug: string; display_name: string; icon: string | null };
+      service_variants: { slug: string; label: string };
+    };
+    return {
+      ...mapServiceOrderRow(r),
+      serviceName: r.services.display_name,
+      serviceSlug: r.services.slug,
+      serviceIcon: r.services.icon,
+      variantLabel: r.service_variants.label,
+      variantSlug: r.service_variants.slug,
+    };
+  });
+}
+
+/* ------------------------------------------------------------------ */
 /* Order events (bajo nivel)                                           */
 /* ------------------------------------------------------------------ */
 

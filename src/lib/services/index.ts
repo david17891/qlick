@@ -5,6 +5,7 @@
  * Los mappers y la lib server viven en `@/lib/services/*` (server-only).
  */
 
+// Tipos (en `export type` para que no se incluya en el bundle del cliente).
 export type {
   Service,
   ServiceVariant,
@@ -27,6 +28,10 @@ export type {
   CreateOrderNoteInput,
   CreateOrderDocumentInput,
   ListOrdersFilters,
+} from "@/types/services";
+
+// Labels (objetos runtime, NO types — van en export normal).
+export {
   ORDER_STATUS_LABELS,
   ORDER_PAYMENT_MODE_LABELS,
   ORDER_NOTE_TYPE_LABELS,
@@ -39,6 +44,7 @@ export {
   createOrder,
   listOrders,
   getOrderById,
+  getOrdersByLeadId,
   updateOrder,
   addOrderNote,
   addOrderDocument,
