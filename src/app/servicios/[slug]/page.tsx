@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { Container, Badge } from "@/components/ui";
 import { CTABanner } from "@/components/layout";
 import { ServiceDetailInteractive } from "@/components/services/ServiceDetailInteractive";
-import { ServiceDemosSection } from "@/components/services/ServiceDemosSection";
 import { getServiceBySlug } from "@/lib/services";
 import { formatMXN } from "@/lib/utils";
 
@@ -42,43 +42,61 @@ export default async function ServicioDetallePage({ params }: PageProps) {
 
   return (
     <>
-      {/* FIX 2026-07-21 (David): "lo primero que quiero que aparezca es
-          el costo del servicio". Eliminado el PageHero morado del detalle.
-          Hero nuevo minimal: nombre del servicio + precio grande + CTA
-          que scrollea a las variants (anchor #paquetes). Fondo blanco
-          para que el precio sea lo más visible sin competencia visual. */}
-      <section className="py-16 sm:py-24 bg-white border-b border-brand-100">
+      {/* FIX 2026-07-21 (David, segundo round): "no quiero esos
+          indicadores feos y ver paquetes, quiero que ahí directamente
+          pongas los paquetes". El hero es SOLO título + precio enorme.
+          Sin "DESDE" / "MXN" / "Ver paquetes" — los paquetes se ven
+          inmediatamente debajo, no hace falta scroll explícito. */}
+      <section className="py-14 sm:py-20 bg-white border-b border-brand-100">
         <Container size="wide">
           <div className="mx-auto max-w-3xl text-center">
-            <Badge tone="brand" className="mb-6">
+            <Badge tone="brand" className="mb-5">
               Servicio digital
             </Badge>
             <h1 className="display-1 text-ink mb-6">
               {service.displayName}
             </h1>
             {minPrice !== null && (
-              <div className="mb-8">
-                <p className="text-xs uppercase tracking-widest text-ink-muted font-semibold">
-                  Desde
-                </p>
-                <p className="mt-2 font-display text-6xl sm:text-7xl font-bold text-brand-700">
-                  {formatMXN(minPrice)}
-                </p>
-                <p className="mt-1 text-sm text-ink-muted">MXN · pago único</p>
-              </div>
+              <p className="font-display text-6xl sm:text-7xl font-bold text-brand-700">
+                Desde {formatMXN(minPrice)}
+              </p>
             )}
-            <a
-              href="#paquetes"
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-brand-500 px-8 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-brand-600"
-            >
-              Ver paquetes
-              <span aria-hidden="true">→</span>
-            </a>
           </div>
         </Container>
       </section>
 
-      {/* Descripción larga */}
+      {/* Variants — client component para el modal. Aparece DIRECTAMENTE
+          debajo del hero, sin secciones intermedias ("Acerca de" o
+          demos) que roben atención a la decisión de compra. */}
+      <ServiceDetailInteractive service={service} />
+
+      {/* FIX 2026-07-21 (David, segundo round): para /servicios/sitio-web,
+          debajo de los paquetes va un botón "Ver ejemplos" que abre
+          la primera demo (Lumière, demo-1a). Los otros demos siguen
+          accesibles por URL directa (`/diseno-paginas/demo-*`). Se
+          removió la sección inline de 4 cards (ServiceDemosSection)
+          para no repetir lo que el botón ofrece. */}
+      {service.slug === "sitio-web" && (
+        <section className="py-10 sm:py-12 text-center bg-white border-t border-brand-100">
+          <Container size="wide">
+            <Link
+              href="/diseno-paginas/demo-1a"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-2 rounded-full border-2 border-brand-500 px-7 py-3 text-base font-semibold text-brand-700 transition hover:bg-brand-50"
+            >
+              Ver ejemplos de sitios web
+              <span aria-hidden="true">↗</span>
+            </Link>
+            <p className="mt-3 text-xs text-ink-muted">
+              4 sitios publicados. Te abrimos uno y puedes navegar a los demás.
+            </p>
+          </Container>
+        </section>
+      )}
+
+      {/* Descripción larga — movida al FINAL para que no compita con la
+          decisión de compra. Va después de los paquetes. */}
       {service.longDescription && (
         <section className="py-14 sm:py-20">
           <Container size="wide">
@@ -93,19 +111,6 @@ export default async function ServicioDetallePage({ params }: PageProps) {
           </Container>
         </section>
       )}
-
-      {/* FIX 2026-07-21 (David): para /servicios/sitio-web, mostramos el
-          portafolio de 4 demos como ejemplos del trabajo. Los demos siguen
-          accesibles en /diseno-paginas/demo-* (no se mueven, no se
-          rompe nada). El cliente ve el resultado antes de contratar. */}
-      {service.slug === "sitio-web" && <ServiceDemosSection />}
-
-      {/* Variants — client component para el modal. El section tiene
-          id="paquetes" para que el CTA "Ver paquetes" del hero scrollee
-          aquí sin JS extra (anchor nativo). */}
-      <div id="paquetes">
-        <ServiceDetailInteractive service={service} />
-      </div>
 
       {/* CTA final */}
       <CTABanner
