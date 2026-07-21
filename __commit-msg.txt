@@ -1,0 +1,36 @@
+redesign(services): hero del detalle minimal — precio primero, sin PageHero morado
+
+David feedback (sesión 2026-07-21): "lo primero que quiero que aparezca
+es el costo del servicio".
+
+  Antes: PageHero morado con badge + título + subtítulo + stats. El
+  precio aparecía pequeño en los stats.
+
+  Ahora: Hero blanco minimal. Lo primero que ve el cliente es:
+    1. Badge "Servicio digital" (chico)
+    2. Título del servicio
+    3. "Desde $X" en font-display text-6xl (LO MÁS VISIBLE)
+    4. "MXN · pago único" (label)
+    5. Botón "Ver paquetes →" que scrollea a las variants (anchor
+       nativo #paquetes, sin JS extra)
+
+Cambios:
+- src/app/servicios/[slug]/page.tsx: eliminado el PageHero. Nuevo
+  section blanco con badge + título + precio gigante + CTA.
+  Agregado id="paquetes" al wrapper de ServiceDetailInteractive
+  para que el anchor del CTA scrollee a las variants.
+- Removidos comentarios FIX 2026-07-21 del icono grande (ya no aplica,
+  era sobre el PageHero eliminado).
+- Quitado import de PageHero (ya no se usa).
+
+Lo que se preserva:
+- CTABanner final ("¿Tienes dudas?") — útil, no mencionado.
+- Descripción larga — sigue en su sección propia más abajo.
+- Portafolio de demos (sitio-web) — se mantiene entre descripción
+  y variants.
+- Variants con modal de checkout — intacto, ahora accesibles vía
+  el CTA del hero con scroll.
+
+Verificación:
+- type-check → 0 errores
+- build → Compiled successfully
