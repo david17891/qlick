@@ -745,7 +745,7 @@ export function EventDrawer({
                 <Field
                   label="Provider"
                   htmlFor="evt-streaming-provider"
-                  hint="Para analítica + hints en el admin. Elegí `Otro` si no está listado."
+                  hint="Para analítica + hints en el admin. Elige `Otro` si no está listado."
                 >
                   <select
                     id="evt-streaming-provider"
@@ -1196,7 +1196,7 @@ export function EventDrawer({
  *   `personality` completa), ese preset aparece seleccionado.
  * - Si no matchea pero tiene texto → opción "Personalizado (custom)"
  *   deshabilitada, para que el admin sepa que no es uno de los 4.
- * - Si está vacío → placeholder "Elegí una personalidad para empezar".
+ * - Si está vacío → placeholder "Elige una personalidad para empezar".
  *
  * onChange recibe el nuevo valor y el preset seleccionado (o undefined
  * si fue Custom). El padre decide qué hacer — típicamente si hay preset,
@@ -1219,7 +1219,7 @@ function PersonalitySelect({
     <Field
       label="Personalidad"
       htmlFor="evt-bot-personality"
-      hint="Elegí una para empezar. Las reglas se pre-llenan con defaults de venta; edítalas abajo."
+      hint="Elige una para empezar. Las reglas se pre-llenan con defaults de venta; edítalas abajo."
     >
       <select
         id="evt-bot-personality"
@@ -1235,7 +1235,7 @@ function PersonalitySelect({
         className="w-full rounded-xl border border-brand-100 bg-white px-4 py-3 text-ink focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
       >
         <option value="" disabled>
-          Elegí una personalidad…
+          Elige una personalidad…
         </option>
         {PERSONALITY_PRESETS.map((p) => (
           <option key={p.value} value={p.value}>

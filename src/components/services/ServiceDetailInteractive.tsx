@@ -38,7 +38,7 @@ export function ServiceDetailInteractive({
         <Container size="wide">
           <div className="mx-auto max-w-2xl text-center">
             <Badge tone="brand" className="mb-4">Paquetes</Badge>
-            <h2 className="display-2 text-ink">Elegí el paquete que se ajusta a tu momento</h2>
+            <h2 className="display-2 text-ink">Elige el paquete que se ajusta a tu momento</h2>
             <p className="mt-4 text-lg text-ink-soft">
               {service.variants.length === 1
                 ? "Un solo paquete, todo incluido."

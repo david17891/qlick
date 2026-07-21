@@ -149,7 +149,7 @@ export async function POST(
       failed: 0,
       skipped: 0,
       items: [],
-      note: "No hay asistentes ni confirmados con teléfono. Hacé check-in o inscribí gente con teléfono primero."
+      note: "No hay asistentes ni confirmados con teléfono. Haz check-in o inscribe gente con teléfono primero."
     });
   }
 

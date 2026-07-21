@@ -132,7 +132,7 @@ export function CheckoutButton({
     <div>
       <p className="text-sm text-ink-muted mb-4">
         Pagás <strong>${amountMxn} MXN</strong> por tu entrada a{" "}
-        <strong>{eventTitle}</strong>. Elegí tu método y te llevamos a la
+        <strong>{eventTitle}</strong>. Elige tu método y te llevamos a la
         página de pago segura.
       </p>
 

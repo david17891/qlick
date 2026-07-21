@@ -71,7 +71,7 @@ export function ImportWizard({
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Columna 1: Form */}
         <Card className="p-6">
-          <h2 className="font-bold text-ink mb-4">1. Elegí el archivo y tipo</h2>
+          <h2 className="font-bold text-ink mb-4">1. Elige el archivo y tipo</h2>
 
           <div className="space-y-4">
             <div>

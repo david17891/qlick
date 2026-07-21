@@ -218,8 +218,8 @@ export default async function PayEventPage({
               </h2>
               <p className="text-xs text-ink-muted mb-5">
                 {IS_MOCK
-                  ? "Estás en modo desarrollo. Elegí método y simulación — no se hace ningún cargo real."
-                  : "Elegí tu método y te llevamos a la página de pago del proveedor."}
+                  ? "Estás en modo desarrollo. Elige método y simulación — no se hace ningún cargo real."
+                  : "Elige tu método y te llevamos a la página de pago del proveedor."}
               </p>
               {IS_MOCK ? (
                 <SimulatorForm

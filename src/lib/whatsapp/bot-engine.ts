@@ -1049,7 +1049,7 @@ export const OPENER_RE =
 // el contexto conversacional.
 //   "Si"  -> el LLM responde coherente con contexto
 //   "Si, quiero inscribirme" -> sigue siendo register (tiene palabras adicionales)
-//   "Ok" / "Dale" / "Va" -> idem, van al LLM
+//   "Ok" / "Adelante" / "Va" -> idem, van al LLM
 // NO incluye "no" porque ese es opt_out (el regex OPT_OUT_RE ya lo maneja).
 const AFFIRMATIVE_RE = /^(s[ií]|ok|dale|va)$/i;
 // Registro corto (anclado al inicio) — palabras muy específicas del
@@ -1071,7 +1071,7 @@ const REGISTER_PHRASE_RE = /\b(quiero\s+inscribirme|me\s+interesa\s+(inscribirme
  * pasar por el LLM (que tiende a confundirse con respuestas tan cortas
  * y termina dando fallback).
  *
- * Caso que SÍ detecta: "¿Te gustaría apartar tu lugar?" / "¿Querés que te
+ * Caso que SÍ detecta: "¿Te gustaría apartar tu lugar?" / "¿Quieres que te
  * apunte en Funnels de Venta?" / "¿Te inscribes a IA y Marketing?".
  *
  * Caso que NO detecta: preguntas abiertas tipo "¿Qué te interesa?" o
@@ -1174,7 +1174,7 @@ export function detectIntent(
   if (lower === "no, gracias" || lower === "no gracias") return "opt_out";
   // Señales fuertes: siempre ganan, incluso en primer mensaje.
   if (OPT_OUT_RE.test(text)) return "opt_out";
-  // FIX 2026-07-02: respuestas afirmativas cortas (Si, Ok, Dale, Va) en
+  // FIX 2026-07-02: respuestas afirmativas cortas (Si, Ok, Adelante, Va) en
   // medio de conversacion NO son register. Van al LLM para que mantenga
   // contexto. La excepcion (Si, quiero inscribirme) sigue siendo register
   // porque AFFIRMATIVE_RE no matchea cuando hay palabras adicionales.
@@ -2285,7 +2285,7 @@ async function buildResponsePlan(args: {
         const interactive = {
           type: "list" as const,
           body: {
-            text: `Tenemos estos eventos próximos. Elegí el que te interesa para más info:`
+            text: `Tenemos estos eventos próximos. Elige el que te interesa para más info:`
           },
           action: {
             button: "Próximos eventos",
@@ -2338,8 +2338,8 @@ async function buildResponsePlan(args: {
         type: "list" as const,
         body: {
           text: allEvents.length === 1
-            ? "Tenemos este evento próximo. Elegilo para más info:"
-            : `Tenemos ${allEvents.length} eventos próximos. Elegí el que te interesa para más info:`
+            ? "Tenemos este evento próximo. Elígelo para más info:"
+            : `Tenemos ${allEvents.length} eventos próximos. Elige el que te interesa para más info:`
         },
         action: {
           button: "Próximos eventos",
@@ -2725,7 +2725,7 @@ case "interactive_event_inscribir": {
           body: {
             text: allEvents.length === 1
               ? "Tenemos este evento próximo:"
-              : `Tenemos ${allEvents.length} eventos próximos. Elegí el que te interesa:`
+              : `Tenemos ${allEvents.length} eventos próximos. Elige el que te interesa:`
           },
           action: {
             button: "Próximos eventos",
