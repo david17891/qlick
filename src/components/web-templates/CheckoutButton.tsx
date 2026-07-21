@@ -59,7 +59,7 @@ export function CheckoutButton({
     setError(null);
     setSubmitting(true);
     try {
-      const res = await fetch("/api/servicios/web/checkout", {
+      const res = await fetch("/api/web/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ paquete, email }),
