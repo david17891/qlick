@@ -3,6 +3,22 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Event, EventStatus } from "@/types/events";
 import { Card, Badge, Button, Input, Textarea, Field } from "@/components/ui";
+import { LucideIcon } from "@/components/ui/Icon";
+import {
+  AlertTriangle,
+  CheckCircle,
+  Copy,
+  CreditCard,
+  Gift,
+  Lightbulb,
+  MapPin,
+  Monitor,
+  Shuffle,
+  Trash2,
+  Video,
+  Wrench,
+  X
+} from "lucide-react";
 import {
   createEvent,
   updateEvent,
@@ -583,7 +599,7 @@ export function EventDrawer({
             className="rounded-lg px-3 py-1 text-sm text-ink-muted hover:bg-brand-50 disabled:opacity-50"
             aria-label="Cerrar"
           >
-            ✕
+            <X className="h-5 w-5" />
           </button>
         </header>
 
@@ -684,7 +700,7 @@ export function EventDrawer({
           {/* ────── Modalidad + streaming (migration 20260707000000) ────── */}
           <fieldset className="border-t border-brand-100 pt-4 mt-2 space-y-3">
             <legend className="text-xs font-bold uppercase tracking-wider text-brand-600 px-2">
-              🎥 Modalidad y streaming
+              <LucideIcon icon={Video} size="sm" tone="inherit" className="inline mr-1" /> Modalidad y streaming
             </legend>
             <Field
               label="Modalidad"
@@ -698,9 +714,9 @@ export function EventDrawer({
                 disabled={saving}
                 className="w-full rounded-xl border border-brand-100 bg-white px-4 py-3 text-ink focus:outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
               >
-                <option value="in_person">📍 Presencial (QR en puerta)</option>
-                <option value="virtual">💻 Virtual (link streaming)</option>
-                <option value="hybrid">🔀 Híbrido (QR + link)</option>
+                <option value="in_person">Presencial (QR en puerta)</option>
+                <option value="virtual">Virtual (link streaming)</option>
+                <option value="hybrid">Híbrido (QR + link)</option>
               </select>
             </Field>
 
@@ -762,13 +778,16 @@ export function EventDrawer({
                   />
                 </Field>
 
-                <div className="rounded-lg bg-brand-50 border border-brand-100 px-3 py-2 text-xs text-brand-800">
-                  💡 <strong>Tip Qlick:</strong> YouTube Live es gratis y de cero
-                  fricción para el attendee. Configurá el stream como
-                  &quot;Unlisted&quot; en YouTube Studio para que solo con el link
-                  se pueda ver. <strong>Si aún no definiste el link, no es
-                  problema:</strong> creá el evento vacío, guardá y agregá el
-                  link cuando lo tengas (mismo formulario, en Edición).
+                <div className="rounded-lg bg-brand-50 border border-brand-100 px-3 py-2 text-xs text-brand-800 flex gap-2">
+                  <LucideIcon icon={Lightbulb} size="sm" tone="brand" className="flex-shrink-0 mt-0.5" />
+                  <div>
+                    <strong>Tip Qlick:</strong> YouTube Live es gratis y de cero
+                    fricción para el attendee. Configurá el stream como
+                    &quot;Unlisted&quot; en YouTube Studio para que solo con el link
+                    se pueda ver. <strong>Si aún no definiste el link, no es
+                    problema:</strong> creá el evento vacío, guardá y agregá el
+                    link cuando lo tengas (mismo formulario, en Edición).
+                  </div>
                 </div>
               </>
             )}
@@ -777,7 +796,7 @@ export function EventDrawer({
           {/* ────── Pago (migration 20260714230000) ────── */}
           <fieldset className="border-t border-brand-100 pt-4 mt-2 space-y-3">
             <legend className="text-xs font-bold uppercase tracking-wider text-brand-600 px-2">
-              💳 Pago
+              <LucideIcon icon={CreditCard} size="sm" tone="inherit" className="inline mr-1" /> Pago
             </legend>
             <div className="grid grid-cols-3 gap-3">
               <div className="col-span-2">
@@ -822,21 +841,27 @@ export function EventDrawer({
               const n = raw ? Number(raw) : 0;
               if (raw && Number.isFinite(n) && n > 0) {
                 return (
-                  <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-800">
-                    💚 <strong>Cobro activado:</strong> al guardar, el admin
-                    del evento va a poder probar el checkout en{" "}
-                    <code className="bg-emerald-100 px-1.5 py-0.5 rounded">
-                      /pagar/{form.slug || "<slug>"}
-                    </code>{" "}
-                    con tarjeta test 4242 (si Stripe está activo) o el
-                    simulador mock (si no).
+                  <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-800 flex gap-2">
+                    <LucideIcon icon={CheckCircle} size="sm" tone="brand" className="flex-shrink-0 mt-0.5" />
+                    <div>
+                      <strong>Cobro activado:</strong> al guardar, el admin
+                      del evento va a poder probar el checkout en{" "}
+                      <code className="bg-emerald-100 px-1.5 py-0.5 rounded">
+                        /pagar/{form.slug || "<slug>"}
+                      </code>{" "}
+                      con tarjeta test 4242 (si Stripe está activo) o el
+                      simulador mock (si no).
+                    </div>
                   </div>
                 );
               }
               return (
-                <div className="rounded-lg bg-brand-50 border border-brand-100 px-3 py-2 text-xs text-brand-800">
-                  🎁 <strong>Evento gratuito:</strong> no se muestra checkout
-                  al asistente. Va directo al form de confirmación.
+                <div className="rounded-lg bg-brand-50 border border-brand-100 px-3 py-2 text-xs text-brand-800 flex gap-2">
+                  <LucideIcon icon={Gift} size="sm" tone="brand" className="flex-shrink-0 mt-0.5" />
+                  <div>
+                    <strong>Evento gratuito:</strong> no se muestra checkout
+                    al asistente. Va directo al form de confirmación.
+                  </div>
                 </div>
               );
             })()}
@@ -903,8 +928,8 @@ export function EventDrawer({
                       <div>
                         <div className="font-semibold text-ink flex items-center gap-2">
                           Live
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
-                            ⚠️ Cobra dinero real
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 inline-flex items-center gap-1">
+                            <AlertTriangle className="h-3 w-3" /> Cobra dinero real
                           </span>
                         </div>
                         <div className="text-xs text-ink-muted">
@@ -948,7 +973,7 @@ export function EventDrawer({
           {/* ────── Reglas del bot (Fase 7b) — sprint v15: acordeón colapsado ────── */}
           <details className="border-t border-brand-100 pt-4 mt-2 space-y-3">
             <summary className="text-xs font-bold uppercase tracking-wider text-brand-600 px-2 cursor-pointer list-none">
-              🛠️ Reglas Locales Específicas de este Evento (Opcional — Complementan
+              <LucideIcon icon={Wrench} size="sm" tone="inherit" className="inline mr-1" /> Reglas Locales Específicas de este Evento (Opcional — Complementan
               la Torre de Control y están sujetas a las Reglas de Oro Globales)
             </summary>
             <p className="text-xs text-ink-muted px-1 pt-2">
@@ -1088,7 +1113,7 @@ export function EventDrawer({
                   onClick={handleClone}
                   aria-label="Clonar este evento (crea una copia en borrador)"
                 >
-                  {cloning ? "Clonando…" : "📋 Clonar evento"}
+                  {cloning ? "Clonando…" : "Clonar evento"}
                 </Button>
                 <Button
                   size="sm"
@@ -1099,7 +1124,7 @@ export function EventDrawer({
                   aria-label="Eliminar este evento permanentemente"
                   className="text-red-600 hover:bg-red-50 hover:text-red-700"
                 >
-                  🗑️ Eliminar
+                  <Trash2 className="h-4 w-4 mr-1 inline" /> Eliminar
                 </Button>
               </div>
               <p className="text-[10px] text-ink-muted italic">

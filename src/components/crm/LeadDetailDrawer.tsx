@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import type { Lead, LeadStatus, SalesOwner, Conversation, ConversationMessage } from "@/types";
 import { Card, Badge, Button, Input, Textarea, Field, Spinner } from "@/components/ui";
+import { LucideIcon } from "@/components/ui/Icon";
+import { AlertTriangle, Archive, Bot, Calendar, Pause, Pencil, Trash2, X } from "lucide-react";
 import {
   leadStatusLabel,
   statusTone,
@@ -693,19 +695,19 @@ export function LeadDetailDrawer({
               {realMode && currentLead.botPaused === true && (
                 currentLead.botPausedReason === "keyword_escalation" ? (
                   <Badge tone="danger" title={`Pausa por palabra clave${currentLead.botPausedAt ? ` · ${new Date(currentLead.botPausedAt).toLocaleString("es-MX")}` : ""}`}>
-                    🚨 Pausa (Palabra Clave)
+                    <LucideIcon icon={AlertTriangle} size="xs" tone="inherit" className="inline mr-1" /> Pausa (Palabra Clave)
                   </Badge>
                 ) : currentLead.botPausedReason === "ai_semantic_escalation" ? (
                   <Badge tone="warning" title={`Pausa por inferencia IA${currentLead.botPausedAt ? ` · ${new Date(currentLead.botPausedAt).toLocaleString("es-MX")}` : ""}`}>
-                    🤖 Pausa (Inferencia IA)
+                    <LucideIcon icon={Bot} size="xs" tone="inherit" className="inline mr-1" /> Pausa (Inferencia IA)
                   </Badge>
                 ) : currentLead.botPausedReason === "manual" ? (
                   <Badge tone="info" title={`Pausa manual${currentLead.botPausedAt ? ` · ${new Date(currentLead.botPausedAt).toLocaleString("es-MX")}` : ""}`}>
-                    ⏸️ Pausa (Manual)
+                    <LucideIcon icon={Pause} size="xs" tone="inherit" className="inline mr-1" /> Pausa (Manual)
                   </Badge>
                 ) : (
                   <Badge tone="warning" title={`Bot pausado${currentLead.botPausedAt ? ` · ${new Date(currentLead.botPausedAt).toLocaleString("es-MX")}` : ""}`}>
-                    🤖 bot en pausa
+                    <LucideIcon icon={Bot} size="xs" tone="inherit" className="inline mr-1" /> bot en pausa
                   </Badge>
                 )
               )}
@@ -786,8 +788,8 @@ export function LeadDetailDrawer({
             */}
             {(eventContext ?? fetchedEventContext) && (
               <div className="mt-2 inline-flex flex-wrap items-center gap-1.5 text-xs bg-brand-50 border border-brand-200 rounded-full pl-1.5 pr-3 py-1 max-w-full">
-                <span className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-brand-500 text-white text-[10px]">
-                  📅
+                <span className="inline-flex items-center justify-center h-5 w-5 rounded-full bg-brand-500 text-white">
+                  <LucideIcon icon={Calendar} size="xs" tone="inherit" />
                 </span>
                 <span className="font-semibold text-brand-800 truncate">
                   De: {(eventContext ?? fetchedEventContext)!.eventTitle}
@@ -815,7 +817,7 @@ export function LeadDetailDrawer({
             aria-label="Cerrar"
             className="shrink-0 h-9 w-9 rounded-full hover:bg-brand-50 text-ink-muted text-xl flex items-center justify-center"
           >
-            ✕
+            <X className="h-5 w-5" />
           </button>
         </div>
 
@@ -836,7 +838,7 @@ export function LeadDetailDrawer({
                     className="text-xs font-semibold text-brand-600 hover:text-brand-700 hover:underline inline-flex items-center gap-1"
                     aria-label="Editar nombre, email y teléfono"
                   >
-                    ✏️ Editar
+                    <LucideIcon icon={Pencil} size="xs" tone="inherit" className="inline mr-1" /> Editar
                   </button>
                 )}
               </div>
@@ -1063,7 +1065,7 @@ export function LeadDetailDrawer({
                     ? "Archivando..."
                     : currentLead.status === "archived"
                     ? "Archivado"
-                    : "🗄️ Archivar"}
+                    : "Archivar"}
                 </Button>
               </div>
               {archiveState === "error" && archiveMsg && (
@@ -1407,7 +1409,7 @@ export function LeadDetailDrawer({
                       title="Soft delete: oculta los mensajes del CRM preservando el audit log (LGPD)"
                       className="text-xs"
                     >
-                      🗑️ Eliminar conversación
+                      <LucideIcon icon={Trash2} size="sm" tone="inherit" className="inline mr-1" /> Eliminar conversación
                     </Button>
                   )}
                 </div>

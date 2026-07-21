@@ -15,3 +15,9 @@ export {
 export { SubmitButton } from "./SubmitButton";
 export { Tooltip } from "./Tooltip";
 export type { TooltipProps } from "./Tooltip";
+export { Modal } from "./Modal";
+export type { ModalProps } from "./Modal";
+export { Drawer } from "./Drawer";
+export { Table, THead, TBody, TRow, TH, TD } from "./Table";
+export { Icon, LucideIcon } from "./Icon";
+export type { IconProps, IconSize, LucideIconProps } from "./Icon";
