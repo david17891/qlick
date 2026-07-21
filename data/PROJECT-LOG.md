@@ -313,3 +313,26 @@ ote_type + is_pinned).
   - 1 test: \	ests/services-orders.test.mjs\ (+4 tests)
 
 - **Lecci�n operativa:** "1 servicio = N variants es el modelo correcto. 1 variant = 1 row con includes[] = arquitectura extensible sin c�digo. Si hubiera modelado 'paquete' como un campo enum en services, hoy tendr�a que migrar para agregar el paquete Pro de Google Business Profile. El servicio GBP hereda TODO: el modal de checkout, el admin tab, el email de notificaci�n, el flujo de Stripe. Solo es INSERT a la DB. 0 l�neas de c�digo."
+
+
+## 2026-07-21 09:35 Mavis — feat(admin): 1-click payment link para service_orders
+
+- **Pregunta:** David dijo 'proceso, contactar y revisar, aunque implica quizá no obtener servicio' y luego 'metelo de una vez'. El sprint FASE 8 (catálogo de servicios + admin) tiene el flujo 'pending_contact' → admin contacta → admin genera link Stripe → cliente paga → order avanza a 'contacted'. Faltaba la UI admin para generar el link y la infra del webhook para servicios.
+
+- **Lo entregado (commit 6065f03):**
+  - 'src/lib/payments/payment-provider.ts': ProductRefService al discriminated union (kind: 'service' + orderId + customerEmail).
+  - 'src/app/api/admin/orders/[id]/payment-link/route.ts' (NEW): POST admin-only (requireAdmin) + rate limit 5/min por email + validación status + resolución variant + provider.createCheckout(kind: 'service') + update order (payment_mode='stripe' + payment_reference=session_id) + auto-log timeline event 'payment_link_generated'.
+  - 'src/components/admin/OrderDetailDrawer.tsx': nuevo PaymentLinkCard en InfoTab. Visible solo cuando paymentMode='pending' y status no terminal. Flow: [Generar link de pago] → muestra URL con [Copiar / Abrir / Enviar por WhatsApp (pre-armado) / Regenerar].
+
+- **Verificación:** type-check 0, lint 0, build OK, 1482/1484 tests (2 human_first E2E pre-existing fail, no relacionados). Push OK, deploy 'dpl_7ibLsAb6QxCBvuE5jdA1isG6R7dT' Ready, alias 'qlick.digital' reasignado, endpoint responde 401 sin auth.
+
+- **Decisiones operativas:**
+  - WhatsApp pre-armado: usa el teléfono del cliente del order. Si no hay, oculta el botón (solo Copiar / Abrir).
+  - Endpoint solo funciona con Stripe (provider.name !== 'stripe' → 400). Mock/Conekta/MP no tienen equivalente de 'generar link para order existente'.
+  - Regenerar link crea uno NUEVO en Stripe. El anterior queda en la timeline del order (auditoría).
+  - Si el cliente paga, el webhook actualiza a status='contacted' (no avanza más allá — el admin decide cuándo seguir).
+
+- **Pendientes:**
+  - E2E test del flujo completo en prod con Stripe test mode (David lo puede probar: admin → generar link → pagar con tarjeta 4242 4242 4242 4242 → ver order avanzar).
+  - Borrar 'CursosClient.tsx' ahora que '/cursos' es landing estática (rollback trivial antes, ahora seguro).
+  - Documentar patrón 1-click payment link en handoff FASE 8.
