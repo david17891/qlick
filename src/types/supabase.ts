@@ -2056,6 +2056,336 @@ export type Database = {
           },
         ]
       }
+      service_order_documents: {
+        Row: {
+          created_at: string
+          description: string | null
+          file_name: string
+          file_size_bytes: number | null
+          file_type: string
+          file_url: string
+          id: string
+          mime_type: string | null
+          order_id: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          file_name: string
+          file_size_bytes?: number | null
+          file_type?: string
+          file_url: string
+          id?: string
+          mime_type?: string | null
+          order_id: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          file_name?: string
+          file_size_bytes?: number | null
+          file_type?: string
+          file_url?: string
+          id?: string
+          mime_type?: string | null
+          order_id?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_order_documents_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "service_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      service_order_events: {
+        Row: {
+          actor_id: string | null
+          actor_type: string
+          created_at: string
+          id: string
+          order_id: string
+          payload: Json
+          type: string
+        }
+        Insert: {
+          actor_id?: string | null
+          actor_type?: string
+          created_at?: string
+          id?: string
+          order_id: string
+          payload?: Json
+          type: string
+        }
+        Update: {
+          actor_id?: string | null
+          actor_type?: string
+          created_at?: string
+          id?: string
+          order_id?: string
+          payload?: Json
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_order_events_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "service_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      service_order_notes: {
+        Row: {
+          author_id: string | null
+          body: string
+          created_at: string
+          id: string
+          is_pinned: boolean
+          note_type: string
+          order_id: string
+          updated_at: string
+        }
+        Insert: {
+          author_id?: string | null
+          body: string
+          created_at?: string
+          id?: string
+          is_pinned?: boolean
+          note_type?: string
+          order_id: string
+          updated_at?: string
+        }
+        Update: {
+          author_id?: string | null
+          body?: string
+          created_at?: string
+          id?: string
+          is_pinned?: boolean
+          note_type?: string
+          order_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_order_notes_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "service_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      service_orders: {
+        Row: {
+          amount_mxn: number
+          assigned_to: string | null
+          cancellation_reason: string | null
+          cancelled_at: string | null
+          created_at: string
+          currency: string
+          customer_email: string
+          customer_name: string
+          customer_notes: string | null
+          customer_phone: string | null
+          delivered_at: string | null
+          id: string
+          lead_id: string | null
+          order_number: string
+          payment_mode: string
+          payment_reference: string | null
+          scheduled_at: string | null
+          service_id: string
+          status: string
+          updated_at: string
+          variant_id: string
+        }
+        Insert: {
+          amount_mxn: number
+          assigned_to?: string | null
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          created_at?: string
+          currency?: string
+          customer_email: string
+          customer_name: string
+          customer_notes?: string | null
+          customer_phone?: string | null
+          delivered_at?: string | null
+          id?: string
+          lead_id?: string | null
+          order_number: string
+          payment_mode?: string
+          payment_reference?: string | null
+          scheduled_at?: string | null
+          service_id: string
+          status?: string
+          updated_at?: string
+          variant_id: string
+        }
+        Update: {
+          amount_mxn?: number
+          assigned_to?: string | null
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          created_at?: string
+          currency?: string
+          customer_email?: string
+          customer_name?: string
+          customer_notes?: string | null
+          customer_phone?: string | null
+          delivered_at?: string | null
+          id?: string
+          lead_id?: string | null
+          order_number?: string
+          payment_mode?: string
+          payment_reference?: string | null
+          scheduled_at?: string | null
+          service_id?: string
+          status?: string
+          updated_at?: string
+          variant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_orders_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_orders_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_orders_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "service_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      service_variants: {
+        Row: {
+          created_at: string
+          delivery_days_max: number | null
+          delivery_days_min: number | null
+          description: string | null
+          display_order: number
+          id: string
+          is_active: boolean
+          label: string
+          price_mxn: number
+          service_id: string
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          delivery_days_max?: number | null
+          delivery_days_min?: number | null
+          description?: string | null
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          label: string
+          price_mxn: number
+          service_id: string
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          delivery_days_max?: number | null
+          delivery_days_min?: number | null
+          description?: string | null
+          display_order?: number
+          id?: string
+          is_active?: boolean
+          label?: string
+          price_mxn?: number
+          service_id?: string
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_variants_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      services: {
+        Row: {
+          category: string
+          created_at: string
+          default_currency: string
+          default_price_mxn: number | null
+          deliverable_type: string | null
+          display_name: string
+          display_order: number
+          icon: string | null
+          id: string
+          is_active: boolean
+          long_description: string | null
+          requires_documents: boolean
+          requires_scheduling: boolean
+          short_description: string | null
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          default_currency?: string
+          default_price_mxn?: number | null
+          deliverable_type?: string | null
+          display_name: string
+          display_order?: number
+          icon?: string | null
+          id?: string
+          is_active?: boolean
+          long_description?: string | null
+          requires_documents?: boolean
+          requires_scheduling?: boolean
+          short_description?: string | null
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          default_currency?: string
+          default_price_mxn?: number | null
+          deliverable_type?: string | null
+          display_name?: string
+          display_order?: number
+          icon?: string | null
+          id?: string
+          is_active?: boolean
+          long_description?: string | null
+          requires_documents?: boolean
+          requires_scheduling?: boolean
+          short_description?: string | null
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       system_settings: {
         Row: {
           description: string | null
