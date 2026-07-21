@@ -109,27 +109,55 @@ export function SectionHeading({
   title,
   description,
   center,
-  className
+  className,
+  variant = "light"
 }: {
   eyebrow?: string;
   title: string;
   description?: string;
   center?: boolean;
   className?: string;
+  /**
+   * Variante de color del heading para evitar el hack
+   * `[&_h2]:text-white [&_p]:text-white/70` que se usaba antes.
+   * - light: textos oscuros sobre fondo claro (default)
+   * - dark: textos blancos sobre fondo oscuro
+   * - brand: eyebrow en morado, heading con gradient
+   */
+  variant?: "light" | "dark" | "brand";
 }) {
+  const headingColor =
+    variant === "dark" ? "text-white" : variant === "brand" ? "text-ink" : "text-ink";
+  const descColor =
+    variant === "dark" ? "text-white/80" : "text-ink-muted";
+  const eyebrowColor =
+    variant === "dark"
+      ? "text-brand-300"
+      : variant === "brand"
+        ? "text-brand-600"
+        : "text-brand-600";
+
   return (
     <div className={cn(center && "text-center mx-auto", "max-w-2xl", className)}>
       {eyebrow && (
-        <p className="text-sm font-bold uppercase tracking-wider text-brand-600 mb-2">
+        <p
+          className={cn(
+            "text-sm font-bold uppercase tracking-wider mb-2",
+            eyebrowColor
+          )}
+        >
           {eyebrow}
         </p>
       )}
-      <h2 className="text-3xl sm:text-4xl font-bold text-ink font-display">
+      <h2
+        className={cn(
+          "text-3xl sm:text-4xl font-bold font-display",
+          headingColor
+        )}
+      >
         {title}
       </h2>
-      {description && (
-        <p className="mt-3 text-ink-muted text-lg">{description}</p>
-      )}
+      {description && <p className={cn("mt-3 text-lg", descColor)}>{description}</p>}
     </div>
   );
 }

@@ -4,50 +4,53 @@ import { useFormStatus } from "react-dom";
 import { cn } from "@/lib/utils";
 
 /**
- * Boton de submit que muestra "Procesando..." mientras el form esta pending.
+ * Botón de submit con estado pending. Se usa con `<form action={serverAction}>`.
  *
- * Se usa en vez del `<button type="submit">` normal dentro de un
- * `<form action={serverAction}>`. Aprovecha `useFormStatus` (React 18+)
+ * Refactor 2026-07-21 (FASE 3 plan estético): se alinea con `Button` del UI
+ * usando `rounded-full` y los mismos variants. Aprovecha `useFormStatus` (React 18+)
  * que da el estado del form sin necesidad de useState.
  *
- * Patron:
+ * Patrón:
  *   <form action={someServerAction.bind(null, null)}>
  *     <input type="hidden" name="x" value="y" />
  *     <SubmitButton>Aceptar</SubmitButton>
  *   </form>
  *
- * Mientras el form esta en pending, el boton se deshabilita y muestra
- * el `pendingLabel` (default: "Procesando..."). El `type` por default
- * es "submit" (no necesita pasarlo).
+ * Mientras el form está en pending, el botón se deshabilita y muestra
+ * el `pendingLabel` (default: "Procesando...").
  */
 export function SubmitButton({
   children,
   pendingLabel = "Procesando...",
   variant = "primary",
-  size = "sm",
+  size = "md",
   className,
-  fullWidth,
+  fullWidth
 }: {
   children: React.ReactNode;
   pendingLabel?: string;
-  variant?: "primary" | "outline" | "ghost";
-  size?: "sm" | "md";
+  variant?: "primary" | "outline" | "ghost" | "accent";
+  size?: "sm" | "md" | "lg";
   className?: string;
   fullWidth?: boolean;
 }) {
   const { pending } = useFormStatus();
 
-  // Variant styles. Replica el look del Button del UI pero sin
-  // importar el componente (que es server-side y no acepta children
-  // condicionales basados en useFormStatus).
+  // Variants alineados con Button.tsx (mismas clases, mismo radius)
   const variantClass =
     variant === "outline"
-      ? "border border-brand-200 text-ink-soft hover:bg-brand-50"
+      ? "border-2 border-brand-500 text-brand-700 hover:bg-brand-50"
       : variant === "ghost"
-        ? "text-ink-soft hover:bg-brand-50"
-        : "bg-brand-500 text-white hover:bg-brand-600 shadow-sm";
+        ? "text-ink hover:bg-brand-50"
+        : variant === "accent"
+          ? "bg-brand-accent text-ink hover:brightness-95"
+          : "bg-brand-500 text-white hover:bg-brand-600";
   const sizeClass =
-    size === "md" ? "text-sm px-4 py-2" : "text-xs px-2 py-1";
+    size === "sm"
+      ? "text-sm px-4 py-2"
+      : size === "lg"
+        ? "text-base px-8 py-4"
+        : "text-sm px-6 py-3";
   const widthClass = fullWidth ? "w-full justify-center" : "";
 
   return (
@@ -55,11 +58,13 @@ export function SubmitButton({
       type="submit"
       disabled={pending}
       className={cn(
-        "inline-flex items-center justify-center gap-1.5 rounded-lg font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed",
+        "inline-flex items-center justify-center gap-2 rounded-full font-semibold transition-all duration-200",
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2",
+        "disabled:opacity-50 disabled:pointer-events-none",
         variantClass,
         sizeClass,
         widthClass,
-        className,
+        className
       )}
     >
       {pending ? (
