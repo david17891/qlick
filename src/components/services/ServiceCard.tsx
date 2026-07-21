@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Card, LucideIcon } from "@/components/ui";
-import { CheckCircle2, Star } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import { formatMXN } from "@/lib/utils";
 import { resolveIcon } from "./ServiceIcon";
 import type { ServiceWithVariants } from "@/types/services";
@@ -8,21 +8,18 @@ import type { ServiceWithVariants } from "@/types/services";
 /**
  * Card del catálogo público de servicios.
  *
- * Diseño v2 (2026-07-21 — feedback de David "actualización del módulo
- * de servicios" + screenshot de referencia):
+ * Diseño v3 (2026-07-21 — David "quitale lo de más popular, ya que no
+ * sale bien"): el badge "MÁS POPULAR" se removió del render. El campo
+ * `is_popular` en la DB se mantiene para futuro uso (badge posicionado
+ * correctamente, ribbon lateral, etc.) pero la card actual no lo usa.
+ *
+ * Estructura:
  * - Header con brand-gradient (mismo estilo que `EventCard` en `/eventos`):
  *   badge con N paquetes en top-right, icon pequeño + título + descripción
  *   corta en blanco.
- * - Si el servicio es `isPopular`, se muestra un badge "MÁS POPULAR" en
- *   top-center (estilo teal/emerald + icono estrella).
  * - Body blanco con bullet list de `service.bullets` (features comunes a
  *   todos los paquetes), precio "desde" y CTA "Ver paquetes".
  * - Border redondeado completo (Card usa `rounded-2xl` por default).
- * - Sin icon grande separado (estaba desperdiciando espacio en el header).
- *
- * Decisión: el header morado con título blanco adentro es la firma de
- * la marca. Es consistente con las cards de eventos y reemplaza el patrón
- * viejo (icon grande en glass + título negro afuera).
  */
 export function ServiceCard({ service }: { service: ServiceWithVariants }) {
   const minPrice =
@@ -45,16 +42,6 @@ export function ServiceCard({ service }: { service: ServiceWithVariants }) {
             <div className="absolute right-3 top-3">
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-white/95 text-brand-700">
                 {service.variants.length} {service.variants.length === 1 ? "paquete" : "paquetes"}
-              </span>
-            </div>
-          )}
-
-          {/* Badge "MÁS POPULAR" en top-center (estilo destacado verde) */}
-          {service.isPopular && (
-            <div className="absolute left-1/2 -translate-x-1/2 top-0 -translate-y-1/2 z-10">
-              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500 text-white shadow-md uppercase tracking-wider">
-                <LucideIcon icon={Star} size="sm" className="text-white fill-white" />
-                Más popular
               </span>
             </div>
           )}
