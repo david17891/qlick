@@ -56,7 +56,7 @@ export function ReservarForm({ demo, services, successHref }: ReservarFormProps)
 
   if (done) {
     return (
-      <div className="mx-auto max-w-2xl rounded-2xl border border-neutral-200 bg-[#fdf8f5] p-8 text-center">
+      <div className="mx-auto flex min-h-[60vh] max-w-2xl flex-col items-center justify-center rounded-2xl border border-neutral-200 bg-[#fdf8f5] p-8 text-center">
         <div
           className="mx-auto flex h-14 w-14 items-center justify-center rounded-full text-2xl"
           style={{ backgroundColor: `${ACCENT_DARK}1f`, color: ACCENT_DARK }}

@@ -424,29 +424,32 @@ export default function Demo2B() {
           <div className="mt-10 grid gap-6 sm:grid-cols-3">
             {[
               {
+                slug: "como-constituir-sas-mexico-2026",
                 title: "Cómo constituir una SAS en México en 2026",
                 date: "15 junio 2026",
                 excerpt:
                   "Guía paso a paso con costos reales, tiempos y los errores que más vemos en clientes primerizos.",
-                src: "/servicios/web/mendoza-oficina.jpg",
+                src: "/servicios/web/mendoza-blog-sas.jpg",
               },
               {
+                slug: "derecho-familiar-nueva-ley",
                 title: "Lo que cambia en derecho familiar con la nueva ley",
                 date: "3 abril 2026",
                 excerpt:
                   "Análisis de las reformas recientes en materia de pensiones alimenticias y custodia.",
-                src: "/servicios/web/mendoza-reunion.jpg",
+                src: "/servicios/web/mendoza-blog-familia.jpg",
               },
               {
+                slug: "clausulas-nunca-firmar-contrato-mercantil",
                 title: "5 cláusulas que NUNCA debes firmar en un contrato mercantil",
                 date: "20 febrero 2026",
                 excerpt:
                   "El top 5 de cláusulas que vemos firmar a clientes sin leer y que después cuestan miles de pesos.",
-                src: "/servicios/web/mendoza-hero.jpg",
+                src: "/servicios/web/mendoza-blog-contrato.jpg",
               },
             ].map((post) => (
               <article
-                key={post.title}
+                key={post.slug}
                 className="overflow-hidden rounded-2xl border border-neutral-200 bg-white"
               >
                 <div className="relative aspect-[16/9] w-full">
@@ -472,7 +475,7 @@ export default function Demo2B() {
                     {post.excerpt}
                   </p>
                   <a
-                    href="#"
+                    href={`/diseno-paginas/demo-2b/blog/${post.slug}`}
                     className="mt-3 inline-block text-sm font-semibold"
                     style={{ color: ACCENT_DARK }}
                   >

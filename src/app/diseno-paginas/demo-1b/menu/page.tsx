@@ -66,20 +66,32 @@ export default function Demo1BMenu() {
             "linear-gradient(135deg, #fff8f1 0%, #fed7aa 50%, #fdba74 100%)",
         }}
       >
-        <div className="mx-auto max-w-6xl px-4 py-14 sm:px-6 sm:py-20">
-          <span
-            className="inline-block rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em]"
-            style={{ backgroundColor: `${ACCENT}22`, color: ACCENT_DARK }}
-          >
-            Menú completo
-          </span>
-          <h1 className="mt-4 font-display text-4xl font-bold leading-[1.05] tracking-tight text-neutral-950 sm:text-6xl">
-            Todo nuestro{" "}
-            <span style={{ color: ACCENT_DARK }}>menú</span>.
-          </h1>
-          <p className="mt-4 max-w-lg text-lg leading-relaxed text-neutral-800">
-            12 tacos diferentes más 4 para acompañar. Todo preparado al momento.
-          </p>
+        <div className="mx-auto grid max-w-6xl items-center gap-10 px-4 py-14 sm:px-6 sm:py-20 md:grid-cols-2">
+          <div>
+            <span
+              className="inline-block rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em]"
+              style={{ backgroundColor: `${ACCENT}22`, color: ACCENT_DARK }}
+            >
+              Menú completo
+            </span>
+            <h1 className="mt-4 font-display text-4xl font-bold leading-[1.05] tracking-tight text-neutral-950 sm:text-6xl">
+              Todo nuestro{" "}
+              <span style={{ color: ACCENT_DARK }}>menú</span>.
+            </h1>
+            <p className="mt-4 max-w-lg text-lg leading-relaxed text-neutral-800">
+              12 tacos diferentes más 4 para acompañar. Todo preparado al momento.
+            </p>
+          </div>
+          <div className="relative aspect-[4/3] w-full overflow-hidden rounded-[2rem] shadow-xl">
+            <Image
+              src="/servicios/web/doncarlos-menu.jpg"
+              alt="Plato de tacos al carbón servidos con salsas y limones"
+              fill
+              priority
+              sizes="(max-width: 768px) 100vw, 50vw"
+              className="object-cover"
+            />
+          </div>
         </div>
       </section>
 

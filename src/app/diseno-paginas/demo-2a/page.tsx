@@ -326,11 +326,12 @@ export default function Demo2A() {
                 ))}
               </ul>
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               {[
                 { name: "Escáner 3D", src: "/servicios/web/sonrisa-escaner.jpg" },
                 { name: "Clínica", src: "/servicios/web/sonrisa-clinica.jpg" },
                 { name: "Consultorio", src: "/servicios/web/sonrisa-consultorio.jpg" },
+                { name: "Atención al paciente", src: "/servicios/web/sonrisa-atencion.jpg" },
               ].map((tech) => (
                 <div
                   key={tech.name}
@@ -340,7 +341,7 @@ export default function Demo2A() {
                     src={tech.src}
                     alt={tech.name}
                     fill
-                    sizes="(max-width: 768px) 33vw, 25vw"
+                    sizes="(max-width: 768px) 50vw, 25vw"
                     className="object-cover"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
@@ -442,6 +443,7 @@ export default function Demo2A() {
           <div className="mt-10 grid gap-6 sm:grid-cols-3">
             {[
               {
+                slug: "como-cuidar-alineadores-invisibles",
                 title: "Cómo cuidar tus alineadores invisibles día a día",
                 date: "12 junio 2026",
                 excerpt:
@@ -449,6 +451,7 @@ export default function Demo2A() {
                 src: "/servicios/web/sonrisa-blog-alineadores.jpg",
               },
               {
+                slug: "senales-necesitas-limpieza-dental",
                 title: "5 señales de que necesitas una limpieza profesional",
                 date: "28 mayo 2026",
                 excerpt:
@@ -456,6 +459,7 @@ export default function Demo2A() {
                 src: "/servicios/web/sonrisa-blog-limpieza.jpg",
               },
               {
+                slug: "implantes-dentales-guia-decision",
                 title: "Implantes dentales: lo que debes saber antes de decidir",
                 date: "8 abril 2026",
                 excerpt:
@@ -464,7 +468,7 @@ export default function Demo2A() {
               },
             ].map((post) => (
               <article
-                key={post.title}
+                key={post.slug}
                 className="overflow-hidden rounded-2xl border border-neutral-200 bg-white transition hover:shadow-md"
               >
                 <div className="relative aspect-[16/9] w-full">
@@ -490,7 +494,7 @@ export default function Demo2A() {
                     {post.excerpt}
                   </p>
                   <a
-                    href="#"
+                    href={`/diseno-paginas/demo-2a/blog/${post.slug}`}
                     className="mt-3 inline-block text-sm font-semibold"
                     style={{ color: ACCENT_DARK }}
                   >

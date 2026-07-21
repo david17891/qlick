@@ -217,46 +217,57 @@ export default function Demo1A() {
         className="py-20 sm:py-24"
         style={{ backgroundColor: "#fce8e9" }}
       >
-        <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
-          <span
-            className="inline-block text-[10px] font-semibold uppercase tracking-[0.3em]"
-            style={{ color: ACCENT_DARK }}
-          >
-            Sobre nosotras
-          </span>
-          <h2 className="mt-2 font-display text-3xl font-bold tracking-tight text-neutral-950 sm:text-4xl">
-            Estudio de la Roma Norte desde 2016
-          </h2>
-          <p className="mt-5 text-base leading-relaxed text-neutral-700">
-            Cortes, color, manicura y faciales con cita con horario real y
-            productos profesionales de verdad. No es un spa impersonal: te
-            atiende siempre la misma estilista que conoce tu cabello.
-          </p>
-          <div className="mt-8 grid grid-cols-3 gap-4 border-t border-neutral-300/50 pt-6 text-center">
-            <div>
-              <div className="font-display text-2xl font-bold" style={{ color: ACCENT_DARK }}>
-                10+
+        <div className="mx-auto grid max-w-6xl items-center gap-10 px-4 sm:px-6 md:grid-cols-2">
+          <div>
+            <span
+              className="inline-block text-[10px] font-semibold uppercase tracking-[0.3em]"
+              style={{ color: ACCENT_DARK }}
+            >
+              Sobre nosotras
+            </span>
+            <h2 className="mt-2 font-display text-3xl font-bold tracking-tight text-neutral-950 sm:text-4xl">
+              Estudio de la Roma Norte desde 2016
+            </h2>
+            <p className="mt-5 text-base leading-relaxed text-neutral-700">
+              Cortes, color, manicura y faciales con cita con horario real y
+              productos profesionales de verdad. No es un spa impersonal: te
+              atiende siempre la misma estilista que conoce tu cabello.
+            </p>
+            <div className="mt-8 grid grid-cols-3 gap-4 border-t border-neutral-300/50 pt-6">
+              <div>
+                <div className="font-display text-2xl font-bold" style={{ color: ACCENT_DARK }}>
+                  10+
+                </div>
+                <div className="mt-1 text-xs uppercase tracking-[0.15em] text-neutral-600">
+                  años
+                </div>
               </div>
-              <div className="mt-1 text-xs uppercase tracking-[0.15em] text-neutral-600">
-                años
+              <div>
+                <div className="font-display text-2xl font-bold" style={{ color: ACCENT_DARK }}>
+                  2,400
+                </div>
+                <div className="mt-1 text-xs uppercase tracking-[0.15em] text-neutral-600">
+                  clientas felices
+                </div>
+              </div>
+              <div>
+                <div className="font-display text-2xl font-bold" style={{ color: ACCENT_DARK }}>
+                  4.9
+                </div>
+                <div className="mt-1 text-xs uppercase tracking-[0.15em] text-neutral-600">
+                  Google Reviews
+                </div>
               </div>
             </div>
-            <div>
-              <div className="font-display text-2xl font-bold" style={{ color: ACCENT_DARK }}>
-                2,400
-              </div>
-              <div className="mt-1 text-xs uppercase tracking-[0.15em] text-neutral-600">
-                clientas felices
-              </div>
-            </div>
-            <div>
-              <div className="font-display text-2xl font-bold" style={{ color: ACCENT_DARK }}>
-                4.9
-              </div>
-              <div className="mt-1 text-xs uppercase tracking-[0.15em] text-neutral-600">
-                Google Reviews
-              </div>
-            </div>
+          </div>
+          <div className="relative aspect-[4/5] w-full overflow-hidden rounded-[2rem] shadow-xl">
+            <Image
+              src="/servicios/web/lumiere-equipo.jpg"
+              alt="Equipo de Lumière Studio trabajando en el salón"
+              fill
+              sizes="(max-width: 768px) 100vw, 50vw"
+              className="object-cover"
+            />
           </div>
         </div>
       </section>

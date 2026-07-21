@@ -207,46 +207,57 @@ export default function Demo1B() {
         className="py-20 sm:py-24"
         style={{ backgroundColor: "#fed7aa" }}
       >
-        <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
-          <span
-            className="inline-block text-[10px] font-semibold uppercase tracking-[0.3em]"
-            style={{ color: ACCENT_DARK }}
-          >
-            Sobre nosotros
-          </span>
-          <h2 className="mt-2 font-display text-3xl font-bold tracking-tight text-neutral-950 sm:text-4xl">
-            Negocio familiar de Coyoacán desde 1987
-          </h2>
-          <p className="mt-5 text-base leading-relaxed text-neutral-800">
-            Carne al carbón, al pastor y de guisado. No cambiamos la receta ni
-            subimos precios sin avisar. Av. Centenario 91, abierto todos los
-            días de 18:00 a 02:00.
-          </p>
-          <div className="mt-8 grid grid-cols-3 gap-4 border-t border-neutral-900/10 pt-6 text-center">
-            <div>
-              <div className="font-display text-2xl font-bold" style={{ color: ACCENT_DARK }}>
-                37
+        <div className="mx-auto grid max-w-6xl items-center gap-10 px-4 sm:px-6 md:grid-cols-2">
+          <div>
+            <span
+              className="inline-block text-[10px] font-semibold uppercase tracking-[0.3em]"
+              style={{ color: ACCENT_DARK }}
+            >
+              Sobre nosotros
+            </span>
+            <h2 className="mt-2 font-display text-3xl font-bold tracking-tight text-neutral-950 sm:text-4xl">
+              Negocio familiar de Coyoacán desde 1987
+            </h2>
+            <p className="mt-5 text-base leading-relaxed text-neutral-800">
+              Carne al carbón, al pastor y de guisado. No cambiamos la receta ni
+              subimos precios sin avisar. Av. Centenario 91, abierto todos los
+              días de 18:00 a 02:00.
+            </p>
+            <div className="mt-8 grid grid-cols-3 gap-4 border-t border-neutral-900/10 pt-6">
+              <div>
+                <div className="font-display text-2xl font-bold" style={{ color: ACCENT_DARK }}>
+                  37
+                </div>
+                <div className="mt-1 text-xs uppercase tracking-[0.15em] text-neutral-700">
+                  años sirviendo
+                </div>
               </div>
-              <div className="mt-1 text-xs uppercase tracking-[0.15em] text-neutral-700">
-                años sirviendo
+              <div>
+                <div className="font-display text-2xl font-bold" style={{ color: ACCENT_DARK }}>
+                  9
+                </div>
+                <div className="mt-1 text-xs uppercase tracking-[0.15em] text-neutral-700">
+                  tipos de taco
+                </div>
+              </div>
+              <div>
+                <div className="font-display text-2xl font-bold" style={{ color: ACCENT_DARK }}>
+                  ∞
+                </div>
+                <div className="mt-1 text-xs uppercase tracking-[0.15em] text-neutral-700">
+                  consomé gratis
+                </div>
               </div>
             </div>
-            <div>
-              <div className="font-display text-2xl font-bold" style={{ color: ACCENT_DARK }}>
-                9
-              </div>
-              <div className="mt-1 text-xs uppercase tracking-[0.15em] text-neutral-700">
-                tipos de taco
-              </div>
-            </div>
-            <div>
-              <div className="font-display text-2xl font-bold" style={{ color: ACCENT_DARK }}>
-                ∞
-              </div>
-              <div className="mt-1 text-xs uppercase tracking-[0.15em] text-neutral-700">
-                consomé gratis
-              </div>
-            </div>
+          </div>
+          <div className="relative aspect-[4/5] w-full overflow-hidden rounded-[2rem] shadow-xl">
+            <Image
+              src="/servicios/web/doncarlos-salsas.jpg"
+              alt="Salsas de la casa en la Taquería Don Carlos"
+              fill
+              sizes="(max-width: 768px) 100vw, 50vw"
+              className="object-cover"
+            />
           </div>
         </div>
       </section>
