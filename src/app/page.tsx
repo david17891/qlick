@@ -5,6 +5,7 @@ import { Container, Button, Card, Badge, SectionHeading } from "@/components/ui"
 import { CourseCard } from "@/components/course";
 import { Logo, Isotipo } from "@/components/brand";
 import { WhatsAppButton } from "@/components/contact/WhatsAppButton";
+import { Reveal } from "@/components/feedback/Reveal";
 import { getPublishedCourses } from "@/lib/lms/courses-server";
 import { getCourseStats } from "@/lib/data/courses";
 import { testimonials } from "@/lib/data/content";
@@ -227,12 +228,14 @@ export default async function HomePage() {
                 title: "Soporte humano",
                 body: "Dudas reales reciben respuestas reales. No te dejamos solo con los videos."
               }
-            ].map((b) => (
-              <Card key={b.title} hover className="p-6">
-                <div className="text-3xl mb-3">{b.icon}</div>
-                <h3 className="font-bold text-lg text-ink">{b.title}</h3>
-                <p className="mt-2 text-ink-muted">{b.body}</p>
-              </Card>
+            ].map((b, i) => (
+              <Reveal key={b.title} delay={i * 80}>
+                <Card hover className="p-6 h-full">
+                  <div className="text-3xl mb-3">{b.icon}</div>
+                  <h3 className="font-bold text-lg text-ink">{b.title}</h3>
+                  <p className="mt-2 text-ink-muted">{b.body}</p>
+                </Card>
+              </Reveal>
             ))}
           </div>
         </Container>
@@ -252,8 +255,10 @@ export default async function HomePage() {
             </Button>
           </div>
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {featured.map((c) => (
-              <CourseCard key={c.id} course={c} />
+            {featured.map((c, i) => (
+              <Reveal key={c.id} delay={i * 100}>
+                <CourseCard course={c} />
+              </Reveal>
             ))}
           </div>
         </Container>
@@ -284,14 +289,16 @@ export default async function HomePage() {
                 title: "Mide y crece",
                 body: "Trackea tus resultados, itera y certifícate. Vuelve al contenido cuando quieras refrescar."
               }
-            ].map((s) => (
-              <div key={s.step} className="relative">
-                <span className="text-6xl font-bold text-brand-200 font-display">
-                  {s.step}
-                </span>
-                <h3 className="mt-2 font-bold text-xl text-ink">{s.title}</h3>
-                <p className="mt-2 text-ink-muted">{s.body}</p>
-              </div>
+            ].map((s, i) => (
+              <Reveal key={s.step} delay={i * 120}>
+                <div className="relative">
+                  <span className="text-6xl font-bold text-brand-200 font-display">
+                    {s.step}
+                  </span>
+                  <h3 className="mt-2 font-bold text-xl text-ink">{s.title}</h3>
+                  <p className="mt-2 text-ink-muted">{s.body}</p>
+                </div>
+              </Reveal>
             ))}
           </div>
         </Container>
@@ -307,24 +314,23 @@ export default async function HomePage() {
             className="[&_h2]:text-white [&_p]:text-white/70"
           />
           <div className="mt-12 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-            {testimonials.map((t) => (
-              <div
-                key={t.id}
-                className="rounded-2xl bg-white/5 border border-white/10 p-6 backdrop-blur"
-              >
-                <div className="text-amber-400 text-sm mb-3">
-                  {"★".repeat(t.rating)}
-                  <span className="text-white/30">{"★".repeat(5 - t.rating)}</span>
+            {testimonials.map((t, i) => (
+              <Reveal key={t.id} delay={i * 100}>
+                <div className="rounded-2xl bg-white/5 border border-white/10 p-6 backdrop-blur h-full">
+                  <div className="text-amber-400 text-sm mb-3">
+                    {"★".repeat(t.rating)}
+                    <span className="text-white/30">{"★".repeat(5 - t.rating)}</span>
+                  </div>
+                  <p className="text-sm text-white/90 leading-relaxed">"{t.quote}"</p>
+                  <div className="mt-4 pt-4 border-t border-white/10">
+                    <p className="font-semibold text-white">{t.name}</p>
+                    <p className="text-xs text-white/60">
+                      {t.role}
+                      {t.company ? ` · ${t.company}` : ""}
+                    </p>
+                  </div>
                 </div>
-                <p className="text-sm text-white/90 leading-relaxed">"{t.quote}"</p>
-                <div className="mt-4 pt-4 border-t border-white/10">
-                  <p className="font-semibold text-white">{t.name}</p>
-                  <p className="text-xs text-white/60">
-                    {t.role}
-                    {t.company ? ` · ${t.company}` : ""}
-                  </p>
-                </div>
-              </div>
+              </Reveal>
             ))}
           </div>
         </Container>
@@ -340,18 +346,20 @@ export default async function HomePage() {
             description="No son teóricos: son operadores que llevan años generando resultados."
           />
           <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {["inst_sofia", "inst_andres", "inst_luisa", "inst_emilio"].map((id) => {
+            {["inst_sofia", "inst_andres", "inst_luisa", "inst_emilio"].map((id, i) => {
               const ins = getInstructorById(id);
               if (!ins) return null;
               return (
-                <Card key={id} className="p-6 text-center">
-                  <div className="mx-auto h-16 w-16 rounded-full bg-brand-gradient flex items-center justify-center text-white font-bold text-xl">
-                    {ins.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
-                  </div>
-                  <h3 className="mt-4 font-bold text-ink">{ins.name}</h3>
-                  <p className="text-xs text-brand-600 font-semibold mt-1">{ins.title}</p>
-                  <p className="mt-3 text-sm text-ink-muted line-clamp-3">{ins.bio}</p>
-                </Card>
+                <Reveal key={id} delay={i * 100}>
+                  <Card className="p-6 text-center h-full">
+                    <div className="mx-auto h-16 w-16 rounded-full bg-brand-gradient flex items-center justify-center text-white font-bold text-xl">
+                      {ins.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+                    </div>
+                    <h3 className="mt-4 font-bold text-ink">{ins.name}</h3>
+                    <p className="text-xs text-brand-600 font-semibold mt-1">{ins.title}</p>
+                    <p className="mt-3 text-sm text-ink-muted line-clamp-3">{ins.bio}</p>
+                  </Card>
+                </Reveal>
               );
             })}
           </div>
