@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 type CheckoutButtonProps = {
-  paquete: "esencial" | "negocio";
+  paquete: string;
   paqueteLabel: string;
   variant?: "primary" | "outline";
   fullWidth?: boolean;
@@ -12,27 +12,28 @@ type CheckoutButtonProps = {
 };
 
 const PACKAGE_DETAILS: Record<string, { price: string; description: string; bullets: string[] }> = {
-  esencial: {
+  "mi-pagina": {
     price: "$2,500 MXN",
-    description: "Landing page profesional lista en 3-5 días.",
+    description: "Tu página lista en 3-5 días.",
     bullets: [
-      "1 página con hasta 5 secciones",
-      "Diseño responsivo profesional",
-      "WhatsApp + formulario de contacto",
-      "SEO on-page básico",
-      "1 ronda de revisión incluida",
+      "2 páginas con tu información y contacto",
+      "Diseño responsivo (celular y computadora)",
+      "Botón de WhatsApp directo",
+      "Tu dominio propio (.com o .mx)",
+      "Aparece en Google (SEO básico)",
     ],
   },
-  negocio: {
+  "mi-sitio": {
     price: "$5,500 MXN",
-    description: "Sitio completo de 5 páginas listo en 7-10 días.",
+    description: "Tu sitio completo listo en 7-10 días.",
     bullets: [
-      "Hasta 5 páginas (Inicio, Sobre nosotros, Servicios, Galería, Contacto)",
+      "5 páginas (inicio, sobre ti, servicios, galería, contacto)",
       "Diseño responsivo profesional",
-      "WhatsApp + formulario + Google Maps",
-      "SEO on-page completo + Analytics + Meta Pixel",
-      "Blog inicial con 2 artículos",
-      "2 rondas de revisión incluidas",
+      "Formulario que guarda mensajes + WhatsApp",
+      "Google Maps embebido",
+      "Google Analytics y Meta Pixel configurados",
+      "Blog con 2 artículos base",
+      "2 rondas de revisión",
     ],
   },
 };

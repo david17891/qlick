@@ -15,8 +15,8 @@ import { NextRequest, NextResponse } from "next/server";
  */
 
 const PACKAGE_PRICES: Record<string, { name: string; amount: number; currency: string }> = {
-  esencial: { name: "Esencial", amount: 250000, currency: "mxn" }, // $2,500 MXN en centavos
-  negocio: { name: "Negocio", amount: 550000, currency: "mxn" }, // $5,500 MXN en centavos
+  "mi-pagina": { name: "Mi página", amount: 250000, currency: "mxn" },
+  "mi-sitio": { name: "Mi sitio", amount: 550000, currency: "mxn" },
 };
 
 export async function POST(req: NextRequest) {
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
 
     if (!(paquete in PACKAGE_PRICES)) {
       return NextResponse.json(
-        { error: "Paquete inválido. Usa 'esencial' o 'negocio'." },
+        { error: "Paquete inválido. Usa 'mi-pagina' o 'mi-sitio'." },
         { status: 400 }
       );
     }

@@ -15,37 +15,36 @@ type Package = {
 
 const PACKAGES: readonly Package[] = [
   {
-    id: "esencial",
-    name: "Esencial",
+    id: "mi-pagina",
+    name: "Mi página",
     price: "$2,500",
     period: "MXN · pago único",
-    description:
-      "Para el negocio local que hoy no tiene nada digital y necesita salir en Google ya.",
+    description: "Para que te encuentren en Google.",
     features: [
-      "Landing de 1 página (5 secciones)",
-      "Diseño responsivo a elegir de 3 plantillas",
-      "Botón de WhatsApp + formulario de contacto",
-      "SEO on-page mínimo (título, meta, sitemap)",
-      "1 ronda de revisión",
-      "Entrega en 3-5 días",
+      "2 páginas: tu información + contacto",
+      "Diseño responsivo (celular y computadora)",
+      "Botón de WhatsApp directo",
+      "Tu dominio propio (.com o .mx)",
+      "Aparece en Google (SEO básico)",
+      "Listo en 3-5 días",
     ],
     accent: "border-brand-200",
   },
   {
-    id: "negocio",
-    name: "Negocio",
+    id: "mi-sitio",
+    name: "Mi sitio",
     price: "$5,500",
     period: "MXN · pago único",
-    description:
-      "Para la PyME con Facebook que ya quiere verse seria y captar clientes desde su web.",
+    description: "Para que te contraten desde la web.",
     features: [
-      "Sitio de hasta 5 páginas (Inicio, Sobre nosotros, Servicios, Galería, Contacto)",
-      "Diseño responsivo profesional a elegir de 3 plantillas",
-      "WhatsApp + formulario + Google Maps",
-      "SEO on-page completo + Google Analytics + Meta Pixel",
-      "Blog inicial con 2 artículos base",
+      "5 páginas: inicio, sobre ti, servicios, galería, contacto",
+      "Diseño responsivo profesional",
+      "Formulario que guarda los mensajes + WhatsApp",
+      "Google Maps embebido",
+      "Google Analytics y Meta Pixel configurados",
+      "Blog con 2 artículos base",
       "2 rondas de revisión",
-      "Entrega en 7-10 días",
+      "Listo en 7-10 días",
     ],
     accent: "border-brand-500 ring-1 ring-brand-500/20",
     featured: true,
@@ -63,7 +62,7 @@ const REASONS = [
   },
   {
     title: "Listo para captar clientes, no solo para verse bonita",
-    body: "WhatsApp, formulario, Meta Pixel y Analytics configurados desde el primer día. Tu web no es un poster: es una herramienta de venta.",
+    body: "Con Mi sitio, Google Analytics y Meta Pixel configurados desde el día uno. Sabes quién te visita y puedes hacer retargeting en Facebook.",
   },
   {
     title: "Entrega rápida, sin enredos",
@@ -266,7 +265,7 @@ export default function DisenoPaginasPage() {
                   ))}
                 </ul>
                 <CheckoutButton
-                  paquete={pkg.id as "esencial" | "negocio"}
+                  paquete={pkg.id}
                   paqueteLabel={pkg.name}
                   variant={pkg.featured ? "primary" : "outline"}
                   fullWidth
