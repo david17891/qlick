@@ -1,12 +1,28 @@
 # Qlick LMS — Roadmap
 
 > Fuente de verdad del plan del LMS. Cualquier desvío se conversa y se actualiza acá.
-> Última revisión: 2026-07-12 19:30 Phoenix — **PR #26 (sprint v0.9.8 + v0.9.9) MERGED a `main` (HEAD `89902e8`)**. 5 commits atómicos. 1262/1262 tests verde (+36 desde 1226). Cluster de housekeeping v0.9.10 en `feat/housekeeping-2026-07-12`. Estado anterior (2026-07-12 05:00): Sprint v0.9.8 + v0.9.9 cerrado en `feat/fase-17-4-improvements-and-massive-harness` con PR #26 abierto. Estado anterior (2026-07-11 19:30): Sprint CI verde + secrets config cerrado.
+> Última revisión: 2026-07-21 06:05 — **FASE 8 cerrada: sistema integral de pedidos de servicios live en `main` (HEAD `76ca9ad`)**. 14 commits atómicos (8A→8F). 1480/1480 tests verde. E2E real verificado contra prod (`/servicios` → checkout → `QO-2026-0001` → email admin). Handoff en `docs/HANDOFF_FASE_8_SERVICE_ORDERS.md`. Próximo sprint: integrar Stripe real (test → live) + email al cliente cuando admin confirma. Estado anterior: v0.9.8 + v0.9.9 (sprint 2026-07-12) mergeado a `main` el 2026-07-12 19:30 Phoenix (HEAD `89902e8`).
 
 ---
 
 ## Estado actual
 
+- [x] **FASE 8 — Sistema integral de pedidos de servicios** — sprint cerrado el 2026-07-21 06:00 Phoenix y **mergeado a `main` (HEAD `76ca9ad`)**. 14 commits atómicos consecutivos a `main` (`e9689c7..76ca9ad`). 1480/1480 tests verde, type-check 0, lint 0/0, build OK. **E2E real verificado contra prod**: cliente llena form en `/servicios/sitio-web` → POST `/api/services/checkout/` → 200 con `order_number: QO-2026-0001` → fila en DB con `status: pending_contact` → email Brevo al admin.
+  - **Qué incluye (6 sub-fases):**
+    - **8A — Fixes puntuales**: WhatsApp directo con fallback duro a `+5216532935492` (wa.me de David, sin depender de env var). Migration `20260721044345` agrega `'proximamente'` al CHECK constraint de `public.courses.status`; los 5 cursos del demo del LMS ahora muestran badge "Próximamente" + CTA deshabilitado en `/cursos`. Banner ámbar en `/cursos/[slug]` con WhatsApp "Avísame cuando abra".
+    - **8B — Schema `service_orders`** (migration `20260721045701`): 6 tablas nuevas con RLS + índices + triggers. `services` + `service_variants` lectura pública (solo activos), `service_orders` + events + notes + documents service-role-only. Cada service = producto independiente con sus variants (NO variantes de un producto genérico). 1 lead → N orders via FK `lead_id` (con `ON DELETE SET NULL`). Seed: 3 services × 6 variants (Sitio Web $2,500/$5,500 MXN, Auditoría 1a1 $1,000/$2,000 MXN, Kickstart Meta Ads $2,500/$3,500 MXN).
+    - **8C — APIs REST + email + tests**: 6 endpoints nuevos. `GET /api/services/catalog` (público, RLS). `POST /api/services/checkout` (público, rate limit 5/min per IP). `GET/POST/PATCH/DELETE /api/admin/orders` + sub-rutas para `notes` y `documents` (admin, requiere `requireAdmin()`). Email Brevo notif al admin fire-and-forget vía `service-order-notification.ts`. 8 unit tests nuevos (1473→1480). Pattern de respuesta `{ok, error, ...data}`. Soft delete (status=cancelled, no se borra físicamente). `listOrders()` con INNER JOIN evita N+1.
+    - **8D — Catálogo público UI**: `/servicios` (listado con grid 1/2/3 cols) + `/servicios/[slug]` (detalle con hero + grid de variants) + `ServiceCheckoutModal` (form con nombre/email/WhatsApp/notas + datetime si requires_scheduling). Server Components para fetch, Client Component para el modal. Reutiliza `PageHero`, `CTABanner`, `Card`, `Modal`, `Field/Input/Textarea`, `LucideIcon`. Sin jerga de marketing: "Lo quiero", "Mándanos WhatsApp", "tu página para que te encuentren". Brand palette (magenta/purple) consistente.
+    - **8E — Admin tab "Pedidos" + `OrderDetailDrawer`**: nuevo tab en `/admin` entre "Pagos" y "CRM". Drawer right-side con 5 tabs internos (Info, Cliente, Notas, Documentos, Timeline). State machine en InfoTab solo muestra transiciones válidas del flow. Auto-logs de status_change, note, document_uploaded, customer_contact. Soft delete via DELETE.
+    - **8F — CRM integration**: `LeadServicesCard` en el `LeadDetailDrawer` muestra "Servicios contratados" con total gastado, lista de orders, click en row abre el mismo `OrderDetailDrawer`. Cierra el loop CRM ↔ Orders (1 lead → N orders).
+  - **Handoff:** `docs/HANDOFF_FASE_8_SERVICE_ORDERS.md` (~600 líneas, TL;DR + arquitectura + schema + APIs + UI + tests + verificación + commits + pendientes + glosario).
+  - **Lo que David puede hacer YA en producción:**
+    - Cliente: ir a `/servicios` → elegir servicio → ver paquetes → click "Lo quiero" → modal con form → submit → recibe número de pedido + WhatsApp.
+    - Admin: ir a `/admin` → tab "Pedidos" → ver lista con filtros → click en order → drawer con 5 tabs → cambiar status, asignar, agregar notas, subir docs.
+    - CRM: abrir el drawer de un lead → ver "Servicios contratados" con total gastado.
+  - **Próximo sprint sugerido (backlog):** integrar Stripe real (test → live) + email al cliente cuando admin confirma + auto-link lead↔order vía email match + storage en Supabase para upload de documentos.
+  - **Commits:** `94ae704` → `5bacc16` (1) → `5bacc16` (2) → `5e56eea` → `fd0f2ff` → `76ca9ad` (más cleanup + migrations en commits separados).
+  - **Validación:** 1480/1480 tests · type-check 0 · lint 0/0 · build OK · 14 commits atómicos.
 - [x] **v0.9.8 + v0.9.9 — Mejoras del Súper Ejecutivo + Arnés masivo** — sprint cerrado el 2026-07-12 05:00 Phoenix y **mergeado a `main` el 2026-07-12 19:30 Phoenix (PR #26, HEAD `89902e8`)**. 5 commits atómicos.
   - **Qué incluye (3 mejoras del Súper Ejecutivo):**
     - **Detección de typos de dominio** en `extract-contact.ts`: dict de 15 typos frecuentes, `detectDomainTypo()`, `executeExtractAndSaveContact()` retorna `needs_domain_confirmation` con `suggested_domain` cuando hay typo (commit `2348103`).

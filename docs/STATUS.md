@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-20 03:38 — **Fix de notificaciones webhook mergeado a `main`**. Se agregó `await` a la función `notifyLeadPaymentConfirmed` dentro del webhook de Stripe y el endpoint de mark-paid, previniendo que Vercel cancele las tareas en segundo plano antes de enviarse. Previamente: Sprint security G-18 cerrado y mergeado a `main` (HEAD `95a7398`). 1365/1365 tests verde, type-check 0, lint 0/0. RLS habilitado en `bot_usage_daily` con 2 policies explícitas para `anon` y `authenticated` (service_role bypassa, backend intacto). Email CRITICAL de Supabase (`rls_disabled_in_public`) resuelto end-to-end. Antes de este sprint: v0.11 (multi-evento lead_id + G-16 housekeeping completo) + v0.12 (4 tests E2E para add_event_guest + bug fix en `upsertGuestInArray`) + reset-lead endpoint + cleanup de 46 eventos de testing (1 real preservado, 1 piloto creado). `DEEPSEEK_TOOL_LOOP_TIER=pro` por default, `flash` para E2E (10x más barato, mismo endpoint). Saldo DeepSeek: $2 USD ($0.30 duró 3 semanas). API key `sk-26261d4559c0475ea12b16cb418f09c9` activa en historial de chat (David debe revocar en platform.deepseek.com).
+> **Última actualización:** 2026-07-21 06:05 — **FASE 8 cerrada: sistema integral de pedidos de servicios live en `qlick.digital`**. 14 commits atómicos consecutivos a main (`e9689c7..76ca9ad`). 1480/1480 tests verde, type-check 0, lint 0/0, build OK. **E2E real verificado contra prod**: cliente llena form en `/servicios/sitio-web` → POST `/api/services/checkout/` → 200 con `order_number: QO-2026-0001` → fila en DB con `status: pending_contact` → email Brevo al admin. Sprint completo (8A→8F): WhatsApp directo +5216532935492 con fallback duro + migration cursos "próximamente" (8A) → schema `service_orders` 6 tablas + RLS + 3 services × 6 variants seed (8B) → lib server + 6 APIs REST + email notif + 8 unit tests (8C) → catálogo público `/servicios` + modal checkout (8D) → admin tab "Pedidos" + `OrderDetailDrawer` con 5 tabs (8E) → `LeadServicesCard` en el CRM (8F). Handoff canónico en `docs/HANDOFF_FASE_8_SERVICE_ORDERS.md` (~600 líneas). Catalog público live: 3 services × 6 variants ($2,500–$5,500 MXN). Cada service = producto independiente con sus variants (NO variantes de un producto genérico — extensible desde día 1 con notas, certificados, comprobantes, timeline events). 1 lead → N orders via FK `lead_id` (con `ON DELETE SET NULL`, snapshot del cliente en cada order). Próximos sprints: Stripe real (test → live) + email al cliente cuando admin confirma + auto-link lead↔order vía email match + storage en Supabase para upload de documentos.
 >
 > **Body del doc (líneas debajo):** es archivo histórico de sprints cerrados. Para estado actual, ver este snapshot.
 
@@ -673,9 +673,11 @@ David detectó conjugaciones voseantes argentinas en el template `survey-invite.
 
 ## Sprint security G-18 — RLS en ot_usage_daily (2026-07-14 14:00 → 14:35)
 
-**Trigger:** email CRITICAL de Supabase notificando ls_disabled_in_public en
+**Trigger:** email CRITICAL de Supabase notificando 
+ls_disabled_in_public en
 ot_usage_daily. Diagnóstico confirmó que SOLO esta tabla de las 27 en
-public estaba sin RLS (escrita por ecordDeepseekUsage en
+public estaba sin RLS (escrita por 
+ecordDeepseekUsage en
 src/lib/ai/deepseek-cost.ts y leída por /api/admin/bot/stats/route.ts).
 
 **Fix aplicado (commit 95a7398):**
