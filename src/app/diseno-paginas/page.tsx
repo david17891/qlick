@@ -24,7 +24,7 @@ const PACKAGES: readonly Package[] = [
       "2 páginas: tu información + contacto",
       "Diseño responsivo (celular y computadora)",
       "Botón de WhatsApp directo",
-      "Tu dominio propio (.com o .mx)",
+      "Tu dominio propio",
       "Aparece en Google (SEO básico)",
       "Listo en 3-5 días",
     ],
@@ -226,7 +226,7 @@ export default function DisenoPaginasPage() {
             {PACKAGES.map((pkg) => (
               <div
                 key={pkg.id}
-                className={`relative flex flex-col rounded-3xl border-2 bg-white p-8 shadow-card ${pkg.accent}`}
+                className={`group relative flex flex-col rounded-3xl border-2 bg-white p-8 shadow-card transition-all duration-300 hover:-translate-y-1 hover:shadow-glow ${pkg.accent}`}
               >
                 {pkg.featured ? (
                   <span className="absolute -top-3 right-6 rounded-full bg-brand-500 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-white">

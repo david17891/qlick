@@ -2,6 +2,7 @@ import Image from "next/image";
 import { TemplateNav } from "@/components/web-templates/TemplateNav";
 import { TemplateFooter } from "@/components/web-templates/TemplateFooter";
 import { QlickBadge } from "@/components/web-templates/QlickBadge";
+import { LeadFormDemo } from "@/components/web-templates/LeadFormDemo";
 
 export const metadata = {
   title: "Bufete Mendoza · Abogados en CDMX",
@@ -522,6 +523,19 @@ export default function Demo2B() {
                     </div>
                   </div>
                 </div>
+                <div className="mt-4 overflow-hidden rounded-xl border border-white/20">
+                  <iframe
+                    title="Ubicación de Bufete Mendoza en Reforma"
+                    src="https://www.google.com/maps?q=Paseo+de+la+Reforma+222,+CDMX&output=embed"
+                    width="100%"
+                    height="200"
+                    style={{ border: 0 }}
+                    allowFullScreen
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                    className="block"
+                  />
+                </div>
                 <div className="flex items-start gap-3">
                   <span className="text-white/60">📞</span>
                   <div>
@@ -545,51 +559,13 @@ export default function Demo2B() {
               <p className="mt-1 text-sm text-neutral-600">
                 Confidencialidad garantizada desde el primer contacto.
               </p>
-              <form className="mt-5 space-y-3">
-                <input
-                  type="text"
-                  placeholder="Tu nombre"
-                  className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-[#1e3a5f] focus:ring-2 focus:ring-[#1e3a5f]/20"
-                />
-                <input
-                  type="email"
-                  placeholder="Email"
-                  className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-[#1e3a5f] focus:ring-2 focus:ring-[#1e3a5f]/20"
-                />
-                <input
-                  type="tel"
-                  placeholder="WhatsApp (10 dígitos)"
-                  className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-[#1e3a5f] focus:ring-2 focus:ring-[#1e3a5f]/20"
-                />
-                <select
-                  className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm outline-none focus:border-[#1e3a5f] focus:ring-2 focus:ring-[#1e3a5f]/20"
-                  defaultValue=""
-                >
-                  <option value="" disabled>
-                    Área de tu caso
-                  </option>
-                  {PRACTICE_AREAS.map((a) => (
-                    <option key={a.title} value={a.title}>
-                      {a.title}
-                    </option>
-                  ))}
-                </select>
-                <textarea
-                  placeholder="Cuéntanos brevemente tu situación"
-                  rows={3}
-                  className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-[#1e3a5f] focus:ring-2 focus:ring-[#1e3a5f]/20"
-                />
-                <button
-                  type="submit"
-                  className="w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-                  style={{ backgroundColor: ACCENT_DARK }}
-                >
-                  Solicitar consulta
-                </button>
-                <p className="text-center text-xs text-neutral-500">
-                  Te contactamos en menos de 24 horas hábiles.
-                </p>
-              </form>
+              <LeadFormDemo
+                demo="bufete-mendoza"
+                accentFocus={ACCENT_DARK}
+                serviceOptions={PRACTICE_AREAS.map((a) => a.title)}
+                buttonText="Solicitar consulta"
+                successMessage="Recibimos tu solicitud. Te contactamos en menos de 24 horas hábiles."
+              />
             </div>
           </div>
         </div>

@@ -87,8 +87,8 @@ export function CheckoutButton({
     "inline-flex items-center justify-center rounded-full px-5 py-3 text-sm font-semibold transition";
   const variantStyle =
     variant === "primary"
-      ? "bg-[#0f4c4c] text-white shadow-md shadow-[#0f4c4c]/20 hover:bg-[#0a3939]"
-      : "border border-[#0f4c4c] text-[#0f4c4c] hover:bg-[#0f4c4c]/5";
+      ? "bg-brand-500 text-white shadow-glow hover:bg-brand-600"
+      : "border-2 border-brand-500 text-brand-500 hover:bg-brand-50";
   const widthStyle = fullWidth ? " w-full" : "";
 
   return (
@@ -148,7 +148,7 @@ export function CheckoutButton({
                   <li key={b} className="flex items-start gap-2">
                     <svg
                       viewBox="0 0 20 20"
-                      className="mt-0.5 h-4 w-4 flex-shrink-0 fill-[#0f4c4c]"
+                      className="mt-0.5 h-4 w-4 flex-shrink-0 fill-brand-500"
                       aria-hidden="true"
                     >
                       <path d="M16.7 5.3a1 1 0 0 1 0 1.4l-7 7a1 1 0 0 1-1.4 0l-3-3a1 1 0 1 1 1.4-1.4L9 11.6l6.3-6.3a1 1 0 0 1 1.4 0Z" />
@@ -165,7 +165,7 @@ export function CheckoutButton({
                   placeholder="Tu nombre"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-[#0f4c4c] focus:ring-2 focus:ring-[#0f4c4c]/20"
+                  className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
                 />
                 <input
                   type="email"
@@ -173,7 +173,7 @@ export function CheckoutButton({
                   placeholder="Email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-[#0f4c4c] focus:ring-2 focus:ring-[#0f4c4c]/20"
+                  className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
                 />
                 <input
                   type="tel"
@@ -181,7 +181,7 @@ export function CheckoutButton({
                   placeholder="WhatsApp (10 dígitos)"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-[#0f4c4c] focus:ring-2 focus:ring-[#0f4c4c]/20"
+                  className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
                 />
 
                 {error ? (
@@ -193,7 +193,7 @@ export function CheckoutButton({
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="w-full rounded-lg bg-[#0f4c4c] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#0a3939] disabled:opacity-60"
+                  className="w-full rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:opacity-60"
                 >
                   {submitting
                     ? "Procesando…"

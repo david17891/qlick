@@ -3,6 +3,7 @@ import Link from "next/link";
 import { TemplateNav } from "@/components/web-templates/TemplateNav";
 import { TemplateFooter } from "@/components/web-templates/TemplateFooter";
 import { QlickBadge } from "@/components/web-templates/QlickBadge";
+import { LeadFormDemo } from "@/components/web-templates/LeadFormDemo";
 
 export const metadata = {
   title: "Sonrisa Plus · Consultorio dental en Polanco",
@@ -468,6 +469,19 @@ export default function Demo2A() {
                     </div>
                   </div>
                 </div>
+                <div className="mt-4 overflow-hidden rounded-xl border border-white/20">
+                  <iframe
+                    title="Ubicación de Sonrisa Plus en Polanco"
+                    src="https://www.google.com/maps?q=Av.+Presidente+Masaryk+220,+Polanco,+CDMX&output=embed"
+                    width="100%"
+                    height="200"
+                    style={{ border: 0 }}
+                    allowFullScreen
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                    className="block"
+                  />
+                </div>
                 <div className="flex items-start gap-3">
                   <span className="text-white/60">📞</span>
                   <div>
@@ -493,41 +507,13 @@ export default function Demo2A() {
               <p className="mt-1 text-sm text-neutral-600">
                 Déjanos tus datos y te confirmamos cita en menos de 4 horas.
               </p>
-              <form className="mt-5 space-y-3">
-                <input
-                  type="text"
-                  placeholder="Tu nombre"
-                  className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
-                />
-                <input
-                  type="tel"
-                  placeholder="WhatsApp (10 dígitos)"
-                  className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
-                />
-                <select
-                  className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
-                  defaultValue=""
-                >
-                  <option value="" disabled>
-                    Tratamiento de interés
-                  </option>
-                  {SERVICES.map((s) => (
-                    <option key={s.title} value={s.title}>
-                      {s.title}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="submit"
-                  className="w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-                  style={{ backgroundColor: ACCENT_DARK }}
-                >
-                  Solicitar primera cita
-                </button>
-                <p className="text-center text-xs text-neutral-500">
-                  Sin compromiso · 100% confidencial
-                </p>
-              </form>
+              <LeadFormDemo
+                demo="sonrisa-plus"
+                accentFocus={ACCENT_DARK}
+                serviceOptions={SERVICES.map((s) => s.title)}
+                buttonText="Solicitar primera cita"
+                successMessage="Recibimos tu solicitud. Te contactamos hoy mismo para confirmar tu cita."
+              />
             </div>
           </div>
         </div>
