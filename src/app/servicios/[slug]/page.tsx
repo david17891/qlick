@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import { Container, Badge } from "@/components/ui";
 import { CTABanner } from "@/components/layout";
 import { ServiceDetailInteractive } from "@/components/services/ServiceDetailInteractive";
+import { ServiceDemosSection } from "@/components/services/ServiceDemosSection";
 import { getServiceBySlug } from "@/lib/services";
-import { formatMXN } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -35,68 +34,22 @@ export default async function ServicioDetallePage({ params }: PageProps) {
   const service = await getServiceBySlug(params.slug);
   if (!service) notFound();
 
-  const minPrice =
-    service.variants.length > 0
-      ? Math.min(...service.variants.map((v) => v.priceMXN))
-      : null;
-
   return (
     <>
-      {/* FIX 2026-07-21 (David, segundo round): "no quiero esos
-          indicadores feos y ver paquetes, quiero que ahí directamente
-          pongas los paquetes". El hero es SOLO título + precio enorme.
-          Sin "DESDE" / "MXN" / "Ver paquetes" — los paquetes se ven
-          inmediatamente debajo, no hace falta scroll explícito. */}
-      <section className="py-14 sm:py-20 bg-white border-b border-brand-100">
-        <Container size="wide">
-          <div className="mx-auto max-w-3xl text-center">
-            <Badge tone="brand" className="mb-5">
-              Servicio digital
-            </Badge>
-            <h1 className="display-1 text-ink mb-6">
-              {service.displayName}
-            </h1>
-            {minPrice !== null && (
-              <p className="font-display text-6xl sm:text-7xl font-bold text-brand-700">
-                Desde {formatMXN(minPrice)}
-              </p>
-            )}
-          </div>
-        </Container>
-      </section>
-
-      {/* Variants — client component para el modal. Aparece DIRECTAMENTE
-          debajo del hero, sin secciones intermedias ("Acerca de" o
-          demos) que roben atención a la decisión de compra. */}
+      {/* FIX 2026-07-21 (David, cuarto round): "en todos los servicios
+          lo que quiero que quites es lo que esta en recuadro rojo" →
+          EL HERO SE ELIMINÓ ENTERO (badge + título + precio grande).
+          Los paquetes son ahora LO PRIMERO que se ve. El precio
+          sigue visible en cada card de variant ($1,000 / $2,000 etc.)
+          así que el costo sigue siendo directo sin hero competiendo. */}
       <ServiceDetailInteractive service={service} />
 
-      {/* FIX 2026-07-21 (David, segundo round): para /servicios/sitio-web,
-          debajo de los paquetes va un botón "Ver ejemplos" que abre
-          la primera demo (Lumière, demo-1a). Los otros demos siguen
-          accesibles por URL directa (`/diseno-paginas/demo-*`). Se
-          removió la sección inline de 4 cards (ServiceDemosSection)
-          para no repetir lo que el botón ofrece. */}
-      {service.slug === "sitio-web" && (
-        <section className="py-10 sm:py-12 text-center bg-white border-t border-brand-100">
-          <Container size="wide">
-            <Link
-              href="/diseno-paginas/demo-1a"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center justify-center gap-2 rounded-full border-2 border-brand-500 px-7 py-3 text-base font-semibold text-brand-700 transition hover:bg-brand-50"
-            >
-              Ver ejemplos de sitios web
-              <span aria-hidden="true">↗</span>
-            </Link>
-            <p className="mt-3 text-xs text-ink-muted">
-              4 sitios publicados. Te abrimos uno y puedes navegar a los demás.
-            </p>
-          </Container>
-        </section>
-      )}
+      {/* FIX 2026-07-21 (David, cuarto round): regresamos los 4 ejemplos
+          de sitios web para /servicios/sitio-web. Van DESPUÉS de los
+          paquetes para mostrar el resultado antes de contratar. */}
+      {service.slug === "sitio-web" && <ServiceDemosSection />}
 
-      {/* Descripción larga — movida al FINAL para que no compita con la
-          decisión de compra. Va después de los paquetes. */}
+      {/* Descripción larga al final (no compite con la decisión). */}
       {service.longDescription && (
         <section className="py-14 sm:py-20">
           <Container size="wide">
