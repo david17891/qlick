@@ -13,7 +13,7 @@ import { isValidSupabaseUrl } from "@/lib/supabase/config";
 import type { User } from "@/types";
 
 const links = [
-  { href: "/cursos", label: "Cursos" },
+  { href: "/cursos", label: "Cursos", badge: "Próximamente" },
   { href: "/eventos", label: "Eventos" },
   // FASE 8 (2026-07-21): el catálogo público de servicios comerciales
   // (diseño, auditoría 1a1, kickstart Meta Ads) vive en /servicios.
@@ -154,13 +154,18 @@ export function Navbar({ initialIdentity }: { initialIdentity?: NavbarIdentity }
                   <Link
                     href={l.href}
                     className={cn(
-                      "px-3 py-2 rounded-full text-sm font-medium transition",
+                      "px-3 py-2 rounded-full text-sm font-medium transition inline-flex items-center gap-1.5",
                       active
                         ? "text-brand-700 bg-brand-50"
                         : "text-ink-soft hover:text-brand-700 hover:bg-brand-50/60"
                     )}
                   >
                     {l.label}
+                    {"badge" in l && l.badge ? (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-200 text-slate-600">
+                        {l.badge}
+                      </span>
+                    ) : null}
                   </Link>
                 </li>
               );
@@ -262,6 +267,11 @@ function MobileMenu({
             className="block px-3 py-2.5 rounded-xl text-ink-soft hover:bg-brand-50 font-medium"
           >
             {l.label}
+            {"badge" in l && l.badge ? (
+              <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-200 text-slate-600">
+                {l.badge}
+              </span>
+            ) : null}
           </Link>
         ))}
         <div className="pt-3 flex flex-col gap-2">
