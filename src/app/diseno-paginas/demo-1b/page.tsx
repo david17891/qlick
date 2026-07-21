@@ -208,133 +208,16 @@ export default function Demo1B() {
         </div>
       </section>
 
-      {/* ── Historia ── */}
+      {/* ── Sobre nosotros + Cómo llegar (mini) ── */}
       <section
-        id="historia"
-        className="py-20 sm:py-24"
+        id="nosotros"
+        className="py-12 sm:py-16"
         style={{ backgroundColor: "#fff8f1" }}
       >
-        <div className="mx-auto grid max-w-6xl items-center gap-10 px-4 sm:px-6 md:grid-cols-2">
-          <div>
-            <span
-              className="inline-block text-[10px] font-semibold uppercase tracking-[0.3em]"
-              style={{ color: ACCENT_DARK }}
-            >
-              Nuestra historia
-            </span>
-            <h2 className="mt-2 font-display text-3xl font-bold tracking-tight text-neutral-950 sm:text-4xl">
-              Tres generaciones, una receta
-            </h2>
-            <p className="mt-4 leading-relaxed text-neutral-700">
-              Don Carlos llegó de Jalisco en 1987 con un trompo, una parrilla
-              y la receta de su abuela. Hoy sus hijos y sus nietos siguen
-              cortando la misma carne con el mismo cuchillo.
-            </p>
-            <p className="mt-4 leading-relaxed text-neutral-700">
-              No tenemos sucursales. No tenemos app. Tenemos un puesto, un
-              trompo, una parrilla y a la mejor clientela de Coyoacán.
-            </p>
-            <div className="mt-6 grid grid-cols-2 gap-4 text-sm">
-              <div className="rounded-xl bg-white p-3">
-                <div className="font-display text-xl font-bold" style={{ color: ACCENT_DARK }}>
-                  1987
-                </div>
-                <div className="text-xs text-neutral-600">año de apertura</div>
-              </div>
-              <div className="rounded-xl bg-white p-3">
-                <div className="font-display text-xl font-bold" style={{ color: ACCENT_DARK }}>
-                  Familia
-                </div>
-                <div className="text-xs text-neutral-600">100% negocio familiar</div>
-              </div>
-            </div>
-          </div>
-          <div className="relative aspect-[4/3] w-full overflow-hidden rounded-3xl">
-            <Image
-              src="/servicios/web/doncarlos-historia.jpg"
-              alt="Familia fundadora de la Taquería Don Carlos"
-              fill
-              sizes="(max-width: 768px) 100vw, 50vw"
-              className="object-cover"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
-            <div className="absolute inset-x-0 bottom-0 p-8 text-white">
-              <div className="font-display text-2xl font-bold">Don Carlos</div>
-              <div className="text-sm opacity-80">Fundador · 1987</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Cómo llegar ── */}
-      <section
-        id="llegar"
-        className="bg-white py-20 sm:py-24"
-      >
-        <div className="mx-auto max-w-6xl px-4 sm:px-6">
-          <div className="grid gap-10 md:grid-cols-2">
-            <div>
-              <span
-                className="inline-block text-[10px] font-semibold uppercase tracking-[0.3em]"
-                style={{ color: ACCENT_DARK }}
-              >
-                Cómo llegar
-              </span>
-              <h2 className="mt-2 font-display text-3xl font-bold tracking-tight text-neutral-950 sm:text-4xl">
-                Estamos en el centro de Coyoacán
-              </h2>
-              <p className="mt-4 leading-relaxed text-neutral-700">
-                A 2 cuadras del mercado y a 5 del Jardín Centenario. Si vienes
-                en metro, bajamos en la estación Coyoacán y caminamos 8
-                minutos.
-              </p>
-              <div className="mt-6 space-y-3 text-sm">
-                <div className="flex items-start gap-3">
-                  <span>📍</span>
-                  <div>
-                    <div className="font-semibold">Dirección</div>
-                    <div className="text-neutral-700">
-                      Av. Centenario 91, Del Carmen, Coyoacán, CDMX 04100
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <span>🕐</span>
-                  <div>
-                    <div className="font-semibold">Horario</div>
-                    <div className="text-neutral-700">
-                      Lun a Dom · 18:00 – 02:00
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <span>📞</span>
-                  <div>
-                    <div className="font-semibold">Pedidos a domicilio</div>
-                    <div className="text-neutral-700">+52 55 8765 4321</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div
-              className="aspect-[4/3] w-full overflow-hidden rounded-3xl"
-              style={{
-                background:
-                  "linear-gradient(135deg, #fed7aa 0%, #fdba74 100%)",
-              }}
-            >
-              <div className="flex h-full items-center justify-center p-8 text-center">
-                <div>
-                  <div className="font-display text-2xl font-bold text-neutral-900">
-                    Mapa interactivo
-                  </div>
-                  <div className="mt-1 text-sm text-neutral-700">
-                    Google Maps embed
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+        <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
+          <p className="text-base leading-relaxed text-neutral-700">
+            Negocio familiar en <strong>Coyoacán desde 1987</strong>. Carne al carbón, al pastor y de guisado. Av. Centenario 91, abierto Lun-Dom 18:00-02:00.
+          </p>
         </div>
       </section>
 
