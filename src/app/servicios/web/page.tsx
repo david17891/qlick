@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Container, Badge } from "@/components/ui";
 import { Logo } from "@/components/brand";
 import { QlickBadge } from "@/components/web-templates/QlickBadge";
+import { CheckoutButton } from "@/components/web-templates/CheckoutButton";
 
 type Package = {
   id: string;
@@ -10,8 +11,6 @@ type Package = {
   period: string;
   description: string;
   features: readonly string[];
-  cta: string;
-  href: string;
   accent: string;
   featured?: boolean;
 };
@@ -32,8 +31,6 @@ const PACKAGES: readonly Package[] = [
       "1 ronda de revisión",
       "Entrega en 3-5 días",
     ],
-    cta: "Lo quiero",
-    href: "#cotizar",
     accent: "border-[#0f4c4c]/15",
   },
   {
@@ -52,8 +49,6 @@ const PACKAGES: readonly Package[] = [
       "2 rondas de revisión",
       "Entrega en 7-10 días",
     ],
-    cta: "Lo quiero",
-    href: "#cotizar",
     accent: "border-[#0f4c4c] ring-1 ring-[#0f4c4c]/20",
     featured: true,
   },
@@ -299,16 +294,13 @@ export default function WebServicePage() {
                     </li>
                   ))}
                 </ul>
-                <a
-                  href={pkg.href}
-                  className={`mt-8 inline-flex w-full items-center justify-center rounded-full px-5 py-3 text-sm font-semibold transition ${
-                    pkg.featured
-                      ? "bg-[#0f4c4c] text-white hover:bg-[#0a3939]"
-                      : "border border-[#0f4c4c] text-[#0f4c4c] hover:bg-[#0f4c4c]/5"
-                  }`}
-                >
-                  {pkg.cta}
-                </a>
+                <CheckoutButton
+                  paquete={pkg.id as "esencial" | "negocio"}
+                  paqueteLabel={pkg.name}
+                  variant={pkg.featured ? "primary" : "outline"}
+                  fullWidth
+                  className="mt-8"
+                />
               </div>
             ))}
           </div>
