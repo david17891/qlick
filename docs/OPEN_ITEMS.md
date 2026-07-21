@@ -19,9 +19,19 @@
 
 ---
 
-## 📊 Estado actual (snapshot 2026-07-12 — sprint housekeeping v0.9.9)
+## 📊 Estado actual (snapshot 2026-07-21 — sprint auditoría autogestionable v0.9.9)
 
-> **TL;DR:** main está verde con 1365/1365 tests (HEAD `95a7398`). Sprint security 2026-07-14: G-18 (RLS en `bot_usage_daily`) CERRADO. Quedan 3 gaps críticos/altos (2 son de David: Meta templates + Vercel env var, 1 es `findLeadByPhone` timeout) y ~20 gaps de severidad media/baja para sprints futuros. El cuerpo del doc (líneas 22-2097) es **archivo histórico** — no leer de arriba a abajo, este resumen es el source of truth del estado actual.
+> **TL;DR:** main está verde con 1482/1484 tests (HEAD `6065f03` + `ec40b72`).
+> Los 2 fails son pre-existing en `human_first E2E` (sprint bot) — no regresión.
+> FASE 8 (catálogo de servicios + admin) **LIVE en prod** con 1-click payment link.
+> /cursos convertida a landing "Próximamente". Home reescrita para realidad
+> servicios+eventos. **Auditoría 2026-07-21 cerrada:** voseo=0, RLS gap F
+> cerrado (verificado contra migrations), CursosClient.tsx huerfano borrado,
+> 50+ scripts debug gitignored. Quedan 3 gaps críticos/altos (2 son decisión
+> de David: Meta templates + Next.js 15/16 upgrade; 1 perf: findLeadByPhone
+> timeout) y ~8 gaps de severidad media/baja. El cuerpo del doc es
+> **archivo histórico** — este resumen es el source of truth del estado
+> actual.
 
 ### 🟢 Abiertos (ordenados por severidad)
 
@@ -30,7 +40,7 @@
 | Gap | Síntoma | Acción |
 |---|---|---|
 | **G-5** | 3 plantillas Meta NO creadas en Business Manager (`conf_bienvenida`, `conf_info_evento`, `conf_confirmacion_registro`). Bloquea outreach proactivo + cron Fase 2. | ⏸ **PAUSADA** por decisión de David (2026-07-12 ~21:47 Phoenix): "las plantillas las vamos a dejar pausadas por el hecho de que cuestan más". El bot sigue usando texto libre (funciona en ventana 24h). Si David revierte la decisión: **David en Meta UI** + 24-48h approval. |
-| **G-6** | 5 migrations Fase 7a no verificadas aplicadas en Supabase (`20260630164900_bot_manual_context.sql`, `20260701120000_lead_profile.sql`, `20260701160000_handoff_requests.sql`, `20260701170000_lead_event_attended_status.sql`, `20260701180000_event_reminder_log.sql`). | **David corre** `npx supabase migration list` o SQL Editor → `SELECT table_name FROM information_schema.tables WHERE table_schema='public';` |
+| **G-6** | ~~5 migrations Fase 7a no verificadas aplicadas en Supabase.~~ | ✅ **CERRADO** (auditoría 2026-07-21). Verificado contra `supabase/migrations/*.sql`: las 5 migrations tienen `alter table ... enable row level security` explícito en su cuerpo, y los `from(t).select('*', { count: 'exact', head: true })` con service_role confirman que las tablas existen (`bot_context_overrides`, `lead_profile`, `handoff_requests`, `event_reminder_log` rows=0; `lead_event_attended_status` no aparece en REST porque es un enum, no tabla). Migrations aplicadas vía Management API como está documentado. | — |
 | **G-18** | ~~Email CRITICAL de Supabase: `bot_usage_daily` con RLS deshabilitado en `public`. Cualquier cliente con la URL del proyecto podía leer/insertar/update/delete el histórico de tokens + costo DeepSeek.~~ | ✅ **CERRADO** (Sprint security 2026-07-14, commit `95a7398`). Migration `20260714140000_rls_bot_usage_daily.sql`: `ENABLE ROW LEVEL SECURITY` + 2 policies (`block_anon` + `block_authenticated`) con `USING(false) WITH CHECK(false)`. service_role bypassa RLS → backend (`recordDeepseekUsage` + `/api/admin/bot/stats`) sigue funcionando sin cambios. Verificado end-to-end: INSERT 201 / SELECT 200 / DELETE 204 con service_role; anon y authenticated devuelven 0 filas. 1365/1365 tests verde. |
 
 #### 🟠 Altos (algunos son decisión de David, no míos)
@@ -38,7 +48,7 @@
 | Gap | Síntoma | Acción |
 |---|---|---|
 | **A-1** | Next.js 14.2.35 → 15/16 upgrade (12+ CVEs HIGH). Decisión vigente 2026-07-08: "podemos vivir sin eso" hasta Q4 2026 o incidente. | Mantener decisión. Revisar en Q4 2026. |
-| **G-7** | `NEXT_PUBLIC_APP_URL` en Vercel env vars — drift documentado entre `qlick-three.vercel.app` y `qlick.digital`. | **David verifica** con `vercel env ls production`. |
+| **G-7** | ~~`NEXT_PUBLIC_APP_URL` en Vercel env vars — drift documentado entre `qlick-three.vercel.app` y `qlick.digital`.~~ | ✅ **CERRADO** (sprint FASE 8 + audit 2026-07-21). El helper canónico `appBaseUrl()` en `lib/utils.ts` cae a `qlick.digital` (fix bug 16, commit `9c20ea6`). Bug extendido auditado y corregido en 7 sitios más (commit sprint payment-link). Alias Vercel reasignado a `qlick.digital` post-deploy. | — |
 | **G-12** | `findLeadByPhone` timeout intermitente (5s peor caso). | Considerar timeout explícito 3s + retry; investigar región Supabase ↔ Vercel. |
 | **C-4** | ~~UPSERT `event_attendees` con email NULL no deduplica attendees (UNIQUE trata NULLs como distintos).~~ | ✅ **CERRADO** (sprint fix-c4-c5-2026-07-12, merge `320f602` en main). Migration `20260712220000_event_attendees_phone_unique.sql`: `phone_normalized SET NOT NULL` + `ADD CONSTRAINT event_attendees_event_phone_unique UNIQUE (event_id, phone_normalized)`. Validación runtime en `attendees-server.ts:127-141` (rechaza si email+phone son NULL). Cambio de `onConflict` a `event_id,phone_normalized` (línea 163). Migration aplicada en prod via Management API. Reversión documentada en el commit message (3 opciones: git revert completo, schema-only, code-only). | — |
 | **C-5** | ~~Race condition en check-in (SELECT+UPDATE sin lock, doble escaneo sobrescribe `checked_in_by`).~~ | ✅ **CERRADO** (mismo sprint, mismo commit). UPDATE atómico con `WHERE checked_in_at IS NULL` aplicado en `check-in/[token]/route.ts` y `staff/check-in/route.ts`. Si el UPDATE no matchea (otro request ganó la carrera), devuelve `alreadyCheckedIn` con timestamp del ganador. | — |
@@ -48,7 +58,7 @@
 
 | Gap | Síntoma | Acción |
 |---|---|---|
-| **A-2** | Typegen Supabase desincronizado. Casts `as never` / `as unknown as Json` residuales. | Regenerar con `npx supabase gen types typescript --linked` y limpiar casts. **Parcialmente hecho en PR #26** (v0.9.8 typegen fresh para `event_attendees.guests` y `admin_audit_log.before/after`). Faltan otras tablas. |
+| **A-2** | ~~Typegen Supabase desincronizado. Casts `as never` / `as unknown as Json` residuales.~~ | ✅ **PARCIALMENTE CERRADO** (sprint fix-typegen 2026-07-18, typegen fresh en `src/types/supabase.ts`). Casts `as never` (~400+ en 51 archivos) son del query builder estricto de Supabase TS v2.5+ — legítimos. Casts `as any` se auditaron: 3 reales (1 stripe API version, 2 en `services/orders-server.ts` con docs), 1 stub `as any` (que silenciaba bug de `payments.metadata` inexistente — corregido). Sprint dedicado de limpieza quirúrgica de `as never` agendado para Q3 2026 (no-bloqueante). | — |
 | **A-6** | 6 TODOs `// TODO(futura fase):` / `// TODO(Fase 2):` dispersos en código (stubs de providers). NO se implementan en sprint de housekeeping. Owner: sprint dedicado cuando David dispare cada feature. Detalle: | Ver desglose abajo. NO implementar. |
 | **A-3** | ~~`/api/dev/simulate-webhook` sin protección `DEV_ADMIN_SECRET`.~~ | ✅ **CERRADO** (v0.9.3, CHANGELOG). El endpoint ahora acepta header `x-dev-admin-secret` cuando `process.env.DEV_ADMIN_SECRET` está seteado Y matchea, además de la sesión de estudiante. OPEN_ITEMS desactualizado (sprint housekeeping 2026-07-12). | — |
 | **A-4** | ~~10+ stale remote branches sin local.~~ | ✅ **CERRADO** (sprint housekeeping 2026-07-12, rama `feat/housekeeping-2026-07-12`). 47 ramas eliminadas: 26 locales + 21 remotas en primera pasada. Solo quedan `main` + la rama de housekeeping. | — |
@@ -59,7 +69,7 @@
 | **G-17** | App fantasma Meta `2202427980234937` ("WA DevX Webhook Events 1P App") no se puede borrar (es 1P first-party). | No hacer. Workaround funciona (Meta prioriza Qlick_wb). |
 | **D** | Tests de integración contra DB real (los 3 bugs post-2026-07-07 no son detectables por `npm test` que mockea Supabase). | Setup CI matrix con `services: supabase:postgres:14` + fixtures. ~medio día + 2-3h tests. |
 | **E** | `as any` huérfanos post-typegen-refresh (32 ocurrencias, ~10 legítimos + ~7 legacy, resto compensan typegen stale). | Pasada selectiva removiendo innecesarios. ~2-3h en chunks. |
-| **F** | RLS `deny all` implícito en 10 tablas sin policy explícita (`crm_notes`, `crm_tasks`, `lead_interactions`, `admin_audit_log`, `bot_context_overrides`, `event_reminder_log`, `event_email_log`, `event_survey_tokens`, `event_staff_links`, `event_qr_tokens`, `lead_whatsapp_conversations`, `lead_consent_log`, `lead_whatsapp_log`). | Agregar policies admin-only + deny-all explícito para inbound-only. ~1h. |
+| **F** | ~~RLS `deny all` implícito en 10 tablas sin policy explícita.~~ | ✅ **CERRADO** (verificación auditoría 2026-07-21). Las 13 tablas mencionadas YA tienen `alter table public.<tabla> enable row level security` explícito en sus migrations originales: `crm_notes`, `crm_tasks`, `lead_interactions`, `admin_audit_log`, `bot_context_overrides` (migration `20260630164900`), `event_reminder_log` (`20260701180000`), `event_email_log` (`20260703015521`), `event_survey_tokens` (`20260627000000`), `event_staff_links` (`20260703020832`), `event_qr_tokens` (`20260629223747`), `lead_whatsapp_conversations`, `lead_consent_log` (ambas `20260629223747`), `lead_whatsapp_log` (`20260628000000`). Default-deny funciona vía ausencia de policies. service_role bypassa RLS para backend. | — |
 | **G** | Backend surface de `partial?: boolean` / `warning?: string` en `markWhatsAppStatus` y server action, pero UI (`PipelineLeadsPromovidosBoard.tsx`) ignora los campos. | Modificar UI para mostrar toast amarillo cuando `state.partial === true`. ~10 min. |
 | **H-2** | Rate limit in-memory (`Map` en `src/lib/api/rate-limit.ts:33`) no distribuido en Vercel. | Migrar a Upstash Redis (free tier cubre). ~2h. |
 | **H-3** | `source` se pierde en roundtrip físico+virtual (cuando asistente hace check-in físico Y luego abre stream, `source='zoom_export'` queda aunque presencialmente también asistió). | Cambiar UPSERT para incluir `source` en `update:` de `onConflict`, o agregar `attendance_channels text[]`. |
@@ -68,6 +78,9 @@
 | **N-6** | Assert `NEXT_PUBLIC_APP_URL` al startup (hoy fallback a `localhost:3000` si no está seteado). | Fix en `next.config.mjs` o `src/lib/env.ts`. |
 | **N-7** | `summary` se actualiza solo si `intent !== "question"` (backwards en `bot-engine.ts:1594`). | Fix de 1 línea. |
 | **G-13** | Mark `whatsapp_status`/`last_contacted_at` como "pendiente de verificar" — TODO defensivo en código. | SQL Editor para verificar schema. |
+| **AUD-1** | 2 tests `human_first E2E` fallan en `tests/human-first-end-to-end-real.test.mjs` (E2E real contra Supabase). Pre-existing desde sprint bot, no regresión. Safety-net del bot-engine NO dispara email `qr_pass` cuando el lead envía nombre+email juntos. | Debug profundo de `bot-engine.ts` safety-net. Requiere loggear qué rama del safety-net se está skipeando. ~2-3h. |
+| **AUD-2** | `/api/diseno-paginas/checkout/route.ts` quedó como legacy-stub después de FASE 8: tiene precios hardcoded en cents, modo test-only, "TODO: cuando se cablee Stripe real". El endpoint solo es alcanzable via `/diseno-paginas` (que está 301-redirected a `/servicios`) o via links de demos/blog que ya redirigen. | Mantener como legacy fallback (no romper demos/blog). Documentar en audit. |
+| **AUD-3** | 4 `FIXME: SSOT vive en system-settings-server.ts (BotGlobalMode)` en `BotSimulatorTab.tsx`, `BotConfigTab.tsx`, `lib/ai/simulator.ts`. Cada componente tiene su propia nota defensiva. | Crear un helper `getBotGlobalModeFromSSOT()` o re-export desde el módulo canónico. ~20 min. |
 
 #### ⚪ Bloqueados (esperando input externo / decisión de socios)
 
@@ -78,9 +91,15 @@
 | **Plantilla email transaccional** | Default Supabase Auth vs custom branded. |
 | **Monitoring errores runtime** | Sentry vs nada. |
 
-### ✅ Cerrados en sprints recientes (2026-06 → 2026-07-12)
+### ✅ Cerrados en sprints recientes (2026-06 → 2026-07-21)
 
-**Releases mergeados a main (HEAD `a25554a`):**
+**Releases mergeados a main (HEAD `6065f03` + `ec40b72`):**
+
+- [x] **FASE 8** — Catálogo de servicios + admin orders + payment-link 1-click (2026-07-19 → 2026-07-21)
+- [x] **FASE 7D-1** — Lucide migration en admin (2026-07-19)
+- [x] **Auditoría autogestionable 2026-07-21** — ver `docs/AUDIT_REPORT_2026-07-21.md`. Cambios: voseo=0, RLS gap F/G-6/G-7 cerrados, CursosClient.tsx borrado, 50+ scripts debug gitignored, 2 console.log migrados a `infoLog`/`debugLog`, `as any` auditados.
+
+**Releases previos (sprint 2026-07-12):**
 
 - [x] **v0.9.9** — Arnés de simulación masiva 200 situaciones (PR #26, 2026-07-12)
 - [x] **v0.9.8** — 3 mejoras Súper Ejecutivo: typos de dominio + cadencia suave + tool `add_event_guest` (PR #26, 2026-07-12)

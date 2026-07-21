@@ -389,7 +389,7 @@ function InfoTab({
           Asignar a
         </h3>
         <p className="mt-1 text-xs text-ink-muted">
-          Email del responsable (típicamente vos o un miembro del equipo).
+          Email del responsable (típicamente tú o un miembro del equipo).
         </p>
         <div className="mt-3 flex gap-2">
           <Input
@@ -1003,7 +1003,7 @@ function PaymentLinkCard({
             Cobrar al cliente
           </h3>
           <p className="mt-1 text-xs text-ink-muted">
-            Generá un link de pago con tarjeta (Stripe) y mandáselo al
+            Generá un link de pago con tarjeta (Stripe) y mándaselo al
             cliente por WhatsApp. El pedido avanza a &quot;contactado&quot;
             automáticamente cuando el cliente paga.
           </p>

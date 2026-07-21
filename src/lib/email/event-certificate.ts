@@ -19,6 +19,7 @@ import {
   type EventCertificateInput,
 } from "./templates/event-certificate";
 import { logEventEmail, type LogEventEmailInput } from "./log";
+import { infoLog, errorLog } from "@/lib/log";
 
 export type { EventCertificateInput };
 
@@ -57,11 +58,24 @@ export async function sendEventCertificateEmail(
     html,
   });
 
-  // eslint-disable-next-line no-console
-  console.log(
-    `[email/event-certificate] ${result.ok ? "ok" : "failed"} mode=${result.mode} to=${input.attendeeEmail} folio=${extra.folio ?? "?"} event="${input.eventTitle}"`,
-    result.error ? { error: result.error } : {},
-  );
+  // Log via lib/log.ts (server-side, persistible) en vez de console directo
+  // — así queda en stdout estructurado y podemos redirigirlo a logs unificados.
+  if (result.ok) {
+    infoLog(`[email/event-certificate] ok`, {
+      mode: result.mode,
+      to: input.attendeeEmail,
+      folio: extra.folio,
+      event: input.eventTitle,
+    });
+  } else {
+    errorLog(`[email/event-certificate] failed`, {
+      mode: result.mode,
+      to: input.attendeeEmail,
+      folio: extra.folio,
+      event: input.eventTitle,
+      error: result.error,
+    });
+  }
 
   // Best-effort: persistir resultado para visibilidad del admin.
   // Si falla el INSERT, NO rompemos el flow (el email ya fue enviado).

@@ -38,6 +38,8 @@ export interface RenderedEmail {
 // Helpers locales (mismo set que event-qr-pass.ts)
 // ---------------------------------------------------------------------------
 
+import { debugLog } from "@/lib/log";
+
 function esc(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -206,10 +208,13 @@ export function renderEventCertificateEmail(
 </html>`.trim();
 
   // Log minimal para debugging (no loggeamos el html completo por tamaño).
-  // eslint-disable-next-line no-console
-  console.log(
-    `[email/event-certificate] rendered folio=${folio} to=${email} subject="${subject}"`,
-  );
+  // debugLog solo emite en dev (NODE_ENV !== "production") — en prod se omite
+  // para no inflar logs de Vercel con info de cada cert emitido.
+  debugLog(`[email/event-certificate] rendered`, {
+    folio,
+    to: email,
+    subject,
+  });
 
   return { subject, html };
 }

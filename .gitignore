@@ -156,4 +156,28 @@ dev-*.log
 /preview
 
 scripts/verify-brevo.mjs
+# --- Scripts ad-hoc de debug (no en package.json) ---
+# Los scripts de debug (diagnóstico, verificación puntual, one-shots
+# de sprint) NO se versionan — son ruido local. Solo se trackean los
+# scripts permanentes, registrados en `package.json` o referenciados
+# desde `AGENTS.md` / `docs/`.
+# Regla: ignorar todo lo de `scripts/` que NO esté en la allowlist.
+scripts/*
+!scripts/apply-migration.mjs
+!scripts/apply-migration-management.mjs
+!scripts/audit-*.mjs
+!scripts/audit-*.py
+!scripts/check-supabase-env.mjs
+!scripts/db-wipe.mjs
+!scripts/regen-supabase-types.mjs
+!scripts/seed-*.mjs
+# Audit scripts puntuales en Python (auth/route audit). Corren con `python`,
+# no con `node`, así que el `audit-*.mjs` de arriba no los incluye.
+!scripts/audit-*.py
+# --- Audit scripts ad-hoc (no en package.json) ---
+# audit-admin-routes.py y audit-public-routes.py son scripts de
+# auditoría puntuales. Se corren con `python` cuando se necesita un
+# snapshot del estado de auth/guards. No parte del flujo npm run.
+scripts/audit-admin-routes.py
+scripts/audit-public-routes.py
 .env*
