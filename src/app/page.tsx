@@ -6,6 +6,16 @@ import { CourseCard } from "@/components/course";
 import { Logo, Isotipo } from "@/components/brand";
 import { WhatsAppButton } from "@/components/contact/WhatsAppButton";
 import { Reveal } from "@/components/feedback/Reveal";
+import { LucideIcon } from "@/components/ui/Icon";
+import {
+  Award,
+  Infinity as InfinityIcon,
+  MapPin,
+  MessageCircle,
+  Target,
+  Video
+} from "lucide-react";
+import type { ComponentType, SVGProps } from "react";
 import { getPublishedCourses } from "@/lib/lms/courses-server";
 import { getCourseStats } from "@/lib/data/courses";
 import { testimonials } from "@/lib/data/content";
@@ -197,41 +207,45 @@ export default async function HomePage() {
             description="Cada curso está pensado para que apliques el mismo día. Menos teoría, más resultados."
           />
           <div className="mt-12 grid gap-5 md:grid-cols-3">
-            {[
-              {
-                icon: "🎯",
-                title: "Enfoque en resultados",
-                body: "Cada módulo termina con algo aplicable: una campaña, un bot, un calendario. No con un examen teórico."
-              },
-              {
-                icon: "🇲🇽",
-                title: "Hecho para México",
-                body: "Ejemplos con mercado mexicano, métodos de pago locales (tarjeta, SPEI, OXXO) y casos reales."
-              },
-              {
-                icon: "⚡",
-                title: "A tu ritmo, para siempre",
-                body: "Acceso de por vida. Mira las lecciones cuando quieras y repite las que necesites."
-              },
-              {
-                icon: "🎥",
-                title: "Calidad de producción",
-                body: "Video HD, recursos descargables y plantillas listas para usar en tu negocio."
-              },
-              {
-                icon: "🏆",
-                title: "Certificados verificables",
-                body: "Al completar obtienes un certificado con código único que puedes compartir en LinkedIn."
-              },
-              {
-                icon: "💬",
-                title: "Soporte humano",
-                body: "Dudas reales reciben respuestas reales. No te dejamos solo con los videos."
-              }
-            ].map((b, i) => (
+            {(
+              [
+                {
+                  icon: Target,
+                  title: "Enfoque en resultados",
+                  body: "Cada módulo termina con algo aplicable: una campaña, un bot, un calendario. No con un examen teórico."
+                },
+                {
+                  icon: MapPin,
+                  title: "Hecho para México",
+                  body: "Ejemplos con mercado mexicano, métodos de pago locales (tarjeta, SPEI, OXXO) y casos reales."
+                },
+                {
+                  icon: InfinityIcon,
+                  title: "A tu ritmo, para siempre",
+                  body: "Acceso de por vida. Mira las lecciones cuando quieras y repite las que necesites."
+                },
+                {
+                  icon: Video,
+                  title: "Calidad de producción",
+                  body: "Video HD, recursos descargables y plantillas listas para usar en tu negocio."
+                },
+                {
+                  icon: Award,
+                  title: "Certificados verificables",
+                  body: "Al completar obtienes un certificado con código único que puedes compartir en LinkedIn."
+                },
+                {
+                  icon: MessageCircle,
+                  title: "Soporte humano",
+                  body: "Dudas reales reciben respuestas reales. No te dejamos solo con los videos."
+                }
+              ] satisfies Array<{ icon: ComponentType<SVGProps<SVGSVGElement>>; title: string; body: string }>
+            ).map((b, i) => (
               <Reveal key={b.title} delay={i * 80}>
                 <Card hover className="p-6 h-full">
-                  <div className="text-3xl mb-3">{b.icon}</div>
+                  <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+                    <LucideIcon icon={b.icon} size="lg" tone="inherit" strokeWidth={2} />
+                  </div>
                   <h3 className="font-bold text-lg text-ink">{b.title}</h3>
                   <p className="mt-2 text-ink-muted">{b.body}</p>
                 </Card>
