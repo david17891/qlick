@@ -221,10 +221,10 @@ async function processStripeEvent(
       outcome = await handleCheckoutCompleted(event, idempotencyKey, stripeMode);
       break;
     case "checkout.session.async_payment_failed":
-      outcome = await handleCheckoutFailed(event, idempotencyKey);
+      outcome = await handleCheckoutFailed(event, idempotencyKey, stripeMode);
       break;
     case "checkout.session.expired":
-      outcome = await handleCheckoutExpired(event, idempotencyKey);
+      outcome = await handleCheckoutExpired(event, idempotencyKey, stripeMode);
       break;
     case "charge.refunded":
       outcome = await handleChargeRefunded(event, idempotencyKey);
@@ -414,6 +414,94 @@ function sessionEmailFromCheckout(session: CheckoutSession): string | null {
   return session.customer_email ?? session.customer_details?.email ?? null;
 }
 
+async function resolveEventConfirmationForSession(args: {
+  supabase: AdminClient;
+  session: CheckoutSession;
+  eventId: string;
+  paymentStatus: "pending" | "paid";
+}): Promise<string | null> {
+  const { supabase, session, eventId, paymentStatus } = args;
+  let confirmationId = session.metadata?.confirmation_id ?? null;
+  if (confirmationId) {
+    const { data: confirmation } = await supabase
+      .from("event_confirmations")
+      .select("id")
+      .eq("id", confirmationId)
+      .eq("event_id", eventId)
+      .maybeSingle();
+    if (!confirmation) confirmationId = null;
+  }
+  const email = sessionEmailFromCheckout(session);
+  if (!confirmationId && email) {
+    const ensured = await ensureEventConfirmation({
+      eventId,
+      email,
+      name: session.customer_details?.name ?? null,
+      source: "public_form",
+      paymentStatus,
+    });
+    confirmationId = ensured?.confirmationId ?? null;
+  }
+  return confirmationId;
+}
+
+async function recordEventCheckoutTerminalState(args: {
+  supabase: AdminClient;
+  session: CheckoutSession;
+  productRef: Extract<ProductRef, { kind: "event" | "masterclass" }>;
+  stripeMode: "test" | "live";
+  status: "failed" | "cancelled";
+  metadata?: Record<string, unknown>;
+}): Promise<boolean> {
+  const { supabase, session, productRef, stripeMode, status, metadata } = args;
+  const confirmationId = await resolveEventConfirmationForSession({
+    supabase,
+    session,
+    eventId: productRef.id,
+    paymentStatus: "pending",
+  });
+  if (!confirmationId) return false;
+
+  const paymentIntentId =
+    typeof session.payment_intent === "string"
+      ? session.payment_intent
+      : session.payment_intent?.id ?? null;
+  const { data: existing, error: lookupError } = await supabase
+    .from("event_payments")
+    .select("id, status")
+    .eq("stripe_session_id", session.id)
+    .maybeSingle();
+  if (lookupError) throw new Error(`Error buscando event_payment terminal: ${lookupError.message}`);
+
+  // Un evento tardío (expired/failed) nunca debe degradar un pago ya aprobado.
+  if (existing && existing.status !== "pending") return true;
+  const payload = {
+    confirmation_id: confirmationId,
+    method: "stripe",
+    status,
+    amount_mxn: typeof session.amount_total === "number" ? session.amount_total / 100 : 0,
+    currency: session.currency?.toUpperCase() ?? "MXN",
+    external_reference: session.id,
+    idempotency_key: `stripe_terminal:${session.id}:${status}`,
+    stripe_session_id: session.id,
+    stripe_payment_intent_id: paymentIntentId,
+    stripe_mode: stripeMode,
+    metadata: {
+      source: "stripe-webhook",
+      terminal_status: status,
+      payment_status: session.payment_status,
+      ...metadata,
+    },
+  } as never;
+  const { error } = existing
+    ? await supabase.from("event_payments").update(payload).eq("id", existing.id)
+    : await supabase.from("event_payments").insert(payload);
+  if (error && error.code !== "23505") {
+    throw new Error(`Error registrando event_payment terminal: ${error.message}`);
+  }
+  return true;
+}
+
 async function handleServiceCheckoutCompleted(
   session: CheckoutSession,
   productRef: Extract<ProductRef, { kind: "service" }>,
@@ -545,7 +633,7 @@ async function resolveOrCreateUserId(
     // manejamos abajo.
     // eslint-disable-next-line no-console
     console.warn("[stripe-webhook] listUsers falló (continuamos con createUser)", {
-      email: sessionEmail,
+      email_present: true,
       error: err instanceof Error ? err.message : String(err),
     });
   }
@@ -577,7 +665,7 @@ async function resolveOrCreateUserId(
 
   // eslint-disable-next-line no-console
   console.error("[stripe-webhook] resolveOrCreateUserId falló", {
-    email: sessionEmail,
+    email_present: true,
     error: createError?.message ?? "unknown",
   });
   return null;
@@ -641,7 +729,7 @@ async function handleCheckoutCompleted(
       event_id: event.id,
       session_id: session.id,
       metadata_user_id: metadataUserId || null,
-      session_email: sessionEmail,
+      session_email_present: Boolean(sessionEmail),
     });
     return {
       status: 200,
@@ -696,24 +784,39 @@ async function handleCheckoutCompleted(
       actual_centavos: actualAmountCentavos,
       delta_centavos: actualAmountCentavos - expectedAmountCentavos,
     });
-    // Insertar payment como suspicious para auditoria. NO grant access.
-    // FIX 2026-07-18 (audit): payments.metadata NO existe en DB
-    // (verificado via /rest/v1/payments?select=metadata → 42703).
-    // El codigo original metia el campo dentro de un `as any` que
-    // silenciaba TS. Removemos el campo. Si se quiere auditoria
-    // detallada, agregar columna via migration en sprint futuro.
-    await supabase.from("payments").insert({
-      user_id: userId,
-      course_id: productRef.kind === "course" ? productRef.id : null,
-      provider: "stripe",
-      external_reference: session.id,
-      amount_mxn: actualAmountCentavos / 100,
-      discount_mxn: 0,
-      currency: session.currency ?? "MXN",
-      status: "suspicious_amount_discrepancy",
-      method: detectMethodFromSession(session),
-      idempotency_key: `suspicious:${idempotencyKey}`,
-    });
+    // Registrar el intento en el ledger correcto. Los eventos usan
+    // `event_payments`; nunca deben caer en `payments` con course_id NULL.
+    if (productRef.kind === "event" || productRef.kind === "masterclass") {
+      await recordEventCheckoutTerminalState({
+        supabase,
+        session,
+        productRef,
+        stripeMode,
+        status: "failed",
+        metadata: {
+          reason: "amount_discrepancy",
+          expected_mxn: productRef.priceMXN,
+          actual_mxn: actualAmountCentavos / 100,
+          expected_centavos: expectedAmountCentavos,
+          actual_centavos: actualAmountCentavos,
+        },
+      });
+    } else {
+      // payments.metadata NO existe en DB; los detalles quedan en los
+      // campos de auditoría del webhook y el estado dedicado.
+      await supabase.from("payments").insert({
+        user_id: userId,
+        course_id: productRef.id,
+        provider: "stripe",
+        external_reference: session.id,
+        amount_mxn: actualAmountCentavos / 100,
+        discount_mxn: 0,
+        currency: session.currency ?? "MXN",
+        status: "suspicious_amount_discrepancy",
+        method: detectMethodFromSession(session),
+        idempotency_key: `suspicious:${idempotencyKey}`,
+      });
+    }
     return {
       status: 200,
       body: {
@@ -835,7 +938,7 @@ async function handleCheckoutCompleted(
               confirmationId: ensured.confirmationId,
               source: ensured.source,
               eventId: productRef.id,
-              email: sessionEmail,
+              email_present: Boolean(sessionEmail),
             }
           );
         }
@@ -860,7 +963,7 @@ async function handleCheckoutCompleted(
           session_id: session.id,
           event_id_ref: productRef.id,
           user_id: userId,
-          session_email: sessionEmail,
+          session_email_present: Boolean(sessionEmail),
         }
       );
       return {
@@ -1227,7 +1330,8 @@ async function notifyLeadPaymentConfirmed(args: {
 
 async function handleCheckoutFailed(
   event: Stripe.Event,
-  idempotencyKey: string
+  idempotencyKey: string,
+  stripeMode: "test" | "live"
 ): Promise<ProcessOutcome> {
   const session = event.data.object as CheckoutSession;
   const supabase = createSupabaseAdminClient();
@@ -1251,6 +1355,23 @@ async function handleCheckoutFailed(
     return {
       status: 200,
       body: { ok: true, mode: "service_checkout_failed", order_id: productRef.orderId },
+    };
+  }
+  if (productRef?.kind === "event" || productRef?.kind === "masterclass") {
+    const recorded = await recordEventCheckoutTerminalState({
+      supabase,
+      session,
+      productRef,
+      stripeMode,
+      status: "failed",
+    });
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        mode: recorded ? "event_checkout_failed" : "event_checkout_failed_unattributed",
+        event_id: event.id,
+      },
     };
   }
   const userId = (session.metadata?.user_id as string | undefined) ?? "";
@@ -1307,11 +1428,52 @@ async function handleCheckoutFailed(
 
 async function handleCheckoutExpired(
   event: Stripe.Event,
-  idempotencyKey: string
+  idempotencyKey: string,
+  stripeMode: "test" | "live"
 ): Promise<ProcessOutcome> {
   // Sesión expirada (ej. OXXO voucher no pagado en 3 días).
   const session = event.data.object as CheckoutSession;
   const supabase = createSupabaseAdminClient();
+  const productRef = extractProductRefFromMetadata(
+    session.metadata as Record<string, string> | null
+  );
+  if (productRef?.kind === "service") {
+    const paymentIntentId =
+      typeof session.payment_intent === "string"
+        ? session.payment_intent
+        : session.payment_intent?.id ?? null;
+    await supabase
+      .from("service_orders")
+      .update({
+        payment_status: "failed",
+        payment_reference: session.id,
+        stripe_session_id: session.id,
+        stripe_payment_intent_id: paymentIntentId,
+      } as never)
+      .eq("id", productRef.orderId)
+      .neq("payment_status", "paid");
+    return {
+      status: 200,
+      body: { ok: true, mode: "service_checkout_expired", order_id: productRef.orderId },
+    };
+  }
+  if (productRef?.kind === "event" || productRef?.kind === "masterclass") {
+    const recorded = await recordEventCheckoutTerminalState({
+      supabase,
+      session,
+      productRef,
+      stripeMode,
+      status: "cancelled",
+    });
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        mode: recorded ? "event_checkout_expired" : "event_checkout_expired_unattributed",
+        event_id: event.id,
+      },
+    };
+  }
   const userId = (session.metadata?.user_id as string | undefined) ?? "";
 
   if (!userId) {
@@ -1532,6 +1694,15 @@ async function handleChargeRefunded(
     });
   } else if (paymentKind === "event") {
     // Evento: buscar event_access por payment_id.
+    if (eventConfirmationIdForRefund) {
+      // La confirmación es la vista que consume el QR y el admin. Al
+      // revocar el acceso por refund debe dejar de mostrarse como pagada.
+      await supabase
+        .from("event_confirmations")
+        .update({ payment_status: "revoked" } as never)
+        .eq("id", eventConfirmationIdForRefund)
+        .in("payment_status", ["paid", "paid_manual"]);
+    }
     const { data: eventAccess } = await supabase
       .from("event_access")
       .select("id, user_id, event_id")
@@ -1774,7 +1945,7 @@ async function handlePaymentIntentFailed(
   const supabase = createSupabaseAdminClient();
 
   // Buscar en payments (cursos) por external_reference = payment_intent.id.
-  let paymentKind: "course" | "event" | null = null;
+  let paymentKind: "course" | "event" | "service" | null = null;
   let paymentId: string | null = null;
 
   const { data: coursePayByPi } = await supabase
@@ -1810,6 +1981,16 @@ async function handlePaymentIntentFailed(
     if (evPay) {
       paymentKind = "event";
       paymentId = (evPay as { id: string }).id;
+    } else {
+      const { data: serviceOrder } = await supabase
+        .from("service_orders")
+        .select("id")
+        .eq("stripe_payment_intent_id", pi.id)
+        .maybeSingle();
+      if (serviceOrder) {
+        paymentKind = "service";
+        paymentId = (serviceOrder as { id: string }).id;
+      }
     }
   }
 
@@ -1832,18 +2013,36 @@ async function handlePaymentIntentFailed(
       .from("payments")
       .update({ status: "failed" as PaymentStatus })
       .eq("id", paymentId);
-  } else {
+  } else if (paymentKind === "event") {
     await supabase
       .from("event_payments")
       .update({ status: "failed" })
       .eq("id", paymentId);
+  } else {
+    await supabase
+      .from("service_orders")
+      .update({ payment_status: "failed" } as never)
+      .eq("id", paymentId)
+      .neq("payment_status", "paid");
+    await supabase.from("service_order_events").insert({
+      order_id: paymentId,
+      type: "status_change",
+      actor_id: "stripe-webhook",
+      actor_type: "system",
+      payload: { payment_status: "failed", stripe_event_id: event.id },
+    } as never);
   }
 
   // Audit log con el motivo del fallo (decline_code, last_payment_error).
   await logAdminAction({
     actor_email: "stripe-webhook",
     action: "payment_failed",
-    entity_type: paymentKind === "course" ? "payment" : "event_payment",
+    entity_type:
+      paymentKind === "course"
+        ? "payment"
+        : paymentKind === "event"
+          ? "event_payment"
+          : "service_order",
     entity_id: paymentId,
     metadata: {
       payment_intent_id: pi.id,

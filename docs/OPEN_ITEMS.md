@@ -2429,17 +2429,19 @@ El commit `9c606de` ("captura universal de nombre humano en cualquier turno", me
 
 ### Validación post-housekeeping
 
-### Pagos/events live hardening — 2026-07-22
+### Pagos/events live hardening — auditoría pre-PR34 (2026-07-23)
 
-- **LIVE-1 (cerrado 2026-07-22):** migración `supabase/migrations/20260722120000_payments_events_live_hardening.sql` aplicada y verificada en Supabase; historial remoto `20260722181647_payments_events_live_hardening`. `src/types/supabase.ts` regenerado desde la base real.
-- **LIVE-2 (bloqueador):** repetir el E2E en Stripe test para tarjeta, voucher OXXO/SPEI, refund/dispute, evento con `confirmation_id` y pago de servicio; validar QR, email y WhatsApp con fixtures sintéticos.
-- **LIVE-3 (bloqueador):** configurar en Vercel las variables duales `STRIPE_SECRET_KEY`, `STRIPE_SECRET_KEY_LIVE`, `STRIPE_WEBHOOK_SECRET` y `STRIPE_WEBHOOK_SECRET_LIVE`, y ejecutar `scripts/verify-stripe-go-live.mjs`.
-- **LIVE-4 (operativo):** registrar endpoints Stripe test/live con los mismos eventos manejados y observar errores durante las primeras 24 horas del primer evento live.
+- **LIVE-1 (cerrado):** migración `20260722130000_stripe_session_conflict_targets.sql` aplicada y versionada en PR34; los tres `stripe_session_id` únicos existen en Supabase.
+- **LIVE-2 (cerrado técnicamente):** E2E backend sintético cubre tarjeta, OXXO/SPEI pendiente y async success, refund/dispute, `confirmation_id`, QR/email/WhatsApp y service order; cleanup verificado.
+- **LIVE-3 (cerrado en configuración):** Vercel Production contiene las cuatro variables duales como secrets; smoke de firma 400/401 y Checkout test 200.
+- **LIVE-4 (pendiente operativo):** registrar/verificar endpoint Stripe live y hacer un cargo real controlado; observar las primeras 24h.
+- **LIVE-5 (pendiente decisión):** servicios siguen en test salvo `STRIPE_SERVICE_PAYMENT_MODE=live`; cursos siguen en test por diseño.
+- **LIVE-6 (deuda no bloqueante):** actualizar API version de Stripe en una ventana separada y sustituir `listUsers` por lookup SQL cuando el volumen supere 1,000 usuarios.
 
 - `npm run type-check` → ✓ 0 errores
-- `npm run lint` → ✓ 0 warnings, 0 errors
-- `npm test` → ✓ **1066/1066 pass**
-- `node scripts/_audit-voseo-templates.mjs` → ✓ 209/212 archivos limpios, 3 falsos positivos documentados
+- `npm run lint` → ✓ 0 warnings, 0 errores
+- suite focalizada pagos/webhooks/servicios → ✓ **73/73 pass**
+- suite completa → **1488 pass / 3 fallos preexistentes de fixtures CRM** (no pagos)
 - `node scripts/_preview-survey-invite-email.mjs` → ✓ genera preview HTML
 - `git log --oneline -8` muestra todos los commits del sprint mergeados a main + origin/main.
 

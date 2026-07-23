@@ -37,17 +37,26 @@ test("webhook no otorga acceso al crear voucher OXXO/SPEI", () => {
   assert.match(webhook, /status: "pending"/);
 });
 
+test("eventos registran failed/expired sin degradar pagos aprobados", () => {
+  assert.match(webhook, /recordEventCheckoutTerminalState/);
+  assert.match(webhook, /status: "failed"/);
+  assert.match(webhook, /status: "cancelled"/);
+  assert.match(webhook, /existing\.status !== "pending"/);
+});
+
 test("webhook correlaciona refunds por PaymentIntent/Charge y revoca por payment", () => {
   assert.match(webhook, /stripe_payment_intent_id/);
   assert.match(webhook, /stripe_charge_id/);
   assert.match(webhook, /paymentId,\n        confirmationId/);
   assert.match(entitlements, /paymentId\?: string \| null/);
+  assert.match(webhook, /payment_status: "revoked"/);
 });
 
 test("webhook tiene fulfillment explícito para service_order", () => {
   assert.match(webhook, /handleServiceCheckoutCompleted/);
   assert.match(webhook, /payment_status: "paid"/);
   assert.match(webhook, /type: "payment_received"/);
+  assert.match(webhook, /payment_status: "failed"/);
 });
 
 test("confirmation_id se valida contra el evento antes de ir a Stripe", () => {

@@ -8,19 +8,19 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-21 06:05 — **FASE 8 cerrada: sistema integral de pedidos de servicios live en `qlick.digital`**. 14 commits atómicos consecutivos a main (`e9689c7..76ca9ad`). 1480/1480 tests verde, type-check 0, lint 0/0, build OK. **E2E real verificado contra prod**: cliente llena form en `/servicios/sitio-web` → POST `/api/services/checkout/` → 200 con `order_number: QO-2026-0001` → fila en DB con `status: pending_contact` → email Brevo al admin. Sprint completo (8A→8F): WhatsApp directo +5216532935492 con fallback duro + migration cursos "próximamente" (8A) → schema `service_orders` 6 tablas + RLS + 3 services × 6 variants seed (8B) → lib server + 6 APIs REST + email notif + 8 unit tests (8C) → catálogo público `/servicios` + modal checkout (8D) → admin tab "Pedidos" + `OrderDetailDrawer` con 5 tabs (8E) → `LeadServicesCard` en el CRM (8F). Handoff canónico en `docs/HANDOFF_FASE_8_SERVICE_ORDERS.md` (~600 líneas). Catalog público live: 3 services × 6 variants ($2,500–$5,500 MXN). Cada service = producto independiente con sus variants (NO variantes de un producto genérico — extensible desde día 1 con notas, certificados, comprobantes, timeline events). 1 lead → N orders via FK `lead_id` (con `ON DELETE SET NULL`, snapshot del cliente en cada order). Próximos sprints: Stripe real (test → live) + email al cliente cuando admin confirma + auto-link lead↔order vía email match + storage en Supabase para upload de documentos.
+> **Última actualización:** 2026-07-23 — Auditoría profunda pre-merge PR34. Production READY en `qlick.digital`; Stripe live keys y ambos webhook secrets presentes en Vercel Production. PR34 mantiene el DDL de índices únicos para `stripe_session_id`. Se corrigieron terminales de eventos (failed/expired), refund → confirmación revocada, discrepancias de monto por ledger, fallos de servicios, logs PII y copy de checkout. Evidencia y pendientes: `docs/AUDIT_PAYMENTS_EVENTS_PRE_PR34_2026-07-23.md`.
 >
 > **Body del doc (líneas debajo):** es archivo histórico de sprints cerrados. Para estado actual, ver este snapshot.
 
 ---
 
-## Estado actual — 2026-07-22
+## Estado actual — 2026-07-23
 
-- La migración de hardening de pagos/eventos fue aplicada y verificada en Supabase; los tipos se regeneraron desde el esquema remoto.
-- TypeScript semántico: 0 errores de código. Lint programático sobre `src/**/*.ts(x)`: 0 errores y 0 warnings.
-- Pruebas estructurales de pagos/eventos: 7/7 pass.
-- Suite completa `npm test` no pudo ejecutarse con el runner de Windows (error 1312); el intento directo no es equivalente porque no carga el loader TypeScript/alias del proyecto.
-- Estado Stripe: **NO-GO para cargos reales** hasta configurar y comprobar variables/webhook live en Vercel y repetir E2E completo de evento, notificaciones y reembolso.
+- Migración `20260722130000_stripe_session_conflict_targets.sql` aplicada y verificada en Supabase Production; PR34 la versiona para reproducibilidad.
+- `npm run type-check`: PASS. `npm run lint`: PASS. Suite focalizada pagos/webhooks/servicios: 73/73 PASS.
+- Suite completa: 1488 PASS y 3 fallos preexistentes de fixtures CRM (aislamiento/duplicado de teléfono); no son fallos del flujo de pagos.
+- Smoke Production seguro: Checkout test 200; webhook sin firma 400; firma falsa 401. E2E backend firmado de paid/pending/async/refund/dispute/service validado y cleanup verificado.
+- Estado Stripe: **GO técnico condicionado** para activar un evento controlado; **NO-GO para activación general** hasta registrar/verificar el endpoint live, hacer un cargo real pequeño y confirmar QR/email/WhatsApp. Servicios siguen en test salvo `STRIPE_SERVICE_PAYMENT_MODE=live`; cursos siguen en test por diseño.
 
 ## Sprint v0.10 — 4 bloques hardening + 4 hotfixes E2E (2026-07-14 02:30 → 04:35)
 
