@@ -17,7 +17,7 @@
 ## Estado actual — 2026-07-23
 
 - Migración `20260722130000_stripe_session_conflict_targets.sql` aplicada y verificada en Supabase Production; PR34 la versiona para reproducibilidad.
-- `npm run type-check`: PASS. `npm run lint`: PASS. Suite focalizada pagos/webhooks/servicios: 73/73 PASS.
+- `npm run test:ci`: 1479/1479 PASS (gate estático portable; las suites E2E con secretos quedan fuera). `npm run type-check`: PASS. `npm run lint`: PASS. Suite focalizada pagos/webhooks/servicios: 73/73 PASS.
 - Suite completa: 1488 PASS y 3 fallos preexistentes de fixtures CRM (aislamiento/duplicado de teléfono); no son fallos del flujo de pagos.
 - Smoke Production seguro: Checkout test 200; webhook sin firma 400; firma falsa 401. E2E backend firmado de paid/pending/async/refund/dispute/service validado y cleanup verificado.
 - Estado Stripe: **GO técnico condicionado** para activar un evento controlado; **NO-GO para activación general** hasta registrar/verificar el endpoint live, hacer un cargo real pequeño y confirmar QR/email/WhatsApp. Servicios siguen en test salvo `STRIPE_SERVICE_PAYMENT_MODE=live`; cursos siguen en test por diseño.
