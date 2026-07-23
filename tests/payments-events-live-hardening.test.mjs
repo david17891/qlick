@@ -49,7 +49,8 @@ test("eventos registran failed/expired sin degradar pagos aprobados", () => {
 test("webhook correlaciona refunds por PaymentIntent/Charge y revoca por payment", () => {
   assert.match(webhook, /stripe_payment_intent_id/);
   assert.match(webhook, /stripe_charge_id/);
-  assert.match(webhook, /paymentId,\n        confirmationId/);
+  // Soportar checkout en Windows (CRLF) y Linux (LF).
+  assert.match(webhook, /paymentId,\r?\n        confirmationId/);
   assert.match(entitlements, /paymentId\?: string \| null/);
   assert.match(webhook, /payment_status: "revoked"/);
 });

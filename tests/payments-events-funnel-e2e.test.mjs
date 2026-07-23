@@ -139,7 +139,6 @@ test("funnel completo con Stripe test y webhook firmado", async () => {
     price_mxn: 10,
     currency: "MXN",
     status: "published",
-    short_code: "Q" + String(Date.now()).slice(-3),
     requires_name: true,
     event_rules: { payment_mode: "test", personality: "", rules: [] },
   }).select("id, slug, title, price_mxn, starts_at").single();

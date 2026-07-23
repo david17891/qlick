@@ -1948,21 +1948,18 @@ async function findOrCreateLead(
       created: isFirst
     };
   }
+  // `findLeadByPhone` ya impone timeout + retry internamente. Mantener otra
+  // carrera aquí vencía antes del retry (5s externos vs. ~6.2s internos),
+  // generaba un falso timeout y disparaba un INSERT innecesario en cada
+  // consulta lenta. Dejamos que el helper centralizado decida cuándo cae al
+  // fallback de creación; así evitamos dos relojes de timeout superpuestos.
   // eslint-disable-next-line no-console
   debugLog("[whatsapp/bot] findOrCreateLead: querying findLeadByPhone");
-  const findPromise = findLeadByPhone(phoneNormalized);
-  const findTimeout = new Promise<null>((resolve) =>
-    setTimeout(() => {
-      // eslint-disable-next-line no-console
-      debugLog("[whatsapp/bot] findLeadByPhone TIMEOUT (5s) - forzando fallback");
-      resolve(null);
-    }, 5000)
-  );
-  const existing = await Promise.race([findPromise, findTimeout]);
+  const existing = await findLeadByPhone(phoneNormalized);
   // eslint-disable-next-line no-console
   debugLog("[whatsapp/bot] findLeadByPhone result", {
     found: Boolean(existing),
-    timedOut: existing === null
+    fallbackCreate: existing === null
   });
   if (existing) return { lead: existing, created: false };
   const created = await createLeadFromWhatsApp(
