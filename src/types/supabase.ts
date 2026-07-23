@@ -700,6 +700,10 @@ export type Database = {
           method: string
           notes: string | null
           status: string
+          stripe_charge_id: string | null
+          stripe_mode: string
+          stripe_payment_intent_id: string | null
+          stripe_session_id: string | null
           updated_at: string
         }
         Insert: {
@@ -714,6 +718,10 @@ export type Database = {
           method: string
           notes?: string | null
           status?: string
+          stripe_charge_id?: string | null
+          stripe_mode?: string
+          stripe_payment_intent_id?: string | null
+          stripe_session_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -728,6 +736,10 @@ export type Database = {
           method?: string
           notes?: string | null
           status?: string
+          stripe_charge_id?: string | null
+          stripe_mode?: string
+          stripe_payment_intent_id?: string | null
+          stripe_session_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -2002,6 +2014,10 @@ export type Database = {
           method: string | null
           provider: string
           status: string
+          stripe_charge_id: string | null
+          stripe_mode: string
+          stripe_payment_intent_id: string | null
+          stripe_session_id: string | null
           updated_at: string
           user_id: string
         }
@@ -2019,6 +2035,10 @@ export type Database = {
           method?: string | null
           provider?: string
           status?: string
+          stripe_charge_id?: string | null
+          stripe_mode?: string
+          stripe_payment_intent_id?: string | null
+          stripe_session_id?: string | null
           updated_at?: string
           user_id: string
         }
@@ -2036,6 +2056,10 @@ export type Database = {
           method?: string | null
           provider?: string
           status?: string
+          stripe_charge_id?: string | null
+          stripe_mode?: string
+          stripe_payment_intent_id?: string | null
+          stripe_session_id?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -2198,11 +2222,16 @@ export type Database = {
           id: string
           lead_id: string | null
           order_number: string
+          paid_at: string | null
           payment_mode: string
           payment_reference: string | null
+          payment_status: string
           scheduled_at: string | null
           service_id: string
           status: string
+          stripe_charge_id: string | null
+          stripe_payment_intent_id: string | null
+          stripe_session_id: string | null
           updated_at: string
           variant_id: string
         }
@@ -2221,11 +2250,16 @@ export type Database = {
           id?: string
           lead_id?: string | null
           order_number: string
+          paid_at?: string | null
           payment_mode?: string
           payment_reference?: string | null
+          payment_status?: string
           scheduled_at?: string | null
           service_id: string
           status?: string
+          stripe_charge_id?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_session_id?: string | null
           updated_at?: string
           variant_id: string
         }
@@ -2244,11 +2278,16 @@ export type Database = {
           id?: string
           lead_id?: string | null
           order_number?: string
+          paid_at?: string | null
           payment_mode?: string
           payment_reference?: string | null
+          payment_status?: string
           scheduled_at?: string | null
           service_id?: string
           status?: string
+          stripe_charge_id?: string | null
+          stripe_payment_intent_id?: string | null
+          stripe_session_id?: string | null
           updated_at?: string
           variant_id?: string
         }
@@ -2392,6 +2431,39 @@ export type Database = {
           short_description?: string | null
           slug?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      stripe_webhook_receipts: {
+        Row: {
+          error_message: string | null
+          event_id: string
+          event_type: string
+          metadata: Json
+          processed_at: string | null
+          received_at: string
+          status: string
+          stripe_mode: string
+        }
+        Insert: {
+          error_message?: string | null
+          event_id: string
+          event_type: string
+          metadata?: Json
+          processed_at?: string | null
+          received_at?: string
+          status?: string
+          stripe_mode?: string
+        }
+        Update: {
+          error_message?: string | null
+          event_id?: string
+          event_type?: string
+          metadata?: Json
+          processed_at?: string | null
+          received_at?: string
+          status?: string
+          stripe_mode?: string
         }
         Relationships: []
       }
@@ -2753,3 +2825,4 @@ export const Constants = {
     },
   },
 } as const
+

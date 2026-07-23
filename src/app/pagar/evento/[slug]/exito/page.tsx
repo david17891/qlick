@@ -1,5 +1,5 @@
 /**
- * Página de éxito tras checkout de un evento — `/pagar/[eventSlug]/exito`.
+ * Página de éxito tras checkout de un evento — `/pagar/evento/[eventSlug]/exito`.
  *
  * Espejo de `/pagar/[courseSlug]/exito/page.tsx`, pero:
  *   - Resuelve evento (no curso) con `getEventBySlug`.
@@ -113,7 +113,7 @@ export default async function ExitoEventoPage({
     ctaLabel = session ? "Ver el evento" : "Esperar confirmación";
     ctaHref = session
       ? `/eventos/${event.slug}`
-      : `/pagar/${eventSlug}/exito?session_id=${sessionId}`;
+      : `/pagar/evento/${eventSlug}/exito?session_id=${sessionId}`;
     tone = "warning";
   } else if (paymentStatus === "rejected" || paymentStatus === "expired") {
     title = "El pago no se completó";
@@ -121,7 +121,7 @@ export default async function ExitoEventoPage({
       "El proveedor rechazó o expiró tu intento de pago. Puedes intentar de nuevo " +
       "con otro método o contactarnos si necesitas ayuda.";
     ctaLabel = "Volver a intentar";
-    ctaHref = `/pagar/${eventSlug}`;
+    ctaHref = `/pagar/evento/${eventSlug}`;
     tone = "warning";
   } else if (!session) {
     title = "Recibimos tu pago";

@@ -123,32 +123,6 @@ function resolveAmount(input: CreateCheckoutInput): number {
   throw new Error("CreateCheckoutInput sin productRef.priceMXN ni amountMXN legacy.");
 }
 
-/**
- * Mapea método de Qlick a payment_method_types de Stripe Checkout.
- *
- * - "card"  → ['card']
- * - "oxxo"  → ['oxxo']  (voucher de pago en OXXO, expira 3 días)
- * - "spei"  → ['customer_balance']  (transferencia SPEI con bank_transfer)
- * - "free"  → []  (no debería llegar al provider real; gratis va por otra vía)
- *
- * Si el caller quiere forzar varios, podría expandir aquí más adelante.
- */
-function paymentMethodsFor(method: CreateCheckoutInput["method"]): Stripe.Checkout.SessionCreateParams["payment_method_types"] {
-  switch (method) {
-    case "card":
-      return ["card"];
-    case "oxxo":
-      return ["oxxo"];
-    case "spei":
-      return ["customer_balance"];
-    case "free":
-      return [];
-    default:
-      // wallet, coupon u otros: Stripe decide o cae a card.
-      return ["card"];
-  }
-}
-
 /** Serializa el productRef a metadata de Stripe (string-only, JSON). */
 function serializeProductRef(ref: ProductRef): string {
   return JSON.stringify(ref);
@@ -192,6 +166,10 @@ export const stripeProvider: PaymentProvider = {
       user_id: input.userId ?? "",
       user_email: input.userEmail,
       kind: productRef.kind,
+      // Stripe recomienda Dynamic Payment Methods: la disponibilidad real
+      // (tarjeta/OXXO/SPEI) se configura en Dashboard y no se congela en
+      // `payment_method_types`. Conservamos la preferencia para auditoría.
+      requested_payment_method: input.method,
       // FIX 2026-07-18: persistir el modo en metadata del session
       // para que el webhook sepa con qué Stripe client (test o live)
       // tiene que verificar la firma + leer el payment.
@@ -210,12 +188,24 @@ export const stripeProvider: PaymentProvider = {
     // URLs por defecto si el caller no las pasa. El success URL recibe
     // ?session_id={CHECKOUT_SESSION_ID} para que la página de éxito pueda
     // recuperar el estado del pago sin necesidad de polling.
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const successPath =
+      productRef.kind === "event"
+        ? `/pagar/evento/${productRef.slug}/exito`
+        : productRef.kind === "service"
+          ? `/servicios/${productRef.slug}`
+          : `/pagar/${productRef.slug}/exito`;
+    const cancelPath =
+      productRef.kind === "event"
+        ? `/pagar/evento/${productRef.slug}`
+        : productRef.kind === "service"
+          ? `/servicios/${productRef.slug}`
+          : `/pagar/${productRef.slug}`;
     const successUrl =
       input.successUrl ??
-      `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/pagar/${productRef.slug}/exito?session_id={CHECKOUT_SESSION_ID}`;
+      `${appUrl}${successPath}?${productRef.kind === "service" ? "paid=1&order_id=" + productRef.orderId : "session_id={CHECKOUT_SESSION_ID}"}`;
     const cancelUrl =
-      input.cancelUrl ??
-      `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}/pagar/${productRef.slug}?cancelled=1`;
+      input.cancelUrl ?? `${appUrl}${cancelPath}?cancelled=1`;
 
     try {
       const session = await stripe.checkout.sessions.create({
@@ -236,12 +226,13 @@ export const stripeProvider: PaymentProvider = {
                     ? "Acceso completo al curso en Qlick"
                     : productRef.kind === "event"
                       ? `Acceso al evento (${(productRef as { startsAt?: string }).startsAt ?? "próximamente"})`
-                      : "Acceso al video de la masterclass",
+                      : productRef.kind === "service"
+                        ? "Servicio contratado con Qlick Marketing Digital"
+                        : "Acceso al video de la masterclass",
               },
             },
           },
         ],
-        payment_method_types: paymentMethodsFor(input.method),
         // Metadata clave: productRef serializado (kind, id, slug, title, priceMXN)
         // + user_id para que el webhook pueda grant(Access|EventAccess).
         metadata,
@@ -299,7 +290,6 @@ export const stripeProvider: PaymentProvider = {
         code: err instanceof Stripe.errors.StripeError ? err.code : undefined,
         statusCode: err instanceof Stripe.errors.StripeError ? err.statusCode : undefined,
         message: err instanceof Error ? err.message : String(err),
-        apiKeyPrefix: process.env.STRIPE_SECRET_KEY?.slice(0, 12),
         apiVersion: STRIPE_API_VERSION,
       });
       const message =
@@ -312,9 +302,16 @@ export const stripeProvider: PaymentProvider = {
     }
   },
 
-  async getStatus(paymentId: string): Promise<PaymentQueryResult> {
+  async getStatus(
+    paymentId: string,
+    requestedMode?: StripeMode
+  ): Promise<PaymentQueryResult> {
     try {
-      const stripe = getStripeClient();
+      // Los IDs de Checkout contienen el modo (`cs_live_`/`cs_test_`).
+      // Nunca consultar una sesión live con el cliente test por defecto.
+      const mode: StripeMode =
+        requestedMode ?? (paymentId.startsWith("cs_live_") ? "live" : "test");
+      const stripe = getStripeClient(mode);
       // paymentId es un Checkout Session ID. Expandemos payment_intent
       // para leer su status, que es la fuente de verdad sobre el cobro.
       const session = await stripe.checkout.sessions.retrieve(paymentId, {
@@ -496,9 +493,14 @@ export async function verifyStripeWebhookSignature(
     try {
       // Crea un cliente de Stripe con apiVersion solo para verificar firma.
       // No importa el key aqui, lo importante es el secret.
-      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "sk_placeholder", {
-        apiVersion: STRIPE_API_VERSION as never,
-      });
+      const stripe = new Stripe(
+        process.env.STRIPE_SECRET_KEY ??
+        process.env.STRIPE_SECRET_KEY_LIVE ??
+          "sk_test_placeholder",
+        {
+          apiVersion: STRIPE_API_VERSION as never,
+        },
+      );
       const event = stripe.webhooks.constructEvent(
         rawBody,
         signature,

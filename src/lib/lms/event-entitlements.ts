@@ -340,6 +340,10 @@ export async function grantEventAccess(params: {
         access_source: params.source,
         // Linkear el payment_id si ahora lo tenemos.
         payment_id: params.paymentId ?? null,
+        // Un lead puede haber creado el acceso desde WhatsApp sin auth user.
+        // Cuando Stripe resuelve/crea el usuario, enlazamos el mismo row en
+        // vez de dejarlo huérfano y hacer imposible una revocación posterior.
+        ...(params.userId ? { user_id: params.userId } : {}),
       })
       .eq("id", existingId)
       .select("*")
@@ -389,8 +393,10 @@ export async function grantEventAccess(params: {
  * - Expiración automática (vía cron, futuro).
  */
 export async function revokeEventAccess(params: {
-  userId: string;
-  eventId: string;
+  userId?: string | null;
+  eventId?: string | null;
+  paymentId?: string | null;
+  confirmationId?: string | null;
   reason: string;
 }): Promise<void> {
   if (!isRealMode()) {
@@ -401,15 +407,28 @@ export async function revokeEventAccess(params: {
 
   const supabase = createSupabaseAdminClient();
 
-  const { error } = await supabase
+  if (!params.userId && !params.paymentId && !params.confirmationId) {
+    throw new Error(
+      "[event-entitlements] revokeEventAccess: userId, paymentId o confirmationId requerido"
+    );
+  }
+
+  let query = supabase
     .from("event_access")
     .update({
       access_status: "revoked",
       granted_reason: params.reason,
     })
-    .eq("user_id", params.userId)
-    .eq("event_id", params.eventId)
     .eq("access_status", "active");
+
+  if (params.userId) query = query.eq("user_id", params.userId);
+  if (params.eventId) query = query.eq("event_id", params.eventId);
+  if (params.paymentId) query = query.eq("payment_id", params.paymentId);
+  if (params.confirmationId) {
+    query = query.eq("confirmation_id", params.confirmationId);
+  }
+
+  const { error } = await query;
 
   if (error) {
     throw new Error(

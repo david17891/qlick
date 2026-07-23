@@ -118,7 +118,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   // 3. Procesar según tipo de evento.
   try {
-    const outcome = await processStripeEvent(event);
+    const outcome = await processStripeEvent(event, verifiedMode);
     return NextResponse.json(outcome.body, { status: outcome.status });
   } catch (err) {
     // Loggear pero devolver 500 — Stripe va a reintentar.
@@ -140,7 +140,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 }
 
 async function processStripeEvent(
-  event: Stripe.Event
+  event: Stripe.Event,
+  stripeMode: "test" | "live"
 ): Promise<ProcessOutcome> {
   // Idempotencia: chequeamos si ya vimos este evento. Si sí, no procesamos
   // de nuevo (Stripe puede repetir delivery).
@@ -163,6 +164,36 @@ async function processStripeEvent(
 
   const supabase = createSupabaseAdminClient();
 
+  // Ledger durable: un evento ya procesado no se vuelve a ejecutar aunque
+  // no haya creado un payment (por ejemplo, un tipo ignorado). Si el row
+  // quedó en `received` por un timeout, permitimos reintento.
+  const { data: receipt } = await supabase
+    .from("stripe_webhook_receipts")
+    .select("status")
+    .eq("event_id", event.id)
+    .maybeSingle();
+  if (receipt && ["processed", "ignored"].includes(String(receipt.status))) {
+    return {
+      status: 200,
+      body: { ok: true, mode: "receipt_idempotent_skip", event_id: event.id },
+    };
+  }
+  const { error: receiptInsertError } = await supabase
+    .from("stripe_webhook_receipts")
+    .upsert(
+      {
+        event_id: event.id,
+        event_type: event.type,
+        stripe_mode: stripeMode,
+        status: "received",
+        received_at: new Date().toISOString(),
+      } as never,
+      { onConflict: "event_id" }
+    );
+  if (receiptInsertError && receiptInsertError.code !== "42P01") {
+    throw new Error(`No se pudo registrar receipt Stripe: ${receiptInsertError.message}`);
+  }
+
   // Chequear duplicado por idempotency_key antes de hacer cualquier cosa.
   const { data: existingPayment } = await supabase
     .from("payments")
@@ -183,41 +214,29 @@ async function processStripeEvent(
     };
   }
 
+  let outcome: ProcessOutcome;
   switch (event.type) {
     case "checkout.session.completed":
     case "checkout.session.async_payment_succeeded":
-      return await handleCheckoutCompleted(event, idempotencyKey);
-
+      outcome = await handleCheckoutCompleted(event, idempotencyKey, stripeMode);
+      break;
     case "checkout.session.async_payment_failed":
-      return await handleCheckoutFailed(event, idempotencyKey);
-
+      outcome = await handleCheckoutFailed(event, idempotencyKey);
+      break;
     case "checkout.session.expired":
-      return await handleCheckoutExpired(event, idempotencyKey);
-
+      outcome = await handleCheckoutExpired(event, idempotencyKey);
+      break;
     case "charge.refunded":
-      // Fase 4: refund real → revoke. Implementación básica ya incluida
-      // para no acumular deuda técnica.
-      return await handleChargeRefunded(event, idempotencyKey);
-
+      outcome = await handleChargeRefunded(event, idempotencyKey);
+      break;
     case "charge.dispute.created":
-      // FIX 2026-07-18 (sprint Stripe Live prep): chargeback/ disputa.
-      // Marcamos el payment como "disputed" y notificamos al admin
-      // para que pueda responder dentro del plazo de Stripe (7-14 días
-      // dependiendo del tipo de disputa). NO revocamos access todavía:
-      // la disputa puede resolverse a favor nuestro.
-      return await handleChargeDispute(event, idempotencyKey);
-
+      outcome = await handleChargeDispute(event, idempotencyKey);
+      break;
     case "payment_intent.payment_failed":
-      // FIX 2026-07-18 (sprint Stripe Live prep): tarjeta rechazada con
-      // 3DS failure o fondos insuficientes. El checkout.session puede
-      // expirar después, pero este evento llega antes y permite al
-      // admin ver el motivo exacto. Marcamos como "failed" si tenemos
-      // un payment en DB.
-      return await handlePaymentIntentFailed(event, idempotencyKey);
-
+      outcome = await handlePaymentIntentFailed(event, idempotencyKey);
+      break;
     default:
-      // Otros eventos: ignorar pero devolver 200 para no reintentar.
-      return {
+      outcome = {
         status: 200,
         body: {
           ok: true,
@@ -227,6 +246,17 @@ async function processStripeEvent(
         },
       };
   }
+
+  if (receiptInsertError?.code !== "42P01") {
+    await supabase
+      .from("stripe_webhook_receipts")
+      .update({
+        status: outcome.body.ok === false ? "failed" : "processed",
+        processed_at: new Date().toISOString(),
+      } as never)
+      .eq("event_id", event.id);
+  }
+  return outcome;
 }
 
 /* ------------------------------------------------------------------ */
@@ -235,6 +265,246 @@ async function processStripeEvent(
 
 type CheckoutSession = Stripe.Checkout.Session;
 type AdminClient = ReturnType<typeof createSupabaseAdminClient>;
+
+/**
+ * Registra una sesión de pago diferido (OXXO/SPEI) sin otorgar acceso.
+ * Stripe emite `checkout.session.completed` al crear el voucher, pero la
+ * fuente de verdad es `payment_status`; el grant solo ocurre en
+ * `async_payment_succeeded`.
+ */
+async function handleCheckoutPending(
+  session: CheckoutSession,
+  idempotencyKey: string,
+  stripeMode: "test" | "live"
+): Promise<ProcessOutcome> {
+  const productRef = extractProductRefFromMetadata(
+    session.metadata as Record<string, string> | null
+  );
+  if (!productRef) {
+    return {
+      status: 200,
+      body: { ok: true, mode: "pending_no_product_ref", session_id: session.id },
+    };
+  }
+  const supabase = createSupabaseAdminClient();
+  const stripePaymentIntentId =
+    typeof session.payment_intent === "string"
+      ? session.payment_intent
+      : session.payment_intent?.id ?? null;
+  const amountMXN =
+    typeof session.amount_total === "number" ? session.amount_total / 100 : 0;
+
+  if (productRef.kind === "service") {
+    const { error } = await supabase
+      .from("service_orders")
+      .update({
+        payment_status: "processing",
+        payment_reference: session.id,
+        stripe_session_id: session.id,
+        stripe_payment_intent_id: stripePaymentIntentId,
+      } as never)
+      .eq("id", productRef.orderId)
+      .eq("payment_status", "pending");
+    if (error && error.code !== "42P01") {
+      throw new Error(`Error registrando service_order pending: ${error.message}`);
+    }
+    return {
+      status: 200,
+      body: { ok: true, mode: "service_checkout_pending", order_id: productRef.orderId },
+    };
+  }
+
+  if (productRef.kind === "event" || productRef.kind === "masterclass") {
+    let confirmationId = session.metadata?.confirmation_id ?? null;
+    if (confirmationId) {
+      const { data: confirmation } = await supabase
+        .from("event_confirmations")
+        .select("id, event_id")
+        .eq("id", confirmationId)
+        .eq("event_id", productRef.id)
+        .maybeSingle();
+      if (!confirmation) confirmationId = null;
+    }
+    if (!confirmationId && sessionEmailFromCheckout(session)) {
+      const ensured = await ensureEventConfirmation({
+        eventId: productRef.id,
+        email: sessionEmailFromCheckout(session) as string,
+        name: session.customer_details?.name ?? null,
+        source: "public_form",
+        paymentStatus: "pending",
+      });
+      confirmationId = ensured?.confirmationId ?? null;
+    }
+    if (!confirmationId) {
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          mode: "pending_unattributed",
+          event_id: session.id,
+          note: "Voucher creado; falta confirmation_id para reconciliarlo.",
+        },
+      };
+    }
+    const { error } = await supabase
+      .from("event_payments")
+      .upsert(
+        {
+          confirmation_id: confirmationId,
+          method: "stripe",
+          status: "pending",
+          amount_mxn: amountMXN,
+          currency: session.currency?.toUpperCase() ?? "MXN",
+          external_reference: session.id,
+          idempotency_key: idempotencyKey,
+          stripe_session_id: session.id,
+          stripe_payment_intent_id: stripePaymentIntentId,
+          stripe_mode: stripeMode,
+          metadata: { source: "stripe-webhook", payment_status: session.payment_status },
+        } as never,
+        { onConflict: "stripe_session_id" }
+      );
+    if (error && error.code !== "23505") {
+      throw new Error(`Error registrando event_payment pending: ${error.message}`);
+    }
+  } else {
+    const userId = session.metadata?.user_id ?? "";
+    if (!userId) {
+      return {
+        status: 200,
+        body: { ok: true, mode: "pending_no_user", event_id: session.id },
+      };
+    }
+    const { error } = await supabase
+      .from("payments")
+      .upsert(
+        {
+          user_id: userId,
+          course_id: productRef.id,
+          provider: "stripe",
+          external_reference: session.id,
+          amount_mxn: amountMXN,
+          discount_mxn: 0,
+          currency: session.currency?.toUpperCase() ?? "MXN",
+          status: "pending",
+          method: detectMethodFromSession(session),
+          idempotency_key: idempotencyKey,
+          stripe_session_id: session.id,
+          stripe_payment_intent_id: stripePaymentIntentId,
+          stripe_mode: stripeMode,
+        } as never,
+        { onConflict: "stripe_session_id" }
+      );
+    if (error && error.code !== "23505") {
+      throw new Error(`Error registrando payment pending: ${error.message}`);
+    }
+  }
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      mode: "checkout_pending",
+      event_id: session.id,
+      payment_status: session.payment_status ?? "unpaid",
+    },
+  };
+}
+
+function sessionEmailFromCheckout(session: CheckoutSession): string | null {
+  return session.customer_email ?? session.customer_details?.email ?? null;
+}
+
+async function handleServiceCheckoutCompleted(
+  session: CheckoutSession,
+  productRef: Extract<ProductRef, { kind: "service" }>,
+  stripeMode: "test" | "live",
+  stripeEventId: string
+): Promise<ProcessOutcome> {
+  const supabase = createSupabaseAdminClient();
+  const { data: order, error: orderError } = await supabase
+    .from("service_orders")
+    .select("id, status, amount_mxn, payment_status")
+    .eq("id", productRef.orderId)
+    .maybeSingle();
+  if (orderError?.code === "42P01") {
+    return {
+      status: 200,
+      body: { ok: false, mode: "service_schema_missing", order_id: productRef.orderId },
+    };
+  }
+  if (orderError || !order) {
+    return {
+      status: 200,
+      body: { ok: false, mode: "service_order_not_found", order_id: productRef.orderId },
+    };
+  }
+
+  const actualAmount =
+    typeof session.amount_total === "number" ? session.amount_total / 100 : 0;
+  const expectedAmount = Number((order as { amount_mxn: number }).amount_mxn);
+  if (Math.round(actualAmount * 100) !== Math.round(expectedAmount * 100)) {
+    await supabase
+      .from("service_orders")
+      .update({ payment_status: "failed" } as never)
+      .eq("id", productRef.orderId);
+    return {
+      status: 200,
+      body: {
+        ok: false,
+        mode: "service_amount_discrepancy",
+        order_id: productRef.orderId,
+        expected_mxn: expectedAmount,
+        actual_mxn: actualAmount,
+      },
+    };
+  }
+
+  const paymentIntentId =
+    typeof session.payment_intent === "string"
+      ? session.payment_intent
+      : session.payment_intent?.id ?? null;
+  const currentStatus = (order as { status: string }).status;
+  const nextStatus = currentStatus === "pending_contact" ? "contacted" : currentStatus;
+  const { error: updateError } = await supabase
+    .from("service_orders")
+    .update({
+      payment_status: "paid",
+      paid_at: new Date().toISOString(),
+      payment_mode: stripeMode === "live" ? "stripe" : "test",
+      payment_reference: session.id,
+      stripe_session_id: session.id,
+      stripe_payment_intent_id: paymentIntentId,
+      status: nextStatus,
+    } as never)
+    .eq("id", productRef.orderId);
+  if (updateError) {
+    throw new Error(`Error marcando service_order paid: ${updateError.message}`);
+  }
+
+  await supabase.from("service_order_events").insert({
+    order_id: productRef.orderId,
+    type: "payment_received",
+    actor_id: "stripe-webhook",
+    actor_type: "system",
+    payload: {
+      stripe_event_id: stripeEventId,
+      stripe_session_id: session.id,
+      stripe_payment_intent_id: paymentIntentId,
+      stripe_mode: stripeMode,
+      amount_mxn: actualAmount,
+    },
+  } as never);
+
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      mode: "service_payment_processed",
+      order_id: productRef.orderId,
+      payment_status: "paid",
+    },
+  };
+}
 
 /**
  * Resuelve el user_id de un Checkout Session:
@@ -315,9 +585,19 @@ async function resolveOrCreateUserId(
 
 async function handleCheckoutCompleted(
   event: Stripe.Event,
-  idempotencyKey: string
+  idempotencyKey: string,
+  stripeMode: "test" | "live"
 ): Promise<ProcessOutcome> {
   const session = event.data.object as CheckoutSession;
+  // `checkout.session.completed` también se emite al crear un voucher OXXO
+  // o una instrucción SPEI. En ese momento payment_status no es `paid` y no
+  // se debe crear acceso, notificar ni marcar la confirmation como pagada.
+  const isPaid =
+    event.type === "checkout.session.async_payment_succeeded" ||
+    session.payment_status === "paid";
+  if (!isPaid) {
+    return handleCheckoutPending(session, idempotencyKey, stripeMode);
+  }
   const productRef = extractProductRefFromMetadata(
     session.metadata as Record<string, string> | null
   );
@@ -331,6 +611,10 @@ async function handleCheckoutCompleted(
         note: "Sin product_ref en metadata. Session probablemente creada fuera del flujo Qlick.",
       },
     };
+  }
+
+  if (productRef.kind === "service") {
+    return handleServiceCheckoutCompleted(session, productRef, stripeMode, event.id);
   }
 
   // 1. Resolver user_id (puede venir de metadata o ser guest checkout).
@@ -450,6 +734,7 @@ async function handleCheckoutCompleted(
   // en `payments` (legacy). El `event_access.payment_id` apunta a
   // `event_payments.id` después de la migration 20260716120000.
   let payment: { id: string };
+  let eventConfirmationId: string | null = null;
   if (productRef.kind === "event" || productRef.kind === "masterclass") {
     // Evento: INSERT en event_payments. Vinculamos a la confirmation
     // del lead via lookup por EMAIL del customer de Stripe (no por
@@ -497,7 +782,22 @@ async function handleCheckoutCompleted(
     let confLookup: string | null = null;
     const metadataConfirmationId = session.metadata?.confirmation_id;
     if (metadataConfirmationId && typeof metadataConfirmationId === "string") {
-      confLookup = metadataConfirmationId;
+      // Nunca confiar solo en metadata enviada por el cliente: la
+      // confirmation debe pertenecer al mismo evento cobrado.
+      const { data: attributedConfirmation } = await supabase
+        .from("event_confirmations")
+        .select("id, event_id")
+        .eq("id", metadataConfirmationId)
+        .eq("event_id", productRef.id)
+        .maybeSingle();
+      confLookup = attributedConfirmation?.id ?? null;
+      if (!confLookup) {
+        console.error("[stripe-webhook] confirmation_id inválido o de otro evento", {
+          event_id: event.id,
+          confirmation_id: metadataConfirmationId,
+          event_ref: productRef.id,
+        });
+      }
       // eslint-disable-next-line no-console
       console.log(
         "[stripe-webhook] event_confirmation desde metadata.confirmation_id",
@@ -574,6 +874,34 @@ async function handleCheckoutCompleted(
         },
       };
     }
+    eventConfirmationId = confLookup;
+    const stripePaymentIntentId =
+      typeof session.payment_intent === "string"
+        ? session.payment_intent
+        : session.payment_intent?.id ?? null;
+    const { data: existingEventPayment } = await supabase
+      .from("event_payments")
+      .select("id, confirmation_id, status")
+      .eq("stripe_session_id", session.id)
+      .maybeSingle();
+    if (existingEventPayment) {
+      const { data: promoted, error: promoteError } = await supabase
+        .from("event_payments")
+        .update({
+          status: "approved",
+          stripe_payment_intent_id: stripePaymentIntentId,
+          stripe_mode: stripeMode,
+          external_reference: session.id,
+        } as never)
+        .eq("id", existingEventPayment.id)
+        .select("id, confirmation_id")
+        .single();
+      if (promoteError || !promoted) {
+        throw new Error(`Error promoviendo event_payment pendiente: ${promoteError?.message ?? "unknown"}`);
+      }
+      eventConfirmationId = (promoted as { confirmation_id: string }).confirmation_id;
+      payment = promoted as unknown as { id: string };
+    } else {
     const { data: evPayment, error: evPayErr } = await supabase
       .from("event_payments")
       .insert({
@@ -592,12 +920,15 @@ async function handleCheckoutCompleted(
         currency: "MXN",
         external_reference: session.id,
         idempotency_key: idempotencyKey,
+        stripe_session_id: session.id,
+        stripe_payment_intent_id: stripePaymentIntentId,
+        stripe_mode: stripeMode,
         metadata: {
           source: "stripe-webhook",
           session_id: session.id,
           user_id: userId,
         },
-      })
+      } as never)
       .select("id")
       .single();
     if (evPayErr || !evPayment) {
@@ -618,8 +949,36 @@ async function handleCheckoutCompleted(
       );
     }
     payment = evPayment as unknown as { id: string };
+    eventConfirmationId = confLookup;
+    }
   } else {
     // Curso: INSERT en payments (legacy, no se mueve).
+    const stripePaymentIntentId =
+      typeof session.payment_intent === "string"
+        ? session.payment_intent
+        : session.payment_intent?.id ?? null;
+    const { data: existingCoursePayment } = await supabase
+      .from("payments")
+      .select("id, status")
+      .eq("stripe_session_id", session.id)
+      .maybeSingle();
+    if (existingCoursePayment) {
+      const { data: promoted, error: promoteError } = await supabase
+        .from("payments")
+        .update({
+          status: "approved",
+          stripe_payment_intent_id: stripePaymentIntentId,
+          stripe_mode: stripeMode,
+          external_reference: session.id,
+        } as never)
+        .eq("id", existingCoursePayment.id)
+        .select("id")
+        .single();
+      if (promoteError || !promoted) {
+        throw new Error(`Error promoviendo payment pendiente: ${promoteError?.message ?? "unknown"}`);
+      }
+      payment = promoted as { id: string };
+    } else {
     const { data: coursePayment, error: payErr } = await supabase
       .from("payments")
       .insert({
@@ -633,7 +992,10 @@ async function handleCheckoutCompleted(
         status: "approved" as PaymentStatus,
         method: detectMethodFromSession(session),
         idempotency_key: idempotencyKey,
-      })
+        stripe_session_id: session.id,
+        stripe_payment_intent_id: stripePaymentIntentId,
+        stripe_mode: stripeMode,
+      } as never)
       .select("id")
       .single();
 
@@ -654,8 +1016,8 @@ async function handleCheckoutCompleted(
       );
     }
     payment = coursePayment as { id: string };
+    }
   }
-
   // 2. Grant access según kind.
   const reason = `stripe_${event.type}_${new Date().toISOString().slice(0, 16)}`;
 
@@ -744,31 +1106,14 @@ async function handleCheckoutCompleted(
       (session.customer_email as string | undefined) ??
       (session.customer_details?.email as string | undefined) ??
       null;
-    const supabaseForLookup = createSupabaseAdminClient();
-    let confLookup: string | null = null;
-    if (sessionEmail) {
-      const ensured = await ensureEventConfirmation({
-        eventId: productRef.id,
-        email: sessionEmail,
-        name: (session.customer_details?.name as string | undefined) ?? null,
-        source: "public_form",
-        paymentStatus: "paid",
-      }).catch((err) => {
-        // eslint-disable-next-line no-console
-        console.error("[stripe-webhook] ensureEventConfirmation throw (block 2)", {
-          error: err instanceof Error ? err.message : String(err),
-        });
-        return null;
-      });
-      if (ensured) confLookup = ensured.confirmationId;
-    }
-    if (!confLookup) {
-      // Fallback: intentar con el helper legacy (por userId del lead)
-      confLookup = await findConfirmationIdForEvent({
+    // Reusar la confirmation ya validada durante el INSERT de
+    // event_payments. Nunca volver a resolver por email aquí: eso podía
+    // atribuir el access a otra confirmation si el pagador usaba un email
+    // distinto al del lead.
+    const confLookup = eventConfirmationId ?? (await findConfirmationIdForEvent({
         eventId: productRef.id,
         leadId: userId,
-      }).catch(() => null);
-    }
+      }).catch(() => null));
     await grantEventAccess({
       userId,
       confirmationId: confLookup,
@@ -886,6 +1231,28 @@ async function handleCheckoutFailed(
 ): Promise<ProcessOutcome> {
   const session = event.data.object as CheckoutSession;
   const supabase = createSupabaseAdminClient();
+  const productRef = extractProductRefFromMetadata(
+    session.metadata as Record<string, string> | null
+  );
+  if (productRef?.kind === "service") {
+    const paymentIntentId =
+      typeof session.payment_intent === "string"
+        ? session.payment_intent
+        : session.payment_intent?.id ?? null;
+    await supabase
+      .from("service_orders")
+      .update({
+        payment_status: "failed",
+        payment_reference: session.id,
+        stripe_session_id: session.id,
+        stripe_payment_intent_id: paymentIntentId,
+      } as never)
+      .eq("id", productRef.orderId);
+    return {
+      status: 200,
+      body: { ok: true, mode: "service_checkout_failed", order_id: productRef.orderId },
+    };
+  }
   const userId = (session.metadata?.user_id as string | undefined) ?? "";
 
   if (!userId) {
@@ -1007,36 +1374,109 @@ async function handleChargeRefunded(
     typeof charge.payment_intent === "string"
       ? charge.payment_intent
       : (charge.payment_intent?.id ?? charge.id);
+  const paymentIntentRef =
+    typeof charge.payment_intent === "string"
+      ? charge.payment_intent
+      : (charge.payment_intent?.id ?? null);
+  const chargeRef = charge.id;
 
-  let paymentKind: "course" | "event" | null = null;
+  let paymentKind: "course" | "event" | "service" | null = null;
   let paymentId: string | null = null;
   let paymentUserId: string | null = null;
   let courseId: string | null = null;
+  let eventConfirmationIdForRefund: string | null = null;
+  let serviceOrderIdForRefund: string | null = null;
 
   // 1) Buscar en payments (cursos).
-  const { data: coursePay } = await supabase
-    .from("payments")
-    .select("id, user_id, course_id")
-    .eq("provider", "stripe")
-    .eq("external_reference", externalRef)
-    .maybeSingle();
-  if (coursePay) {
+  const courseSelect = "id, user_id, course_id";
+  const { data: coursePayByPi } = paymentIntentRef
+    ? await supabase
+        .from("payments")
+        .select(courseSelect)
+        .eq("provider", "stripe")
+        .eq("stripe_payment_intent_id", paymentIntentRef)
+        .maybeSingle()
+    : { data: null };
+  const { data: coursePayByCharge } = !coursePayByPi
+    ? await supabase
+        .from("payments")
+        .select(courseSelect)
+        .eq("provider", "stripe")
+        .eq("stripe_charge_id", chargeRef)
+        .maybeSingle()
+    : { data: null };
+  const { data: coursePay } = !coursePayByPi && !coursePayByCharge
+    ? await supabase
+        .from("payments")
+        .select(courseSelect)
+        .eq("provider", "stripe")
+        .eq("external_reference", externalRef)
+        .maybeSingle()
+    : { data: null };
+  const resolvedCoursePay = coursePayByPi ?? coursePayByCharge ?? coursePay;
+  if (resolvedCoursePay) {
     paymentKind = "course";
-    paymentId = (coursePay as { id: string }).id;
-    paymentUserId = (coursePay as { user_id: string | null }).user_id;
-    courseId = (coursePay as { course_id: string | null }).course_id;
+    paymentId = (resolvedCoursePay as { id: string }).id;
+    paymentUserId = (resolvedCoursePay as { user_id: string | null }).user_id;
+    courseId = (resolvedCoursePay as { course_id: string | null }).course_id;
   } else {
     // 2) Buscar en event_payments (eventos).
-    const { data: evPay } = await supabase
-      .from("event_payments")
-      .select("id, confirmation_id, amount_mxn, status")
-      .eq("external_reference", externalRef)
-      .maybeSingle();
+    const { data: evPayByPi } = paymentIntentRef
+      ? await supabase
+          .from("event_payments")
+          .select("id, confirmation_id, amount_mxn, status")
+          .eq("stripe_payment_intent_id", paymentIntentRef)
+          .maybeSingle()
+      : { data: null };
+    const { data: evPayByCharge } = !evPayByPi
+      ? await supabase
+          .from("event_payments")
+          .select("id, confirmation_id, amount_mxn, status")
+          .eq("stripe_charge_id", chargeRef)
+          .maybeSingle()
+      : { data: null };
+    const { data: evPayByExternal } = !evPayByPi && !evPayByCharge
+      ? await supabase
+          .from("event_payments")
+          .select("id, confirmation_id, amount_mxn, status")
+          .eq("external_reference", externalRef)
+          .maybeSingle()
+      : { data: null };
+    const evPay = evPayByPi ?? evPayByCharge ?? evPayByExternal;
     if (evPay) {
       paymentKind = "event";
       paymentId = (evPay as { id: string }).id;
+      eventConfirmationIdForRefund = (evPay as { confirmation_id: string }).confirmation_id;
       // El user_id del event_payment se resuelve via el access
       // (event_access.user_id linkeado por payment_id).
+    } else {
+      const { data: serviceByPi } = paymentIntentRef
+        ? await supabase
+            .from("service_orders")
+            .select("id")
+            .eq("stripe_payment_intent_id", paymentIntentRef)
+            .maybeSingle()
+        : { data: null };
+      const { data: serviceByCharge } = !serviceByPi
+        ? await supabase
+            .from("service_orders")
+            .select("id")
+            .eq("stripe_charge_id", chargeRef)
+            .maybeSingle()
+        : { data: null };
+      const { data: serviceByExternal } = !serviceByPi && !serviceByCharge
+        ? await supabase
+            .from("service_orders")
+            .select("id")
+            .eq("payment_reference", externalRef)
+            .maybeSingle()
+        : { data: null };
+      const serviceOrder = serviceByPi ?? serviceByCharge ?? serviceByExternal;
+      if (serviceOrder) {
+        paymentKind = "service";
+        serviceOrderIdForRefund = (serviceOrder as { id: string }).id;
+        paymentId = serviceOrderIdForRefund;
+      }
     }
   }
 
@@ -1056,13 +1496,28 @@ async function handleChargeRefunded(
   if (paymentKind === "course") {
     await supabase
       .from("payments")
-      .update({ status: "refunded" as PaymentStatus })
+      .update({ status: "refunded" as PaymentStatus, stripe_charge_id: chargeRef } as never)
       .eq("id", paymentId);
-  } else {
+  } else if (paymentKind === "event") {
     await supabase
       .from("event_payments")
-      .update({ status: "refunded" })
+      .update({ status: "refunded", stripe_charge_id: chargeRef } as never)
       .eq("id", paymentId);
+  } else if (paymentKind === "service" && serviceOrderIdForRefund) {
+    await supabase
+      .from("service_orders")
+      .update({
+        payment_status: "refunded",
+        stripe_charge_id: chargeRef,
+      } as never)
+      .eq("id", serviceOrderIdForRefund);
+    await supabase.from("service_order_events").insert({
+      order_id: serviceOrderIdForRefund,
+      type: "status_change",
+      actor_id: "stripe-webhook",
+      actor_type: "system",
+      payload: { payment_status: "refunded", stripe_event_id: event.id },
+    } as never);
   }
 
   // Revocar access.
@@ -1085,12 +1540,14 @@ async function handleChargeRefunded(
       .maybeSingle();
 
     const ea = eventAccess as
-      | { id: string; user_id: string; event_id: string }
+      | { id: string; user_id: string | null; event_id: string }
       | null;
-    if (ea && ea.user_id && ea.event_id) {
+    if (ea || eventConfirmationIdForRefund) {
       await revokeEventAccess({
-        userId: ea.user_id,
-        eventId: ea.event_id,
+        userId: ea?.user_id ?? null,
+        eventId: ea?.event_id ?? null,
+        paymentId,
+        confirmationId: eventConfirmationIdForRefund,
         reason: revokeReason,
       });
     }
@@ -1151,7 +1608,7 @@ async function handleChargeDispute(
   // Buscar primero por payment_intent (más preciso) y luego por charge.
   // El `external_reference` se setea con `session.id` o `payment_intent.id`
   // en el path de create-checkout (ver `createCheckout` en stripe-provider.ts).
-  let paymentKind: "course" | "event" | null = null;
+  let paymentKind: "course" | "event" | "service" | null = null;
   let paymentId: string | null = null;
 
   if (paymentIntentId) {
@@ -1159,7 +1616,7 @@ async function handleChargeDispute(
       .from("payments")
       .select("id")
       .eq("provider", "stripe")
-      .eq("external_reference", paymentIntentId)
+      .eq("stripe_payment_intent_id", paymentIntentId)
       .maybeSingle();
     if (coursePay) {
       paymentKind = "course";
@@ -1168,11 +1625,21 @@ async function handleChargeDispute(
       const { data: evPay } = await supabase
         .from("event_payments")
         .select("id")
-        .eq("external_reference", paymentIntentId)
+        .eq("stripe_payment_intent_id", paymentIntentId)
         .maybeSingle();
       if (evPay) {
         paymentKind = "event";
         paymentId = (evPay as { id: string }).id;
+      } else {
+        const { data: serviceOrder } = await supabase
+          .from("service_orders")
+          .select("id")
+          .eq("stripe_payment_intent_id", paymentIntentId)
+          .maybeSingle();
+        if (serviceOrder) {
+          paymentKind = "service";
+          paymentId = (serviceOrder as { id: string }).id;
+        }
       }
     }
   }
@@ -1183,7 +1650,7 @@ async function handleChargeDispute(
       .from("payments")
       .select("id")
       .eq("provider", "stripe")
-      .eq("external_reference", chargeId)
+      .eq("stripe_charge_id", chargeId)
       .maybeSingle();
     if (coursePay) {
       paymentKind = "course";
@@ -1192,11 +1659,21 @@ async function handleChargeDispute(
       const { data: evPay } = await supabase
         .from("event_payments")
         .select("id")
-        .eq("external_reference", chargeId)
+        .eq("stripe_charge_id", chargeId)
         .maybeSingle();
       if (evPay) {
         paymentKind = "event";
         paymentId = (evPay as { id: string }).id;
+      } else {
+        const { data: serviceOrder } = await supabase
+          .from("service_orders")
+          .select("id")
+          .eq("stripe_charge_id", chargeId)
+          .maybeSingle();
+        if (serviceOrder) {
+          paymentKind = "service";
+          paymentId = (serviceOrder as { id: string }).id;
+        }
       }
     }
   }
@@ -1219,18 +1696,35 @@ async function handleChargeDispute(
       .from("payments")
       .update({ status: "disputed" as PaymentStatus })
       .eq("id", paymentId);
-  } else {
+  } else if (paymentKind === "event") {
     await supabase
       .from("event_payments")
       .update({ status: "disputed" })
       .eq("id", paymentId);
+  } else {
+    await supabase
+      .from("service_orders")
+      .update({ payment_status: "disputed" } as never)
+      .eq("id", paymentId);
+    await supabase.from("service_order_events").insert({
+      order_id: paymentId,
+      type: "status_change",
+      actor_id: "stripe-webhook",
+      actor_type: "system",
+      payload: { payment_status: "disputed", stripe_event_id: event.id },
+    } as never);
   }
 
   // Audit log: queda en el admin para que David lo vea y responda.
   await logAdminAction({
     actor_email: "stripe-webhook",
     action: "payment_dispute_created",
-    entity_type: paymentKind === "course" ? "payment" : "event_payment",
+    entity_type:
+      paymentKind === "course"
+        ? "payment"
+        : paymentKind === "event"
+          ? "event_payment"
+          : "service_order",
     entity_id: paymentId,
     metadata: {
       dispute_id: dispute.id,
@@ -1283,21 +1777,36 @@ async function handlePaymentIntentFailed(
   let paymentKind: "course" | "event" | null = null;
   let paymentId: string | null = null;
 
-  const { data: coursePay } = await supabase
+  const { data: coursePayByPi } = await supabase
     .from("payments")
     .select("id")
     .eq("provider", "stripe")
-    .eq("external_reference", pi.id)
+    .eq("stripe_payment_intent_id", pi.id)
     .maybeSingle();
+  const { data: coursePay } = coursePayByPi
+    ? { data: coursePayByPi }
+    : await supabase
+        .from("payments")
+        .select("id")
+        .eq("provider", "stripe")
+        .eq("external_reference", pi.id)
+        .maybeSingle();
   if (coursePay) {
     paymentKind = "course";
     paymentId = (coursePay as { id: string }).id;
   } else {
-    const { data: evPay } = await supabase
+    const { data: evPayByPi } = await supabase
       .from("event_payments")
       .select("id")
-      .eq("external_reference", pi.id)
+      .eq("stripe_payment_intent_id", pi.id)
       .maybeSingle();
+    const { data: evPay } = evPayByPi
+      ? { data: evPayByPi }
+      : await supabase
+          .from("event_payments")
+          .select("id")
+          .eq("external_reference", pi.id)
+          .maybeSingle();
     if (evPay) {
       paymentKind = "event";
       paymentId = (evPay as { id: string }).id;

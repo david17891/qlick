@@ -276,6 +276,27 @@ export async function POST(req: NextRequest) {
     };
   }
 
+  // La confirmation llega del bot/cliente, pero nunca se debe copiar a
+  // Stripe sin comprobar ownership. Una confirmation de otro evento podría
+  // desviar un pago y entregar acceso a la persona equivocada.
+  let validatedConfirmationId: string | undefined;
+  if (productKind === "event" && typeof body.confirmationId === "string" && body.confirmationId) {
+    const supabase = createSupabaseAdminClient();
+    const { data: confirmation, error: confirmationError } = await supabase
+      .from("event_confirmations")
+      .select("id, event_id")
+      .eq("id", body.confirmationId)
+      .eq("event_id", productRef.id)
+      .maybeSingle();
+    if (confirmationError || !confirmation) {
+      return NextResponse.json(
+        { ok: false, error: "La confirmación de evento no es válida para este evento." },
+        { status: 400 },
+      );
+    }
+    validatedConfirmationId = confirmation.id;
+  }
+
   // 4. Crear el checkout en el provider activo.
   const provider = getPaymentProvider();
 
@@ -412,10 +433,7 @@ export async function POST(req: NextRequest) {
       // serializarlo a `metadata.confirmation_id` en Stripe. El
       // webhook lo lee PRIMERO para atribuir el cargo a la
       // confirmation del bot (no al email del customer de Stripe).
-      confirmationId:
-        typeof body.confirmationId === "string" && body.confirmationId
-          ? body.confirmationId
-          : undefined,
+      confirmationId: validatedConfirmationId,
       // FIX 2026-07-18: pasar el modo de Stripe (test o live) al
       // provider. Default "test" si no se setea (conservador).
       mode: stripeMode,

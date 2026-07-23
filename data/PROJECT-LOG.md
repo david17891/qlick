@@ -360,3 +360,11 @@ ote_type + is_pinned).
   - **C-6:** Check-in 5-7 queries seriales (~900ms). Promise.all + audit fire-and-forget. ~1h.
 
 - **Verificación:** type-check 0, lint 0, voseo 0, tests 1482/1484 (2 pre-existing fail sin cambio). Push OK (9dc51d7). Deploy 'qlick-jo8ak5uw5' Ready en 1m. Alias qlick.digital reasignado.
+
+## 2026-07-22 — Hardening de pagos Stripe para eventos y servicios
+
+- Se agregó la migración 20260722120000_payments_events_live_hardening.sql.
+- Añade referencias Stripe explícitas (Checkout Session, PaymentIntent, Charge) y modo test/live a payments y event_payments.
+- Se separa service_orders.payment_status del estado CRM y se agregan timestamps/referencias de cobro.
+- Se crea stripe_webhook_receipts para idempotencia y auditoría de entregas.
+- La migración queda pendiente de aplicar en Supabase después de revisión y smoke tests; no se activó modo live.
