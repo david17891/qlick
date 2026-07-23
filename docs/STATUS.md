@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-23 — Auditoría profunda pre-merge PR34. Production READY en `qlick.digital`; Stripe live keys y ambos webhook secrets presentes en Vercel Production. PR34 mantiene el DDL de índices únicos para `stripe_session_id`. Se corrigieron terminales de eventos (failed/expired), refund → confirmación revocada, discrepancias de monto por ledger, fallos de servicios, logs PII y copy de checkout. Evidencia y pendientes: `docs/AUDIT_PAYMENTS_EVENTS_PRE_PR34_2026-07-23.md`.
+> **Última actualización:** 2026-07-23 — PR34 mergeado a `main` (`8060c849`) y Production READY. Se completó un cargo controlado real de $10 MXN en un evento QA configurado `payment_mode=live`: Checkout devolvió `cs_live`, webhook firmado persistió `event_payments.status=approved` con `stripe_mode=live`, marcó la confirmación como `paid` y creó `event_access.access_status=active`. No se repitió el cargo. Evidencia y pendientes: `docs/AUDIT_PAYMENTS_EVENTS_PRE_PR34_2026-07-23.md`.
 >
 > **Body del doc (líneas debajo):** es archivo histórico de sprints cerrados. Para estado actual, ver este snapshot.
 
@@ -20,7 +20,7 @@
 - `npm run test:ci`: 1479/1479 PASS (gate estático portable; las suites E2E con secretos quedan fuera). `npm run type-check`: PASS. `npm run lint`: PASS. Suite focalizada pagos/webhooks/servicios: 73/73 PASS.
 - Suite completa: 1488 PASS y 3 fallos preexistentes de fixtures CRM (aislamiento/duplicado de teléfono); no son fallos del flujo de pagos.
 - Smoke Production seguro: Checkout test 200; webhook sin firma 400; firma falsa 401. E2E backend firmado de paid/pending/async/refund/dispute/service validado y cleanup verificado.
-- Estado Stripe: **GO técnico condicionado** para activar un evento controlado; **NO-GO para activación general** hasta registrar/verificar el endpoint live, hacer un cargo real pequeño y confirmar QR/email/WhatsApp. Servicios siguen en test salvo `STRIPE_SERVICE_PAYMENT_MODE=live`; cursos siguen en test por diseño.
+- Estado Stripe: **GO validado para eventos** (cargo real + webhook + acceso verificados). Mantener activación gradual: eliminar/archivar el evento QA tras conciliar el cargo y publicar solo eventos reales con `event_rules.payment_mode=live`. Servicios siguen en test salvo `STRIPE_SERVICE_PAYMENT_MODE=live`; cursos siguen en test por diseño. Falta validar manualmente la entrega de QR/email/WhatsApp del evento real.
 
 ## Sprint v0.10 — 4 bloques hardening + 4 hotfixes E2E (2026-07-14 02:30 → 04:35)
 

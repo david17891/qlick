@@ -368,3 +368,10 @@ ote_type + is_pinned).
 - Se separa service_orders.payment_status del estado CRM y se agregan timestamps/referencias de cobro.
 - Se crea stripe_webhook_receipts para idempotencia y auditoría de entregas.
 - La migración queda pendiente de aplicar en Supabase después de revisión y smoke tests; no se activó modo live.
+
+## 2026-07-23 - PR34 merge + primer cargo controlado Stripe Live
+
+- PR34 mergeado a main; merge commit 8060c849. Produccion Ready y variables live de Stripe/webhook configuradas.
+- Evento QA publicado de 10 MXN con payment_mode=live; Checkout cs_live aprobado.
+- Supabase verificado: event_payments approved/live, confirmation paid, event_access active/event_purchase.
+- Flujo completo evento -> Stripe live -> webhook firmado -> ledger -> acceso validado. No se repitio el cargo ni se solicito reembolso automatico. Pendiente: archivar evento QA y validar QR/email/WhatsApp en evento real.
