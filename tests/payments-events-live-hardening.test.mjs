@@ -1,9 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ROOT = "C:/Users/User/Documents/Click";
-const read = (file) => readFileSync(`${ROOT}/${file}`, "utf8");
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const read = (file) => readFileSync(join(ROOT, file), "utf8");
 
 const migration = read("supabase/migrations/20260722120000_payments_events_live_hardening.sql");
 const webhook = read("src/app/api/webhooks/stripe/route.ts");

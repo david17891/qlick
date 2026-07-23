@@ -24,6 +24,7 @@ El flujo de eventos queda **GO técnico condicionado** para un lanzamiento contr
 - `npm run type-check`: PASS.
 - `npm run lint`: PASS.
 - Suite focalizada de pagos/webhooks/servicios: 73/73 PASS.
+- Gate determinista de CI (`npm run test:ci`): 1,479/1,479 PASS. Se separaron diez suites E2E que requieren Supabase/DeepSeek/WhatsApp reales; quedan para smoke/E2E con secretos explícitos.
 - Smoke seguro Production: crear Checkout de prueba 200; webhook sin firma 400; firma falsa 401.
 - E2E backend sintético firmado: checkout pagado, idempotencia, OXXO pendiente, async success, disputa, refund y service order; cleanup verificado sin filas sintéticas persistentes.
 - Suite completa: 1488 PASS, 3 fallos preexistentes de aislamiento de fixtures CRM (`confirmation` ausente y teléfono duplicado); no son fallos de pagos.
@@ -38,6 +39,7 @@ El flujo de eventos queda **GO técnico condicionado** para un lanzamiento contr
 - Revisar periódicamente los avisos Supabase de funciones con `search_path` mutable, índices sin uso y RLS sin políticas. Las tablas críticas de ledger son service-role-only o tienen políticas de propietario/admin; no se abrió acceso anónimo.
 - Mejorar la resolución de usuarios guest cuando el volumen supere 1,000 usuarios (hoy usa `listUsers` paginado).
 - Actualizar el API version de Stripe en una ventana separada, con pruebas de compatibilidad; no mezclarlo con el cambio a live.
+- Corregir los tres fixtures CRM que aún hacen fallar `npm test` completo local (no afectan el gate de pagos, pero sí deben quedar aislados o reparados en el siguiente sprint).
 
 ## Criterio de merge
 

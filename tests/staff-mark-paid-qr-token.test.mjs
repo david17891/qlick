@@ -34,12 +34,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 // @ts-check
 
-const ROUTE_PATH = path.resolve(
-  "C:/Users/User/Documents/Click/src/app/api/staff/check-in/mark-paid/route.ts"
-);
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const ROUTE_PATH = path.join(ROOT, "src/app/api/staff/check-in/mark-paid/route.ts");
 
 function readRoute() {
   return fs.readFileSync(ROUTE_PATH, "utf8");
@@ -111,9 +111,7 @@ test("REGRESION cobro-en-puerta: back-compat con admin session (panel admin)", (
 });
 
 test("REGRESION cobro-en-puerta: el componente MarkPaidAction pasa qr_token al endpoint", () => {
-  const SCANNER_PATH = path.resolve(
-    "C:/Users/User/Documents/Click/src/app/staff/scan/[eventId]/page.tsx"
-  );
+  const SCANNER_PATH = path.join(ROOT, "src/app/staff/scan/[eventId]/page.tsx");
   const src = fs.readFileSync(SCANNER_PATH, "utf8");
   // El componente debe aceptar qrToken como prop.
   assert.match(
@@ -136,9 +134,7 @@ test("REGRESION cobro-en-puerta: el componente MarkPaidAction pasa qr_token al e
 });
 
 test("REGRESION cobro-en-puerta: el scanner tiene un QR desplegable apuntando a /pagar/evento/[slug]", () => {
-  const SCANNER_PATH = path.resolve(
-    "C:/Users/User/Documents/Click/src/app/staff/scan/[eventId]/page.tsx"
-  );
+  const SCANNER_PATH = path.join(ROOT, "src/app/staff/scan/[eventId]/page.tsx");
   const src = fs.readFileSync(SCANNER_PATH, "utf8");
   // El scanner debe tener un bloque CheckoutQrBlock o equivalente.
   assert.match(

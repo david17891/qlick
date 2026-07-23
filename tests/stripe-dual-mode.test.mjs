@@ -22,13 +22,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const STRIPE_PROVIDER = "C:/Users/User/Documents/Click/src/lib/payments/stripe-provider.ts";
-const PAYMENT_PROVIDER = "C:/Users/User/Documents/Click/src/lib/payments/payment-provider.ts";
-const TYPES_EVENTS = "C:/Users/User/Documents/Click/src/types/events.ts";
-const OPS_CLIENT = "C:/Users/User/Documents/Click/src/lib/crm/ops-client.ts";
-const CREATE_CHECKOUT = "C:/Users/User/Documents/Click/src/app/api/payments/create-checkout/route.ts";
-const WEBHOOK_ROUTE = "C:/Users/User/Documents/Click/src/app/api/webhooks/stripe/route.ts";
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const source = (file) => join(ROOT, file);
+const STRIPE_PROVIDER = source("src/lib/payments/stripe-provider.ts");
+const PAYMENT_PROVIDER = source("src/lib/payments/payment-provider.ts");
+const TYPES_EVENTS = source("src/types/events.ts");
+const OPS_CLIENT = source("src/lib/crm/ops-client.ts");
+const CREATE_CHECKOUT = source("src/app/api/payments/create-checkout/route.ts");
+const WEBHOOK_ROUTE = source("src/app/api/webhooks/stripe/route.ts");
 
 const stripeProvider = readFileSync(STRIPE_PROVIDER, "utf-8");
 const paymentProvider = readFileSync(PAYMENT_PROVIDER, "utf-8");
@@ -114,7 +118,7 @@ test("EventFormInput.eventRules incluye payment_mode", () => {
 
 test("EventDrawer persiste payment_mode en eventRules al crear/editar", () => {
   const eventDrawer = readFileSync(
-    "C:/Users/User/Documents/Click/src/components/events/EventDrawer.tsx",
+    source("src/components/events/EventDrawer.tsx"),
     "utf-8"
   );
   // Hay 2 sitios (create + update) que pasan payment_mode.
@@ -125,7 +129,7 @@ test("EventDrawer persiste payment_mode en eventRules al crear/editar", () => {
 
 test("EventDrawer FormState incluye paymentMode", () => {
   const eventDrawer = readFileSync(
-    "C:/Users/User/Documents/Click/src/components/events/EventDrawer.tsx",
+    source("src/components/events/EventDrawer.tsx"),
     "utf-8"
   );
   assert.match(eventDrawer, /paymentMode: "test" \| "live";/);
@@ -133,7 +137,7 @@ test("EventDrawer FormState incluye paymentMode", () => {
 
 test("EventDrawer UI muestra selector radio test/live con warning en live", () => {
   const eventDrawer = readFileSync(
-    "C:/Users/User/Documents/Click/src/components/events/EventDrawer.tsx",
+    source("src/components/events/EventDrawer.tsx"),
     "utf-8"
   );
   // El selector debe estar visible solo si el evento tiene precio > 0.

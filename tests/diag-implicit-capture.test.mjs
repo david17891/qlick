@@ -1,10 +1,14 @@
 // Debug: leer los archivos relevantes y entender qué está pasando
 // con el test 985 que falla.
 import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 // 1. Ver el FAKE_EVENT_PRESENCIAL actualizado
 const testFile = readFileSync(
-  "C:/Users/User/Documents/Click/tests/whatsapp-bot-implicit-capture-paid.test.mjs",
+  join(ROOT, "tests/whatsapp-bot-implicit-capture-paid.test.mjs"),
   "utf8"
 );
 const startAtMatch = testFile.match(/starts_at: new Date\(.*?\)/);
