@@ -90,6 +90,13 @@ function resolveRelativeBare(specifier, parentURL) {
 }
 
 export async function resolve(specifier, context, nextResolve) {
+  // Node ESM no añade `.js` a este subpath de Next cuando se ejecutan las
+  // rutas App Router fuera de Next. En el harness se resuelve al runtime
+  // local para que cada test pueda mockear `next/server` de forma explícita.
+  if (specifier === "next/server") {
+    const nextServer = nodePath.join(baseUrl, "node_modules", "next", "server.js");
+    if (existsSync(nextServer)) return nextResolve(pathToFileURL(nextServer).href, context);
+  }
   // 1. Resolver aliases @/foo/bar
   if (specifier.startsWith("@/")) {
     const resolved = resolveAlias(specifier);

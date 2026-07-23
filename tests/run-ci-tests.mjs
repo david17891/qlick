@@ -19,6 +19,7 @@ const externalSuites = new Set([
   "human-first-end-to-end-real.test.mjs",
   "human-first-end-to-end.test.mjs",
   "payment-notify-lead-whatsapp.test.mjs",
+  "payments-events-funnel-e2e.test.mjs",
 ]);
 
 const files = readdirSync(testsDir)

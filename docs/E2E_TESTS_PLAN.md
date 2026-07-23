@@ -114,3 +114,20 @@ Si David quiere CI/CD desde el día 1, podemos instalar `@playwright/test`. Pero
 2. Confirma si quiere arrancar el tour.
 3. Si sí: yo levanto `npm run dev` y hago el tour.
 4. Si no: este plan queda como referencia, y arrancamos onboarding (#6) o lo que David prefiera.
+
+---
+
+## Fase 0 — smoke E2E backend del funnel de eventos (implementada)
+
+El comando `npm run test:e2e:funnel` valida de forma reproducible el recorrido
+crítico sin cargos ni proveedores externos:
+
+`WhatsApp entrante → registro del lead → confirmación → email/QR → webhook Stripe test firmado → pago aprobado → acceso activo`.
+
+El caso usa un evento, teléfono y correo sintéticos; mockea WhatsApp/Brevo y
+restaura el modo global del bot y elimina sus registros al terminar. El pago es
+un payload `checkout.session.completed` firmado con `STRIPE_WEBHOOK_SECRET` en
+modo test; no crea un cargo real ni requiere tarjeta.
+
+Resultado esperado: 1 test aprobado, `event_payments.status=approved`,
+`event_confirmations.payment_status=paid` y `event_access.access_status=active`.
