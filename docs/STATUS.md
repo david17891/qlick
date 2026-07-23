@@ -14,6 +14,14 @@
 
 ---
 
+## Estado actual — 2026-07-22
+
+- La migración de hardening de pagos/eventos fue aplicada y verificada en Supabase; los tipos se regeneraron desde el esquema remoto.
+- TypeScript semántico: 0 errores de código. Lint programático sobre `src/**/*.ts(x)`: 0 errores y 0 warnings.
+- Pruebas estructurales de pagos/eventos: 7/7 pass.
+- Suite completa `npm test` no pudo ejecutarse con el runner de Windows (error 1312); el intento directo no es equivalente porque no carga el loader TypeScript/alias del proyecto.
+- Estado Stripe: **NO-GO para cargos reales** hasta configurar y comprobar variables/webhook live en Vercel y repetir E2E completo de evento, notificaciones y reembolso.
+
 ## Sprint v0.10 — 4 bloques hardening + 4 hotfixes E2E (2026-07-14 02:30 → 04:35)
 
 **Estado actual:** ✅ Cerrado y mergeado a `main` (HEAD `15162fc`). 1362/1362 tests verde, type-check 0, lint 0/0, build OK. 8 commits atómicos consecutivos a main (4 bloques + 4 hotfixes). Sin migrations nuevas.

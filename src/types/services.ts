@@ -36,6 +36,15 @@ export type OrderStatus =
 
 export type OrderPaymentMode = "pending" | "test" | "stripe" | "manual" | "free";
 
+/** Estado del cobro, independiente del workflow CRM del pedido. */
+export type OrderPaymentStatus =
+  | "pending"
+  | "processing"
+  | "paid"
+  | "failed"
+  | "refunded"
+  | "disputed";
+
 export type OrderEventType =
   | "status_change"
   | "note"
@@ -141,7 +150,12 @@ export interface ServiceOrder {
   currency: string;
   status: OrderStatus;
   paymentMode: OrderPaymentMode;
+  paymentStatus: OrderPaymentStatus;
   paymentReference: string | null;
+  paidAt: string | null;
+  stripeSessionId: string | null;
+  stripePaymentIntentId: string | null;
+  stripeChargeId: string | null;
   scheduledAt: string | null;
   assignedTo: string | null;
   deliveredAt: string | null;

@@ -102,6 +102,15 @@ export async function POST(
       { status: 400 }
     );
   }
+  if (order.paymentStatus === "paid") {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "El pedido ya tiene un pago confirmado. No se debe generar otro link.",
+      },
+      { status: 409 },
+    );
+  }
 
   // 3. Resolver el service + variant por slug (que ya tenemos en order.service.slug
   //    y order.variant.slug).
@@ -158,8 +167,11 @@ export async function POST(
       userId: null, // guest checkout — el webhook usa email
       userEmail: order.customerEmail,
       method: "card",
-      // No pasamos successUrl/cancelUrl → el provider usa sus defaults
-      // (apuntan a /servicios/[slug]?paid=1).
+      // Retornos explícitos: el provider también tiene defaults, pero el
+      // endpoint admin debe conservar el order_id para mostrar el resultado
+      // del cobro y no depender del slug público.
+      successUrl: `${new URL(req.url).origin}/servicios/${order.service.slug}?paid=1&order_id=${encodeURIComponent(order.id)}`,
+      cancelUrl: `${new URL(req.url).origin}/servicios/${order.service.slug}?cancelled=1&order_id=${encodeURIComponent(order.id)}`,
     });
   } catch (err) {
     return NextResponse.json(

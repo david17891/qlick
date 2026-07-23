@@ -3,7 +3,8 @@
  * servicios (camelCase).
  *
  * Los tipos Row están definidos manualmente siguiendo el schema de la
- * migration `20260721045701_service_orders.sql`. Cuando se regeneren los
+ * migrations `20260721045701_service_orders.sql` y
+ * `20260722120000_payments_events_live_hardening.sql`. Cuando se regeneren los
  * types con `npm run typegen`, este archivo puede actualizarse para apuntar
  * a `Database["public"]["Tables"]["..."]["Row"]`.
  *
@@ -23,6 +24,7 @@ import type {
   ServiceCategory,
   OrderStatus,
   OrderPaymentMode,
+  OrderPaymentStatus,
   OrderEventType,
   OrderEventActorType,
   OrderNoteType,
@@ -146,6 +148,11 @@ export interface ServiceOrderRow {
   status: string;
   payment_mode: string;
   payment_reference: string | null;
+  payment_status?: string;
+  paid_at?: string | null;
+  stripe_session_id?: string | null;
+  stripe_payment_intent_id?: string | null;
+  stripe_charge_id?: string | null;
   scheduled_at: string | null;
   assigned_to: string | null;
   delivered_at: string | null;
@@ -170,7 +177,12 @@ export function mapServiceOrderRow(row: ServiceOrderRow): ServiceOrder {
     currency: row.currency,
     status: row.status as OrderStatus,
     paymentMode: row.payment_mode as OrderPaymentMode,
+    paymentStatus: (row.payment_status ?? "pending") as OrderPaymentStatus,
     paymentReference: row.payment_reference,
+    paidAt: row.paid_at ?? null,
+    stripeSessionId: row.stripe_session_id ?? null,
+    stripePaymentIntentId: row.stripe_payment_intent_id ?? null,
+    stripeChargeId: row.stripe_charge_id ?? null,
     scheduledAt: row.scheduled_at,
     assignedTo: row.assigned_to,
     deliveredAt: row.delivered_at,

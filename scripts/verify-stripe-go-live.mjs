@@ -3,7 +3,7 @@
  * scripts/verify-stripe-go-live.mjs
  *
  * Pre-flight automatizado para el flip a Stripe LIVE.
- * Corre 6 chequeos sin tocar producción; devuelve GO/STOP por cada uno.
+ * Corre chequeos sin tocar producción; devuelve GO/STOP por cada uno.
  *
  * USO:
  *   node --env-file=.env.local scripts/verify-stripe-go-live.mjs
@@ -15,11 +15,11 @@
  * Para cada STOP, el doc explica el fix.
  *
  * CHECK 1: Vercel CLI autenticado
- * CHECK 2: STRIPE_SECRET_KEY en Vercel production es sk_live_* (no test)
- * CHECK 3: NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY en Vercel production es pk_live_*
- * CHECK 4: STRIPE_WEBHOOK_SECRET en Vercel production es whsec_live_*
- * CHECK 5: RPC get_user_id_by_email en DB live responde y devuelve UUID válido
- * CHECK 6: Stripe API live responde (validar que la cuenta live está activa)
+ * CHECK 2: STRIPE_SECRET_KEY en Vercel production conserva el cliente test
+ * CHECK 3: STRIPE_SECRET_KEY_LIVE es sk_live_* (cliente live separado)
+ * CHECK 4: STRIPE_WEBHOOK_SECRET y _LIVE existen (uno por modo)
+ * CHECK 5: Stripe API live responde (validar que la cuenta live está activa)
+ * CHECK 6: RPC opcional de preflight (sin imprimir PII)
  *
  * @see docs/STRIPE_KYC_QLICK_MX.md para el walk-through completo
  */
@@ -104,16 +104,22 @@ async function checkVercelEnvVar(varName, expectedPrefixes, label) {
         `${varName} presente (sensitive, no expuesta por CLI; verificar con runtime test abajo)`);
       return;
     }
-    record(`${label} (live prefix)`, "STOP",
-      `${varName} empieza con "${value.slice(0,8)}..." (no es live)`);
+    record(`${label} (prefix)`, "STOP",
+      `${varName} no tiene el prefijo esperado`);
   } catch (err) {
     record(`${label} (live prefix)`, "STOP", `error: ${err.message}`);
   }
 }
 
 async function checkRpcApplied() {
-  // Ejecutar la RPC con el email de David (sabemos que existe) y confirmar
-  // que devuelve un UUID. Si la RPC no existe, falla con "function does not exist".
+  // Solo ejecutar si el operador entrega explícitamente un email sintético
+  // o de preflight. Nunca hardcodear ni imprimir PII del equipo/clientes.
+  const preflightEmail = process.env.PREFLIGHT_TEST_EMAIL ?? "";
+  if (!preflightEmail) {
+    record("RPC get_user_id_by_email aplicada", "SKIP",
+      "Definí PREFLIGHT_TEST_EMAIL solo para este smoke test (no se imprime).");
+    return;
+  }
   if (!SUPABASE_URL || !SUPABASE_KEY) {
     record("RPC get_user_id_by_email aplicada", "SKIP",
       "SUPABASE_PROJECT_REF/SUPABASE_SECRET_KEY no están en .env.local");
@@ -128,7 +134,7 @@ async function checkRpcApplied() {
         "apikey": SUPABASE_KEY,
         "Authorization": `Bearer ${SUPABASE_KEY}`,
       },
-      body: JSON.stringify({ p_email: "david17891@gmail.com" }),
+      body: JSON.stringify({ p_email: preflightEmail }),
     });
     if (!res.ok) {
       const text = await res.text();
@@ -140,11 +146,10 @@ async function checkRpcApplied() {
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
     if (!isUuid) {
       record("RPC get_user_id_by_email aplicada", "STOP",
-        `Respuesta no es UUID: "${userId}"`);
+        "La RPC respondió un valor que no es UUID");
       return;
     }
-    record("RPC get_user_id_by_email aplicada", "GO",
-      `david17891@gmail.com → ${userId.slice(0, 8)}...`);
+    record("RPC get_user_id_by_email aplicada", "GO", "RPC responde UUID válido");
   } catch (err) {
     record("RPC get_user_id_by_email aplicada", "STOP", `error: ${err.message}`);
   }
@@ -154,11 +159,10 @@ async function checkStripeLiveAccount() {
   // Stripe API no expone secrets; pero podemos intentar un ping a /v1/balance
   // con la STRIPE_SECRET_KEY en runtime si la tenemos. Si no la tenemos,
   // SKIP — el smoke test manual lo cubre.
-  const sk = process.env.STRIPE_SECRET_KEY ?? "";
+  const sk = process.env.STRIPE_SECRET_KEY_LIVE ?? "";
   if (!sk) {
-    record("Stripe live account reachable", "SKIP",
-      "STRIPE_SECRET_KEY no está en .env.local (script no la tiene en runtime). " +
-      "Verificar manualmente con Dashboard → https://dashboard.stripe.com (toggle Live)");
+    record("Stripe live account reachable", "STOP",
+      "STRIPE_SECRET_KEY_LIVE no está disponible en runtime");
     return;
   }
   try {
@@ -173,7 +177,7 @@ async function checkStripeLiveAccount() {
     const data = await res.json();
     const liveAvailable = data?.available?.[0]?.amount ?? null;
     record("Stripe live account reachable", "GO",
-      `Stripe live responde. Balance available: ${liveAvailable !== null ? (liveAvailable/100).toFixed(2) + " MXN" : "desconocido (puede ser ok si no ha operado aún)"}`);
+      "Stripe live responde (el balance no se imprime en este preflight)");
   } catch (err) {
     record("Stripe live account reachable", "STOP", `error: ${err.message}`);
   }
@@ -186,9 +190,10 @@ async function main() {
   console.log("");
 
   await checkVercelAuth();
-  await checkVercelEnvVar("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY", ["pk_live_"], "Stripe publishable live");
-  await checkVercelEnvVar("STRIPE_SECRET_KEY", ["sk_live_"], "Stripe secret live");
-  await checkVercelEnvVar("STRIPE_WEBHOOK_SECRET", ["whsec_live_"], "Stripe webhook live");
+  await checkVercelEnvVar("STRIPE_SECRET_KEY", ["sk_test_"], "Stripe secret test");
+  await checkVercelEnvVar("STRIPE_SECRET_KEY_LIVE", ["sk_live_"], "Stripe secret live");
+  await checkVercelEnvVar("STRIPE_WEBHOOK_SECRET", ["whsec_"], "Stripe webhook test");
+  await checkVercelEnvVar("STRIPE_WEBHOOK_SECRET_LIVE", ["whsec_"], "Stripe webhook live");
   await checkRpcApplied();
   await checkStripeLiveAccount();
 

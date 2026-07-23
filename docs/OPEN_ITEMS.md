@@ -2429,6 +2429,13 @@ El commit `9c606de` ("captura universal de nombre humano en cualquier turno", me
 
 ### Validación post-housekeeping
 
+### Pagos/events live hardening — 2026-07-22
+
+- **LIVE-1 (cerrado 2026-07-22):** migración `supabase/migrations/20260722120000_payments_events_live_hardening.sql` aplicada y verificada en Supabase; historial remoto `20260722181647_payments_events_live_hardening`. `src/types/supabase.ts` regenerado desde la base real.
+- **LIVE-2 (bloqueador):** repetir el E2E en Stripe test para tarjeta, voucher OXXO/SPEI, refund/dispute, evento con `confirmation_id` y pago de servicio; validar QR, email y WhatsApp con fixtures sintéticos.
+- **LIVE-3 (bloqueador):** configurar en Vercel las variables duales `STRIPE_SECRET_KEY`, `STRIPE_SECRET_KEY_LIVE`, `STRIPE_WEBHOOK_SECRET` y `STRIPE_WEBHOOK_SECRET_LIVE`, y ejecutar `scripts/verify-stripe-go-live.mjs`.
+- **LIVE-4 (operativo):** registrar endpoints Stripe test/live con los mismos eventos manejados y observar errores durante las primeras 24 horas del primer evento live.
+
 - `npm run type-check` → ✓ 0 errores
 - `npm run lint` → ✓ 0 warnings, 0 errors
 - `npm test` → ✓ **1066/1066 pass**

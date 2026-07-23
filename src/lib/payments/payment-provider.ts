@@ -187,7 +187,8 @@ export interface PaymentProvider {
   /** Crea una intención de pago / checkout. */
   createCheckout(input: CreateCheckoutInput): Promise<CheckoutResult>;
   /** Consulta el estado de un pago existente. */
-  getStatus(paymentId: string): Promise<PaymentQueryResult>;
+  /** `mode` permite consultar un Checkout Session live sin caer en el cliente test. */
+  getStatus(paymentId: string, mode?: "test" | "live"): Promise<PaymentQueryResult>;
   /** Procesa un webhook entrante (fase 2). */
   parseWebhook(payload: unknown, headers?: Record<string, string>): Promise<WebhookResult>;
   /** Lista los métodos de pago que soporta este proveedor. */

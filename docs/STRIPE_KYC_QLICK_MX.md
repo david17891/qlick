@@ -164,22 +164,21 @@ URL: https://dashboard.stripe.com/webhooks (toggle Live)
 
 ---
 
-## 🔄 Flip en Vercel (después de tener los 4 secrets nuevos)
+## 🔄 Configuración dual en Vercel (sin reemplazar test)
 
 El script `scripts/verify-stripe-go-live.mjs` chequea todo antes de este paso. Solo procedé si dio GO.
 
 ```powershell
 $secrets = @{
-  "STRIPE_SECRET_KEY"                 = "sk_live_..."
-  "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY" = "pk_live_..."
-  "STRIPE_WEBHOOK_SECRET"             = "whsec_live_..."
-  "NEXT_PUBLIC_PAYMENT_PROVIDER"      = "stripe"  # ya estaba
+  "STRIPE_SECRET_KEY"          = "sk_test_..."
+  "STRIPE_SECRET_KEY_LIVE"     = "sk_live_..."
+  "STRIPE_WEBHOOK_SECRET"      = "whsec_test_..."
+  "STRIPE_WEBHOOK_SECRET_LIVE" = "whsec_live_..."
+  "NEXT_PUBLIC_PAYMENT_PROVIDER" = "stripe"
 }
 
 foreach ($k in $secrets.Keys) {
-  # Borra el valor viejo (production)
-  vercel env rm $k production --yes
-  # Pega el nuevo (te va a pedir el valor interactivamente)
+  # Agrega/actualiza cada variable sin borrar el cliente test.
   Write-Host "Pega nuevo valor para $k"
   vercel env add $k production
 }

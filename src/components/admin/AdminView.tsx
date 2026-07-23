@@ -53,7 +53,8 @@ const statusTone: Record<PaymentStatus, "success" | "warning" | "danger" | "neut
   expired: "neutral",
   refunded: "info",
   failed: "danger",
-  disputed: "warning"
+  disputed: "warning",
+  suspicious_amount_discrepancy: "danger"
 };
 
 const statusLabel: Record<PaymentStatus, string> = {
@@ -63,7 +64,8 @@ const statusLabel: Record<PaymentStatus, string> = {
   expired: "Vencido",
   refunded: "Reembolsado",
   failed: "Falló",
-  disputed: "En disputa"
+  disputed: "En disputa",
+  suspicious_amount_discrepancy: "Importe sospechoso"
 };
 
 export function AdminView(

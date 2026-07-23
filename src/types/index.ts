@@ -185,7 +185,8 @@ export type PaymentStatus =
   | "expired"
   | "refunded"
   | "failed"
-  | "disputed";
+  | "disputed"
+  | "suspicious_amount_discrepancy";
 
 export type PaymentMethod =
   | "card"

@@ -54,13 +54,14 @@ transferir. Los pagos van al owner (socio) aunque David opere la cuenta.
 
 ---
 
-## 2. Variables de entorno (3 vars, todas sensitive excepto una)
+## 2. Variables de entorno (modelo dual test/live)
 
 | Key | Tipo | Origen | Notas |
 |---|---|---|---|
-| `STRIPE_SECRET_KEY` | sensitive | `Dashboard → Developers → API keys → Reveal` (test mode) | `sk_test_...` en test, `sk_live_...` en prod. NO exponer en cliente. |
-| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | public | mismo lugar | `pk_test_...` / `pk_live_...`. SÍ se puede exponer (origen del nombre). |
-| `STRIPE_WEBHOOK_SECRET` | sensitive | se genera al registrar el endpoint (ver §4) | `whsec_...`. UN secret por endpoint (test vs prod son distintos). |
+| `STRIPE_SECRET_KEY` | sensitive | `Dashboard → Developers → API keys → Reveal` (test mode) | `sk_test_...`; se conserva en paralelo y nunca se reemplaza durante el flip. |
+| `STRIPE_SECRET_KEY_LIVE` | sensitive | API keys con el toggle Live | `sk_live_...`; solo se usa para eventos con `event_rules.payment_mode=live`. |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | public | mismo lugar | `pk_test_...` para el frontend actual (Checkout hosted). |
+| `STRIPE_WEBHOOK_SECRET` / `_LIVE` | sensitive | un endpoint por modo (ver §4) | `whsec_...`; cada endpoint usa su propio secret. |
 
 ### 2.1 En local — `.env.local`
 
@@ -69,6 +70,8 @@ transferir. Los pagos van al owner (socio) aunque David opere la cuenta.
 STRIPE_SECRET_KEY=sk_test_51Hxxx...
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_51Hxxx...
 STRIPE_WEBHOOK_SECRET=whsec_xxx...
+STRIPE_SECRET_KEY_LIVE=sk_live_51Hxxx...
+STRIPE_WEBHOOK_SECRET_LIVE=whsec_live_xxx...
 ```
 
 > **Importante:** `vercel env pull` sobreescribe `.env.local` y para
@@ -81,9 +84,10 @@ STRIPE_WEBHOOK_SECRET=whsec_xxx...
 
 ```powershell
 vercel env add STRIPE_SECRET_KEY production
-# pega el valor (stdin seguro)
+vercel env add STRIPE_SECRET_KEY_LIVE production
 vercel env add NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY production
 vercel env add STRIPE_WEBHOOK_SECRET production
+vercel env add STRIPE_WEBHOOK_SECRET_LIVE production
 ```
 
 Repetir para `preview` si quieres testear en branches con Stripe live.
@@ -295,11 +299,12 @@ Stripe redirige aquí si el usuario cancela. Mostrar mensaje + CTA
 
 Antes de activar `NEXT_PUBLIC_PAYMENT_PROVIDER=stripe` en production:
 
-- [ ] Las 2 migrations aplicadas en prod DB.
+- [ ] Las migrations de payments/events live hardening aplicadas en prod DB.
 - [ ] Typegen regenerado y `@ts-ignore` quitados.
 - [ ] Cuenta del socio creada en Stripe (no la de David).
 - [ ] KYC + datos bancarios del socio cargados (CLABE MX).
-- [ ] `STRIPE_*_KEY` y `STRIPE_WEBHOOK_SECRET` rotados a **live mode** en Vercel.
+- [ ] `STRIPE_SECRET_KEY` (test) y `STRIPE_SECRET_KEY_LIVE` (live) configurados en Vercel.
+- [ ] `STRIPE_WEBHOOK_SECRET` y `STRIPE_WEBHOOK_SECRET_LIVE` corresponden a sus endpoints.
 - [ ] Webhook endpoint registrado en Dashboard con la URL de production.
 - [ ] Suite verde en CI (`type-check && lint && test && build`).
 - [ ] Probado en Vercel preview con test cards (no se cargan fondos reales).
@@ -327,14 +332,12 @@ Antes de activar `NEXT_PUBLIC_PAYMENT_PROVIDER=stripe` en production:
 
 ## 10. Próximos pasos operativos
 
-1. Aplicar migrations a Supabase (SQL Editor).
-2. Regenerar typegen.
-3. Socios crean/configuran cuenta Stripe.
-4. Cargar env vars en `.env.local` y Vercel.
-5. Registrar webhook endpoint en Dashboard.
-6. Implementar UI §7.
-7. Tests E2E con test cards §6.
-8. Cerrar Fase 1 → PR + merge a `main`.
+1. Aplicar las migrations versionadas con `scripts/apply-migration-management.mjs` en staging y luego producción.
+2. Regenerar typegen y ejecutar `npm run type-check`, `npm run lint`, `npm test` y `npm run build`.
+3. Configurar las variables duales test/live en `.env.local` y Vercel.
+4. Registrar un endpoint Stripe por modo con los eventos manejados.
+5. Ejecutar el E2E de tarjeta, OXXO/SPEI, refund/dispute, evento y servicio.
+6. Ejecutar `scripts/verify-stripe-go-live.mjs`; solo después activar `payment_mode=live` en un evento controlado.
 
 **Fase 2 (post-MVP):** post-pago glue — email Brevo, CRM `paid_customer`
 tag, bot WhatsApp opcional con texto libre ventana 24h.
