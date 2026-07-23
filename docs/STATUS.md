@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-23 — PR37 mergeado a `main` (`17faad8`) y Production READY. Se eliminó el timeout superpuesto del bot, se validaron los cinco modos configurables y se dejó el smoke E2E reproducible del funnel de pagos. El cargo controlado real de $10 MXN de PR34 sigue conciliado y sin repetición. Evidencia: `docs/AUDIT_PAYMENTS_EVENTS_PRE_PR34_2026-07-23.md` y `docs/BOT_AUDIT_2026-07-23.md`.
+> **Última actualización:** 2026-07-23 — PR39 mergeado a `main` (`ac0b278`) y Production READY (`qlick-e66jw1toi`). Se normalizó el voseo a tuteo mexicano en WhatsApp, prompts, pagos, eventos y mensajes de soporte; la regresión nueva y `npm run test:ci` pasan (1483/1483). El cargo controlado real de $10 MXN de PR34 sigue conciliado y sin repetición. Evidencia: `docs/AUDIT_PAYMENTS_EVENTS_PRE_PR34_2026-07-23.md`, `docs/BOT_AUDIT_2026-07-23.md` y `docs/COPY_MEXICAN_TUTEO.md`.
 >
 > **Body del doc (líneas debajo):** es archivo histórico de sprints cerrados. Para estado actual, ver este snapshot.
 
@@ -17,11 +17,11 @@
 ## Estado actual — 2026-07-23
 
 - Migración `20260722130000_stripe_session_conflict_targets.sql` aplicada y verificada en Supabase Production; PR34 la versiona para reproducibilidad.
-- `npm run test:ci`: 1481/1481 PASS (gate estático portable; las suites E2E con secretos quedan fuera). `npm run test:e2e:funnel`: PASS con WhatsApp/Brevo mock y webhook Stripe test firmado. `npm run type-check`: PASS. `npm run lint`: PASS.
+- `npm run test:ci`: 1483/1483 PASS (gate estático portable; las suites E2E con secretos quedan fuera). `npm run test:e2e:funnel`: PASS con WhatsApp/Brevo mock y webhook Stripe test firmado. `npm run type-check`: PASS. `npm run lint`: PASS.
 - Suite completa: 1488 PASS y 3 fallos preexistentes de fixtures CRM (aislamiento/duplicado de teléfono); no son fallos del flujo de pagos.
 - Smoke Production seguro: Checkout test 200; webhook sin firma 400; firma falsa 401. E2E backend firmado de paid/pending/async/refund/dispute/service validado y cleanup verificado.
 - Estado Stripe: **GO validado para eventos** (cargo real + webhook + acceso verificados). El evento QA ya fue archivado (`status=draft`) tras conciliar el cargo; el ledger y el acceso quedan conservados como evidencia. Publicar solo eventos reales con `event_rules.payment_mode=live`. Servicios siguen en test salvo `STRIPE_SERVICE_PAYMENT_MODE=live`; cursos siguen en test por diseño. Falta validar manualmente la entrega de QR/email/WhatsApp del evento real.
-- Producción: deployment Vercel `qlick-o7a6w4c1o` en estado `Ready`, aliases `qlick.digital` y `www.qlick.digital` responden (200 final tras la redirección canónica).
+- Producción: deployment Vercel `qlick-e66jw1toi` en estado `Ready`, aliases `qlick.digital` y `www.qlick.digital` responden (200 final tras la redirección canónica).
 
 ## Sprint v0.10 — 4 bloques hardening + 4 hotfixes E2E (2026-07-14 02:30 → 04:35)
 
