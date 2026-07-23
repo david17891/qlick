@@ -482,7 +482,7 @@ export function parseXlsxForImport(
           row: 0,
           field: "_headers",
           note:
-            "No se encontraron headers reconocibles. Probá --map '{\"telefono\":\"phone\"}' para forzar.",
+            "No se encontraron headers reconocibles. Prueba --map '{\"telefono\":\"phone\"}' para forzar.",
         },
       ],
     };

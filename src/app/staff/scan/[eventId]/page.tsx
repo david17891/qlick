@@ -225,7 +225,7 @@ export default function StaffScanPage() {
       setCameraError(
         err instanceof Error
           ? err.message
-          : "No pude acceder a la cámara. Probá tipear el token manualmente.",
+          : "No pude acceder a la cámara. Prueba escribir el token manualmente.",
       );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -599,7 +599,7 @@ export default function StaffScanPage() {
               Check-in manual
             </button>
             <p className="text-[10px] text-ink-muted">
-              Usá esto si la cámara no anda o el QR está dañado. El token
+              Usa esto si la cámara no funciona o el QR está dañado. El token
               está en la URL del pase (`/check-in/[token]`).
             </p>
           </form>

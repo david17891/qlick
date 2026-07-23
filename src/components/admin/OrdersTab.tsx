@@ -172,7 +172,7 @@ export function OrdersTab() {
           title="No hay pedidos"
           description={
             statusFilter || search
-              ? "Probá limpiar los filtros para ver más."
+              ? "Prueba limpiar los filtros para ver más."
               : "Cuando un cliente complete el formulario en /servicios, el pedido aparece acá."
           }
         />

@@ -41,7 +41,7 @@ export default function LessonError({
               </h1>
               <p className="text-ink-muted mt-3">
                 Ocurrió un problema al renderizar la lección. Esto puede
-                ser un bug pasajero. Probá recargar o volvé al dashboard.
+                ser un bug pasajero. Prueba recargar o vuelve al dashboard.
               </p>
 
               {process.env.NODE_ENV !== "production" && error.message && (

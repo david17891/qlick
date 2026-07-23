@@ -99,7 +99,7 @@ export function CheckoutButton({
       }
 
       // Embed o inline: no implementado todavía. Mensaje genérico.
-      setError("Flow no soportado todavía. Probá con tarjeta.");
+      setError("Flow no soportado todavía. Prueba con tarjeta.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error desconocido");
     } finally {
@@ -110,7 +110,7 @@ export function CheckoutButton({
   return (
     <div>
       <p className="text-sm text-ink-muted mb-4">
-        Pagás <strong>${amountMxn} MXN</strong> por <strong>{courseTitle}</strong>.
+        Paga <strong>${amountMxn} MXN</strong> por <strong>{courseTitle}</strong>.
         Elige tu método y te llevamos a la página de pago segura.
       </p>
 

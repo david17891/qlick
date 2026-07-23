@@ -350,7 +350,7 @@ export default async function CourseDetailPage({
             <EmptyState
               icon="📚"
               title="El contenido de este curso se está preparando"
-              description="Volvé pronto para ver las lecciones."
+              description="Vuelve pronto para ver las lecciones."
             />
           </Container>
         </section>

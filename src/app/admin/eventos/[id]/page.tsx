@@ -405,7 +405,7 @@ export default async function AdminEventoDetailPage({
                       💳 Cobro configurado · ${event.priceMXN} {event.currency ?? "MXN"}
                     </p>
                     <p className="text-xs text-emerald-800 mt-0.5">
-                      Probá el flow de pago end-to-end como si fueras un
+                      Prueba el flow de pago end-to-end como si fueras un
                       asistente real (tarjeta test 4242 con Stripe, o
                       simulador con mock provider).
                     </p>

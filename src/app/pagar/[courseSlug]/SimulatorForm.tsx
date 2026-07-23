@@ -86,8 +86,8 @@ export function SimulatorForm({
   return (
     <div>
       <p className="text-sm text-ink-muted mb-4">
-        Pagás <strong>${amountMxn} MXN</strong> por <strong>{courseTitle}</strong>.
-        Como aún no integramos el provider real, elegí método y simulación:
+        Paga <strong>${amountMxn} MXN</strong> por <strong>{courseTitle}</strong>.
+        Como aún no integramos el provider real, elige método y simulación:
       </p>
 
       {/* Selector de método */}

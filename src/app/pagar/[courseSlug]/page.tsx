@@ -44,7 +44,7 @@ export async function generateMetadata({
   }
   return {
     title: `Pagar ${course.title} · Qlick`,
-    description: `Pagá ${course.title} y empezá hoy.`,
+    description: `Paga ${course.title} y empieza hoy.`,
     alternates: { canonical: `/pagar/${params.courseSlug}` },
     robots: { index: false, follow: false },
   };

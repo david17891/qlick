@@ -367,7 +367,7 @@ function DynamicQuestion({
         onChange={(e) => onChange(e.target.value)}
         maxLength={500}
         rows={3}
-        placeholder="Contanos brevemente (o escribí 'saltar' para omitir)"
+        placeholder="Cuéntanos brevemente (o escribe 'saltar' para omitir)"
         className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm resize-y"
       />
     </div>

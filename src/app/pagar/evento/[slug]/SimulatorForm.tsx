@@ -84,9 +84,9 @@ export function SimulatorForm({
   return (
     <div>
       <p className="text-sm text-ink-muted mb-4">
-        Pagás <strong>${amountMxn} MXN</strong> por tu entrada a{" "}
+        Paga <strong>${amountMxn} MXN</strong> por tu entrada a{" "}
         <strong>{eventTitle}</strong>. Como aún no integramos el provider
-        real, elegí método y simulación:
+        real, elige método y simulación:
       </p>
 
       {/* Selector de método (mismo patrón visual que el de curso). */}

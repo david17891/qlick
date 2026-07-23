@@ -269,7 +269,7 @@ export default async function CertPage({ params }: CertPageProps) {
         </h1>
         <p className="cert-actions-hint">
           Para guardar como PDF: <kbd>Ctrl</kbd>+<kbd>P</kbd> → "Guardar como PDF".
-          En la ventana emergente elegí <strong>Tamaño: Horizontal A4</strong> y desmarcá <strong>Encabezados y pies de página</strong>.
+          En la ventana emergente elige <strong>Tamaño: Horizontal A4</strong> y desmarca <strong>Encabezados y pies de página</strong>.
         </p>
         <PrintCertButton />
       </header>

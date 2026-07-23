@@ -2069,7 +2069,7 @@ async function buildOpenerPlan(args: {
             },
           ],
         },
-        footer: { text: "Toca Inscribirme o escribí tu pregunta" },
+        footer: { text: "Toca Inscribirme o escribe tu pregunta" },
       }
     : {
         type: "button" as const,
@@ -2088,7 +2088,7 @@ async function buildOpenerPlan(args: {
             },
           ],
         },
-        footer: { text: "Respondé con un botón o escribí tu pregunta" },
+        footer: { text: "Responde con un botón o escribe tu pregunta" },
       };
   const bodyText = interactive.body.text;
   return {
@@ -3008,7 +3008,7 @@ case "interactive_event_inscribir": {
     // legacy token+form HTML (que tenía un race condition en el
     // insert de `event_survey_tokens` que provocaba "Tuve un
     // problema técnico"). 4 pasos: Q1/Q2/Q3 con botones + Q4 con
-    // texto libre opcional ("contanos de tu negocio" o "saltar").
+    // texto libre opcional ("cuéntanos de tu negocio" o "saltar").
     //
     // Estado del wizard persiste en `metadata.awaiting_survey_step`
     // del último outbound + `survey_answers` jsonb. Las transiciones
@@ -5645,7 +5645,7 @@ export async function processInboundMessage(
     const looksLikeNamePrompt =
       /tu\s+nombre\s+completo/i.test(lastOutboundBody) ||
       /dime\s+tu\s+nombre/i.test(lastOutboundBody) ||
-      /decime\s+tu\s+nombre/i.test(lastOutboundBody);
+      /(?:dime|decime)\s+tu\s+nombre/i.test(lastOutboundBody);
     if (awaitingField === "name" && body && !looksLikeEmail) {
       intent = "provide_name";
     } else if (
@@ -6189,8 +6189,8 @@ export async function processInboundMessage(
         const codeNote =
           "Si sabes el código corto del evento (ej. 7A3X), mándamelo así.";
         const bodyTextAmbig =
-          `${saludoAmbig} Tenemos varios eventos publicados y necesito saber a cuál te inscribís.\n\n` +
-          `¿Me confirmás cuál? Respondé con el número [1]–[${
+          `${saludoAmbig} Tenemos varios eventos publicados y necesito saber a cuál te inscribes.\n\n` +
+          `¿Me confirmas cuál? Responde con el número [1]–[${
             Math.min(allEventsForFallback.length, 9)
           }] del catálogo anterior o con el código del evento (ej. \`7A3X\`). ` +
           codeNote;
