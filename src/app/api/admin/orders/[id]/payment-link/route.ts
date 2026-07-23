@@ -167,6 +167,11 @@ export async function POST(
       userId: null, // guest checkout — el webhook usa email
       userEmail: order.customerEmail,
       method: "card",
+      // Los servicios tienen un interruptor separado para evitar que
+      // agregar la live key active cargos reales accidentalmente. Por
+      // defecto permanecen en test; al validar operaciones se cambia a
+      // STRIPE_SERVICE_PAYMENT_MODE=live en Vercel Production.
+      mode: process.env.STRIPE_SERVICE_PAYMENT_MODE === "live" ? "live" : "test",
       // Retornos explícitos: el provider también tiene defaults, pero el
       // endpoint admin debe conservar el order_id para mostrar el resultado
       // del cobro y no depender del slug público.

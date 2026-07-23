@@ -60,6 +60,7 @@ transferir. Los pagos van al owner (socio) aunque David opere la cuenta.
 |---|---|---|---|
 | `STRIPE_SECRET_KEY` | sensitive | `Dashboard → Developers → API keys → Reveal` (test mode) | `sk_test_...`; se conserva en paralelo y nunca se reemplaza durante el flip. |
 | `STRIPE_SECRET_KEY_LIVE` | sensitive | API keys con el toggle Live | `sk_live_...`; solo se usa para eventos con `event_rules.payment_mode=live`. |
+| `STRIPE_SERVICE_PAYMENT_MODE` | server-only | Vercel Production | `test` por defecto; usar `live` sólo para habilitar links de pago de servicios después de un pedido controlado. |
 | `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | public | mismo lugar | `pk_test_...` para el frontend actual (Checkout hosted). |
 | `STRIPE_WEBHOOK_SECRET` / `_LIVE` | sensitive | un endpoint por modo (ver §4) | `whsec_...`; cada endpoint usa su propio secret. |
 
@@ -304,6 +305,7 @@ Antes de activar `NEXT_PUBLIC_PAYMENT_PROVIDER=stripe` en production:
 - [ ] Cuenta del socio creada en Stripe (no la de David).
 - [ ] KYC + datos bancarios del socio cargados (CLABE MX).
 - [ ] `STRIPE_SECRET_KEY` (test) y `STRIPE_SECRET_KEY_LIVE` (live) configurados en Vercel.
+- [ ] `STRIPE_SERVICE_PAYMENT_MODE` permanece en `test` hasta validar el primer pedido de servicio; cambiar a `live` sólo con aprobación operativa.
 - [ ] `STRIPE_WEBHOOK_SECRET` y `STRIPE_WEBHOOK_SECRET_LIVE` corresponden a sus endpoints.
 - [ ] Webhook endpoint registrado en Dashboard con la URL de production.
 - [ ] Suite verde en CI (`type-check && lint && test && build`).

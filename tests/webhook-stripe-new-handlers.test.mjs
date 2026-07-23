@@ -23,10 +23,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ROUTE_PATH = "C:/Users/User/Documents/Click/src/app/api/webhooks/stripe/route.ts";
-const TYPES_PATH = "C:/Users/User/Documents/Click/src/types/index.ts";
-const ADMIN_VIEW_PATH = "C:/Users/User/Documents/Click/src/components/admin/AdminView.tsx";
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const ROUTE_PATH = join(ROOT, "src/app/api/webhooks/stripe/route.ts");
+const TYPES_PATH = join(ROOT, "src/types/index.ts");
+const ADMIN_VIEW_PATH = join(ROOT, "src/components/admin/AdminView.tsx");
 
 const routeText = readFileSync(ROUTE_PATH, "utf-8");
 const typesText = readFileSync(TYPES_PATH, "utf-8");

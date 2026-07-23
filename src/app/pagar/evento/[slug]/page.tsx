@@ -166,7 +166,7 @@ export default async function PayEventPage({
                 /pagar/[courseSlug] — ayuda al asistente a confirmar
                 que está pagando lo correcto antes de ir a Stripe). */}
             <Card className="p-7 self-start">
-              <Badge tone="success">Entrada pagada</Badge>
+              <Badge tone="info">Evento</Badge>
               <h1 className="text-2xl font-bold text-ink mt-3">
                 {event.title}
               </h1>

@@ -1,9 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ROOT = "C:/Users/User/Documents/Click";
-const read = (file) => readFileSync(`${ROOT}/${file}`, "utf8");
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const read = (file) => readFileSync(join(ROOT, file), "utf8");
 
 const migration = read("supabase/migrations/20260722120000_payments_events_live_hardening.sql");
 const webhook = read("src/app/api/webhooks/stripe/route.ts");
@@ -37,17 +39,26 @@ test("webhook no otorga acceso al crear voucher OXXO/SPEI", () => {
   assert.match(webhook, /status: "pending"/);
 });
 
+test("eventos registran failed/expired sin degradar pagos aprobados", () => {
+  assert.match(webhook, /recordEventCheckoutTerminalState/);
+  assert.match(webhook, /status: "failed"/);
+  assert.match(webhook, /status: "cancelled"/);
+  assert.match(webhook, /existing\.status !== "pending"/);
+});
+
 test("webhook correlaciona refunds por PaymentIntent/Charge y revoca por payment", () => {
   assert.match(webhook, /stripe_payment_intent_id/);
   assert.match(webhook, /stripe_charge_id/);
   assert.match(webhook, /paymentId,\n        confirmationId/);
   assert.match(entitlements, /paymentId\?: string \| null/);
+  assert.match(webhook, /payment_status: "revoked"/);
 });
 
 test("webhook tiene fulfillment explícito para service_order", () => {
   assert.match(webhook, /handleServiceCheckoutCompleted/);
   assert.match(webhook, /payment_status: "paid"/);
   assert.match(webhook, /type: "payment_received"/);
+  assert.match(webhook, /payment_status: "failed"/);
 });
 
 test("confirmation_id se valida contra el evento antes de ir a Stripe", () => {
