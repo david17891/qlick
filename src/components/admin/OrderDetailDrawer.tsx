@@ -618,7 +618,7 @@ function NotasTab({
           <Textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            placeholder="Escribí lo que pasó. Ej: 'Cliente confirmó por WhatsApp, va a pagar mañana.'"
+            placeholder="Escribe lo que pasó. Ej: 'Cliente confirmó por WhatsApp, va a pagar mañana.'"
             rows={3}
             disabled={saving}
           />
@@ -987,7 +987,7 @@ function PaymentLinkCard({
   const waPhone = order.customerPhone?.replace(/[^\d]/g, "") ?? null;
   const waMessage = paymentLink
     ? encodeURIComponent(
-        `Hola ${order.customerName}, te paso el link para que puedas pagar ${order.service.displayName} — ${order.variant.label} (${formatMXN(order.amountMXN)} ${order.currency}):\n\n${paymentLink}\n\nCualquier duda, me decís.`
+        `Hola ${order.customerName}, te paso el link para que puedas pagar ${order.service.displayName} — ${order.variant.label} (${formatMXN(order.amountMXN)} ${order.currency}):\n\n${paymentLink}\n\nCualquier duda, me dices.`
       )
     : "";
   const waLink = waPhone ? `https://wa.me/${waPhone}?text=${waMessage}` : null;

@@ -80,7 +80,7 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         ok: false,
-        error: "Demasiadas solicitudes. Probá de nuevo en unos segundos.",
+        error: "Demasiadas solicitudes. Prueba de nuevo en unos segundos.",
       },
       {
         status: 429,

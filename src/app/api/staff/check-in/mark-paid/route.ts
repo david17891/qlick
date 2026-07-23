@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           error:
-            "Falta `qr_token`. El scanner público debe mandar el token del QR escaneado. O loguéate como admin.",
+            "Falta `qr_token`. El scanner público debe mandar el token del QR escaneado. O inicia sesión como admin.",
         },
         { status: 401 },
       );

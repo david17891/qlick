@@ -38,7 +38,7 @@ El admin te da título + descripción de un evento. Tú devuelves JSON con:
 }
 
 REGLAS para tu output:
-- personality: elegí la que mejor encaje con el tono del evento. Si nada matchea, devolvé un string custom corto (max 30 chars).
+- personality: elige la que mejor encaje con el tono del evento. Si nada coincide, devuelve un string custom corto (máx. 30 caracteres).
 - rules: 3 a 7 reglas operativas, cada una UNA línea (max 120 chars).
 - Las reglas deben reflejar:
   * Lo que el bot DEBE hacer (ej: "Mencionar precio solo si preguntan")
@@ -46,7 +46,7 @@ REGLAS para tu output:
   * Tono o limites (ej: "Hablar siempre en español neutro, sin anglicismos")
 - Regla dura SIEMPRE presente en algún item: "Si no sabes, decir que no tienes la info, no inventar"
 - NO inventes info que no esté en la description. NO asumas precio/modalidad/cupo si no están.
-- Devolvé SOLO el JSON, sin markdown ni explicaciones.`;
+- Devuelve SOLO el JSON, sin markdown ni explicaciones.`;
 
 /**
  * Llama DeepSeek y devuelve las reglas pre-llenadas.
@@ -74,7 +74,7 @@ export async function prefillEventRules(
       ? `Personalidad actual: ${input.existingPersonality}`
       : "",
     "",
-    "Devolvé el JSON con personality + rules.",
+    "Devuelve el JSON con personality + rules.",
   ]
     .filter(Boolean)
     .join("\n");

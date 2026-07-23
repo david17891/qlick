@@ -1387,7 +1387,7 @@ export function LeadDetailDrawer({
             title={`Conversación${realMode ? "" : " (WhatsApp · demo)"}`}
           >
             {!conversation ? (
-              <Empty text={realMode ? "Sin conversación registrada. Anotá el primer mensaje abajo." : "Sin conversación registrada."} />
+              <Empty text={realMode ? "Sin conversación registrada. Anota el primer mensaje abajo." : "Sin conversación registrada."} />
             ) : (
               <div className="space-y-2 mb-3">
                 <div className="flex items-center gap-2 mb-1 flex-wrap">

@@ -369,7 +369,7 @@ export function PipelineLeadsPromovidosBoard({
               evento con tu email.
             </p>
             <p className="text-sm text-ink-soft mb-2">
-              Para confirmar, escribí{" "}
+              Para confirmar, escribe{" "}
               <code className="bg-brand-50 px-1.5 py-0.5 rounded text-xs font-bold text-brand-700">
                 {confirmPhrase}
               </code>{" "}

@@ -1244,7 +1244,7 @@ function PersonalitySelect({
         ))}
         {isCustom && (
           <option value={PERSONALITY_CUSTOM_VALUE} disabled>
-            Personalizado (custom) — elegí un preset para reemplazar
+            Personalizado (custom) — elige un preset para reemplazar
           </option>
         )}
       </select>

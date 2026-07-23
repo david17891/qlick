@@ -247,7 +247,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           ok: false,
-          error: `El curso '${body.slug}' es gratuito. Usá /inscripcion/${body.slug} en su lugar.`,
+          error: `El curso '${body.slug}' es gratuito. Usa /inscripcion/${body.slug} en su lugar.`,
         },
         { status: 400 },
       );
@@ -465,7 +465,7 @@ export async function POST(req: NextRequest) {
         error:
           err instanceof Error
             ? err.message
-            : "Error iniciando el checkout. Probá de nuevo.",
+            : "Error iniciando el checkout. Prueba de nuevo.",
         provider: provider.name,
       },
       { status: 500 },
@@ -519,7 +519,7 @@ async function grantScholarshipInline(
   if (!userId) {
     if (!sessionEmail) {
       throw new Error(
-        "Beca sin email de usuario: no podemos crear la cuenta. Logueate o usá magic link antes de pagar."
+        "Beca sin email de usuario: no podemos crear la cuenta. Inicia sesión o usa magic link antes de pagar."
       );
     }
     // Resolver user via RPC (FASE 2 V2). Si no existe, error explicito
@@ -532,7 +532,7 @@ async function grantScholarshipInline(
     );
     if (rpcErr || !rpcId) {
       throw new Error(
-        `No encontramos la cuenta para ${sessionEmail}. Logueate primero y volvé a intentar.`
+        `No encontramos la cuenta para ${sessionEmail}. Inicia sesión primero y vuelve a intentarlo.`
       );
     }
     userId = rpcId as string;

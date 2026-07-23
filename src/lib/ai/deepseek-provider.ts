@@ -1030,7 +1030,7 @@ export async function pickSystemPromptForMode(
     // mejor que v1 en los 3 casos LLM-driven del E2E (edge_empty y
     // edge_spaces dan bienvenida cálida con info en vez de fallback
     // frío "Disculpa, no entendí"). Mantenemos v1 en código por
-    // seguridad / rollback; v2 es el default ahora. Si querés
+    // seguridad / rollback; v2 es el default ahora. Si quieres
     // experimentar con v1, setear `bot_global_mode = "super_executive_legacy"`
     // — no implementado, solo v1 sigue accesible vía la función
     // exportada `buildSuperExecutivePrompt` (no la borramos).

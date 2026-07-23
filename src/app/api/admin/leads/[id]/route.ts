@@ -97,7 +97,7 @@ export async function PATCH(
       {
         ok: false,
         error:
-          "Body vacío. Mandá al menos `status`, `name`, `email` o `phone`.",
+          "Body vacío. Manda al menos `status`, `name`, `email` o `phone`.",
       },
       { status: 400 },
     );

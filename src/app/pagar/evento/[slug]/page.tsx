@@ -48,7 +48,7 @@ export async function generateMetadata({
   }
   return {
     title: `Pagar entrada · ${event.title} · Qlick`,
-    description: `Pagá tu entrada para ${event.title} y asegurá tu lugar.`,
+    description: `Paga tu entrada para ${event.title} y asegura tu lugar.`,
     alternates: { canonical: `/pagar/evento/${params.slug}` },
     robots: { index: false, follow: false },
   };

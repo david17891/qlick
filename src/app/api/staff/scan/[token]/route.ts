@@ -43,7 +43,7 @@ export async function GET(_req: Request, { params }: RouteParams) {
       not_found: "Este link no existe o ya fue removido.",
       expired: "Este link expiró. Pedile al admin uno nuevo.",
       revoked: "Este link fue revocado. Pedile al admin uno nuevo.",
-      not_yet_valid: "Este link aún no está activo. Volvé más tarde.",
+      not_yet_valid: "Este link aún no está activo. Vuelve más tarde.",
     };
     const html = renderStaffErrorHtml(reasonMap[result.reason]);
     return new NextResponse(html, {

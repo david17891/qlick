@@ -43,7 +43,7 @@ export default function CourseDetailError({
               </h1>
               <p className="text-ink-muted mt-3">
                 Ocurrió un problema al renderizar la página. Esto puede ser
-                un bug pasajero. Probá recargar o volvé al catálogo.
+                un bug pasajero. Prueba recargar o vuelve al catálogo.
               </p>
 
               {process.env.NODE_ENV !== "production" && error.message && (

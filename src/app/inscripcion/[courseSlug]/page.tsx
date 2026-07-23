@@ -43,7 +43,7 @@ export async function generateMetadata({
     title: `Inscribirme a ${course.title} · Qlick`,
     description:
       course.description ??
-      `Inscríbete con un solo toque vía Google y empezá hoy.`,
+      `Inscríbete con un solo toque vía Google y empieza hoy.`,
     alternates: { canonical: `/inscripcion/${params.courseSlug}` },
     robots: { index: false, follow: false }, // no indexar páginas de enrollment
   };
