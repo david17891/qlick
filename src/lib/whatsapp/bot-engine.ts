@@ -2219,19 +2219,35 @@ async function buildOpenerPlan(args: {
   function buildShortcutBody(event: NonNullable<typeof singleEventShortcut>): string {
     const adminDesc = event.description?.trim();
     if (adminDesc && adminDesc.length > 0) {
-      // El admin ya escribió la descripción. La mostramos tal cual.
-      return `${adminDesc}\n\n¿Quieres apartar tu lugar?`;
+      // FIX 2026-07-24 (sprint bot-welcome-copy, hotfix dup-prompt):
+      // El body del interactive message muestra el `event.description`
+      // del admin TAL CUAL. NO concatenamos un prompt tipo
+      // "¿Quieres apartar tu lugar?" porque:
+      //  1. El admin ya lo escribio en su description (lo vimos en
+      //     CANACO: el description termina con ese prompt).
+      //  2. WhatsApp agrega un footer automatico "Toca Inscribirme o
+      //     escribe tu pregunta" via el campo `footer` del interactive.
+      //     Ese footer es el CTA canonico, no el body.
+      //  3. Si duplicabamos, el lead ve "¿Quieres apartar tu lugar?"
+      //     dos veces (body + body del admin). Confuso.
+      //
+      // Politica: el admin controla 100% del body. El footer de
+      // WhatsApp controla el CTA. Nunca los duplicamos.
+      return adminDesc;
     }
     // Sin descripción: usamos el formato generado.
     try {
       const generated = buildEventInfoCopy(event);
       if (generated && generated.trim().length > 0) {
-        return `${generated}\n\n¿Quieres apartar tu lugar?`;
+        // Mismo principio: el footer de WhatsApp ya muestra el CTA,
+        // no lo duplicamos en el body.
+        return generated;
       }
     } catch {
       // Fall through.
     }
-    // Último fallback al formato corto.
+    // Último fallback al formato corto (sin prompt porque el footer
+    // de WhatsApp ya lo muestra).
     return `${saludo} Soy Qlick, asistente de Qlick Marketing Digital. ¿Te interesa "${event.title}"?${eventLine}`;
   }
   const shortcutBody: string = singleEventShortcut
