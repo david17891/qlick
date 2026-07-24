@@ -518,3 +518,134 @@ test("buildEventRulesFromForm: CANACO con payment_mode undefined NO lo baja a 't
   const out = buildEventRulesFromForm({ current, changes });
   assert.equal(out.payment_mode, "live");
 });
+
+/* ------------------------------------------------------------------ */
+/* FIX 2026-07-24 (auditoría David, ronda 3): preserveReservation     */
+/* ------------------------------------------------------------------ */
+
+test("buildEventRulesFromForm: preserveReservation=true preserva apartado del current", () => {
+  // Caso del bug: CANACO tiene apartado $500 configurado. El admin
+  // edita SOLO la personalidad. El form no debería poder (siempre
+  // manda el valor del checkbox), pero un caller externo (API) podría
+  // mandar eventRules sin reservation_enabled. Antes mi código lo
+  // interpretaba como "false" y borraba el apartado. Ahora con
+  // preserveReservation=true, se preserva.
+  const current = {
+    personality: "Bot v1",
+    rules: ["r1"],
+    payment_mode: "test",
+    reservation_enabled: true,
+    reservation_amount_mxn: 500,
+    balance_amount_mxn: 500,
+    balance_due_note: "el día del evento",
+  };
+  const changes = makeChanges({
+    personality: "Bot v2", // solo cambió personalidad
+    rules: ["r1", "r2"],
+    paymentMode: undefined, // tampoco payment_mode
+    preserveReservation: true, // el caller NO toca el apartado
+    // reservation.enabled y amount no importan acá porque
+    // preserveReservation=true los ignora.
+    reservation: validateReservation({
+      priceMXN: 1000,
+      enabled: false, // irrelevante
+      amount: null,
+    }),
+    reservationAmountParsed: null,
+  });
+  const out = buildEventRulesFromForm({ current, changes });
+  // Apartado preservado exacto.
+  assert.equal(out.reservation_enabled, true);
+  assert.equal(out.reservation_amount_mxn, 500);
+  assert.equal(out.balance_amount_mxn, 500);
+  assert.equal(out.balance_due_note, "el día del evento");
+  // Personalidad y rules actualizados.
+  assert.equal(out.personality, "Bot v2");
+  assert.deepEqual(out.rules, ["r1", "r2"]);
+  // Payment_mode preservado.
+  assert.equal(out.payment_mode, "test");
+});
+
+test("buildEventRulesFromForm: preserveReservation=true con current sin apartado → no activa", () => {
+  // Si el current NO tiene apartado y el caller no incluye apartado
+  // en el input, el resultado NO debe activar apartado. La regla es
+  // "preservar", no "agregar default".
+  const current = {
+    personality: "X",
+    rules: [],
+    payment_mode: "test",
+  };
+  const changes = makeChanges({
+    personality: "X",
+    rules: [],
+    paymentMode: undefined,
+    preserveReservation: true,
+  });
+  const out = buildEventRulesFromForm({ current, changes });
+  // No se activa apartado.
+  assert.equal(out.reservation_enabled, undefined);
+  assert.equal(out.reservation_amount_mxn, undefined);
+});
+
+test("buildEventRulesFromForm: preserveReservation=false con enabled=false → limpia", () => {
+  // Caso opuesto: el caller QUIERE desactivar el apartado
+  // explícitamente. El form manda reservationEnabled=false.
+  const current = {
+    personality: "X",
+    rules: [],
+    payment_mode: "test",
+    reservation_enabled: true,
+    reservation_amount_mxn: 500,
+    balance_amount_mxn: 500,
+  };
+  const changes = makeChanges({
+    personality: "X",
+    rules: [],
+    paymentMode: "test",
+    preserveReservation: false, // explícito: el caller SÍ toca apartado
+    reservation: validateReservation({
+      priceMXN: 1000,
+      enabled: false, // desactivado
+      amount: null,
+    }),
+  });
+  const out = buildEventRulesFromForm({ current, changes });
+  // Apartado limpiado.
+  assert.equal(out.reservation_enabled, false);
+  assert.equal(out.reservation_amount_mxn, undefined);
+  assert.equal(out.balance_amount_mxn, undefined);
+});
+
+test("buildEventRulesFromForm: CANACO update parcial personalidad → apartado $500 preservado", () => {
+  // Test de regresión específico del escenario CANACO. CANACO hoy
+  // NO tiene reservation_*, pero si el admin lo configura ($500) y
+  // después edita la personalidad desde el panel, el update parcial
+  // NO debe borrar el apartado. Aunque en la práctica el form admin
+  // siempre manda el valor del checkbox (no puede mandar undefined),
+  // defense in depth: este test simula el caso de un caller que
+  // manda eventRules sin los campos de apartado.
+  const current = {
+    personality: "Bot v1",
+    rules: ["r1"],
+    payment_mode: "live",
+    reservation_enabled: true,
+    reservation_amount_mxn: 500,
+    balance_amount_mxn: 500,
+    balance_due_note: "el día del evento",
+  };
+  // El server detecta que no vienen campos de apartado y setea
+  // preserveReservation=true. El form provee personalidad nueva.
+  const changes = makeChanges({
+    personality: "Bot v2 (editado)",
+    rules: ["r1"],
+    paymentMode: undefined, // no se cambia
+    preserveReservation: true, // el server detecta update parcial
+  });
+  const out = buildEventRulesFromForm({ current, changes });
+  assert.equal(out.reservation_enabled, true);
+  assert.equal(out.reservation_amount_mxn, 500);
+  assert.equal(out.balance_amount_mxn, 500);
+  assert.equal(out.balance_due_note, "el día del evento");
+  assert.equal(out.payment_mode, "live");
+  assert.equal(out.personality, "Bot v2 (editado)");
+});

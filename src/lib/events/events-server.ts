@@ -690,6 +690,23 @@ export async function updateEvent(
       const reservationAmountParsed = parseReservationAmount(
         String(input.eventRules.reservation_amount_mxn ?? ""),
       );
+      // FIX 2026-07-24 (auditoría David ronda 3): distinguir 3 casos
+      // para el apartado en un update parcial:
+      //   1. `reservation_enabled === true` → activar (validación OK)
+      //      o rechazar (validación falla).
+      //   2. `reservation_enabled === false` → desactivar
+      //      explícitamente (limpia campos).
+      //   3. `reservation_enabled === undefined` Y
+      //      `reservation_amount_mxn === undefined` → PRESERVAR la
+      //      configuración actual. El caller (form o API externa) no
+      //      está tocando el apartado; no debemos borrarlo.
+      // Antes mi código interpretaba el caso 3 como caso 2, lo que
+      // borraba el apartado de CANACO cada vez que el admin editaba
+      // solo el título.
+      const reservationExplicitlySet =
+        input.eventRules.reservation_enabled !== undefined ||
+        input.eventRules.reservation_amount_mxn !== undefined;
+      const preserveReservation = !reservationExplicitlySet;
       // FIX 2026-07-23 (auditoría David): payment_mode se pasa TAL
       // CUAL viene del input. Si no viene (undefined), el helper de
       // merge preserva el current en vez de pisarlo con "test".
@@ -699,6 +716,9 @@ export async function updateEvent(
         personality: input.eventRules.personality ?? "",
         rules: input.eventRules.rules ?? [],
         paymentMode: input.eventRules.payment_mode,
+        // FIX 2026-07-24: preservar apartado si el input no lo
+        // incluye. Ver bloque arriba.
+        preserveReservation,
         reservation: reservationValidation,
         reservationAmountParsed,
       };

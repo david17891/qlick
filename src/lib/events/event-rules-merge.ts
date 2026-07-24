@@ -247,6 +247,25 @@ export interface FormEventRulesChanges {
    */
   paymentMode?: "test" | "live";
   /**
+   * FIX 2026-07-24 (auditoría David, ronda 3): si es `true`, el helper
+   * NO toca los campos de apartado (`reservation_enabled`,
+   * `reservation_amount_mxn`, `balance_amount_mxn`, `balance_due_note`):
+   * los preserva del `current`. Esto cubre el caso de un update
+   * PARCIAL donde el caller NO incluye `reservation_enabled` ni
+   * `reservation_amount_mxn` en el input (ej. edita solo personalidad).
+   * Antes mi código interpretaba `undefined` como `false` y borraba
+   * la configuración de apartado existente, lo que rompía eventos
+   * como CANACO.
+   *
+   * Reglas:
+   *   - `preserveReservation: true` → no tocar campos de apartado,
+   *     preservarlos del current.
+   *   - `preserveReservation: false` o undefined → usar la lógica
+   *     normal basada en `reservation.shouldClearReservationFields`
+   *     y los montos provistos.
+   */
+  preserveReservation?: boolean;
+  /**
    * Resultado de `validateReservation` aplicado al form actual.
    * El caller (EventDrawer) lo calcula y lo pasa. NO recalculamos acá
    * para evitar acoplar el form con la función de validación.
@@ -305,7 +324,12 @@ export function buildEventRulesFromForm(args: BuildEventRulesArgs): EventBotRule
     result.payment_mode = changes.paymentMode;
   }
 
-  if (changes.reservation.shouldClearReservationFields) {
+  if (changes.preserveReservation === true) {
+    // FIX 2026-07-24 (auditoría David ronda 3): el caller no está
+    // modificando el apartado (update parcial). NO tocamos los campos
+    // de apartado en el resultado — el loop de merge de abajo los va
+    // a preservar del current si existen.
+  } else if (changes.reservation.shouldClearReservationFields) {
     // Apartado desactivado o free: marcar explícitamente enabled=false y
     // BORRAR los montos (no dejarlos con valores stale). Esto matchea
     // la regla del brief: "Si se desactiva el apartado, guardar
@@ -352,10 +376,18 @@ export function buildEventRulesFromForm(args: BuildEventRulesArgs): EventBotRule
       key === "balance_amount_mxn" ||
       key === "balance_due_note"
     ) {
-      // Si el helper dijo "limpiar", borrar explícitamente: NO copiar del current.
-      if (changes.reservation.shouldClearReservationFields) continue;
-      // Si el resultado ya tiene este campo seteado, no copiar.
-      if ((result as unknown as Record<string, unknown>)[key] !== undefined) continue;
+      // FIX 2026-07-24: si el caller pidió preservar apartado, copiar
+      // del current SI existe. Si no existe en current (ej. CANACO
+      // pre-configuración), no se setea nada.
+      if (changes.preserveReservation === true) {
+        // Continuar el flujo normal al final: copiar del current si existe.
+      } else if (changes.reservation.shouldClearReservationFields) {
+        // El caller quiere limpiar explícitamente: NO copiar.
+        continue;
+      } else if ((result as unknown as Record<string, unknown>)[key] !== undefined) {
+        // El resultado ya tiene este campo seteado por el form: NO copiar.
+        continue;
+      }
     }
     // Campo no manejado o no seteado: copiar del current.
     const v = currentRecord[key];
