@@ -1201,6 +1201,21 @@ async function handleCheckoutCompleted(
     const isReservation =
       (productRef.kind === "event" || productRef.kind === "masterclass") &&
       productRef.paymentPurpose === "reservation";
+    // FIX 2026-07-24 (sprint event-payment-progress): si el cargo
+    // es un SALDO (paymentPurpose === "balance"), NO promovemos
+    // automaticamente a `paid` ni a `event_purchase`. Hay que
+    // calcular el acumulado TOTAL de los event_payments de este
+    // confirmation (incluyendo este nuevo cargo) y solo promover
+    // cuando acumulado >= precio_total del evento. Si todavia
+    // falta, dejamos el `payment_status` en `pending` y el
+    // `event_access.source` en `manual_event_admin` (no
+    // `event_purchase`). Esto arregla el bug donde un cliente que
+    // pagaba el saldo de $500 quedaba como "pagado completo" sin
+    // estarlo realmente (ej. si la suma de pagos era < total por
+    // algun ajuste manual previo).
+    const isBalance =
+      (productRef.kind === "event" || productRef.kind === "masterclass") &&
+      productRef.paymentPurpose === "balance";
     if (isReservation) {
       // El apartado confirma la intención y se registra en el ledger, pero
       // no entrega acceso completo ni cambia la confirmación a `paid`.
@@ -1277,17 +1292,72 @@ async function handleCheckoutCompleted(
         eventId: productRef.id,
         leadId: userId,
       }).catch(() => null));
+
+    // FIX 2026-07-24 (sprint event-payment-progress): para pagos con
+    // `paymentPurpose === "balance"`, calculamos el acumulado TOTAL
+    // de event_payments cobrados (status IN approved, paid_manual)
+    // del confirmation. Si acumulado >= total → "paid" + source
+    // `event_purchase`. Si NO → "pending" + source
+    // `manual_event_admin` (pago parcial, falta liquidar). Esto
+    // distingue correctamente "saldo liquidado" vs "saldo parcial".
+    let isAccumulatedFull = !isBalance;
+    let accumulatedMXN = 0;
+    if (isBalance && confLookup) {
+      // FIX 2026-07-24 v2 (correccion #7): falla cerrado si la
+      // consulta del acumulado falla. NO asumir 0 silenciosamente
+      // (que marcaria al cliente como "no pago" cuando en realidad
+      // ya pago). Si la query falla, devolvemos 500 para que Stripe
+      // reintente.
+      const { data: accumRows, error: accumErr } = await supabase
+        .from("event_payments")
+        .select("amount_mxn, status")
+        .eq("confirmation_id", confLookup);
+      if (accumErr) {
+        errorLog("[stripe-webhook] balance accumulated query fallo (falla cerrado)", {
+          confirmationId: confLookup,
+          error: accumErr.message,
+          paymentId: payment.id,
+        });
+        return {
+          status: 500,
+          body: {
+            ok: false,
+            mode: "balance_accumulated_query_failed",
+            event_id: event.id,
+            note: "Reintentaremos. La consulta del acumulado fallo.",
+          },
+        };
+      }
+      const collectedStatuses = new Set(["approved", "paid_manual"]);
+      for (const r of (accumRows ?? []) as Array<{ amount_mxn: number; status: string }>) {
+        if (collectedStatuses.has(r.status)) {
+          accumulatedMXN += Number(r.amount_mxn) || 0;
+        }
+      }
+      const totalEventMXN = productRef.priceMXN;
+      // Tolerancia de 0.01 MXN para comparacion de flotantes.
+      isAccumulatedFull = accumulatedMXN + 0.01 >= totalEventMXN;
+      infoLog("[stripe-webhook] balance payment accumulated check", {
+        confirmationId: confLookup,
+        eventId: productRef.id,
+        accumulatedMXN,
+        totalEventMXN,
+        isAccumulatedFull,
+        paymentId: payment.id,
+      });
+    }
+
     await grantEventAccess({
       userId: userId || null,
       confirmationId: confLookup,
       eventId: productRef.id,
-      source: "event_purchase",
+      source: isAccumulatedFull ? "event_purchase" : "manual_event_admin",
       paymentId: payment.id,
       grantedReason: reason,
     });
 
     // FIX 2026-07-16d (sprint event-payments FK): actualizar
-    // `event_confirmations.payment_status = 'paid'` después del GRANT.
+    // `event_confirmations.payment_status` después del GRANT.
     // Antes este paso se saltaba — el webhook confiaba en el caller
     // (mark-paid, simulator, etc) para hacerlo. Pero en el path de
     // checkout online (Stripe webhook), NADIE lo hacia: el estado se
@@ -1296,11 +1366,19 @@ async function handleCheckoutCompleted(
     // de pago, pero el `payment_status` en BD estaba stale. Esto
     // causaba que la UI mostrara "Pago pendiente" aunque el cargo
     // ya estuviera cobrado. Lo arreglamos acá, idempotente.
+    //
+    // FIX 2026-07-24 (sprint event-payment-progress): para pagos
+    // `balance` que NO liquidan el total, mantenemos `payment_status
+    // = "pending"`. Solo promovemos a `"paid"` cuando
+    // `isAccumulatedFull` es true.
     if (confLookup) {
+      const nextConfirmationStatus = isAccumulatedFull ? "paid" : "pending";
       const { error: confUpdErr } = await supabase
         .from("event_confirmations")
-        .update({ payment_status: "paid" } as never)
-        .eq("id", confLookup);
+        .update({ payment_status: nextConfirmationStatus } as never)
+        .eq("id", confLookup)
+        // Defensa: no pisar `revoked` accidentalmente.
+        .neq("payment_status", "revoked");
       if (confUpdErr) {
         // No rompemos el flow si falla (el pago está approved igual).
         // Solo loggeamos.
@@ -1319,11 +1397,22 @@ async function handleCheckoutCompleted(
     //
     // FIX 2026-07-20: Await the notification to prevent Vercel from
     // terminating the serverless function before the background tasks complete.
+    //
+    // FIX 2026-07-24 (sprint event-payment-progress): para pagos
+    // `balance` que SI liquidaron el total, mandamos el copy
+    // "saldo liquidado". Para pagos `full` o `balance` que NO
+    // liquidaron (acumulado < total), mandamos el copy default de
+    // "pago parcial" (el helper lo infiere del accumulated check
+    // — no le pasamos paymentPurpose en ese caso para que use el
+    // branch por defecto).
     try {
       await notifyLeadPaymentConfirmed({
         confirmationId: confLookup ?? "",
         eventId: productRef.id,
         amountTotalMXN,
+        ...(isBalance && isAccumulatedFull
+          ? { paymentPurpose: "balance" as const }
+          : {}),
       });
     } catch (notifyErr) {
       errorLog("[stripe-webhook] notifyLeadPaymentConfirmed throw", {
