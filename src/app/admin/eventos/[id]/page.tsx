@@ -416,7 +416,7 @@ export default async function AdminEventoDetailPage({
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-500 text-white text-sm font-semibold hover:bg-emerald-600 transition shadow-sm shrink-0"
                   >
-                    Probar checkout →
+                    Pruebar checkout →
                   </a>
                 </div>
               </Card>
@@ -805,10 +805,10 @@ export default async function AdminEventoDetailPage({
                   <EmptyState
                     icon="🔍"
                     title="Sin resultados con esos filtros"
-                    description="Proba quitar el filtro de fuente o limpiar la busqueda."
+                    description="Prueba quitar el filtro de fuente o limpiar la busqueda."
                   />
                 ) : (
-                  <Table headers={["Nombre", "Email", "Teléfono", "Fuente", "Confirmó", "Link", ""]}>
+                  <Table headers={["Nombre", "Email", "Teléfono", "Fuente", "Confirmó", "Pago", "Link", ""]}>
                     {filteredConfirmations.map((c) => (
                       <tr key={c.id} className="hover:bg-brand-50/30">
                         <td className="px-5 py-3 font-medium text-ink">{c.name}</td>
@@ -845,6 +845,53 @@ export default async function AdminEventoDetailPage({
                         </td>
                         <td className="px-5 py-3 text-ink-muted text-xs">
                           {formatDate(c.confirmedAt)}
+                        </td>
+                        {/* Sprint event-payment-progress (2026-07-24): badge
+                            "Pago" derivado del acumulado de event_payments
+                            via `confirmationProgress.progress`. La UI
+                            nueva distingue "Sin pago" / "Apartado pagado
+                            · saldo $X" / "Pagado completo" / "Pendiente
+                            verificacion" / "Revocado". El `paymentStatus`
+                            legacy del confirmation se mantiene para
+                            queries existentes; este badge usa el helper
+                            `event-payment-progress` (source-of-truth). */}
+                        <td className="px-5 py-3 text-xs">
+                          {(() => {
+                            if (event.priceMXN == null || event.priceMXN <= 0) {
+                              return <Badge tone="neutral">Sin pago requerido</Badge>;
+                            }
+                            const cp = paymentsSnapshot?.confirmationProgress.find(
+                              (p) => p.confirmationId === c.id,
+                            );
+                            if (!cp) {
+                              return <Badge tone="warning">⏳ Sin pago</Badge>;
+                            }
+                            const balanceMXN = (cp.balanceDueCentavos / 100).toLocaleString("es-MX");
+                            switch (cp.progress) {
+                              case "not_required":
+                                return <Badge tone="neutral">Sin pago requerido</Badge>;
+                              case "unpaid":
+                                return <Badge tone="warning">⏳ Sin pago</Badge>;
+                              case "partial_paid":
+                                return (
+                                  <Badge tone="info" title={`Saldo pendiente: $${balanceMXN} MXN`}>
+                                    💰 Apartado · saldo ${balanceMXN} MXN
+                                  </Badge>
+                                );
+                              case "paid_full":
+                                return <Badge tone="success">✅ Pagado completo</Badge>;
+                              case "pending_verification":
+                                return <Badge tone="warning">⏳ Verificacion</Badge>;
+                              case "failed":
+                                return <Badge tone="danger">❌ Pago fallido</Badge>;
+                              case "refunded":
+                                return <Badge tone="info">↩️ Reembolsado</Badge>;
+                              case "revoked":
+                                return <Badge tone="danger">🚫 Revocado</Badge>;
+                              default:
+                                return <Badge tone="neutral">—</Badge>;
+                            }
+                          })()}
                         </td>
                         {/* Sprint cierre-eventos-virtuales (2026-07-11):
                             badge "Respondió link" — verde si el confirmado
@@ -925,6 +972,16 @@ export default async function AdminEventoDetailPage({
               title="Asistentes"
               subtitle={`${attendedCount} check-ins registrados. ${unmatchedCount} vinieron sin confirmar antes (asistió "walk-in").`}
             >
+            {/* FIX 2026-07-24 (sprint event-payment-progress): nota
+                visible que distingue "pago confirma inscripción" de
+                "check-in confirma asistencia". Importante para que
+                el admin entienda que un confirmado con pago completo
+                NO es asistente hasta que se le haga check-in. */}
+            <div className="px-5 py-3 bg-amber-50 border-b border-amber-200 text-xs text-amber-900">
+              <strong>Regla:</strong> Pagar confirma la inscripción.
+              El <strong>check-in</strong> confirma la asistencia.
+              Una persona no es asistente solo por haber pagado.
+            </div>
             {attendees.length === 0 ? (
               <EmptyState
                 icon="🚶"
@@ -1355,25 +1412,43 @@ export default async function AdminEventoDetailPage({
               return (
                 <Section
                   title="Pagos"
-                  subtitle={`Foto completa del cobro del evento. Total cobrado ${fmtMoney(stats.totalCollectedCentavos)}; pendiente ${fmtMoney(stats.totalPendingCentavos)} (${stats.totalPending + stats.totalPendingVerification} confirmados).`}
+                  subtitle={`Foto completa del cobro del evento. Total cobrado ${fmtMoney(stats.totalCollectedCentavos)}; saldo pendiente real ${fmtMoney(stats.totalBalanceDueCentavos)} (${stats.totalPending + stats.totalPendingVerification} confirmados pendientes). Apartados: ${stats.totalReservationCount}. Completos: ${stats.totalFullPaymentCount}. Pendientes de verificación: ${stats.totalPendingVerification}.`}
                 >
-                  {/* Stats cards: 4 columnas con los KPIs principales. */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-5 border-b border-brand-50">
+                  {/* Stats cards: 6 KPIs principales. Sprint event-payment-progress
+                      2026-07-24: agregamos "Apartados" y "Verificacion pendiente"
+                      a los KPIs que ya existian (Cobrado, Saldo pendiente, Pagados,
+                      Revocados). El saldo pendiente ahora viene de
+                      `totalBalanceDueCentavos` (helper: max(total - collected, 0)
+                      por confirmado), NO de `pendientes * precio_total`. */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 p-5 border-b border-brand-50">
                     <Stat
                       label="Cobrado"
                       value={fmtMoney(stats.totalCollectedCentavos)}
                       tone="emerald"
                     />
                     <Stat
-                      label="Pendiente"
-                      value={fmtMoney(stats.totalPendingCentavos)}
+                      label="Saldo pendiente"
+                      value={fmtMoney(stats.totalBalanceDueCentavos)}
                       hint={`${stats.totalPending + stats.totalPendingVerification} confirmados`}
                       tone="amber"
                     />
                     <Stat
-                      label="Pagados"
-                      value={stats.totalPaid}
+                      label="Apartados"
+                      value={stats.totalReservationCount}
+                      hint="pagos con payment_purpose=reservation"
+                      tone="blue"
+                    />
+                    <Stat
+                      label="Pagos completos"
+                      value={stats.totalFullPaymentCount}
+                      hint="pagos con payment_purpose=full"
                       tone="emerald"
+                    />
+                    <Stat
+                      label="Verificacion"
+                      value={stats.totalPendingVerification}
+                      hint="requieren revision del admin"
+                      tone={stats.totalPendingVerification > 0 ? "amber" : "neutral"}
                     />
                     <Stat
                       label="Revocados"
@@ -1481,6 +1556,7 @@ export default async function AdminEventoDetailPage({
                       <Table
                         headers={[
                           "Nombre",
+                          "Tipo",
                           "Metodo",
                           "Monto",
                           "Provider",
@@ -1493,6 +1569,17 @@ export default async function AdminEventoDetailPage({
                           <tr key={p.paymentId} className="hover:bg-brand-50/30">
                             <td className="px-5 py-3 font-medium text-ink">
                               {p.confirmationName}
+                            </td>
+                            <td className="px-5 py-3 text-xs">
+                              {p.paymentPurpose === "reservation" ? (
+                                <Badge tone="info">Apartado</Badge>
+                              ) : p.paymentPurpose === "balance" ? (
+                                <Badge tone="warning">Saldo</Badge>
+                              ) : p.paymentPurpose === "full" ? (
+                                <Badge tone="success">Pago completo</Badge>
+                              ) : (
+                                <Badge tone="neutral">—</Badge>
+                              )}
                             </td>
                             <td className="px-5 py-3 text-ink-muted capitalize text-xs">
                               {p.method}

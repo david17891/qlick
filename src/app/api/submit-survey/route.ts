@@ -182,7 +182,7 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         ok: false,
-        error: "El link de la encuesta expiró. Pedile al organizador un link nuevo.",
+        error: "El link de la encuesta expiró. Pídele al organizador un link nuevo.",
       },
       { status: 410 },
     );

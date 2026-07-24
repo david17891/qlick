@@ -28,6 +28,13 @@ const VOSE_WORDS = [
   "\\bmirá\\b", "\\bmiráte\\b", "\\bprobá\\b", "\\bprobalo\\b",
   "\\bcomprá\\b", "\\bcomprálo\\b", "\\bcompletá\\b", "\\benviá\\b",
   "\\benvialo\\b", "\\bpasá\\b", "\\bpasame\\b",
+  // FIX 2026-07-24 v2 (correccion #11): imperativos voseantes
+  // adicionales. En MX los equivalentes SIN acento: necesitas,
+  // intenta, publica, prueba, haz, píele. Si el script detecta
+  // estos, hay que corregirlos al tuteo MX.
+  "\\bnecesitás\\b", "\\bintentá\\b", "\\bpublicá\\b",
+  "\\bprobá\\b", "\\bProba\\b", "\\bhacé\\b",
+  "\\bpedile\\b", "\\bPedile\\b",
   // presente voseante
   "\\btenés\\b", "\\bquerés\\b", "\\bpensás\\b", "\\bdecís\\b",
   "\\bhablás\\b", "\\bsabés\\b", "\\bpodés\\b", "\\bvenís\\b",
