@@ -888,6 +888,15 @@ export default async function AdminEventoDetailPage({
                                 return <Badge tone="info">↩️ Reembolsado</Badge>;
                               case "revoked":
                                 return <Badge tone="danger">🚫 Revocado</Badge>;
+                              case "disputed":
+                                return <Badge tone="danger">En disputa</Badge>;
+
+                              case "needs_reconciliation":
+                                return (
+                                  <Badge tone="warning" title="Contradiccion entre ledger y confirmation. Revisar.">
+                                    Necesita reconciliacion
+                                  </Badge>
+                                );
                               default:
                                 return <Badge tone="neutral">—</Badge>;
                             }
@@ -1543,14 +1552,19 @@ export default async function AdminEventoDetailPage({
                     )}
                   </div>
 
-                  {/* Tabla de pagos confirmados (manual + stripe). */}
+                  {/* FIX 2026-07-24 v2 (correccion #9): renombrar
+                      "Pagos confirmados" a "Movimientos de pago" porque
+                      la tabla ahora incluye TODOS los status
+                      (approved, paid_manual, pending, failed,
+                      refunded, cancelled, disputed, revoked), no solo
+                      los cobrados. */}
                   <div className="p-5">
                     <p className="text-sm font-semibold text-ink mb-2">
-                      Pagos confirmados ({payments.length})
+                      Movimientos de pago ({payments.length})
                     </p>
                     {payments.length === 0 ? (
                       <p className="text-xs text-ink-muted italic">
-                        Aun no hay pagos confirmados para este evento.
+                        Aun no hay movimientos de pago para este evento.
                       </p>
                     ) : (
                       <Table
