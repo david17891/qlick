@@ -331,6 +331,79 @@ function getReservationTerms(event: ActiveEventContext | null): {
 }
 
 /**
+ * Detecta peticiones cortas de información que llegan desde anuncios
+ * ("info", "quiero más información", "de qué trata", etc.). Las tratamos
+ * como una solicitud de resumen para que el primer mensaje no se quede en
+ * un menú genérico.
+ */
+function isEventInfoRequest(body: string | null | undefined): boolean {
+  const text = body?.trim() ?? "";
+  return /\b(?:info|informaci[oó]n|detalles?|de\s+qu[eé]\s+trata|qu[eé]\s+incluye|temario|m[aá]s\s+datos)\b/i.test(
+    text,
+  );
+}
+
+function joinSpanishList(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  if (items.length === 2) return `${items[0]} y ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")} y ${items[items.length - 1]}`;
+}
+
+/**
+ * Resumen factual y corto para WhatsApp. Se construye desde el evento
+ * publicado y su descripción, así el bot puede responder "info" sin
+ * depender de una respuesta libre del LLM ni inventar datos.
+ */
+export function buildEventInfoCopy(event: ActiveEventContext): string {
+  const description = event.description ?? "";
+  const topics: string[] = [];
+  if (/video/i.test(description)) topics.push("crear videos que comuniquen con claridad");
+  if (/publicidad\s+pagada|facebook\s*ads|\bads\b/i.test(description)) {
+    topics.push("configurar publicidad pagada de forma estratégica");
+  }
+  if (/inteligencia artificial|\bIA\b/i.test(description)) {
+    topics.push("aprovechar la inteligencia artificial en tareas reales");
+  }
+  if (/whatsapp/i.test(description)) {
+    topics.push("dar seguimiento puntual por WhatsApp");
+  }
+
+  const rulesText = event.eventRules.rules.join(" ");
+  const exactAddressPending = /direcci[oó]n exacta/i.test(rulesText) &&
+    /por confirmar/i.test(rulesText);
+  const lines = [`📌 ${event.title}`];
+  if (topics.length > 0) {
+    lines.push(`Trabajaremos ${joinSpanishList(topics)}.`);
+  }
+  lines.push(
+    `📅 ${event.humanStartsAt}`,
+    `⏱ Duración: ${event.humanDuration}`,
+    `📍 Lugar: ${event.location}${exactAddressPending ? ". La dirección exacta está por confirmar." : "."}`,
+  );
+
+  const reservation = getReservationTerms(event);
+  if (typeof event.priceMxn === "number" && event.priceMxn > 0) {
+    const total = event.priceMxn.toLocaleString("es-MX");
+    if (reservation.enabled) {
+      lines.push(
+        `💰 Inversión total: $${total} MXN. Puedes apartar con $${reservation.amount.toLocaleString("es-MX")} MXN y liquidar $${reservation.balance.toLocaleString("es-MX")} MXN ${reservation.note.toLowerCase()}.`,
+      );
+    } else {
+      lines.push(`💰 Inversión: $${total} MXN.`);
+    }
+  } else {
+    lines.push("💰 Evento gratuito.");
+  }
+  if (/constancia|certificado/i.test(description)) {
+    lines.push("Al finalizar recibirás una constancia de participación.");
+  }
+  if (/cupo\s+limitado/i.test(description)) {
+    lines.push("El cupo es limitado.");
+  }
+  return lines.join("\n");
+}
+
+/**
  * Set de nombres que consideramos placeholders del sistema (no nombres
  * reales del lead). Cuando el lead tiene uno de estos en `name`, no lo
  * usamos para construir saludos (`¡Hola Por!`, `¡Excelente Test!`) ni
@@ -2039,8 +2112,9 @@ async function buildOpenerPlan(args: {
   provider: Awaited<ReturnType<typeof getActiveWhatsAppProvider>>;
   phoneNormalized: string;
   firstName: string;
+  body?: string;
 }): Promise<OutboundPlan> {
-  const { provider, phoneNormalized, firstName } = args;
+  const { provider, phoneNormalized, firstName, body } = args;
   // FIX 2026-07-02 (sesion David): cargamos el activeEvent REAL de DB
   // (no el placeholder de env vars que mostraba eventos que no
   // existian). Si no hay evento en DB, mostramos solo el saludo
@@ -2092,6 +2166,10 @@ async function buildOpenerPlan(args: {
       ? realActiveEvent
       : null;
 
+  const detailedInfo = singleEventShortcut && isEventInfoRequest(body)
+    ? buildEventInfoCopy(singleEventShortcut)
+    : null;
+
   const eventLine =
     realActiveEvent && realActiveEvent.source === "db"
       ? `\n\nPróximo evento: ${realActiveEvent.title} (${realActiveEvent.humanStartsAt})` +
@@ -2108,7 +2186,9 @@ async function buildOpenerPlan(args: {
     ? {
         type: "button" as const,
         body: {
-          text: `${saludo} Soy Qlick, asistente de Qlick Marketing Digital. ¿Te interesa "${singleEventShortcut.title}"?${eventLine}`,
+          text: detailedInfo
+            ? `${detailedInfo}\n\n¿Quieres apartar tu lugar?`
+            : `${saludo} Soy Qlick, asistente de Qlick Marketing Digital. ¿Te interesa "${singleEventShortcut.title}"?${eventLine}`,
         },
         action: {
           buttons: [
@@ -2251,7 +2331,7 @@ async function buildResponsePlan(args: {
       // Fase 7a: Reply Buttons en welcome. Más conversión que texto abierto.
       // Cuerpo extraído a `buildOpenerPlan` para reuso desde el
       // safety-net del `case "question"` (ver OPENER_RE).
-      return buildOpenerPlan({ provider, phoneNormalized, firstName });
+      return buildOpenerPlan({ provider, phoneNormalized, firstName, body });
     }
     case "register": {
       // FIX 2026-07-08 (sesion David, "Quiero registrarme" salta directo a pedir nombre):
@@ -2474,10 +2554,13 @@ async function buildResponsePlan(args: {
       // tiene varios eventos "Pinguinos" y quiere uno específico, puede
       // decir "el 7A3X" en vez del nombre largo.
       const codePart = evt?.shortCode ? ` · código ${evt.shortCode}` : "";
+      const eventInfoText = evt?.source === "db"
+        ? buildEventInfoCopy(evt)
+        : `📅 ${evtName}${codePart}\n🗓 ${evtDate} · 📍 ${evtLoc} · ⏱ ${evtDur}`;
       const interactive = {
         type: "button" as const,
         body: {
-          text: `📅 ${evtName}${codePart}\n🗓 ${evtDate} · 📍 ${evtLoc} · ⏱ ${evtDur}\n\n¿Listo para inscribirte?`
+          text: `${eventInfoText}\n\n¿Listo para inscribirte?`
         },
         action: {
           buttons: [
@@ -4213,6 +4296,7 @@ case "interactive_event_inscribir": {
           provider,
           phoneNormalized,
           firstName,
+          body: openerTrimmed,
         });
       }
       // FIX 2026-07-04 (auditoria nocturna): rate limit per phone para
@@ -7079,6 +7163,11 @@ export async function processInboundMessage(
         note: "Bot bloqueó provide_email: evento requiere nombre pero lead no lo dio."
       };
     }
+    // Solo el intent provide_email ejecuta la cadena de registro. Para
+    // provide_name cargamos matchedEvent arriba para el plan de respuesta,
+    // pero dejamos que el bloque implicit_capture sea el único responsable
+    // de crear QR/confirmation/correo cuando nombre y email llegan juntos.
+    if (intent === "provide_email") {
     // FIX 2026-07-02: cargar conversationWindow aca (no estaba en
     // processInboundMessage, solo en buildResponsePlan) para identificar
     // el evento del registro.
@@ -7379,6 +7468,7 @@ export async function processInboundMessage(
         }
       })();
     }
+    }
   }
 
   // 6. Construir plan de respuesta y enviar.
@@ -7597,6 +7687,31 @@ export async function processInboundMessage(
               } catch (linkEx) {
                 infoLog("[whatsapp/bot] implicit_capture: QR<->confirmation link threw (no fatal)", {
                   error: linkEx instanceof Error ? linkEx.message : String(linkEx),
+                });
+              }
+            }
+            // createConfirmation conserva un default histórico de
+            // `not_required`; para cualquier evento con precio, el registro
+            // de WhatsApp debe quedar pendiente hasta que Stripe o el admin
+            // confirme el cobro.
+            if (
+              typeof regEvt.priceMxn === "number" &&
+              regEvt.priceMxn > 0 &&
+              confResult?.ok &&
+              confResult.confirmation
+            ) {
+              try {
+                await supabase
+                  .from("event_confirmations" as never)
+                  .update({ payment_status: "pending" } as never)
+                  .eq("id" as never, confResult.confirmation.id);
+              } catch (paymentStatusErr) {
+                errorLog("[whatsapp/bot] implicit_capture: payment_status update falló", {
+                  leadId: lead.id,
+                  error:
+                    paymentStatusErr instanceof Error
+                      ? paymentStatusErr.message
+                      : String(paymentStatusErr),
                 });
               }
             }

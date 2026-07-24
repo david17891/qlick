@@ -539,3 +539,91 @@ test("REGRESION implicit_capture evento de pago SIN apartado: copy legacy preser
     restoreEnv();
   }
 });
+
+test("CANACO: la respuesta corta de info resume contenido, fecha, pago y ubicación sin voseo", async () => {
+  const { buildEventInfoCopy } = await import(
+    "../src/lib/whatsapp/bot-engine.ts"
+  );
+  const copy = buildEventInfoCopy({
+    id: FAKE_EVENT_CANACO_RESERVATION.id,
+    slug: FAKE_EVENT_CANACO_RESERVATION.slug,
+    shortCode: "CN26",
+    title: FAKE_EVENT_CANACO_RESERVATION.title,
+    description:
+      "Curso presencial: crear videos, publicidad pagada, inteligencia artificial y seguimiento por WhatsApp. Incluye constancia. Cupo limitado.",
+    startsAt: new Date("2026-08-20T23:00:00.000Z"),
+    endsAt: new Date("2026-08-21T03:00:00.000Z"),
+    humanStartsAt: "20 de agosto de 2026, 16:00 hrs",
+    humanDuration: "4 horas",
+    promptBlock: "",
+    source: "db",
+    requiresName: true,
+    eventRules: {
+      ...FAKE_EVENT_CANACO_RESERVATION.event_rules,
+      rules: [
+        ...FAKE_EVENT_CANACO_RESERVATION.event_rules.rules,
+        "Si preguntan por dirección exacta, indica que está por confirmar.",
+      ],
+    },
+    format: "in_person",
+    streamingUrl: null,
+    streamingProvider: null,
+    streamingAccessNote: null,
+    priceMxn: 1000
+  });
+
+  assert.match(copy, /videos/i);
+  assert.match(copy, /publicidad pagada/i);
+  assert.match(copy, /inteligencia artificial/i);
+  assert.match(copy, /WhatsApp/i);
+  assert.match(copy, /\$1,?000/);
+  assert.match(copy, /\$500/);
+  assert.match(copy, /20 de agosto de 2026/);
+  assert.match(copy, /dirección exacta está por confirmar/i);
+  assert.doesNotMatch(copy, /respond[eé]s|escrib[ií]s|mand[aá]s/i);
+});
+
+test("CANACO: mensaje real 'info' usa el resumen factual del evento", async () => {
+  currentEventVariant = {
+    ...FAKE_EVENT_CANACO_RESERVATION,
+    description:
+      "Curso presencial: crear videos, publicidad pagada, inteligencia artificial y seguimiento por WhatsApp.",
+    event_rules: {
+      ...FAKE_EVENT_CANACO_RESERVATION.event_rules,
+      rules: [
+        ...FAKE_EVENT_CANACO_RESERVATION.event_rules.rules,
+        "Si preguntan por dirección exacta, indica que está por confirmar.",
+      ],
+    },
+  };
+  const restoreEnv = setSupabaseEnv();
+  const restoreFetch = mockFetch();
+  const previousOutboundMetadata = FAKE_PREV_OUTBOUND.metadata;
+  FAKE_PREV_OUTBOUND.metadata = {
+    eventSlug: FAKE_EVENT_CANACO_RESERVATION.slug,
+  };
+  try {
+    const { processInboundMessage } = await import(
+      "../src/lib/whatsapp/bot-engine.ts"
+    );
+    const result = await processInboundMessage({
+      messageId: "wamid_canaco_info",
+      from: "5215511112222",
+      contactName: "David",
+      text: "info",
+      type: "text",
+      timestamp: "1700000000",
+    });
+    const preview = result.responsePreview ?? "";
+    assert.match(preview, /videos/i);
+    assert.match(preview, /publicidad pagada/i);
+    assert.match(preview, /\$500/);
+    assert.match(preview, /📅 \d{1,2} de \p{L}+ de \d{4}/u);
+    assert.match(preview, /dirección exacta está por confirmar/i);
+    assert.doesNotMatch(preview, /Disculpa, no pude procesar/i);
+  } finally {
+    FAKE_PREV_OUTBOUND.metadata = previousOutboundMetadata;
+    restoreFetch();
+    restoreEnv();
+  }
+});

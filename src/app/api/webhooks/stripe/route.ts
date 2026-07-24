@@ -721,12 +721,19 @@ async function handleCheckoutCompleted(
     (session.customer_details?.email as string | undefined) ??
     null;
 
-  const resolvedUserId = await resolveOrCreateUserId(
-    supabase,
-    metadataUserId,
-    sessionEmail
-  );
-  if (!resolvedUserId) {
+  // Los pagos de eventos pueden atribuirse de forma segura mediante
+  // confirmation_id o por email, y `event_access.user_id` es nullable para
+  // invitados que llegan desde WhatsApp/checkout público. No debemos
+  // bloquear ese flujo intentando crear un usuario de Auth: además de no ser
+  // necesario para el acceso al evento, un error temporal de Auth no puede
+  // dejar un cobro confirmado sin registrar. Los cursos sí requieren
+  // user_id porque su entitlement depende de auth.users.
+  const isEventProduct =
+    productRef.kind === "event" || productRef.kind === "masterclass";
+  const resolvedUserId = isEventProduct
+    ? metadataUserId || null
+    : await resolveOrCreateUserId(supabase, metadataUserId, sessionEmail);
+  if (!resolvedUserId && !isEventProduct) {
     // No hay forma de grant access sin un user_id. Loggeamos y retornamos
     // 200 para que Stripe no reintente, pero marcamos el fallo.
     // eslint-disable-next-line no-console
@@ -747,7 +754,7 @@ async function handleCheckoutCompleted(
       },
     };
   }
-  const userId = resolvedUserId;
+  const userId = resolvedUserId ?? "";
 
   // amount_total en centavos. Convertir a MXN.
   const amountTotalMXN =
@@ -1035,7 +1042,7 @@ async function handleCheckoutCompleted(
         metadata: {
           source: "stripe-webhook",
           session_id: session.id,
-          user_id: userId,
+          user_id: userId || null,
           payment_purpose: productRef.paymentPurpose ?? "full",
           event_total_mxn: productRef.priceMXN,
         },
@@ -1271,7 +1278,7 @@ async function handleCheckoutCompleted(
         leadId: userId,
       }).catch(() => null));
     await grantEventAccess({
-      userId,
+      userId: userId || null,
       confirmationId: confLookup,
       eventId: productRef.id,
       source: "event_purchase",
