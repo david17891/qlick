@@ -114,6 +114,8 @@ export interface ConfirmationProgressView {
   totalMxn: number;
   /** MXN (cobrado real: suma de status=approved|paid_manual). */
   collectedMxn: number;
+  /** Centavos (mismo valor que collectedMxn * 100). */
+  collectedCentavos: number;
   /** Centavos. */
   balanceDueCentavos: number;
   /** payment_purpose principal (helper `resolvePaymentPurpose`). */
@@ -329,6 +331,7 @@ export async function getEventPaymentsSnapshot(
         progress: r.progress,
         totalMxn: r.total_mxn,
         collectedMxn: r.collected_mxn,
+        collectedCentavos: Math.round(r.collected_mxn * 100),
         balanceDueCentavos: Math.round(r.balance_due_mxn * 100),
         paymentPurpose: r.payment_purpose,
         paymentCount: r.payment_count,

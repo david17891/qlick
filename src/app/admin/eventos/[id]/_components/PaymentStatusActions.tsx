@@ -2,20 +2,29 @@
 
 /**
  * Acciones inline de pago para cada fila de confirmados. Sprint
- * pagos-manuales (2026-07-15).
+ * pagos-manuales (2026-07-15) + sprint event-payment-progress
+ * (2026-07-24 v3).
  *
  * Componente Client que decide qué botones mostrar según el
- * `paymentStatus` actual del confirmado:
- *   - 'not_required' o 'pending' o 'pending_verification' o undefined:
- *     muestra "Confirmar pagado" (abre RegisterManualPaymentModal).
- *   - 'paid': muestra badge "✓ Pagado" + botón pequeño "Revocar"
- *     (abre RevokeManualPaymentModal).
- *   - 'revoked': muestra badge "✗ Revocado" + botón "Re-registrar"
- *     (abre RegisterManualPaymentModal con prefill).
+ * `progress` derivado del ledger (via helper event-payment-progress).
+ * Ya NO depende solo de `confirmation.payment_status` (legacy).
+ *
+ * Reglas (correccion #2 v3):
+ *   - `paid_full`         : badge "✓ Pagado" + botón "Revocar".
+ *   - `partial_paid`      : badge "💰 Saldo" + botón "Registrar saldo".
+ *                           El modal se pre-llena con `balanceDueCentavos`
+ *                           y `paymentPurpose="balance"`.
+ *   - `unpaid`            : botón "Confirmar pagado" (abre modal con
+ *                           opciones Apartado / Pago completo segun
+ *                           event_rules.reservation_enabled).
+ *   - `pending_verification` / `disputed` / `needs_reconciliation` /
+ *     `revoked` / `refunded` / `failed`: botón "Registrar pago" (admin
+ *     decide caso por caso; el modal permite "balance" o "full").
+ *   - `not_required`      : no se renderiza.
  *
  * Mantiene su propio state local para los modales (cual esta abierto).
  * Al success, llama a `router.refresh()` para que el server component
- * padre recargue los datos del evento (confirmations, payments, etc).
+ * padre recargue los datos del evento.
  */
 
 import { useState } from "react";
@@ -23,21 +32,35 @@ import { useRouter } from "next/navigation";
 import { RegisterManualPaymentModal } from "./RegisterManualPaymentModal";
 import { RevokeManualPaymentModal } from "./RevokeManualPaymentModal";
 
-type PaymentStatus =
+export type EventPaymentProgress =
   | "not_required"
-  | "pending"
+  | "unpaid"
+  | "partial_paid"
+  | "paid_full"
   | "pending_verification"
-  | "paid"
-  | "paid_manual"
+  | "failed"
+  | "refunded"
   | "revoked"
-  | undefined;
+  | "disputed"
+  | "needs_reconciliation";
 
 interface Props {
   eventId: string;
   confirmationId: string;
   confirmationName: string;
-  defaultAmount: number;
-  paymentStatus: PaymentStatus;
+  defaultAmount: number; // MXN
+  /** Progress derivado del ledger (helper event-payment-progress). */
+  progress: EventPaymentProgress;
+  /** Centavos cobrados (helper). */
+  collectedCentavos: number;
+  /** Centavos pendientes cobrables (helper). */
+  balanceDueCentavos: number;
+  /** Default amount en MXN (events.price_mxn). */
+  defaultPriceMXN: number;
+  /** Evento permite apartado? */
+  reservationEnabled?: boolean;
+  /** Apartado configurado (centavos). */
+  reservationAmountCentavos?: number;
 }
 
 export function PaymentStatusActions({
@@ -45,12 +68,15 @@ export function PaymentStatusActions({
   confirmationId,
   confirmationName,
   defaultAmount,
-  paymentStatus,
+  progress,
+  collectedCentavos,
+  balanceDueCentavos,
+  defaultPriceMXN,
+  reservationEnabled,
+  reservationAmountCentavos,
 }: Props) {
   const router = useRouter();
-  const [modalKind, setModalKind] = useState<"register" | "revoke" | null>(
-    null,
-  );
+  const [modalKind, setModalKind] = useState<"register" | "revoke" | null>(null);
 
   function refresh() {
     router.refresh();
@@ -58,21 +84,15 @@ export function PaymentStatusActions({
 
   // 'not_required' (evento free) no deberia mostrar este componente,
   // pero por defensa lo manejamos.
-  if (paymentStatus === "not_required") return null;
+  if (progress === "not_required") return null;
 
-  // FIX auditoria 2026-07-15f: paid_manual (staff cobro en puerta) tiene
-  // el mismo tratamiento visual que paid. Antes caía al default que
-  // mostraba "Confirmar pagado" — confuso, el staff ya habia cobrado.
-  if (paymentStatus === "paid" || paymentStatus === "paid_manual") {
+  // paid_full: badge Pagado + boton Revocar.
+  if (progress === "paid_full") {
     return (
       <>
         <span
           className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-semibold text-emerald-700"
-          title={
-            paymentStatus === "paid_manual"
-              ? "Pago registrado en puerta"
-              : "Pago confirmado"
-          }
+          title="El acumulado del ledger cubre el total del evento"
         >
           ✓ Pagado
         </span>
@@ -99,21 +119,22 @@ export function PaymentStatusActions({
     );
   }
 
-  if (paymentStatus === "revoked") {
+  // partial_paid: solo "Registrar saldo".
+  if (progress === "partial_paid") {
     return (
       <>
         <span
-          className="inline-flex items-center gap-1 rounded-full bg-red-50 border border-red-200 px-2 py-0.5 text-[10px] font-semibold text-red-700"
-          title="Pago revocado"
+          className="inline-flex items-center gap-1 rounded-full bg-sky-50 border border-sky-200 px-2 py-0.5 text-[10px] font-semibold text-sky-700"
+          title={`Acumulado: $${(collectedCentavos / 100).toLocaleString("es-MX")} MXN. Saldo: $${(balanceDueCentavos / 100).toLocaleString("es-MX")} MXN.`}
         >
-          ✗ Revocado
+          💰 Saldo ${(balanceDueCentavos / 100).toLocaleString("es-MX")} MXN
         </span>
         <button
           type="button"
           onClick={() => setModalKind("register")}
           className="text-[10px] text-brand-700 hover:text-brand-800 hover:underline"
         >
-          Re-registrar
+          Registrar saldo
         </button>
         {modalKind === "register" && (
           <RegisterManualPaymentModal
@@ -121,6 +142,13 @@ export function PaymentStatusActions({
             confirmationId={confirmationId}
             confirmationName={confirmationName}
             defaultAmount={defaultAmount}
+            progressInfo={{
+              progress,
+              collectedCentavos,
+              balanceDueCentavos,
+              reservationEnabled,
+              reservationAmountCentavos,
+            }}
             onCancel={() => setModalKind(null)}
             onSuccess={() => {
               setModalKind(null);
@@ -132,15 +160,17 @@ export function PaymentStatusActions({
     );
   }
 
-  // pending o pending_verification: ambos permiten confirmar/re-registrar.
+  // unpaid, pending_verification, disputed, needs_reconciliation,
+  // revoked, refunded, failed: boton "Confirmar pagado" (admin decide).
+  // pending_verification agrega un badge "Pendiente" como antes.
   return (
     <>
-      {paymentStatus === "pending_verification" && (
+      {(progress === "pending_verification" || progress === "disputed" || progress === "needs_reconciliation") && (
         <span
           className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-semibold text-amber-700"
-          title="Pendiente de verificacion contra Stripe"
+          title={`Estado: ${progress}. Revisar antes de registrar otro pago.`}
         >
-          ⏳ Pendiente
+          ⏳ {progress === "pending_verification" ? "Pendiente" : progress === "disputed" ? "Disputa" : "Reconciliación"}
         </span>
       )}
       <button
@@ -148,7 +178,7 @@ export function PaymentStatusActions({
         onClick={() => setModalKind("register")}
         className="inline-flex items-center gap-1 rounded-md bg-brand-500 text-white px-2 py-0.5 text-[10px] font-semibold hover:bg-brand-600 transition"
       >
-        💳 Confirmar pagado
+        💳 {progress === "revoked" ? "Re-registrar" : "Confirmar pagado"}
       </button>
       {modalKind === "register" && (
         <RegisterManualPaymentModal
@@ -156,6 +186,13 @@ export function PaymentStatusActions({
           confirmationId={confirmationId}
           confirmationName={confirmationName}
           defaultAmount={defaultAmount}
+          progressInfo={{
+            progress,
+            collectedCentavos,
+            balanceDueCentavos,
+            reservationEnabled,
+            reservationAmountCentavos,
+          }}
           onCancel={() => setModalKind(null)}
           onSuccess={() => {
             setModalKind(null);

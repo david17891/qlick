@@ -944,19 +944,31 @@ export default async function AdminEventoDetailPage({
                               attendeePhone={c.phoneNormalized ?? c.phoneRaw ?? null}
                               attendeeName={c.name}
                             />
-                            {/* Sprint pagos-manuales (2026-07-15): badge +
-                                acciones de pago segun payment_status. Solo
-                                se renderiza si el evento es de pago
-                                (defaultAmount > 0). */}
-                            {event.priceMXN != null && event.priceMXN > 0 && (
-                              <PaymentStatusActions
-                                eventId={event.id}
-                                confirmationId={c.id}
-                                confirmationName={c.name}
-                                defaultAmount={event.priceMXN}
-                                paymentStatus={c.paymentStatus}
-                              />
-                            )}
+                            {/* Sprint pagos-manuales (2026-07-15) + sprint
+                                event-payment-progress (2026-07-24 v3):
+                                acciones de pago segun PROGRESS derivado
+                                del ledger (NO solo confirmation.payment_status).
+                                Solo si el evento es de pago (defaultAmount > 0). */}
+                            {event.priceMXN != null && event.priceMXN > 0 && (() => {
+                              const cpLocal = paymentsSnapshot?.confirmationProgress.find(
+                                (p) => p.confirmationId === c.id,
+                              );
+                              const evRulesLocal = (event as unknown as { eventRules?: { reservation_enabled?: boolean; reservation_amount_mxn?: number } }).eventRules;
+                              return (
+                                <PaymentStatusActions
+                                  eventId={event.id}
+                                  confirmationId={c.id}
+                                  confirmationName={c.name}
+                                  defaultAmount={event.priceMXN}
+                                  progress={cpLocal?.progress ?? "unpaid"}
+                                  collectedCentavos={cpLocal?.collectedCentavos ?? 0}
+                                  balanceDueCentavos={cpLocal?.balanceDueCentavos ?? event.priceMXN * 100}
+                                  defaultPriceMXN={event.priceMXN}
+                                  reservationEnabled={evRulesLocal?.reservation_enabled === true}
+                                  reservationAmountCentavos={evRulesLocal?.reservation_amount_mxn != null ? Math.round(evRulesLocal.reservation_amount_mxn * 100) : 0}
+                                />
+                              );
+                            })()}
                             <DeleteRowButton
                               action={deleteConfirmationAction.bind(null, null)}
                               itemId={c.id}
@@ -1543,7 +1555,22 @@ export default async function AdminEventoDetailPage({
                                 confirmationId={c.id}
                                 confirmationName={c.name}
                                 defaultAmount={event.priceMXN ?? 0}
-                                paymentStatus={c.paymentStatus}
+                                progress={
+                                  paymentsSnapshot?.confirmationProgress.find(
+                                    (p) => p.confirmationId === c.id,
+                                  )?.progress ?? "unpaid"
+                                }
+                                collectedCentavos={
+                                  paymentsSnapshot?.confirmationProgress.find(
+                                    (p) => p.confirmationId === c.id,
+                                  )?.collectedCentavos ?? 0
+                                }
+                                balanceDueCentavos={
+                                  paymentsSnapshot?.confirmationProgress.find(
+                                    (p) => p.confirmationId === c.id,
+                                  )?.balanceDueCentavos ?? (event.priceMXN ?? 0) * 100
+                                }
+                                defaultPriceMXN={event.priceMXN ?? 0}
                               />
                             </td>
                           </tr>
