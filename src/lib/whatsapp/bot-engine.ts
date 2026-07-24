@@ -2304,16 +2304,20 @@ async function buildOpenerPlan(args: {
   //      usamos solo si el admin NO escribió descripción.
   //   3. `eventLine` corto (último fallback).
   function buildShortcutBody(event: NonNullable<typeof singleEventShortcut>): string {
+    const withReservationPrompt = (text: string): string =>
+      /¿Quieres apartar tu lugar\??\s*$/i.test(text.trim())
+        ? text.trim()
+        : `${text}\n\n¿Quieres apartar tu lugar?`;
     const adminDesc = event.description?.trim();
     if (adminDesc && adminDesc.length > 0) {
       // El admin ya escribió la descripción. La mostramos tal cual.
-      return `${adminDesc}\n\n¿Quieres apartar tu lugar?`;
+      return withReservationPrompt(adminDesc);
     }
     // Sin descripción: usamos el formato generado.
     try {
       const generated = buildEventInfoCopy(event);
       if (generated && generated.trim().length > 0) {
-        return `${generated}\n\n¿Quieres apartar tu lugar?`;
+        return withReservationPrompt(generated);
       }
     } catch {
       // Fall through.
