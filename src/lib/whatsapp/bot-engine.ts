@@ -83,6 +83,7 @@ const OUTBOUND_COUNT_CACHE_TTL_MS = 60_000;
 import { classifyEventType, loadCoursesCatalogBlock } from "../ai/event-context-loader";
 import { stripGreetingIfHasHistory, isAckOnly } from "./safety-net";
 import { extractEmailFromText } from "./email-extract";
+import { computeEventPaymentProgress } from "@/lib/payments/event-payment-progress";
 import { getAIAgentProfile } from "../crm/agent-utils";
 import {
   loadManualContext,
@@ -2734,18 +2735,111 @@ case "interactive_event_inscribir": {
               const evtCodeLabel = evtReal.shortCode ? ` (código ${evtReal.shortCode})` : "";
               const cleanAlready = cleanFirstName(firstName);
               const saludoAlready = cleanAlready ? `¡Hola ${cleanAlready}!` : "¡Hola!";
-              // Copy dinamico segun payment_status.
+              // FIX 2026-07-24 v3 (correccion #5 v3): el copy depende
+              // del progress derivado del ledger (helper
+              // event-payment-progress), NO solo de
+              // confirmation.payment_status. Esto evita que el bot
+              // siga mandando links de apartado despues de que el
+              // cliente ya pago.
               const ps = confRow.payment_status ?? "pending";
-              const paymentLine = ps === "paid" || ps === "paid_manual"
-                ? `\n\n✅ Tu pago está confirmado.`
-                : ps === "pending"
-                  ? `\n\n⚠️ Tu pago está pendiente. Te paso el link para apartar tu lugar: ` +
-                    `${appBaseUrl()}/pagar/evento/${evtReal.slug}?confirmation=${confRow.id}&payment_option=reservation`
-                  : ps === "pending_verification"
-                    ? `\n\n⏳ Estamos verificando tu pago. Te avisamos cuando esté listo.`
-                    : ps === "revoked"
-                      ? `\n\n❌ Tu pago fue revocado. Contactános para más info.`
-                      : "";
+              // Leemos los pagos del confirmado para calcular el
+              // progress real. Si falla, fallback a la copia legacy
+              // (defensa).
+              let paymentLine = "";
+              try {
+                const eventPriceMXN =
+                  typeof evtReal.priceMxn === "number" && Number.isFinite(evtReal.priceMxn)
+                    ? Math.max(0, evtReal.priceMxn)
+                    : 0;
+                const { data: ledgerRows } = await supabase
+                  .from("event_payments" as never)
+                  .select("amount_mxn, status, metadata")
+                  .eq("confirmation_id", confRow.id);
+                const payments = ((ledgerRows ?? []) as Array<{
+                  amount_mxn: number;
+                  status: string;
+                  metadata: unknown;
+                }>).map((p) => ({
+                  amount_mxn: p.amount_mxn,
+                  status: p.status,
+                  metadata: (p.metadata ?? null) as Record<string, unknown> | null,
+                }));
+                const eventHasReservation =
+                  evtReal.eventRules?.reservation_enabled === true;
+                const helperRules = eventHasReservation
+                  ? {
+                      reservation_enabled: true,
+                      reservation_amount_mxn: evtReal.eventRules?.reservation_amount_mxn,
+                    }
+                  : null;
+                const r = computeEventPaymentProgress({
+                  total_mxn: eventPriceMXN,
+                  payments,
+                  confirmation_payment_status: ps,
+                  event_rules: helperRules,
+                });
+                const collectedMXN = Math.round(r.collected_mxn);
+                const balanceMXN = Math.round(r.balance_due_mxn);
+                switch (r.progress) {
+                  case "paid_full":
+                    paymentLine = `\n\n✅ Tu pago está confirmado. Inscripción liquidada.`;
+                    break;
+                  case "partial_paid":
+                    // CORRECCION: NO mostramos link de apartado ni pago
+                    // completo. Solo informamos el saldo que queda.
+                    paymentLine = `\n\n💰 Recibimos tu apartado de $${collectedMXN.toLocaleString("es-MX")} MXN. Queda un saldo de $${balanceMXN.toLocaleString("es-MX")} MXN, que se liquida el día del evento.`;
+                    break;
+                  case "pending_verification":
+                    paymentLine = `\n\n⏳ Estamos verificando tu pago. Te avisamos cuando esté listo.`;
+                    break;
+                  case "disputed":
+                    paymentLine = `\n\n⚠️ Tu pago está en revisión. Te contactaremos pronto.`;
+                    break;
+                  case "needs_reconciliation":
+                    paymentLine = `\n\n⚠️ Tu pago necesita revisión manual. Te contactaremos pronto.`;
+                    break;
+                  case "revoked":
+                    paymentLine = `\n\n❌ Tu pago fue revocado. Contáctanos para más info.`;
+                    break;
+                  case "refunded":
+                    paymentLine = `\n\n↩️ Tu pago fue reembolsado. Contáctanos si necesitas re-inscribirte.`;
+                    break;
+                  case "failed":
+                    paymentLine = `\n\n❌ Tu pago no se procesó. Te paso el link para intentar de nuevo: ` +
+                      `${appBaseUrl()}/pagar/evento/${evtReal.slug}?confirmation=${confRow.id}&payment_option=full`;
+                    break;
+                  case "unpaid":
+                    // Sin pago. Mostramos link de apartado.
+                    paymentLine = `\n\n⚠️ Tu pago está pendiente. Te paso el link para apartar tu lugar: ` +
+                      `${appBaseUrl()}/pagar/evento/${evtReal.slug}?confirmation=${confRow.id}&payment_option=reservation`;
+                    break;
+                  case "not_required":
+                    // Evento free. Nada que cobrar.
+                    paymentLine = "";
+                    break;
+                }
+              } catch (ledgerErr) {
+                // Falla cerrado: si no podemos leer el ledger, no
+                // mostramos links de pago (mas seguro). Fallback al
+                // copy legacy de ps.
+                errorLog(
+                  "[whatsapp/bot] interactive_event_inscribir: ledger read fallo, usando copy legacy",
+                  {
+                    confirmationId: confRow.id,
+                    error: ledgerErr instanceof Error ? ledgerErr.message : String(ledgerErr),
+                  },
+                );
+                paymentLine = ps === "paid" || ps === "paid_manual"
+                  ? `\n\n✅ Tu pago está confirmado.`
+                  : ps === "pending"
+                    ? `\n\n⚠️ Tu pago está pendiente. Te paso el link para apartar tu lugar: ` +
+                      `${appBaseUrl()}/pagar/evento/${evtReal.slug}?confirmation=${confRow.id}&payment_option=reservation`
+                    : ps === "pending_verification"
+                      ? `\n\n⏳ Estamos verificando tu pago. Te avisamos cuando esté listo.`
+                      : ps === "revoked"
+                        ? `\n\n❌ Tu pago fue revocado. Contáctanos para más info.`
+                        : "";
+              }
               const bodyText =
                 `${saludoAlready} Ya estás registrado en *${evtName}*${evtCodeLabel}. ` +
                 `Tu pase (link de check-in) es:\n\n${existingToken.url}` +
