@@ -646,6 +646,21 @@ export async function updateEvent(
     if (input.eventRules === null) {
       patch.event_rules = null;
     } else {
+      // FIX 2026-07-24 (auditoría David ronda 4): si el caller trae
+      // `reservation_amount_mxn` sin `reservation_enabled`, es un
+      // payload ambiguo (¿quiere activar o solo cambiar el monto?).
+      // Devolvemos error 400 claro. NUNCA limpiamos silenciosamente.
+      if (
+        input.eventRules.reservation_amount_mxn !== undefined &&
+        input.eventRules.reservation_enabled === undefined
+      ) {
+        return {
+          ok: false,
+          note:
+            "Para modificar el monto del apartado también debes enviar `reservation_enabled` (true para activarlo, false para desactivarlo). No se permiten actualizaciones parciales del monto sin el flag.",
+        };
+      }
+
       // FIX 2026-07-23 (sprint apartado CANACO + auditoría): usar el
       // helper puro `buildEventRulesFromForm` para hacer merge del
       // JSONB. Esto PRESERVA campos que el form no maneja
@@ -712,15 +727,75 @@ export async function updateEvent(
       // merge preserva el current en vez de pisarlo con "test".
       // Antes usábamos `?? "test"` que rompía eventos con
       // payment_mode="live" cada vez que se tocaba el evento.
+      // FIX 2026-07-24 (ronda 4): personality/rules se pasan TAL
+      // CUAL vienen. Si el caller NO los incluye, el helper
+      // preserva los del current. Antes usábamos `?? ""` y `?? []`
+      // que pisaban con defaults vacíos en updates parciales.
       const mergeChanges: FormEventRulesChanges = {
-        personality: input.eventRules.personality ?? "",
-        rules: input.eventRules.rules ?? [],
+        personality: input.eventRules.personality,
+        rules: input.eventRules.rules,
         paymentMode: input.eventRules.payment_mode,
         // FIX 2026-07-24: preservar apartado si el input no lo
         // incluye. Ver bloque arriba.
         preserveReservation,
         reservation: reservationValidation,
         reservationAmountParsed,
+      };
+      patch.event_rules = buildEventRulesFromForm({
+        current: currentEventRules as never,
+        changes: mergeChanges,
+      }) as never;
+    }
+  } else if (input.priceMXN !== undefined) {
+    // FIX 2026-07-24 (auditoría David ronda 4): si el caller envía
+    // SOLO priceMXN (sin eventRules) y el evento actual tiene un
+    // apartado activo, debemos revalidar la reserva contra el
+    // nuevo precio y recalcular el balance. Si el apartado deja de
+    // ser válido (>= nuevo precio), error 400. Si sigue siendo
+    // válido, persistimos el nuevo balance atómicamente. Esto evita
+    // que el evento quede con balance inconsistente (precio
+    // actualizado pero saldo stale).
+    const currentRules = currentEventRules as
+      | {
+          reservation_enabled?: boolean;
+          reservation_amount_mxn?: number;
+          balance_amount_mxn?: number;
+          balance_due_note?: string;
+        }
+      | null;
+    if (
+      currentRules &&
+      currentRules.reservation_enabled === true &&
+      typeof currentRules.reservation_amount_mxn === "number" &&
+      Number.isFinite(currentRules.reservation_amount_mxn)
+    ) {
+      const newPrice = Math.max(0, input.priceMXN ?? 0);
+      const currentAmount = currentRules.reservation_amount_mxn;
+      if (currentAmount >= newPrice) {
+        return {
+          ok: false,
+          note:
+            "El monto del apartado actual ($" +
+            currentAmount +
+            " MXN) es mayor o igual al nuevo precio ($" +
+            newPrice +
+            " MXN). Ajusta el apartado antes de cambiar el precio, o desactiva el apartado explícitamente.",
+        };
+      }
+      // Recalcular balance y persistir como parte del update de
+      // priceMXN. El merge con el current preserva personality,
+      // rules, payment_mode y balance_due_note.
+      const newBalance = Math.round((newPrice - currentAmount) * 100) / 100;
+      const mergeChanges: FormEventRulesChanges = {
+        // No pisamos personality, rules ni payment_mode.
+        preserveReservation: true, // preservar reservation_*_enabled/amount, solo recalcular balance
+        reservation: {
+          valid: true,
+          error: null,
+          balance: newBalance,
+          shouldClearReservationFields: false,
+        },
+        reservationAmountParsed: currentAmount,
       };
       patch.event_rules = buildEventRulesFromForm({
         current: currentEventRules as never,

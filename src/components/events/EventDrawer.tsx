@@ -261,6 +261,22 @@ export function EventDrawer({
   const [statusChanging, setStatusChanging] = useState<EventStatus | null>(null);
   /** Status pendiente de confirmar en modal. null = no hay modal abierto. */
   const [pendingStatusChange, setPendingStatusChange] = useState<EventStatus | null>(null);
+  /**
+   * FIX 2026-07-24 (auditoría David ronda 4): inputs del submit
+   * pendientes de confirmar antes de transicionar a payment_mode="live".
+   * null = no hay modal abierto. Mismo patrón que pendingStatusChange.
+   */
+  const [pendingLiveSubmit, setPendingLiveSubmit] = useState<
+    | {
+        mode: Mode;
+        eventId: string | undefined;
+        startsAtIso: string;
+        endsAtIso: string | null;
+        priceParsed: number;
+        eventRulesForPayload: ReturnType<typeof buildEventRulesFromForm>;
+      }
+    | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   /** Errores de validación por campo (inline). Mostrados bajo cada <Field>. */
@@ -345,6 +361,23 @@ export function EventDrawer({
     e.preventDefault();
     setError(null);
     setSuccess(null);
+    // FIX 2026-07-24 (auditoría David ronda 4): si el admin intenta
+    // guardar con paymentMode="live" (cobra dinero real), pedimos
+    // confirmación explícita antes de persistir. El radio ya muestra
+    // badges amarillos + el hint "⚠️ LIVE: cobra dinero real", pero
+    // eso es solo info pasiva. La fricción se agrega al MOMENTO del
+    // submit para evitar que un click accidental cambie el modo
+    // (especialmente relevante en producción: pasar de test a live
+    // hace que el siguiente checkout cobre $$ real). Mismo patrón
+    // visual que StatusChangeConfirm.
+    // Excepción: si el evento YA estaba en live y el admin solo
+    // edita otros campos, no pedimos confirmación otra vez (es
+    // redundante). Solo se pide cuando:
+    //   - es creación, o
+    //   - es update Y el evento actual NO tenía payment_mode="live".
+    const isLiveTransition =
+      form.paymentMode === "live" &&
+      (mode === "create" || event?.eventRules?.payment_mode !== "live");
 
     // Validación inline por campo. Cada error se muestra bajo su Field
     // (con borde rojo + role="alert" para screen readers).
@@ -444,24 +477,63 @@ export function EventDrawer({
       changes: mergeChanges,
     });
 
+    // FIX 2026-07-24 (auditoría David ronda 4): si el admin va a
+    // TRANSICIONAR a payment_mode="live" (cobra dinero real) y no
+    // estaba antes, abrimos un modal de confirmación. Evita clicks
+    // accidentales que cambien un evento de test a live sin querer.
+    if (isLiveTransition) {
+      setPendingLiveSubmit({
+        mode,
+        eventId: event?.id,
+        // Guardamos los inputs YA construidos (no re-validamos al
+        // confirmar; el modal es solo para confirmar la intención,
+        // no para re-editar el form).
+        startsAtIso,
+        endsAtIso: endsAtIso ?? null,
+        priceParsed,
+        eventRulesForPayload,
+      });
+      return;
+    }
+
+    await performSave({
+      mode,
+      eventId: event?.id,
+      startsAtIso,
+      endsAtIso: endsAtIso ?? null,
+      priceParsed,
+      eventRulesForPayload,
+    });
+  }
+
+  /**
+   * FIX 2026-07-24 (auditoría David ronda 4): ejecuta el save real
+   * contra el backend. Se llama desde `handleSubmit` (cuando NO hay
+   * transición a live) o desde `confirmLiveSubmit` (cuando el admin
+   * confirma en el modal). Mismo código en ambos paths — solo se
+   * separa para poder intercalar el modal.
+   */
+  async function performSave(args: {
+    mode: Mode;
+    eventId: string | undefined;
+    startsAtIso: string;
+    endsAtIso: string | null;
+    priceParsed: number;
+    eventRulesForPayload: ReturnType<typeof buildEventRulesFromForm>;
+  }) {
     setSaving(true);
     try {
-      if (mode === "create") {
+      if (args.mode === "create") {
         const created = await createEvent({
           slug: form.slug.trim(),
           title: form.title.trim(),
           description: form.description.trim() || undefined,
-          startsAt: startsAtIso,
-          endsAt: endsAtIso,
+          startsAt: args.startsAtIso,
+          endsAt: args.endsAtIso ?? undefined,
           location: form.location.trim() || undefined,
           coverImageUrl: form.coverImageUrl.trim() || undefined,
           status: form.status,
-          // FIX 2026-07-23: pasamos el eventRules ya mergeado (con
-          // payment_mode, reservation_*, etc.) en vez de armar uno
-          // destructivo en el form.
-          eventRules: eventRulesForPayload,
-          // Streaming (migration 20260707000000). Solo mandamos si format
-          // != in_person para no contaminar requests innecesariamente.
+          eventRules: args.eventRulesForPayload,
           format: form.format,
           streamingUrl: form.streamingUrl.trim() || undefined,
           streamingProvider: form.format !== "in_person" ? form.streamingProvider : undefined,
@@ -469,27 +541,20 @@ export function EventDrawer({
             form.format !== "in_person" && form.streamingAccessNote.trim()
               ? form.streamingAccessNote.trim()
               : undefined,
-          // Pago (migration 20260714230000). Ya parseado arriba.
-          priceMXN: priceParsed,
+          priceMXN: args.priceParsed,
           currency: form.currency.trim() || "MXN",
         });
         setSuccess("Evento creado.");
         onSaved(created);
-      } else if (event) {
-        const updated = await updateEvent(event.id, {
+      } else if (args.eventId) {
+        const updated = await updateEvent(args.eventId, {
           title: form.title.trim(),
           description: form.description.trim() || undefined,
-          startsAt: startsAtIso,
-          endsAt: endsAtIso ?? null,
+          startsAt: args.startsAtIso,
+          endsAt: args.endsAtIso,
           location: form.location.trim() || undefined,
-          // FIX 2026-07-23: pasamos el eventRules mergeado. El server
-          // hace su propio merge por defense in depth (ver
-          // `events-server.ts`), pero mandar el JSONB final ya
-          // construido evita un roundtrip de SELECT adicional.
-          eventRules: eventRulesForPayload,
+          eventRules: args.eventRulesForPayload,
           coverImageUrl: form.coverImageUrl.trim() || undefined,
-          // Streaming: mandamos siempre los nuevos valores para que cambiar
-          // de in_person a virtual persista el link correctamente.
           format: form.format,
           streamingUrl: form.streamingUrl.trim() || null,
           streamingProvider: form.format !== "in_person" ? form.streamingProvider : null,
@@ -497,8 +562,7 @@ export function EventDrawer({
             form.format !== "in_person" && form.streamingAccessNote.trim()
               ? form.streamingAccessNote.trim()
               : null,
-          // Pago (migration 20260714230000). Ya parseado arriba.
-          priceMXN: priceParsed,
+          priceMXN: args.priceParsed,
           currency: form.currency.trim() || "MXN",
         });
         setSuccess("Cambios guardados.");
@@ -552,6 +616,22 @@ export function EventDrawer({
     const s = pendingStatusChange;
     setPendingStatusChange(null);
     await handleStatusChange(s);
+  }
+
+  /**
+   * FIX 2026-07-24 (auditoría David ronda 4): ejecuta el save real
+   * cuando el admin confirma la transición a payment_mode="live" en
+   * el modal. Mismo patrón que confirmStatusChange.
+   */
+  async function confirmLiveSubmit() {
+    if (!pendingLiveSubmit) return;
+    const args = pendingLiveSubmit;
+    setPendingLiveSubmit(null);
+    await performSave(args);
+  }
+
+  function cancelLiveSubmit() {
+    setPendingLiveSubmit(null);
   }
 
   /**
@@ -1360,6 +1440,21 @@ export function EventDrawer({
           pending={deleting}
         />
       )}
+
+      {/* FIX 2026-07-24 (auditoría David ronda 4): modal de
+          confirmación al transicionar a payment_mode="live". Mismo
+          patrón visual que StatusChangeConfirm (overlay semitransparente
+          + panel centrado). Pide confirmación explícita porque pasar
+          a live hace que el siguiente checkout cobre $$ real con la
+          tarjeta del cliente. */}
+      {pendingLiveSubmit && (
+        <LiveModeConfirm
+          eventTitle={form.title}
+          onCancel={cancelLiveSubmit}
+          onConfirm={confirmLiveSubmit}
+          pending={saving}
+        />
+      )}
     </>
   );
 }
@@ -1518,6 +1613,69 @@ function StatusChangeConfirm({
             </Button>
             <Button variant={tone} onClick={onConfirm} disabled={pending}>
               {pending ? "Aplicando…" : confirmLabel}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/**
+ * FIX 2026-07-24 (auditoría David ronda 4): modal de confirmación al
+ * transicionar a `payment_mode="live"`. Mismo patrón visual que
+ * `StatusChangeConfirm` (overlay semitransparente + panel centrado).
+ *
+ * Por qué este modal existe: el radio de modo Stripe ya muestra
+ * badge amarillo "Cobra dinero real" + hint, pero eso es info
+ * pasiva. La fricción real se agrega al momento del SUBMIT para
+ * evitar clicks accidentales que cambien un evento de test a live
+ * (el siguiente checkout cobraría dinero real con tarjeta del
+ * cliente).
+ */
+function LiveModeConfirm({
+  eventTitle,
+  onCancel,
+  onConfirm,
+  pending,
+}: {
+  eventTitle: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+  pending: boolean;
+}) {
+  return (
+    <>
+      <button
+        type="button"
+        aria-label="Cerrar modal"
+        onClick={() => !pending && onCancel()}
+        className="fixed inset-0 bg-ink/60 z-[60] cursor-default"
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="fixed inset-0 z-[70] flex items-center justify-center p-4 pointer-events-none"
+      >
+        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 pointer-events-auto">
+          <h3 className="text-lg font-bold text-ink mb-2 flex items-center gap-2">
+            <LucideIcon icon={AlertTriangle} size="sm" tone="brand" />
+            ¿Activar modo Live (cobra dinero real)?
+          </h3>
+          <p className="text-sm text-ink-soft mb-1">
+            Evento: <span className="font-semibold text-ink">{eventTitle || "(sin título)"}</span>
+          </p>
+          <p className="text-sm text-ink-soft mb-5">
+            El próximo checkout usará la clave <code>STRIPE_SECRET_KEY_LIVE</code> y
+            cobrará dinero real a la tarjeta del cliente. Asegúrate de que
+            esta es una prueba controlada antes de continuar.
+          </p>
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="outline" onClick={onCancel} disabled={pending}>
+              Cancelar
+            </Button>
+            <Button variant="danger" onClick={onConfirm} disabled={pending}>
+              {pending ? "Guardando…" : "Sí, activar modo Live"}
             </Button>
           </div>
         </div>

@@ -649,3 +649,74 @@ test("buildEventRulesFromForm: CANACO update parcial personalidad → apartado $
   assert.equal(out.payment_mode, "live");
   assert.equal(out.personality, "Bot v2 (editado)");
 });
+
+/* ------------------------------------------------------------------ */
+/* FIX 2026-07-24 (auditoría David, ronda 4): personality/rules       */
+/* opcionales en el merge. Si el caller NO los provee, se preservan  */
+/* del current. Antes el server hacia `?? ""` y `?? []` que pisaba   */
+/* con defaults vacíos.                                                */
+/* ------------------------------------------------------------------ */
+
+test("buildEventRulesFromForm: personality undefined → preserva del current", () => {
+  // FIX 2026-07-24 (ronda 4): update parcial donde el caller NO
+  // incluye personality (undefined). El helper debe traer la del
+  // current en vez de pisar con "".
+  const current = {
+    personality: "Bot v1 con personalidad cuidada",
+    rules: ["r1", "r2"],
+    payment_mode: "test",
+  };
+  const changes = makeChanges({
+    personality: undefined, // el caller no está tocando personalidad
+    rules: undefined, // tampoco rules
+    paymentMode: "test",
+  });
+  const out = buildEventRulesFromForm({ current, changes });
+  assert.equal(out.personality, "Bot v1 con personalidad cuidada");
+  assert.deepEqual(out.rules, ["r1", "r2"]);
+});
+
+test("buildEventRulesFromForm: rules undefined → preserva del current", () => {
+  // FIX 2026-07-24 (ronda 4): solo rules undefined, personality sí.
+  const current = {
+    personality: "Bot v1",
+    rules: ["regla importante 1", "regla importante 2"],
+  };
+  const changes = makeChanges({
+    personality: "Bot v1 (igual)",
+    rules: undefined, // el caller no está tocando rules
+  });
+  const out = buildEventRulesFromForm({ current, changes });
+  assert.equal(out.personality, "Bot v1 (igual)");
+  assert.deepEqual(out.rules, ["regla importante 1", "regla importante 2"]);
+});
+
+test("buildEventRulesFromForm: personality/rules undefined con current vacío → defaults", () => {
+  // FIX 2026-07-24 (ronda 4): si el caller no provee y el current
+  // tampoco tiene, el resultado debe tener defaults vacíos (cumple
+  // con el tipo EventBotRules que requiere personality/rules como
+  // strings/arrays obligatorios, no opcionales).
+  const changes = makeChanges({
+    personality: undefined,
+    rules: undefined,
+  });
+  const out = buildEventRulesFromForm({ current: null, changes });
+  assert.equal(out.personality, "");
+  assert.deepEqual(out.rules, []);
+});
+
+test("buildEventRulesFromForm: personality '' explícito (string vacío) → pisa con ''", () => {
+  // FIX 2026-07-24 (ronda 4): si el caller MANDA explícitamente
+  // un string vacío, eso significa "limpia la personalidad". NO
+  // preservamos del current. Distinción importante vs undefined.
+  const current = {
+    personality: "Bot v1 con personalidad",
+    rules: ["r1"],
+  };
+  const changes = makeChanges({
+    personality: "", // explícito: limpiar
+    rules: ["r1"],
+  });
+  const out = buildEventRulesFromForm({ current, changes });
+  assert.equal(out.personality, "");
+});

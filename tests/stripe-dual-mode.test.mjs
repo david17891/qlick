@@ -138,9 +138,14 @@ test("EventDrawer persiste payment_mode en eventRules al crear/editar", () => {
     "EventDrawer debe pasar el paymentMode del form al helper de merge"
   );
   // Y el resultado del merge se persiste en create + update.
+  // FIX 2026-07-24 (auditoría ronda 4): tras el refactor de
+  // performSave, el eventRules mergeado se pasa como
+  // `args.eventRulesForPayload` dentro de la función performSave.
+  // Aceptamos ambas formas para no romper este test con cada
+  // refactor: lo importante es que el JSONB mergeado se persiste.
   assert.match(
     eventDrawer,
-    /eventRules:\s*eventRulesForPayload/,
+    /eventRules:\s*(args\.)?eventRulesForPayload/,
     "EventDrawer debe pasar el eventRules mergeado a createEvent/updateEvent"
   );
 });

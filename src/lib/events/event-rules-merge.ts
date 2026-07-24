@@ -230,10 +230,23 @@ export function validateReservation(
 /* ------------------------------------------------------------------ */
 
 export interface FormEventRulesChanges {
-  /** Tono del bot (input del form admin, ya trim). */
-  personality: string;
-  /** Reglas del bot (una por línea, ya spliteadas y trimmed). */
-  rules: string[];
+  /**
+   * Tono del bot (input del form admin, ya trim).
+   * FIX 2026-07-24 (auditoría David ronda 4): si es `undefined`, el
+   * helper NO pisa el valor actual del JSONB — lo preserva del
+   * `current`. Esto cubre updates parciales donde el caller (un
+   * script externo, un endpoint de migración, un form futuro) no
+   * incluye `personality` en el `eventRules`. Antes el server hacia
+   * `?? ""` y el helper pisaba con `""`, borrando la personalidad
+   * existente.
+   */
+  personality?: string;
+  /**
+   * Reglas del bot (una por línea, ya spliteadas y trimmed).
+   * FIX 2026-07-24 (ronda 4): misma lógica que `personality` —
+   * `undefined` significa "preservar del current".
+   */
+  rules?: string[];
   /**
    * Modo de Stripe. OPCIONAL: si el caller no lo está cambiando, debe
    * pasar `undefined` para preservar el valor actual del JSONB.
@@ -311,12 +324,25 @@ export interface BuildEventRulesArgs {
  */
 export function buildEventRulesFromForm(args: BuildEventRulesArgs): EventBotRules {
   const { current, changes } = args;
-  // Construimos el resultado con los campos que el form SIEMPRE maneja.
-  // El resto se mergea abajo desde `current`.
-  const result: EventBotRules = {
-    personality: changes.personality.trim(),
-    rules: (changes.rules ?? []).map((r) => r.trim()).filter((r) => r.length > 0),
-  };
+  // Construimos el resultado con los campos que el form maneja.
+  // El resto se mergea abajo desde `current`. Usamos un Partial
+  // porque personality/rules son opcionales (ronda 4: updates
+  // parciales que no los incluyen deben preservar los del current).
+  const result: Partial<EventBotRules> = {};
+  // FIX 2026-07-24 (auditoría David ronda 4): personality/rules
+  // opcionales. Si el caller las provee (incluso vacías), pisamos.
+  // Si NO las provee (undefined), NO las seteamos y el loop de
+  // merge de abajo las trae del current. Antes siempre pisábamos
+  // con `""` y `[]`, lo que borraba la personalidad y reglas
+  // existentes en updates parciales.
+  if (changes.personality !== undefined) {
+    result.personality = changes.personality.trim();
+  }
+  if (changes.rules !== undefined) {
+    result.rules = (changes.rules ?? [])
+      .map((r) => r.trim())
+      .filter((r) => r.length > 0);
+  }
   // FIX 2026-07-23 (auditoría David): payment_mode solo se setea si
   // el caller lo está cambiando explícitamente. Si es undefined,
   // NO pisamos el current — el merge de abajo lo va a traer.
@@ -356,6 +382,7 @@ export function buildEventRulesFromForm(args: BuildEventRulesArgs): EventBotRule
   // Merge del current: preservar campos que el resultado NO setea
   // explícitamente. Esto cubre:
   //   - payment_mode cuando el caller pasó undefined (no se está cambiando)
+  //   - personality/rules cuando el caller pasó undefined (ronda 4)
   //   - campos desconocidos futuros (defense in depth: si alguien agrega
   //     `cohort_id` a EventBotRules, no se pierde).
   //   - balance_due_note u otros campos que el form no maneja todavía
@@ -363,8 +390,12 @@ export function buildEventRulesFromForm(args: BuildEventRulesArgs): EventBotRule
   const currentRecord = (current ?? {}) as unknown as Record<string, unknown>;
   for (const key of Object.keys(currentRecord)) {
     if (key === "personality" || key === "rules") {
-      // Siempre se pisan desde el form.
-      continue;
+      // FIX 2026-07-24 (ronda 4): el resultado solo trae estos campos
+      // si el caller los proveyó. Si no, los traemos del current
+      // (preservar en update parcial).
+      if ((result as Record<string, unknown>)[key] !== undefined) {
+        continue;
+      }
     }
     if (key === "payment_mode") {
       // Solo preservar si el form no lo está pisando.
@@ -384,7 +415,7 @@ export function buildEventRulesFromForm(args: BuildEventRulesArgs): EventBotRule
       } else if (changes.reservation.shouldClearReservationFields) {
         // El caller quiere limpiar explícitamente: NO copiar.
         continue;
-      } else if ((result as unknown as Record<string, unknown>)[key] !== undefined) {
+      } else if ((result as Record<string, unknown>)[key] !== undefined) {
         // El resultado ya tiene este campo seteado por el form: NO copiar.
         continue;
       }
@@ -392,9 +423,19 @@ export function buildEventRulesFromForm(args: BuildEventRulesArgs): EventBotRule
     // Campo no manejado o no seteado: copiar del current.
     const v = currentRecord[key];
     if (v !== undefined) {
-      (result as unknown as Record<string, unknown>)[key] = v;
+      (result as Record<string, unknown>)[key] = v;
     }
   }
 
-  return result;
+  // Defaults finales: si el resultado no tiene personality/rules ni
+  // del caller ni del current, aplicar strings/arrays vacíos. Esto
+  // cumple con el tipo EventBotRules (que requiere personality y
+  // rules como obligatorios) sin perder semántica.
+  if (result.personality === undefined) {
+    result.personality = "";
+  }
+  if (result.rules === undefined) {
+    result.rules = [];
+  }
+  return result as EventBotRules;
 }
