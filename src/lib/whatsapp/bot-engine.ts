@@ -2202,29 +2202,46 @@ async function buildOpenerPlan(args: {
           ? `\n💰 Inversión: $${realActiveEvent.priceMxn.toLocaleString("es-MX")} MXN`
           : "")
       : "";
-  // FIX 2026-07-24 (sprint bot-welcome-copy): cuando hay un solo
-  // evento activo, el welcome usa SIEMPRE el formato largo
-  // (`detailedInfo` via `buildEventInfoCopy`), no solo cuando el
-  // body matchea `isEventInfoRequest`. Asi el primer "hola" ya
-  // muestra fecha, lugar, inversion, constancia, cupo — todo
-  // ordenado con emojis. Si detailedInfo falla, fallback al
-  // formato corto con eventLine.
-  const shortcutDetailedInfo = singleEventShortcut
-    ? (() => {
-        try {
-          return buildEventInfoCopy(singleEventShortcut);
-        } catch {
-          return null;
-        }
-      })()
-    : null;
+  // FIX 2026-07-24 (sprint bot-welcome-copy): el admin del evento
+  // escribe `event.description` desde el panel (`/admin/eventos/[id]`).
+  // Esa descripcion ya viene formateada con emojis, dirección, etc.
+  // El welcome del bot debe reflejar EXACTAMENTE lo que el admin
+  // escribió, no un formato hardcoded que pueda divergir.
+  //
+  // Orden de prioridad:
+  //   1. `singleEventShortcut.description` (lo que escribio el admin).
+  //      Si existe y no está vacío, es el body. El admin controla
+  //      100% del copy: si cambia la dirección o el copy, el bot
+  //      se actualiza sin tocar código.
+  //   2. `buildEventInfoCopy(singleEventShortcut)` (fallback). Lo
+  //      usamos solo si el admin NO escribió descripción.
+  //   3. `eventLine` corto (último fallback).
+  function buildShortcutBody(event: NonNullable<typeof singleEventShortcut>): string {
+    const adminDesc = event.description?.trim();
+    if (adminDesc && adminDesc.length > 0) {
+      // El admin ya escribió la descripción. La mostramos tal cual.
+      return `${adminDesc}\n\n¿Quieres apartar tu lugar?`;
+    }
+    // Sin descripción: usamos el formato generado.
+    try {
+      const generated = buildEventInfoCopy(event);
+      if (generated && generated.trim().length > 0) {
+        return `${generated}\n\n¿Quieres apartar tu lugar?`;
+      }
+    } catch {
+      // Fall through.
+    }
+    // Último fallback al formato corto.
+    return `${saludo} Soy Qlick, asistente de Qlick Marketing Digital. ¿Te interesa "${event.title}"?${eventLine}`;
+  }
+  const shortcutBody: string = singleEventShortcut
+    ? buildShortcutBody(singleEventShortcut)
+    : "";
   const interactive = singleEventShortcut
     ? {
         type: "button" as const,
         body: {
-          text: shortcutDetailedInfo
-            ? `${shortcutDetailedInfo}\n\n¿Quieres apartar tu lugar?`
-            : `${saludo} Soy Qlick, asistente de Qlick Marketing Digital. ¿Te interesa "${singleEventShortcut.title}"?${eventLine}`,
+          text: shortcutBody,
         },
         action: {
           buttons: [
