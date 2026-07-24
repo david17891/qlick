@@ -134,6 +134,67 @@ export default async function PayEventPage({
     }
   }
 
+  // FIX 2026-07-18 (sprint atribución de pagos): pre-leer
+  // `?confirmation=xxx` del query param para usarlo en la decisión
+  // de CTAs y en la atribución del cargo.
+  const rawConfirmationEarly =
+    typeof searchParams?.confirmation === "string"
+      ? searchParams.confirmation
+      : Array.isArray(searchParams?.confirmation)
+        ? searchParams.confirmation[0]
+        : null;
+
+  // FIX 2026-07-24 v2 (correccion #5): leer el ledger del confirmado
+  // (si hay confirmationId) para calcular el progress y decidir
+  // los CTAs. El correo y el webhook ya leen esto; la pagina
+  // publica tambien debe para no mostrar un checkout a un cliente
+  // que ya pago.
+  type LedgerRow = {
+    amount_mxn: number;
+    status: string;
+    metadata: unknown;
+  };
+  type PageProgress = "unpaid" | "partial_paid" | "paid_full" | "needs_reconciliation";
+  let pageProgress: PageProgress = "unpaid";
+  let pageCollected = 0;
+  let pageBalance = event.priceMXN;
+  if (rawConfirmationEarly) {
+    const UUID_RE =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (UUID_RE.test(rawConfirmationEarly)) {
+      try {
+        const { createSupabaseAdminClient } = await import(
+          "@/lib/supabase/admin"
+        );
+        const supabase = createSupabaseAdminClient();
+        const { data: ledgerRows } = await supabase
+          .from("event_payments" as never)
+          .select("amount_mxn, status, metadata")
+          .eq("confirmation_id", rawConfirmationEarly);
+        const { computeEventPaymentProgress } = await import(
+          "@/lib/payments/event-payment-progress"
+        );
+        const r = computeEventPaymentProgress({
+          total_mxn: event.priceMXN,
+          payments: ((ledgerRows ?? []) as LedgerRow[]).map((p) => ({
+            amount_mxn: p.amount_mxn,
+            status: p.status,
+            metadata: (p.metadata ?? null) as Record<string, unknown> | null
+          })),
+          event_rules: event.eventRules ?? null
+        });
+        // Reducir al subset que nos importa para la UI.
+        if (r.progress === "paid_full" || r.progress === "partial_paid" || r.progress === "needs_reconciliation") {
+          pageProgress = r.progress;
+        }
+        pageCollected = r.collected_mxn;
+        pageBalance = r.balance_due_mxn;
+      } catch {
+        // best-effort: si falla, asumimos unpaid (mostramos checkout)
+      }
+    }
+  }
+
   // FIX 2026-07-18 (sprint atribución de pagos, David "el link de
   // pago es generico, como se relaciona con el cliente"): si el
   // caller del checkout pasó `?confirmation=xxx` (típicamente el
@@ -145,18 +206,13 @@ export default async function PayEventPage({
   // confirmation. Si el query param es inválido (confirmation no
   // existe o no es de este evento), lo ignoramos y caemos al
   // path genérico (atribución por email, comportamiento legacy).
-  const rawConfirmation =
-    typeof searchParams?.confirmation === "string"
-      ? searchParams.confirmation
-      : Array.isArray(searchParams?.confirmation)
-        ? searchParams.confirmation[0]
-        : null;
+  // rawConfirmationEarly ya fue computado arriba (correccion #5).
   const validatedConfirmationId = await resolveConfirmationParam(
-    rawConfirmation,
+    rawConfirmationEarly,
     event.id
   );
   const confirmedEmail = await getConfirmedEmail(
-    rawConfirmation,
+    rawConfirmationEarly,
     event.id
   );
   const reservationAmount =
@@ -256,6 +312,30 @@ export default async function PayEventPage({
                   eventTitle={event.title}
                   amountMxn={event.priceMXN}
                 />
+              ) : pageProgress === "paid_full" ? (
+                // FIX 2026-07-24 v2 (correccion #5): pagado completo
+                // → mostrar inscripcion liquidada, sin checkout.
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-5 text-sm">
+                  <p className="text-emerald-900 font-semibold">
+                    Tu inscripcion esta liquidada.
+                  </p>
+                  <p className="text-emerald-800 mt-1">
+                    Cobramos ${pageCollected.toLocaleString("es-MX")} {event.currency} en
+                    total. No se permiten pagos adicionales. Te esperamos el dia del evento.
+                  </p>
+                </div>
+              ) : pageProgress === "partial_paid" ? (
+                // FIX 2026-07-24 v2 (correccion #5): pago parcial
+                // → quitar ambos CTA y mostrar saldo pendiente.
+                <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-5 text-sm">
+                  <p className="text-amber-900 font-semibold">
+                    Tu apartado de ${(reservationAmount ?? pageCollected).toLocaleString("es-MX")} {event.currency} esta confirmado.
+                  </p>
+                  <p className="text-amber-800 mt-1">
+                    Queda un saldo de <strong>${pageBalance.toLocaleString("es-MX")} {event.currency}</strong>, que se liquida el dia del evento.
+                    No ofrecemos otro checkout online para el saldo (se liquida en puerta).
+                  </p>
+                </div>
               ) : reservationAmount !== null ? (
                 // FIX 2026-07-24 (auditoría David ronda 4): cuando el
                 // evento tiene apartado configurado, mostramos DOS
