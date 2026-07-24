@@ -28,8 +28,8 @@
 - `npm run test:ci`: 1483/1483 PASS (gate estático portable; las suites E2E con secretos quedan fuera). `npm run test:e2e:funnel`: PASS con WhatsApp/Brevo mock y webhook Stripe test firmado. `npm run type-check`: PASS. `npm run lint`: PASS.
 - Suite completa: 1488 PASS y 3 fallos preexistentes de fixtures CRM (aislamiento/duplicado de teléfono); no son fallos del flujo de pagos.
 - Smoke Production seguro: Checkout test 200; webhook sin firma 400; firma falsa 401. E2E backend firmado de paid/pending/async/refund/dispute/service validado y cleanup verificado.
-- Estado Stripe: **GO validado para eventos** (cargo real + webhook + acceso verificados). El evento QA ya fue archivado (`status=draft`) tras conciliar el cargo; el ledger y el acceso quedan conservados como evidencia. Publicar solo eventos reales con `event_rules.payment_mode=live`. Servicios siguen en test salvo `STRIPE_SERVICE_PAYMENT_MODE=live`; cursos siguen en test por diseño. Falta validar manualmente la entrega de QR/email/WhatsApp del evento real.
-- Producción: deployment Vercel `qlick-e66jw1toi` en estado `Ready`, aliases `qlick.digital` y `www.qlick.digital` responden (200 final tras la redirección canónica).
+- Estado Stripe: **GO validado para eventos** (cargo real + webhook + acceso verificados). El evento QA ya fue archivado (`status=draft`) tras conciliar el cargo; el ledger y el acceso quedan conservados como evidencia. Publicar solo eventos reales con `event_rules.payment_mode=live`. Servicios siguen en test salvo `STRIPE_SERVICE_PAYMENT_MODE=live`; cursos siguen en test por diseño. La entrega de QR/email/WhatsApp quedó verificada en el E2E controlado; las primeras entregas reales quedan bajo monitoreo operativo.
+- Producción: deployment Vercel `dpl_F7kRJYrYHrE58y19P5pAFvQM8NeV` en estado `READY`, aliases `qlick.digital` y `www.qlick.digital` responden (200 final tras la redirección canónica).
 
 ## Sprint v0.10 — 4 bloques hardening + 4 hotfixes E2E (2026-07-14 02:30 → 04:35)
 
