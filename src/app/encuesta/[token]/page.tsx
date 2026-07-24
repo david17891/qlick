@@ -39,7 +39,7 @@ export default async function EncuestaPage({ params }: PageProps) {
     return (
       <CenteredMessage
         title="Link invalido"
-        subtitle="No encontramos una encuesta asociada a este link. Pedile al organizador que te envie uno nuevo."
+        subtitle="No encontramos una encuesta asociada a este link. Pídele al organizador que te envie uno nuevo."
       />
     );
   }
@@ -57,7 +57,7 @@ export default async function EncuestaPage({ params }: PageProps) {
     return (
       <CenteredMessage
         title="El link expiro"
-        subtitle="Este link ya no esta activo. Pedile al organizador uno nuevo y te respondemos en cuanto lo mandemos."
+        subtitle="Este link ya no esta activo. Pídele al organizador uno nuevo y te respondemos en cuanto lo mandemos."
       />
     );
   }

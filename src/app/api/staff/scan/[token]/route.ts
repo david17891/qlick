@@ -41,8 +41,8 @@ export async function GET(_req: Request, { params }: RouteParams) {
     // a la app porque el staff no tiene contexto — mejor pantalla clara.
     const reasonMap: Record<typeof result.reason, string> = {
       not_found: "Este link no existe o ya fue removido.",
-      expired: "Este link expiró. Pedile al admin uno nuevo.",
-      revoked: "Este link fue revocado. Pedile al admin uno nuevo.",
+      expired: "Este link expiró. Pídele al admin uno nuevo.",
+      revoked: "Este link fue revocado. Pídele al admin uno nuevo.",
       not_yet_valid: "Este link aún no está activo. Vuelve más tarde.",
     };
     const html = renderStaffErrorHtml(reasonMap[result.reason]);

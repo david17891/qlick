@@ -92,7 +92,7 @@ export default async function LessonPage({
                   {access.reason === "expired"
                     ? "Acceso expirado"
                     : access.reason === "not_authenticated"
-                      ? "Necesitás iniciar sesión"
+                      ? "Necesitas iniciar sesión"
                       : "Acceso restringido"}
                 </Badge>
                 <h1 className="text-2xl font-bold text-ink mt-4">

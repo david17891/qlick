@@ -89,7 +89,7 @@ export async function resendGuestAccessLink(sessionId: string): Promise<{
       const retryAfterSec = Math.ceil(decision.resetMs / 1000);
       return {
         ok: false,
-        error: `Demasiados reenvios. Proba de nuevo en ${Math.ceil(
+        error: `Demasiados reenvios. Prueba de nuevo en ${Math.ceil(
           retryAfterSec / 60
         )} minutos.`,
         retryAfterSec,

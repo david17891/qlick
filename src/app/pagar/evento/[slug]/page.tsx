@@ -390,7 +390,7 @@ export default async function PayEventPage({
               {validatedConfirmationId && confirmedEmail && (
                 <p className="mt-4 text-xs text-ink-muted italic">
                   Vas a pagar por la entrada registrada a{" "}
-                  <strong>{confirmedEmail}</strong>. Si necesitás usar otro
+                  <strong>{confirmedEmail}</strong>. Si necesitas usar otro
                   email, contáctanos antes de pagar.
                 </p>
               )}

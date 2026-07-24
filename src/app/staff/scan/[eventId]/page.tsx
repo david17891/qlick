@@ -186,7 +186,7 @@ export default function StaffScanPage() {
       if (res.status === 410) {
         setStatus({
           kind: "invalid_token",
-          reason: "Este link expiró o fue revocado. Pedile al admin uno nuevo.",
+          reason: "Este link expiró o fue revocado. Pídele al admin uno nuevo.",
         });
         return;
       }
