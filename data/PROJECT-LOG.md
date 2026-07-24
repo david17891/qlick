@@ -399,3 +399,15 @@ ote_type + is_pinned).
 - **Preflight Vercel:** STRIPE_SECRET_KEY_LIVE + STRIPE_WEBHOOK_SECRET_LIVE + NEXT_PUBLIC_PAYMENT_PROVIDER=stripe presentes en Production. Verificacion programatica del webhook live pendiente (requiere key).
 - **Gates:** type-check 0, lint 0, voseo 0, tests 1529/1529, build OK, git diff --check 0. PR #43 listo para merge.
 - **Pendiente:** merge + deploy + verificar webhook live en dashboard de Stripe + E2E controlado en evento draft separado en modo test antes de cargo real publico.
+
+
+## 2026-07-24 — Produccion activa: bot de informacion + E2E de invitado
+
+- PR #43 mergeado a `main` en `6a0571c3c3b756db2c4cb70bff5d5855a231401a`; deployment Vercel `dpl_EuD3P5nQ546KWvY6aLixnU4heJLj` en estado `READY` con aliases publicos activos.
+- Webhook live de Stripe: configurado y verificado manualmente por David en el dashboard; se considera cerrado, sin accion manual pendiente.
+- CANACO permanece publicado en Stripe live con total de $1,000 MXN, apartado de $500 MXN y saldo de $500 MXN el dia del evento.
+- Bot: se agrego una respuesta determinista para `info`/`informacion` y preguntas del evento. Explica las cuatro bases del curso, fecha, horario, sede, precio, apartado y enlace oficial; mantiene espanol mexicano y no inventa la direccion pendiente.
+- Seguridad de efectos secundarios: el flujo implicito de nombre + correo crea una sola confirmacion, QR y correo; el estado inicial de un evento pagado queda `pending` hasta confirmacion firmada de Stripe.
+- Fix critico de invitados: el webhook de eventos ya no exige resolver un usuario de Auth antes de registrar un pago de invitado; la vinculacion usa `confirmation_id`/correo. Los cursos conservan el requisito de usuario autenticado.
+- Verificacion: `npm run type-check`, `npm run lint`, `npm run audit:voseo`, `npm run test:ci` (1535/1535), `npm run test:e2e:funnel` (1/1 con Stripe test firmado y acceso activo), y build de Vercel en verde. No hubo errores runtime en la ultima hora.
+- Sin cargo real en esta validacion; queda monitoreo operativo de conversaciones, `event_email_log`, webhooks y primeras inscripciones reales. Pendientes de negocio: direccion exacta y conciliacion del saldo.

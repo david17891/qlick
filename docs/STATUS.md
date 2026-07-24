@@ -8,21 +8,21 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-24 — Sprint CANACO apartado + 4 rondas de auditoría. PR #43 (4 commits: 91c9b25, 53a369a, ebfe6de, ae9e7bc) con panel admin de apartado, validaciones, preservación de campos no manejados, modal de confirmación al transicionar a `payment_mode="live"`, y 2 botones en `/pagar` (apartado + completo). CANACO ya tiene `event_rules` con `payment_mode: "live"`, `reservation_enabled: true`, `reservation_amount_mxn: 500`, `balance_amount_mxn: 500`, `balance_due_note: "el día del evento"`. Gates: type-check verde, lint verde, 1529/1529 tests, audit:voseo 0, build verde, git diff --check 0. Preflight Vercel OK (STRIPE_SECRET_KEY_LIVE + STRIPE_WEBHOOK_SECRET_LIVE + NEXT_PUBLIC_PAYMENT_PROVIDER=stripe en Production). Pendiente: merge + deploy + verificación del webhook live en dashboard de Stripe + E2E controlado en modo test.
+> **Última actualización:** 2026-07-24 — Producción activa tras el merge del PR #43 (`6a0571c3c3b756db2c4cb70bff5d5855a231401a`). Vercel deployment `dpl_EuD3P5nQ546KWvY6aLixnU4heJLj` está `READY` con aliases `qlick.digital` y `www.qlick.digital`. CANACO está publicado en modo Stripe live con total de $1,000 MXN, apartado de $500 MXN y saldo de $500 MXN el día del evento. El webhook live ya fue configurado y verificado manualmente por David en Stripe; no queda esa acción pendiente. El bot ya responde solicitudes de información con un resumen factual del curso y enlace de apartado. Gates: type-check, lint, audit:voseo y build de Vercel verdes; 1,535/1,535 tests; E2E de funnel 1/1; sin errores runtime en la última hora.
 >
 > **Body del doc (líneas debajo):** es archivo histórico de sprints cerrados. Para estado actual, ver este snapshot.
 
 ---
 
-## Estado actual — 2026-07-24 · PR #43 listo para merge
+## Estado actual — 2026-07-24 · Producción activa
 
-- Evento publicado: `Desarrollo y estructura del curso CANACO` (`short_code=CN26`, `id=4100ffe3-54c1-45c1-a3a6-515595a646ad`). Título actual en DB: `"Las 4 Patas de un Negocio que Vende"`. La fecha se persiste en UTC para mostrar 20 de agosto, 16:00–20:00 en `America/Phoenix`; sede mostrada: `CANACO` (la dirección exacta sigue pendiente).
-- Modelo comercial (configurado en DB el 2026-07-24): total $1,000 MXN; apartado $500 MXN; saldo $500 MXN el día del evento. `event_rules.payment_mode: "live"` (preflight Vercel confirmó `STRIPE_SECRET_KEY_LIVE` y `STRIPE_WEBHOOK_SECRET_LIVE` en Production). El webhook deja la confirmación en `pending` y no entrega acceso completo hasta liquidar el total.
-- Reglas del bot (5, tras iteración 4): se preservaron las 4 reglas originales que no mencionan $1,000/$500, y se reemplazaron las 2 que duplicaban la info por la regla clara de David: "El curso cuesta $1,000 MXN. Para apartar tu lugar se pagan $500 MXN y el saldo de $500 MXN se liquida el día del evento."
-- Bot: el flujo de inscripción genera un enlace con `payment_option=reservation`, explica total/apartado/saldo y mantiene español mexicano neutro.
-- Release de código: PR #43 (rama `feat/admin-event-reservation-apartado`, 4 commits) listo para merge. Panel admin de apartado + validaciones + modal de confirmación al transicionar a live + 2 botones en `/pagar` (apartado + pago completo).
-- Pendiente: merge del PR #43, deploy a Vercel Production, verificación del webhook live en el dashboard de Stripe (apunte a `https://www.qlick.digital/api/webhooks/stripe`), y E2E controlado de cargo real pequeño ($10 MXN) en evento draft separado antes de CANACO público.
-- Pendiente de producto: confirmar dirección exacta de CANACO, política operativa para el saldo y quién concilia los apartados.
+- Evento publicado: `Desarrollo y estructura del curso CANACO` (`short_code=CN26`, `id=4100ffe3-54c1-45c1-a3a6-515595a646ad`). Título actual en DB: `"Las 4 Patas de un Negocio que Vende"`. Fecha: 20 de agosto de 2026, 16:00–20:00; sede mostrada: `CANACO` (la dirección exacta sigue pendiente de confirmación).
+- Modelo comercial activo: total $1,000 MXN; apartado $500 MXN; saldo $500 MXN el día del evento. `event_rules.payment_mode: "live"`. La ruta pública ofrece botones independientes para apartar o pagar completo.
+- Bot de información: cuando una persona escribe `info`, `información` o pregunta por el evento, entrega un resumen del objetivo, las cuatro bases (video, publicidad pagada, inteligencia artificial y seguimiento por WhatsApp), fecha, horario, sede, precio y esquema de apartado; no inventa la dirección pendiente y ofrece el enlace oficial.
+- Flujo de inscripción: el bot conserva español mexicano neutro, genera el enlace `payment_option=reservation`, registra la confirmación en `pending` y deja que el webhook de Stripe la marque como pagada. El flujo de nombre + correo crea un solo QR y un solo correo; no duplica efectos secundarios.
+- Webhook de Stripe: el checkout de invitados de eventos ya no depende de crear un usuario de Auth antes de registrar el pago. El evento se vincula por `confirmation_id`/correo y los cursos conservan su requisito de usuario autenticado. La idempotencia y las referencias Stripe permanecen activas.
+- Release: PR #43 mergeado a `main`; la producción está desplegada y sin errores runtime en la última hora. No se hizo un cargo real durante la validación posterior al fix; el E2E controlado usó Stripe test por $10 MXN y dejó acceso activo correctamente.
+- Pendientes no bloqueantes: confirmar la dirección exacta de CANACO, definir cómo se concilia el saldo de $500 y vigilar las primeras conversaciones reales en CRM, `event_email_log`, registros de webhook y Vercel.
 
 - Migración `20260722130000_stripe_session_conflict_targets.sql` aplicada y verificada en Supabase Production; PR34 la versiona para reproducibilidad.
 - `npm run test:ci`: 1483/1483 PASS (gate estático portable; las suites E2E con secretos quedan fuera). `npm run test:e2e:funnel`: PASS con WhatsApp/Brevo mock y webhook Stripe test firmado. `npm run type-check`: PASS. `npm run lint`: PASS.
