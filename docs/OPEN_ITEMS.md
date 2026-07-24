@@ -1964,6 +1964,34 @@ multi-agente, dividir en <8 archivos o aceptar partial-state.
 
 ## 6. Resueltos reciente
 
+### ✅ Sprint CANACO apartado + 4 rondas de auditoria PR #43 (2026-07-24)
+
+**Contexto:** David audito el PR #43 (panel admin de apartado) en 4 rondas consecutivas. Cada ronda destapó un defecto del PATCH endpoint que podía romper la persistencia JSONB de CANACO.
+
+**Defectos corregidos (4 commits atomicos en rama `feat/admin-event-reservation-apartado`):**
+
+1. **`personality`/`rules` se pisaban con `""`/`[]` en updates parciales.** El server hacia `?? ""` y `?? []` cuando el caller omitia estos campos. Fix: opcionales en `FormEventRulesChanges`, helper preserva del current cuando `undefined`. Distincion explicita: `""` = limpiar, `undefined` = preservar.
+
+2. **Update solo con `priceMXN` no revalidaba reserva existente.** Si el admin actualizaba solo el precio y el evento tenia apartado activo, el saldo quedaba stale. Fix: si hay apartado activo, validar `currentAmount < newPrice` (error 400 si no) y recalcular balance atomicamente con `preserveReservation: true`.
+
+3. **`reservation_amount_mxn` sin `reservation_enabled` se interpretaba como `false` (silent clean).** El server aceptaba el monto y mi codigo borraba todos los campos. Fix: error 400 claro pidiendo el flag.
+
+4. **No habia modal al transicionar a `payment_mode="live"`.** Solo habia badge amarillo + hint pasivo. Fix: nuevo `LiveModeConfirm` con el mismo patron visual que `StatusChangeConfirm`, friccion explicita al momento del submit.
+
+5. **Pagina /pagar solo mostraba 1 boton.** David pidio confirmar que existan 2 botones (apartado $500 + pago completo $1,000). Fix: renderizar 2 `CheckoutButton` cuando hay apartado, con su `paymentOption` y `chargeAmountMxn` correctos. NO toca el checkout ni el webhook.
+
+**CANACO configurado en DB (iter 4, 2026-07-24 08:31 UTC):**
+
+- `event_rules.payment_mode: "live"` (preflight Vercel OK).
+- `reservation_enabled: true`, `reservation_amount_mxn: 500`, `balance_amount_mxn: 500`, `balance_due_note: "el dia del evento"`.
+- Reglas: 6 → 5 (las 2 que duplicaban $1,000/$500 se reemplazaron por la regla clara de David).
+- Personality, title, slug, status, price_mxn, currency, fecha, ubicacion: preservados.
+- Snapshot pre-cambio: `docs/canaco-snapshots/canaco-pre-iter-3-2026-07-24T08-07-58-228Z.json`.
+
+**Gates finales:** type-check 0, lint 0, voseo 0, tests 1529/1529, build OK, git diff --check 0.
+
+**PR #43** (4 commits) listo para merge. Pendiente: merge + deploy + verificacion programatica del webhook live en dashboard de Stripe + E2E controlado en evento draft separado en modo test.
+
 ### ✅ Kill-switch diario outbounds disparado (2026-07-20)
 
 **Síntoma:** "el bot no contesta". David sospechó que era Flash (red herring). El otro agente que David mandó a investigar encontró la causa real.

@@ -8,19 +8,21 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-23 — Lanzamiento express del evento CANACO. El evento `desarrollo-estructura-curso-canaco` está publicado en Supabase y desplegado en Vercel Production (20 de agosto de 2026, 16:00–20:00, CANACO), con precio total de $1,000 MXN y apartado en línea de $500 MXN. La página pública y el bot ya muestran el horario en la zona local del evento.
+> **Última actualización:** 2026-07-24 — Sprint CANACO apartado + 4 rondas de auditoría. PR #43 (4 commits: 91c9b25, 53a369a, ebfe6de, ae9e7bc) con panel admin de apartado, validaciones, preservación de campos no manejados, modal de confirmación al transicionar a `payment_mode="live"`, y 2 botones en `/pagar` (apartado + completo). CANACO ya tiene `event_rules` con `payment_mode: "live"`, `reservation_enabled: true`, `reservation_amount_mxn: 500`, `balance_amount_mxn: 500`, `balance_due_note: "el día del evento"`. Gates: type-check verde, lint verde, 1529/1529 tests, audit:voseo 0, build verde, git diff --check 0. Preflight Vercel OK (STRIPE_SECRET_KEY_LIVE + STRIPE_WEBHOOK_SECRET_LIVE + NEXT_PUBLIC_PAYMENT_PROVIDER=stripe en Production). Pendiente: merge + deploy + verificación del webhook live en dashboard de Stripe + E2E controlado en modo test.
 >
 > **Body del doc (líneas debajo):** es archivo histórico de sprints cerrados. Para estado actual, ver este snapshot.
 
 ---
 
-## Estado actual — 2026-07-23 · lanzamiento express CANACO
+## Estado actual — 2026-07-24 · PR #43 listo para merge
 
-- Evento publicado: `Desarrollo y estructura del curso CANACO` (`short_code=CN26`, `id=4100ffe3-54c1-45c1-a3a6-515595a646ad`). La fecha se persiste en UTC para mostrar 20 de agosto, 16:00–20:00 en `America/Phoenix`; sede mostrada: `CANACO` (la dirección exacta sigue pendiente).
-- Modelo comercial: total $1,000 MXN; apartado Stripe $500 MXN; saldo $500 MXN el día del evento. El webhook deja la confirmación en `pending` y no entrega acceso completo hasta liquidar el total.
-- Bot: el flujo de inscripción genera un enlace con `payment_option=reservation`, explica total/apartado/saldo y mantiene español mexicano neutro. El contexto de IA recibe las mismas reglas desde `event_rules`.
-- Release de código: PR #41 mergeado a `main`; el deploy de Production quedó `Ready` y la página pública fue verificada. Falta únicamente ejecutar una reserva live controlada de $500 MXN para la comprobación operativa final.
-- Pendiente de producto: confirmar dirección exacta de CANACO, política operativa para el saldo y quién concilia los apartados; no se inventaron esos datos en el bot.
+- Evento publicado: `Desarrollo y estructura del curso CANACO` (`short_code=CN26`, `id=4100ffe3-54c1-45c1-a3a6-515595a646ad`). Título actual en DB: `"Las 4 Patas de un Negocio que Vende"`. La fecha se persiste en UTC para mostrar 20 de agosto, 16:00–20:00 en `America/Phoenix`; sede mostrada: `CANACO` (la dirección exacta sigue pendiente).
+- Modelo comercial (configurado en DB el 2026-07-24): total $1,000 MXN; apartado $500 MXN; saldo $500 MXN el día del evento. `event_rules.payment_mode: "live"` (preflight Vercel confirmó `STRIPE_SECRET_KEY_LIVE` y `STRIPE_WEBHOOK_SECRET_LIVE` en Production). El webhook deja la confirmación en `pending` y no entrega acceso completo hasta liquidar el total.
+- Reglas del bot (5, tras iteración 4): se preservaron las 4 reglas originales que no mencionan $1,000/$500, y se reemplazaron las 2 que duplicaban la info por la regla clara de David: "El curso cuesta $1,000 MXN. Para apartar tu lugar se pagan $500 MXN y el saldo de $500 MXN se liquida el día del evento."
+- Bot: el flujo de inscripción genera un enlace con `payment_option=reservation`, explica total/apartado/saldo y mantiene español mexicano neutro.
+- Release de código: PR #43 (rama `feat/admin-event-reservation-apartado`, 4 commits) listo para merge. Panel admin de apartado + validaciones + modal de confirmación al transicionar a live + 2 botones en `/pagar` (apartado + pago completo).
+- Pendiente: merge del PR #43, deploy a Vercel Production, verificación del webhook live en el dashboard de Stripe (apunte a `https://www.qlick.digital/api/webhooks/stripe`), y E2E controlado de cargo real pequeño ($10 MXN) en evento draft separado antes de CANACO público.
+- Pendiente de producto: confirmar dirección exacta de CANACO, política operativa para el saldo y quién concilia los apartados.
 
 - Migración `20260722130000_stripe_session_conflict_targets.sql` aplicada y verificada en Supabase Production; PR34 la versiona para reproducibilidad.
 - `npm run test:ci`: 1483/1483 PASS (gate estático portable; las suites E2E con secretos quedan fuera). `npm run test:e2e:funnel`: PASS con WhatsApp/Brevo mock y webhook Stripe test firmado. `npm run type-check`: PASS. `npm run lint`: PASS.

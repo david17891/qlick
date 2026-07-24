@@ -375,3 +375,27 @@ ote_type + is_pinned).
 - Evento QA publicado de 10 MXN con payment_mode=live; Checkout cs_live aprobado.
 - Supabase verificado: event_payments approved/live, confirmation paid, event_access active/event_purchase.
 - Flujo completo evento -> Stripe live -> webhook firmado -> ledger -> acceso validado. No se repitio el cargo ni se solicito reembolso automatico. Pendiente: archivar evento QA y validar QR/email/WhatsApp en evento real.
+
+
+## 2026-07-24 02:30 Mavis -- Sprint CANACO apartado + 4 rondas de auditoria (PR #43)
+- **Pregunta:** David pidio cerrar la auditoria del PR #43 antes de dejar produccion lista. Detectados 4 defectos del PATCH endpoint en 4 rondas sucesivas + 1 mejora de UI (2 botones en /pagar para confirmar apartado + completo).
+- **Decisión:** 4 commits atomicos en rama eat/admin-event-reservation-apartado (PR #43). Iter 1 (91c9b25) implementación base, Iter 2 (53a369a) fixes ronda 2 (payment_mode preservation, priceMXN string normalization, error 400 en apartado inválido, parser MX estricto), Iter 3 (ebfe6de) fix ronda 3 (preservación apartado en update parcial), Iter 4 (ae9e7bc) fix ronda 4 (4 defectos del PATCH + 2 botones checkout).
+- **Razón:** David audito el PR durante 4 rondas consecutivas detectando defectos sutiles de persistencia JSONB. El principio guia: preservar TODO lo que el caller no toca explicitamente, jamas hacer whitelist destructivo del JSONB.
+- **Defectos del PATCH corregidos:**
+  1. personality/ules se pisaban con ""/[] en updates parciales. Fix: opcionales en FormEventRulesChanges, helper preserva del current cuando undefined.
+  2. Update solo con priceMXN no revalidaba reserva existente. Fix: si hay apartado activo, validar currentAmount < newPrice (error 400 si no) y recalcular balance atomico.
+  3. eservation_amount_mxn sin eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 claro.
+  4. No habia modal al transicionar a payment_mode=live. Fix: nuevo LiveModeConfirm con el mismo patron visual que StatusChangeConfirm.
+- **UI: 2 botones en /pagar.** Cuando hay apartado, la pagina muestra "Aparta " + "Paga ,000 completo" como opciones separadas. NO toca el checkout ni el webhook.
+- **CANACO configurado en DB** (snapshot pre-cambio en docs/canaco-snapshots/canaco-pre-iter-3-2026-07-24T08-07-58-228Z.json):
+  - payment_mode: live (preflight Vercel OK)
+  - reservation_enabled: true
+  - reservation_amount_mxn: 500
+  - balance_amount_mxn: 500
+  - balance_due_note: el dia del evento
+  - rules: 5 (las 4 que no duplican ,000/ + 1 regla clara de David)
+  - personality: preservada
+  - title, slug, status, price_mxn, currency, fecha, ubicacion: NO TOCADOS
+- **Preflight Vercel:** STRIPE_SECRET_KEY_LIVE + STRIPE_WEBHOOK_SECRET_LIVE + NEXT_PUBLIC_PAYMENT_PROVIDER=stripe presentes en Production. Verificacion programatica del webhook live pendiente (requiere key).
+- **Gates:** type-check 0, lint 0, voseo 0, tests 1529/1529, build OK, git diff --check 0. PR #43 listo para merge.
+- **Pendiente:** merge + deploy + verificar webhook live en dashboard de Stripe + E2E controlado en evento draft separado en modo test antes de cargo real publico.
