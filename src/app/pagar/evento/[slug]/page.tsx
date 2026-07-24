@@ -106,7 +106,7 @@ export default async function PayEventPage({
             <p className="text-ink-muted mt-2">
               El evento <strong>{event.title}</strong> está en estado{" "}
               <Badge tone="warning">{event.status === "draft" ? "Borrador" : "Archivado"}</Badge>.
-              {" "}Publicá primero desde{" "}
+              {" "}Publica primero desde{" "}
               <a
                 href={`/admin/eventos/${event.id}`}
                 className="text-brand-700 underline"

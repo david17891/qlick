@@ -150,7 +150,7 @@ export default function StaffScanPage() {
     if (!staffToken) {
       setStatus({
         kind: "invalid_token",
-        reason: "Falta el token en la URL. Abrí el link que te mandó el admin.",
+        reason: "Falta el token en la URL. Abre el link que te mandó el admin.",
       });
       return;
     }

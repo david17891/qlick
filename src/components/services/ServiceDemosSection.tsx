@@ -68,7 +68,7 @@ export function ServiceDemosSection() {
           <Badge tone="brand" className="mb-4">Trabajo real</Badge>
           <h2 className="display-2 text-ink">Esto es lo que hacemos</h2>
           <p className="mt-4 text-lg text-ink-soft">
-            4 sitios publicados. Mismos paquetes, mismo flujo. Abrí cada
+            4 sitios publicados. Mismos paquetes, mismo flujo. Abre cada
             uno para ver el resultado final.
           </p>
         </div>

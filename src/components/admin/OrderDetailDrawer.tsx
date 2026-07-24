@@ -728,7 +728,7 @@ function DocumentosTab({
           Adjuntar documento
         </h3>
         <p className="mt-1 text-xs text-ink-muted">
-          Pegá la URL del archivo (comprobante, certificado, brief, etc.). El
+          Pega la URL del archivo (comprobante, certificado, brief, etc.). El
           archivo debe estar subido aparte (Supabase Storage, Google Drive, etc.).
         </p>
         <form onSubmit={submit} className="mt-3 space-y-3">

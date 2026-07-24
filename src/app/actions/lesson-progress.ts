@@ -92,7 +92,7 @@ export async function markLessonCompleteAction(input: {
       persisted: false,
       demo: true,
       percent: 0,
-      note: "Necesitás iniciar sesión para registrar progreso.",
+      note: "Necesitas iniciar sesión para registrar progreso.",
     };
   }
 

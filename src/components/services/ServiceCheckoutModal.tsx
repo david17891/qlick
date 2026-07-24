@@ -94,7 +94,7 @@ export function ServiceCheckoutModal({
       setError(
         err instanceof Error
           ? err.message
-          : "Error de red. Intentá de nuevo en un momento.",
+          : "Error de red. Intenta de nuevo en un momento.",
       );
       setSubmitting(false);
     }

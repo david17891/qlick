@@ -1250,7 +1250,7 @@ export function EventDrawer({
                 cuando el admin abre un evento viejo que nunca las tuvo. */}
             {!form.botPersonality.trim() && !form.botRulesText.trim() && (
               <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
-                Este evento aún no tiene reglas del bot. Completá personalidad
+                Este evento aún no tiene reglas del bot. Completa personalidad
                 y reglas abajo para que responda con el tono correcto.
               </div>
             )}

@@ -133,7 +133,7 @@ export async function POST(req: NextRequest) {
         {
           ok: false,
           message:
-            "Necesitás enviar x-dev-admin-secret o tener sesión de estudiante para simular un pago.",
+            "Necesitas enviar x-dev-admin-secret o tener sesión de estudiante para simular un pago.",
         },
         { status: 401 },
       );
@@ -384,7 +384,7 @@ export async function POST(req: NextRequest) {
         : "Pago aprobado pero acceso NO activado."
       : body.event === "failed"
         ? "Pago rechazado. No se activó el acceso."
-        : "Pago pendiente. Esperá la confirmación del provider.";
+        : "Pago pendiente. Espera la confirmación del provider.";
 
   const response: SimulateResponse = {
     ok: true,

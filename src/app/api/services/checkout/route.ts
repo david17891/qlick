@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         ok: false,
-        error: "Demasiadas solicitudes. Intentá de nuevo en un minuto.",
+        error: "Demasiadas solicitudes. Intenta de nuevo en un minuto.",
         retryAfterMs: rl.resetMs,
       },
       {

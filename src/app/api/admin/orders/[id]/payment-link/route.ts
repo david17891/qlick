@@ -69,7 +69,7 @@ export async function POST(
   });
   if (!rl.allowed) {
     return NextResponse.json(
-      { ok: false, error: "Demasiadas solicitudes. Intentá en un minuto." },
+      { ok: false, error: "Demasiadas solicitudes. Intenta en un minuto." },
       { status: 429 }
     );
   }
