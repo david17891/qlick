@@ -25,7 +25,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { inferStatus } from "@/lib/crm/conversations-server";
+import {
+  inferStatus,
+  shouldIncludeWhatsAppRow
+} from "@/lib/crm/conversations-server";
 import {
   calculateDeepseekCostUsdCents,
   projectMonthlyUsdCents,
@@ -66,6 +69,20 @@ test("R1: inferStatus con null direction/date → 'open' (default)", () => {
 });
 
 /* ─────────────────────────────────────────────────────────────────── */
+test("R1: outbound con metadata.status sigue visible", () => {
+  assert.equal(
+    shouldIncludeWhatsAppRow({ message_type: "text", body: "Respuesta del bot" }),
+    true
+  );
+});
+
+test("R1: orphan status_update without body is hidden", () => {
+  assert.equal(
+    shouldIncludeWhatsAppRow({ message_type: "status_update", body: null }),
+    false
+  );
+});
+
 /*  R3: cálculo de costo DeepSeek (Flash vs Pro)                     */
 /* ─────────────────────────────────────────────────────────────────── */
 

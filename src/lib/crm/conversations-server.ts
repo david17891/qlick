@@ -119,6 +119,14 @@ export function inferStatus(lastDir: "inbound" | "outbound" | "system" | null, l
   return lastDir === "inbound" ? "waiting_reply" : "open";
 }
 
+/** Real outbound rows may carry metadata.status after Meta acknowledges them. */
+export function shouldIncludeWhatsAppRow(row: {
+  message_type: string;
+  body: string | null;
+}): boolean {
+  return !(row.message_type === "status_update" && !row.body?.trim());
+}
+
 function whatsappRowToMessage(row: WhatsAppConvRow): ConversationMessage {
   // FIX 2026-07-07: si body está vacío (ej. imagen sin caption), generar
   // un placeholder con icono + filename según message_type para que la
@@ -211,7 +219,6 @@ export async function listRealConversations(): Promise<Conversation[]> {
       "id, lead_id, phone_normalized, direction, message_type, body, metadata, created_at",
     )
     .is("deleted_at", null)
-    .is("metadata->>status", null)
     .order("created_at", { ascending: false });
 
   if (waErr) {
@@ -243,6 +250,7 @@ export async function listRealConversations(): Promise<Conversation[]> {
 
   // 4a. Primero WhatsApp (son los mensajes "fuertes" del bot).
   for (const row of ((whatsappRows ?? []) as unknown) as WhatsAppConvRow[]) {
+    if (!shouldIncludeWhatsAppRow(row)) continue;
     // Si lead_id es null pero tenemos un lead con ese phone, lo
     // "adoptamos". Si no, lo agrupamos por phone como fallback.
     let leadId = row.lead_id;
