@@ -252,6 +252,11 @@ export interface EventFormInput {
   /**
    * Reglas de comportamiento del bot (Fase 7b). Se inyecta al prompt
    * del bot cuando el evento está activo.
+   *
+   * FIX 2026-07-23 (sprint apartado CANACO): el EventDrawer ahora permite
+   * configurar también la sección de apartado (`reservation_*`) y el modo
+   * de Stripe (`payment_mode`) desde el panel admin. El server hace el
+   * merge con el JSONB existente (preserva campos no manejados).
    */
   eventRules?: {
     personality: string;
@@ -262,6 +267,14 @@ export interface EventFormInput {
      * puede setear "live" para hacer pruebas con dinero real.
      */
     payment_mode?: "test" | "live";
+    /**
+     * FIX 2026-07-23 (sprint apartado CANACO): configuración de apartado.
+     * El server valida la combinación con el precio total antes de
+     * persistir (ver `event-rules-merge.ts`).
+     */
+    reservation_enabled?: boolean;
+    /** Monto del apartado en MXN. Debe ser > 0 y < priceMXN. */
+    reservation_amount_mxn?: number;
   };
   /**
    * Modalidad del evento (migration 20260707000000). Default `in_person`.

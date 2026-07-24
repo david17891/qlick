@@ -71,7 +71,7 @@ export function Footer() {
             © {new Date().getFullYear()} Qlick. Hecho en México.
           </p>
           <p>
-            Plataforma educativa — MVP con datos de demostración. Pagos simulados.
+            Plataforma educativa de Qlick Marketing Digital.
           </p>
         </div>
       </Container>

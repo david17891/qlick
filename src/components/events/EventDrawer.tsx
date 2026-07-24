@@ -35,6 +35,12 @@ import {
   matchPersonalityPreset,
   type PersonalityPreset,
 } from "@/lib/events/bot-personality-templates";
+import {
+  buildEventRulesFromForm,
+  parseReservationAmount,
+  validateReservation,
+  type FormEventRulesChanges,
+} from "@/lib/events/event-rules-merge";
 
 /**
  * Drawer (panel lateral) para crear o editar un evento del admin.
@@ -102,6 +108,22 @@ interface FormState {
    * Se persiste en `event.event_rules.payment_mode` (Json libre).
    */
   paymentMode: "test" | "live";
+  /**
+   * FIX 2026-07-23 (sprint apartado CANACO): apartado para eventos
+   * de pago. `reservationEnabled` activa la opción de pagar un
+   * anticipo y liquidar el saldo después (en puerta o vía otro
+   * medio). `reservationAmountMxn` es el monto del anticipo en MXN,
+   * como string del input admin (lo parseamos al enviar). El saldo
+   * siempre se calcula como `priceMXN - reservationAmountMxn` y NO
+   * es editable (lo muestra el form como preview, no como input).
+   *
+   * Restricciones (validadas en el form + server):
+   *   - priceMXN > 0 (sin apartado en eventos gratuitos)
+   *   - 0 < reservationAmountMxn < priceMXN
+   *   - max 2 decimales
+   */
+  reservationEnabled: boolean;
+  reservationAmountMxn: string;
 }
 
 function eventToForm(e: Event): FormState {
@@ -145,6 +167,16 @@ function eventToForm(e: Event): FormState {
     // FIX 2026-07-18: leer payment_mode de event_rules (default test).
     paymentMode:
       e.eventRules?.payment_mode === "live" ? "live" : "test",
+    // FIX 2026-07-23 (sprint apartado CANACO): hidratar apartado desde
+    // event_rules.reservation_*. Si el evento ya tiene apartado
+    // configurado, lo mostramos. Si no, los defaults (desactivado +
+    // monto vacío) para que el admin pueda activarlo explícitamente.
+    reservationEnabled: e.eventRules?.reservation_enabled === true,
+    reservationAmountMxn:
+      typeof e.eventRules?.reservation_amount_mxn === "number" &&
+      e.eventRules.reservation_amount_mxn > 0
+        ? e.eventRules.reservation_amount_mxn.toString()
+        : "",
   };
 }
 
@@ -176,6 +208,11 @@ function emptyForm(): FormState {
     // cambiar explicitamente a "live" para hacer pruebas con cargo
     // real. UI muestra confirmacion antes de guardar.
     paymentMode: "test",
+    // FIX 2026-07-23: defaults neutros para apartado. El admin debe
+    // activar el checkbox explicitamente. El monto queda vacio hasta
+    // que lo escriba.
+    reservationEnabled: false,
+    reservationAmountMxn: "",
   };
 }
 
@@ -224,6 +261,22 @@ export function EventDrawer({
   const [statusChanging, setStatusChanging] = useState<EventStatus | null>(null);
   /** Status pendiente de confirmar en modal. null = no hay modal abierto. */
   const [pendingStatusChange, setPendingStatusChange] = useState<EventStatus | null>(null);
+  /**
+   * FIX 2026-07-24 (auditoría David ronda 4): inputs del submit
+   * pendientes de confirmar antes de transicionar a payment_mode="live".
+   * null = no hay modal abierto. Mismo patrón que pendingStatusChange.
+   */
+  const [pendingLiveSubmit, setPendingLiveSubmit] = useState<
+    | {
+        mode: Mode;
+        eventId: string | undefined;
+        startsAtIso: string;
+        endsAtIso: string | null;
+        priceParsed: number;
+        eventRulesForPayload: ReturnType<typeof buildEventRulesFromForm>;
+      }
+    | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   /** Errores de validación por campo (inline). Mostrados bajo cada <Field>. */
@@ -252,6 +305,28 @@ export function EventDrawer({
     () => JSON.stringify(form) !== JSON.stringify(initial),
     [form, initial],
   );
+
+  // FIX 2026-07-23 (sprint apartado CANACO): derivado en tiempo real
+  // del precio parseado y la validación del apartado. Se usa para
+  // mostrar el saldo pendiente y los banners contextuales (cobro
+  // activado, evento gratuito, etc.) sin recalcular en cada render
+  // del JSX. La validación final se hace en `handleSubmit` con el
+  // mismo helper — esto es solo para preview.
+  const pricePreview = useMemo(() => {
+    const raw = form.priceMXN.trim();
+    if (!raw) return 0;
+    const n = Number(raw);
+    return Number.isFinite(n) ? Math.max(0, n) : 0;
+  }, [form.priceMXN]);
+
+  const reservationPreview = useMemo(() => {
+    const amount = parseReservationAmount(form.reservationAmountMxn);
+    return validateReservation({
+      priceMXN: pricePreview,
+      enabled: form.reservationEnabled,
+      amount: form.reservationEnabled ? amount : null,
+    });
+  }, [pricePreview, form.reservationEnabled, form.reservationAmountMxn]);
 
   // Auto-genera slug del título en modo create si el admin lo deja vacío.
   useEffect(() => {
@@ -286,6 +361,23 @@ export function EventDrawer({
     e.preventDefault();
     setError(null);
     setSuccess(null);
+    // FIX 2026-07-24 (auditoría David ronda 4): si el admin intenta
+    // guardar con paymentMode="live" (cobra dinero real), pedimos
+    // confirmación explícita antes de persistir. El radio ya muestra
+    // badges amarillos + el hint "⚠️ LIVE: cobra dinero real", pero
+    // eso es solo info pasiva. La fricción se agrega al MOMENTO del
+    // submit para evitar que un click accidental cambie el modo
+    // (especialmente relevante en producción: pasar de test a live
+    // hace que el siguiente checkout cobre $$ real). Mismo patrón
+    // visual que StatusChangeConfirm.
+    // Excepción: si el evento YA estaba en live y el admin solo
+    // edita otros campos, no pedimos confirmación otra vez (es
+    // redundante). Solo se pide cuando:
+    //   - es creación, o
+    //   - es update Y el evento actual NO tenía payment_mode="live".
+    const isLiveTransition =
+      form.paymentMode === "live" &&
+      (mode === "create" || event?.eventRules?.payment_mode !== "live");
 
     // Validación inline por campo. Cada error se muestra bajo su Field
     // (con borde rojo + role="alert" para screen readers).
@@ -310,6 +402,33 @@ export function EventDrawer({
       } else {
         durationParsed = n;
       }
+    }
+    // Precio: si viene algo, lo parseamos. Vacio o no numerico = 0.
+    const priceRaw = form.priceMXN.trim();
+    let priceParsed = 0;
+    if (priceRaw) {
+      const n = Number(priceRaw);
+      if (!Number.isFinite(n) || n < 0) {
+        errs.priceMXN = "El precio debe ser un número válido (0 o mayor).";
+      } else {
+        priceParsed = Math.max(0, n);
+      }
+    }
+    // Apartado (FIX 2026-07-23 sprint CANACO). Lo validamos con el
+    // helper puro `validateReservation` que centraliza las reglas de
+    // negocio. El form manda el monto como string y el helper lo
+    // parsea con `parseReservationAmount` (max 2 decimales, no
+    // negativos, no NaN).
+    const reservationAmountParsed = parseReservationAmount(
+      form.reservationAmountMxn
+    );
+    const reservationValidation = validateReservation({
+      priceMXN: priceParsed,
+      enabled: form.reservationEnabled,
+      amount: form.reservationEnabled ? reservationAmountParsed : null,
+    });
+    if (!reservationValidation.valid && reservationValidation.error) {
+      errs.reservationAmountMxn = reservationValidation.error;
     }
     // Streaming (migration 20260707000000 + 20260707093000): el
     // streaming_url es OPCIONAL en TODAS las modalidades. El operador
@@ -340,28 +459,81 @@ export function EventDrawer({
       endsAtIso = end;
     }
 
+    // FIX 2026-07-23: construir el eventRules con el helper de merge
+    // para preservar campos que el form no maneja (payment_mode,
+    // reservation_*, balance_*, o cualquier key futura). El helper
+    // también se encarga de validar el apartado + calcular el saldo.
+    const mergeChanges: FormEventRulesChanges = {
+      personality: form.botPersonality.trim(),
+      rules: rulesArr,
+      paymentMode: form.paymentMode,
+      reservation: reservationValidation,
+      reservationAmountParsed: form.reservationEnabled
+        ? reservationAmountParsed
+        : null,
+    };
+    const eventRulesForPayload = buildEventRulesFromForm({
+      current: event?.eventRules ?? null,
+      changes: mergeChanges,
+    });
+
+    // FIX 2026-07-24 (auditoría David ronda 4): si el admin va a
+    // TRANSICIONAR a payment_mode="live" (cobra dinero real) y no
+    // estaba antes, abrimos un modal de confirmación. Evita clicks
+    // accidentales que cambien un evento de test a live sin querer.
+    if (isLiveTransition) {
+      setPendingLiveSubmit({
+        mode,
+        eventId: event?.id,
+        // Guardamos los inputs YA construidos (no re-validamos al
+        // confirmar; el modal es solo para confirmar la intención,
+        // no para re-editar el form).
+        startsAtIso,
+        endsAtIso: endsAtIso ?? null,
+        priceParsed,
+        eventRulesForPayload,
+      });
+      return;
+    }
+
+    await performSave({
+      mode,
+      eventId: event?.id,
+      startsAtIso,
+      endsAtIso: endsAtIso ?? null,
+      priceParsed,
+      eventRulesForPayload,
+    });
+  }
+
+  /**
+   * FIX 2026-07-24 (auditoría David ronda 4): ejecuta el save real
+   * contra el backend. Se llama desde `handleSubmit` (cuando NO hay
+   * transición a live) o desde `confirmLiveSubmit` (cuando el admin
+   * confirma en el modal). Mismo código en ambos paths — solo se
+   * separa para poder intercalar el modal.
+   */
+  async function performSave(args: {
+    mode: Mode;
+    eventId: string | undefined;
+    startsAtIso: string;
+    endsAtIso: string | null;
+    priceParsed: number;
+    eventRulesForPayload: ReturnType<typeof buildEventRulesFromForm>;
+  }) {
     setSaving(true);
     try {
-      if (mode === "create") {
+      if (args.mode === "create") {
         const created = await createEvent({
           slug: form.slug.trim(),
           title: form.title.trim(),
           description: form.description.trim() || undefined,
-          startsAt: startsAtIso,
-          endsAt: endsAtIso,
+          startsAt: args.startsAtIso,
+          endsAt: args.endsAtIso ?? undefined,
           location: form.location.trim() || undefined,
           coverImageUrl: form.coverImageUrl.trim() || undefined,
           status: form.status,
-          eventRules: {
-            personality: form.botPersonality.trim(),
-            rules: rulesArr,
-            // FIX 2026-07-18: persistir el modo de Stripe del evento.
-            // El create-checkout route lo lee y pasa al provider.
-            // Default "test" si el admin no lo cambia.
-            payment_mode: form.paymentMode,
-          },
-          // Streaming (migration 20260707000000). Solo mandamos si format
-          // != in_person para no contaminar requests innecesariamente.
+          eventRules: args.eventRulesForPayload,
           format: form.format,
           streamingUrl: form.streamingUrl.trim() || undefined,
           streamingProvider: form.format !== "in_person" ? form.streamingProvider : undefined,
@@ -369,37 +541,20 @@ export function EventDrawer({
             form.format !== "in_person" && form.streamingAccessNote.trim()
               ? form.streamingAccessNote.trim()
               : undefined,
-          // Pago (migration 20260714230000). Parseamos el string del input
-          // a number; vacio o no numerico = 0 (gratis). El server vuelve
-          // a clampear a >=0 por defense in depth.
-          priceMXN: (() => {
-            const raw = form.priceMXN.trim();
-            if (!raw) return 0;
-            const n = Number(raw);
-            return Number.isFinite(n) ? Math.max(0, n) : 0;
-          })(),
+          priceMXN: args.priceParsed,
           currency: form.currency.trim() || "MXN",
         });
         setSuccess("Evento creado.");
         onSaved(created);
-      } else if (event) {
-        const updated = await updateEvent(event.id, {
+      } else if (args.eventId) {
+        const updated = await updateEvent(args.eventId, {
           title: form.title.trim(),
           description: form.description.trim() || undefined,
-          startsAt: startsAtIso,
-          endsAt: endsAtIso ?? null,
+          startsAt: args.startsAtIso,
+          endsAt: args.endsAtIso,
           location: form.location.trim() || undefined,
-          eventRules: {
-            personality: form.botPersonality.trim(),
-            rules: rulesArr,
-            // FIX 2026-07-18: persistir el modo de Stripe del evento.
-            // El create-checkout route lo lee y pasa al provider.
-            // Default "test" si el admin no lo cambia.
-            payment_mode: form.paymentMode,
-          },
+          eventRules: args.eventRulesForPayload,
           coverImageUrl: form.coverImageUrl.trim() || undefined,
-          // Streaming: mandamos siempre los nuevos valores para que cambiar
-          // de in_person a virtual persista el link correctamente.
           format: form.format,
           streamingUrl: form.streamingUrl.trim() || null,
           streamingProvider: form.format !== "in_person" ? form.streamingProvider : null,
@@ -407,13 +562,7 @@ export function EventDrawer({
             form.format !== "in_person" && form.streamingAccessNote.trim()
               ? form.streamingAccessNote.trim()
               : null,
-          // Pago (migration 20260714230000). Misma logica que en create.
-          priceMXN: (() => {
-            const raw = form.priceMXN.trim();
-            if (!raw) return 0;
-            const n = Number(raw);
-            return Number.isFinite(n) ? Math.max(0, n) : 0;
-          })(),
+          priceMXN: args.priceParsed,
           currency: form.currency.trim() || "MXN",
         });
         setSuccess("Cambios guardados.");
@@ -467,6 +616,22 @@ export function EventDrawer({
     const s = pendingStatusChange;
     setPendingStatusChange(null);
     await handleStatusChange(s);
+  }
+
+  /**
+   * FIX 2026-07-24 (auditoría David ronda 4): ejecuta el save real
+   * cuando el admin confirma la transición a payment_mode="live" en
+   * el modal. Mismo patrón que confirmStatusChange.
+   */
+  async function confirmLiveSubmit() {
+    if (!pendingLiveSubmit) return;
+    const args = pendingLiveSubmit;
+    setPendingLiveSubmit(null);
+    await performSave(args);
+  }
+
+  function cancelLiveSubmit() {
+    setPendingLiveSubmit(null);
   }
 
   /**
@@ -835,36 +1000,137 @@ export function EventDrawer({
               </Field>
             </div>
             {/* Banner contextual según el valor: ayuda al admin a
-                entender qué va a pasar al guardar. */}
-            {(() => {
-              const raw = form.priceMXN.trim();
-              const n = raw ? Number(raw) : 0;
-              if (raw && Number.isFinite(n) && n > 0) {
-                return (
-                  <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-800 flex gap-2">
-                    <LucideIcon icon={CheckCircle} size="sm" tone="brand" className="flex-shrink-0 mt-0.5" />
-                    <div>
-                      <strong>Cobro activado:</strong> al guardar, el admin
-                      del evento va a poder probar el checkout en{" "}
-                      <code className="bg-emerald-100 px-1.5 py-0.5 rounded">
-                        /pagar/{form.slug || "<slug>"}
-                      </code>{" "}
-                      con tarjeta test 4242 (si Stripe está activo) o el
-                      simulador mock (si no).
+                entender qué va a pasar al guardar. FIX 2026-07-23:
+                usa `pricePreview` (memoizado arriba) en vez de recalcular
+                `Number(form.priceMXN)` acá. */}
+            {pricePreview > 0 ? (
+              <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-800 flex gap-2">
+                <LucideIcon icon={CheckCircle} size="sm" tone="brand" className="flex-shrink-0 mt-0.5" />
+                <div>
+                  <strong>Cobro activado:</strong> al guardar, el admin
+                  del evento va a poder probar el checkout en{" "}
+                  <code className="bg-emerald-100 px-1.5 py-0.5 rounded">
+                    /pagar/{form.slug || "<slug>"}
+                  </code>{" "}
+                  con tarjeta test 4242 (si Stripe está activo) o el
+                  simulador mock (si no).
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-lg bg-brand-50 border border-brand-100 px-3 py-2 text-xs text-brand-800 flex gap-2">
+                <LucideIcon icon={Gift} size="sm" tone="brand" className="flex-shrink-0 mt-0.5" />
+                <div>
+                  <strong>Evento gratuito:</strong> no se muestra checkout
+                  al asistente. Va directo al form de confirmación.
+                </div>
+              </div>
+            )}
+
+            {/* ────── Apartado (FIX 2026-07-23 sprint CANACO) ──────
+                Solo visible si el evento tiene precio > 0. Si es free,
+                el apartado no aplica (el helper lo limpia al persistir).
+                Muestra:
+                - Checkbox "Permitir apartado" (reservaEnabled)
+                - Input "Monto del apartado" (MXN, con validación inline)
+                - Texto "Saldo pendiente: $X MXN" (preview, no editable)
+                El saldo se calcula como pricePreview - amount y se
+                actualiza en vivo a medida que el admin tipea. */}
+            {pricePreview > 0 && (
+              <fieldset className="border-t border-brand-100 pt-4 mt-2 space-y-3">
+                <legend className="text-xs font-bold uppercase tracking-wider text-brand-600 px-2">
+                  <LucideIcon icon={CreditCard} size="sm" tone="inherit" className="inline mr-1" /> Apartado
+                </legend>
+                <label className="flex items-start gap-3 rounded-xl border border-brand-100 bg-white px-4 py-3 cursor-pointer hover:border-brand-300 transition-colors">
+                  <input
+                    type="checkbox"
+                    id="evt-reservation-enabled"
+                    checked={form.reservationEnabled}
+                    onChange={(e) => {
+                      const next = e.target.checked;
+                      set("reservationEnabled", next);
+                      // Si el admin desactiva, limpiamos el monto
+                      // inmediatamente para no dejar valores stale que
+                      // sobrevivan un guardado accidental.
+                      if (!next) set("reservationAmountMxn", "");
+                    }}
+                    disabled={saving}
+                    className="mt-1"
+                  />
+                  <div>
+                    <div className="font-semibold text-ink">
+                      Permitir apartado
+                    </div>
+                    <div className="text-xs text-ink-muted">
+                      El asistente paga un anticipo en línea y liquida el
+                      saldo después (típicamente el día del evento, en
+                      puerta o por transferencia).
                     </div>
                   </div>
-                );
-              }
-              return (
-                <div className="rounded-lg bg-brand-50 border border-brand-100 px-3 py-2 text-xs text-brand-800 flex gap-2">
-                  <LucideIcon icon={Gift} size="sm" tone="brand" className="flex-shrink-0 mt-0.5" />
-                  <div>
-                    <strong>Evento gratuito:</strong> no se muestra checkout
-                    al asistente. Va directo al form de confirmación.
+                </label>
+
+                {form.reservationEnabled && (
+                  <div className="space-y-2">
+                    <Field
+                      label="Monto del apartado (MXN)"
+                      htmlFor="evt-reservation-amount"
+                      hint="Debe ser mayor que cero y menor que el precio total. Hasta 2 decimales."
+                      error={fieldErrors.reservationAmountMxn}
+                    >
+                      <Input
+                        id="evt-reservation-amount"
+                        type="number"
+                        inputMode="decimal"
+                        min="0.01"
+                        step="0.01"
+                        value={form.reservationAmountMxn}
+                        onChange={(e) =>
+                          set("reservationAmountMxn", e.target.value)
+                        }
+                        placeholder="500"
+                        disabled={saving}
+                      />
+                    </Field>
+                    {/* Preview del saldo: NO editable, se calcula como
+                        pricePreview - amount. Si la validación falla
+                        (ej. apartado >= total), mostramos el mensaje
+                        del helper inline en rojo. */}
+                    {reservationPreview.valid &&
+                    reservationPreview.balance !== null ? (
+                      <div
+                        className="rounded-lg bg-brand-50 border border-brand-100 px-3 py-2 text-xs text-brand-800 flex gap-2"
+                        data-testid="reservation-balance-preview"
+                      >
+                        <LucideIcon
+                          icon={CheckCircle}
+                          size="sm"
+                          tone="brand"
+                          className="flex-shrink-0 mt-0.5"
+                        />
+                        <div>
+                          <strong>Saldo pendiente:</strong>{" "}
+                          ${reservationPreview.balance.toLocaleString("es-MX")}{" "}
+                          {form.currency.trim() || "MXN"}. Se liquida el día
+                          del evento.
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800 flex gap-2">
+                        <LucideIcon
+                          icon={AlertTriangle}
+                          size="sm"
+                          tone="brand"
+                          className="flex-shrink-0 mt-0.5"
+                        />
+                        <div>
+                          {reservationPreview.error ??
+                            "Indica el monto del apartado para ver el saldo."}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              );
-            })()}
+                )}
+              </fieldset>
+            )}
           </fieldset>
 
           {/*
@@ -876,16 +1142,13 @@ export function EventDrawer({
 
             Solo visible si el evento tiene precio > 0 (porque si es
             gratuito, no hay checkout y el modo es irrelevante).
+            FIX 2026-07-23: usa `pricePreview` memoizado arriba.
           */}
-          {(() => {
-            const raw = form.priceMXN.trim();
-            const n = raw ? Number(raw) : 0;
-            if (!(raw && Number.isFinite(n) && n > 0)) return null;
-            return (
-              <fieldset className="border-t border-brand-100 pt-4 mt-2 space-y-3">
-                <legend className="text-xs font-bold uppercase tracking-wider text-brand-600 px-2">
-                  Modo de Pago (Stripe)
-                </legend>
+          {pricePreview > 0 && (
+            <fieldset className="border-t border-brand-100 pt-4 mt-2 space-y-3">
+              <legend className="text-xs font-bold uppercase tracking-wider text-brand-600 px-2">
+                Modo de Pago (Stripe)
+              </legend>
                 <Field
                   label="Modo de Stripe"
                   htmlFor="evt-payment-mode"
@@ -941,8 +1204,7 @@ export function EventDrawer({
                   </div>
                 </Field>
               </fieldset>
-            );
-          })()}
+          )}
 
           <Field label="Imagen de portada (URL)" htmlFor="evt-cover" hint="Opcional. Se mostrará en la card del admin.">
             <Input
@@ -1178,6 +1440,21 @@ export function EventDrawer({
           pending={deleting}
         />
       )}
+
+      {/* FIX 2026-07-24 (auditoría David ronda 4): modal de
+          confirmación al transicionar a payment_mode="live". Mismo
+          patrón visual que StatusChangeConfirm (overlay semitransparente
+          + panel centrado). Pide confirmación explícita porque pasar
+          a live hace que el siguiente checkout cobre $$ real con la
+          tarjeta del cliente. */}
+      {pendingLiveSubmit && (
+        <LiveModeConfirm
+          eventTitle={form.title}
+          onCancel={cancelLiveSubmit}
+          onConfirm={confirmLiveSubmit}
+          pending={saving}
+        />
+      )}
     </>
   );
 }
@@ -1336,6 +1613,69 @@ function StatusChangeConfirm({
             </Button>
             <Button variant={tone} onClick={onConfirm} disabled={pending}>
               {pending ? "Aplicando…" : confirmLabel}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/**
+ * FIX 2026-07-24 (auditoría David ronda 4): modal de confirmación al
+ * transicionar a `payment_mode="live"`. Mismo patrón visual que
+ * `StatusChangeConfirm` (overlay semitransparente + panel centrado).
+ *
+ * Por qué este modal existe: el radio de modo Stripe ya muestra
+ * badge amarillo "Cobra dinero real" + hint, pero eso es info
+ * pasiva. La fricción real se agrega al momento del SUBMIT para
+ * evitar clicks accidentales que cambien un evento de test a live
+ * (el siguiente checkout cobraría dinero real con tarjeta del
+ * cliente).
+ */
+function LiveModeConfirm({
+  eventTitle,
+  onCancel,
+  onConfirm,
+  pending,
+}: {
+  eventTitle: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+  pending: boolean;
+}) {
+  return (
+    <>
+      <button
+        type="button"
+        aria-label="Cerrar modal"
+        onClick={() => !pending && onCancel()}
+        className="fixed inset-0 bg-ink/60 z-[60] cursor-default"
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="fixed inset-0 z-[70] flex items-center justify-center p-4 pointer-events-none"
+      >
+        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 pointer-events-auto">
+          <h3 className="text-lg font-bold text-ink mb-2 flex items-center gap-2">
+            <LucideIcon icon={AlertTriangle} size="sm" tone="brand" />
+            ¿Activar modo Live (cobra dinero real)?
+          </h3>
+          <p className="text-sm text-ink-soft mb-1">
+            Evento: <span className="font-semibold text-ink">{eventTitle || "(sin título)"}</span>
+          </p>
+          <p className="text-sm text-ink-soft mb-5">
+            El próximo checkout usará la clave <code>STRIPE_SECRET_KEY_LIVE</code> y
+            cobrará dinero real a la tarjeta del cliente. Asegúrate de que
+            esta es una prueba controlada antes de continuar.
+          </p>
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="outline" onClick={onCancel} disabled={pending}>
+              Cancelar
+            </Button>
+            <Button variant="danger" onClick={onConfirm} disabled={pending}>
+              {pending ? "Guardando…" : "Sí, activar modo Live"}
             </Button>
           </div>
         </div>

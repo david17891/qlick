@@ -161,7 +161,7 @@ export function CheckoutButton({
             >
               <input
                 type="radio"
-                name="method"
+                name={`method-${paymentOption}`}
                 value={m}
                 checked={method === m}
                 onChange={() => setMethod(m)}
@@ -181,7 +181,11 @@ export function CheckoutButton({
         onClick={handleCheckout}
         className="w-full rounded-lg bg-brand-600 px-6 py-3 text-base font-semibold text-white shadow-sm hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
       >
-        {loading ? "Redirigiendo..." : "Pagar entrada"}
+        {loading
+          ? "Redirigiendo..."
+          : paymentOption === "reservation"
+            ? "Apartar mi lugar"
+            : "Pagar entrada completa"}
       </button>
 
       <p className="mt-3 text-xs text-ink-muted text-center">

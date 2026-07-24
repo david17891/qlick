@@ -256,17 +256,55 @@ export default async function PayEventPage({
                   eventTitle={event.title}
                   amountMxn={event.priceMXN}
                 />
+              ) : reservationAmount !== null ? (
+                // FIX 2026-07-24 (auditoría David ronda 4): cuando el
+                // evento tiene apartado configurado, mostramos DOS
+                // botones (apartado + pago completo) para que el
+                // asistente elija. Cada uno llama a
+                // /api/payments/create-checkout con su
+                // `paymentOption` y `chargeAmountMxn` correctos. El
+                // server resuelve el monto desde event_rules (no
+                // desde constantes). NO modificamos checkout ni
+                // webhook — solo la UI que los renderiza.
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm text-ink-muted mb-1">
+                      Aparta <strong>${reservationAmount.toLocaleString("es-MX")} {event.currency}</strong> por tu entrada a <strong>{event.title}</strong>. El saldo de <strong>${balanceAmount?.toLocaleString("es-MX")} {event.currency}</strong> se liquida el día del evento.
+                    </p>
+                    <CheckoutButton
+                      eventSlug={event.slug}
+                      eventTitle={event.title}
+                      amountMxn={event.priceMXN}
+                      chargeAmountMxn={reservationAmount}
+                      confirmationId={validatedConfirmationId}
+                      paymentOption="reservation"
+                    />
+                  </div>
+                  <div className="pt-3 border-t border-brand-100">
+                    <p className="text-sm text-ink-muted mb-1">
+                      O paga los <strong>${event.priceMXN.toLocaleString("es-MX")} {event.currency}</strong> completos de una sola exhibici&oacute;n.
+                    </p>
+                    <CheckoutButton
+                      eventSlug={event.slug}
+                      eventTitle={event.title}
+                      amountMxn={event.priceMXN}
+                      chargeAmountMxn={event.priceMXN}
+                      confirmationId={validatedConfirmationId}
+                      paymentOption="full"
+                    />
+                  </div>
+                </div>
               ) : (
                 <CheckoutButton
                   eventSlug={event.slug}
                   eventTitle={event.title}
                   amountMxn={event.priceMXN}
-                  chargeAmountMxn={reservationAmount ?? event.priceMXN}
+                  chargeAmountMxn={event.priceMXN}
                   // FIX 2026-07-18: pasar confirmationId al
                   // checkout para que el webhook atribuya el
                   // cargo a la confirmation correcta.
                   confirmationId={validatedConfirmationId}
-                  paymentOption={paymentOption}
+                  paymentOption="full"
                 />
               )}
               {validatedConfirmationId && confirmedEmail && (
