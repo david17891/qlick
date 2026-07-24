@@ -42,6 +42,7 @@ import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { sendEmail } from "@/lib/email/brevo-client";
 import { renderPaymentConfirmedEmail } from "@/lib/email/templates/payment-confirmed";
 import { validatePaymentCents } from "./event-payment-progress";
+import { getStripeClient as getStripeClientDual, type StripeMode } from "./stripe-provider";
 
 /* ------------------------------------------------------------------ */
 /*  Tipos publicos                                                    */
@@ -160,22 +161,29 @@ export function detectTokenKind(
   return "unknown";
 }
 
-/** Cliente Stripe (lazy). Lee STRIPE_SECRET_KEY del env. */
+/**
+ * Cliente Stripe (lazy).
+ *
+ * DEPRECATED 2026-07-24 v3: este helper monolítico se reemplaza por el
+ * selector dual-mode `getStripeClientDual(mode)` de `stripe-provider.ts`
+ * (correccion #5 v3). La razon: queremos derivar test/live desde
+ * `event_rules.payment_mode`, no del env global. CANACO usa live,
+ * otros eventos usan test. Esta funcion queda solo para retrocompat
+ * y siempre retorna el cliente de test.
+ */
 function getStripeClient(): Stripe {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key) {
-    throw new Error(
-      "STRIPE_SECRET_KEY no esta configurado. Define la key en .env.local o Vercel.",
-    );
-  }
-  return new Stripe(key, {
-    // Cast al union de apiVersion del SDK. Si Stripe deprecia esta
-    // version, el casteo aqui sera el unico lugar a tocar (mismo
-    // patron que stripe-provider.ts).
-    apiVersion: "2025-09-30.clover" as never,
-    typescript: true,
-    appInfo: { name: "Qlick LMS", version: "1.0.0" },
-  });
+  return getStripeClientDual("test");
+}
+
+/**
+ * FIX 2026-07-24 v3 (correccion #5 v3): derivar el modo Stripe desde
+ * `event_rules.payment_mode`. Si el evento no tiene el flag, default
+ * a "test" (modo seguro, sin cargos reales).
+ */
+function resolveStripeMode(eventRules: unknown): StripeMode {
+  if (!eventRules || typeof eventRules !== "object") return "test";
+  const er = eventRules as { payment_mode?: string };
+  return er.payment_mode === "live" ? "live" : "test";
 }
 
 /** Server-only flag para evitar ejecucion en el bundle del cliente. */
@@ -198,6 +206,14 @@ function isServerOnly(): boolean {
  * - `spei_clabe`   -> similar, query por CLABE.
  * - `spei_reference` -> similar, query por numero de referencia.
  *
+ * FIX 2026-07-24 v3 (correccion #5 v3): selector dual-mode test/live.
+ * El caller pasa el modo (derivado de `event_rules.payment_mode`).
+ *
+ * Ademas (correccion #5 v3): valida que el PI este en status
+ * `succeeded`, currency=mxn y amount exacto en centavos (no permite
+ * discrepancias). Esto evita que un admin apruebe un PI que en
+ * realidad fue por otro monto.
+ *
  * Si la verificacion pasa, devolvemos el `payment_intent_id` y el monto
  * en centavos para que el caller lo use al crear el `payments` row.
  *
@@ -208,6 +224,7 @@ function isServerOnly(): boolean {
 export async function verifyStripeToken(
   method: ManualPaymentMethod,
   input: string,
+  options?: { mode?: StripeMode; expectedAmountCentavos?: number },
 ): Promise<TokenVerificationResult> {
   if (!isServerOnly()) {
     return { ok: false, error: "verifyStripeToken solo corre en server." };
@@ -220,9 +237,11 @@ export async function verifyStripeToken(
     };
   }
 
+  const mode = options?.mode ?? "test";
+
   let stripe: Stripe;
   try {
-    stripe = getStripeClient();
+    stripe = getStripeClientDual(mode);
   } catch (err) {
     return {
       ok: false,
@@ -233,16 +252,51 @@ export async function verifyStripeToken(
   try {
     if (kind === "pi") {
       const pi = await stripe.paymentIntents.retrieve(input.trim());
+      // FIX 2026-07-24 v3 (correccion #5 v3): validaciones estrictas
+      // sobre el PaymentIntent:
+      //  1. status == "succeeded"
+      //  2. currency == "mxn" (siempre MXN en este codebase)
+      //  3. amount exacto en centavos (si el caller paso
+      //     expectedAmountCentavos)
+      const piAmountCentavos = typeof pi.amount === "number" ? pi.amount : 0;
+      const piCurrency = typeof pi.currency === "string" ? pi.currency.toLowerCase() : "";
+      const expectedAmount = options?.expectedAmountCentavos;
+      if (pi.status !== "succeeded") {
+        return {
+          ok: false,
+          paymentIntentId: pi.id,
+          stripeStatus: pi.status,
+          amountCentavos: piAmountCentavos,
+          customerEmail: pi.receipt_email ?? null,
+          error: `El PaymentIntent ${pi.id} esta en status '${pi.status}', no 'succeeded'. Pídele al cliente que confirme el pago.`,
+        };
+      }
+      if (piCurrency !== "mxn") {
+        return {
+          ok: false,
+          paymentIntentId: pi.id,
+          stripeStatus: pi.status,
+          amountCentavos: piAmountCentavos,
+          customerEmail: pi.receipt_email ?? null,
+          error: `El PaymentIntent ${pi.id} esta en moneda '${pi.currency}', no 'mxn'. No se permite registrar pagos en otra moneda.`,
+        };
+      }
+      if (typeof expectedAmount === "number" && piAmountCentavos !== expectedAmount) {
+        return {
+          ok: false,
+          paymentIntentId: pi.id,
+          stripeStatus: pi.status,
+          amountCentavos: piAmountCentavos,
+          customerEmail: pi.receipt_email ?? null,
+          error: `El monto del PaymentIntent ($${(piAmountCentavos / 100).toLocaleString("es-MX")} MXN) no coincide con el monto a registrar ($${(expectedAmount / 100).toLocaleString("es-MX")} MXN).`,
+        };
+      }
       return {
-        ok: pi.status === "succeeded",
+        ok: true,
         paymentIntentId: pi.id,
         stripeStatus: pi.status,
-        amountCentavos: typeof pi.amount === "number" ? pi.amount : 0,
+        amountCentavos: piAmountCentavos,
         customerEmail: pi.receipt_email ?? null,
-        error:
-          pi.status === "succeeded"
-            ? undefined
-            : `El PaymentIntent ${pi.id} esta en status '${pi.status}', no 'succeeded'. Pedile al cliente que confirme el pago.`,
       };
     }
 
@@ -268,16 +322,47 @@ export async function verifyStripeToken(
         error: `No encontre ningun PaymentIntent en Stripe con ${kind} = ${input}. Verifica que el cliente haya pagado.`,
       };
     }
+    // FIX 2026-07-24 v3 (correccion #5 v3): validaciones estrictas
+    // (mismas que el caso pi directo arriba).
+    const piAmountCentavos2 = typeof pi.amount === "number" ? pi.amount : 0;
+    const piCurrency2 = typeof pi.currency === "string" ? pi.currency.toLowerCase() : "";
+    const expectedAmount2 = options?.expectedAmountCentavos;
+    if (pi.status !== "succeeded") {
+      return {
+        ok: false,
+        paymentIntentId: pi.id,
+        stripeStatus: pi.status,
+        amountCentavos: piAmountCentavos2,
+        customerEmail: pi.receipt_email ?? null,
+        error: `El PaymentIntent ${pi.id} esta en status '${pi.status}', no 'succeeded'. Pídele al cliente que confirme el pago.`,
+      };
+    }
+    if (piCurrency2 !== "mxn") {
+      return {
+        ok: false,
+        paymentIntentId: pi.id,
+        stripeStatus: pi.status,
+        amountCentavos: piAmountCentavos2,
+        customerEmail: pi.receipt_email ?? null,
+        error: `El PaymentIntent ${pi.id} esta en moneda '${pi.currency}', no 'mxn'. No se permite registrar pagos en otra moneda.`,
+      };
+    }
+    if (typeof expectedAmount2 === "number" && piAmountCentavos2 !== expectedAmount2) {
+      return {
+        ok: false,
+        paymentIntentId: pi.id,
+        stripeStatus: pi.status,
+        amountCentavos: piAmountCentavos2,
+        customerEmail: pi.receipt_email ?? null,
+        error: `El monto del PaymentIntent ($${(piAmountCentavos2 / 100).toLocaleString("es-MX")} MXN) no coincide con el monto a registrar ($${(expectedAmount2 / 100).toLocaleString("es-MX")} MXN).`,
+      };
+    }
     return {
-      ok: pi.status === "succeeded",
+      ok: true,
       paymentIntentId: pi.id,
       stripeStatus: pi.status,
-      amountCentavos: typeof pi.amount === "number" ? pi.amount : 0,
+      amountCentavos: piAmountCentavos2,
       customerEmail: pi.receipt_email ?? null,
-      error:
-        pi.status === "succeeded"
-          ? undefined
-          : `El PaymentIntent ${pi.id} esta en status '${pi.status}', no 'succeeded'. Pedile al cliente que confirme el pago.`,
     };
   } catch (err) {
     return {
@@ -425,16 +510,21 @@ export async function registerManualPayment(
   // errores de lectura. El helper de centavos (validatePaymentCents)
   // valida el monto en centavos enteros para evitar drift por coma
   // flotante.
+  //
+  // FIX 2026-07-24 v3 (correccion #1 v3): SELECT estricto compatible
+  // con el esquema real de `event_payments`. NO incluir
+  // `payment_purpose` top-level (no existe como columna). payment_purpose
+  // vive en metadata.payment_purpose y lo lee el helper.
   type PayRowLocal = {
     id: string;
     amount_mxn: number;
     status: string;
-    payment_purpose: string | null;
     metadata: unknown;
+    stripe_payment_intent_id: string | null;
   };
   const { data: prevPaymentsRaw, error: prevPayErr } = await supabase
     .from("event_payments" as never)
-    .select("id, amount_mxn, status, payment_purpose, metadata")
+    .select("id, amount_mxn, status, metadata, stripe_payment_intent_id")
     .eq("confirmation_id", input.confirmationId);
   // Falla cerrado: si la consulta falla, NO continuar (no
   // podemos calcular el acumulado ni validar contra sobrepago).
@@ -570,6 +660,11 @@ export async function registerManualPayment(
   }
 
   // 2. Verificacion contra Stripe (solo si method lo amerita y hay input).
+  // FIX 2026-07-24 v3 (correccion #5 v3): pasamos mode (derivado de
+  // event_rules.payment_mode) y expectedAmountCentavos (monto del
+  // nuevo pago) para que verifyStripeToken valide status, currency y
+  // amount exacto contra Stripe.
+  const stripeMode = resolveStripeMode(evTyped.event_rules);
   let verification: TokenVerificationResult | null = null;
   if (
     (input.method === "card" ||
@@ -578,7 +673,10 @@ export async function registerManualPayment(
     input.voucherInput &&
     input.voucherInput.trim().length > 0
   ) {
-    verification = await verifyStripeToken(input.method, input.voucherInput);
+    verification = await verifyStripeToken(input.method, input.voucherInput, {
+      mode: stripeMode,
+      expectedAmountCentavos: newPaymentCentavos,
+    });
   }
 
   // 3. Determinar el status final del PAGO (no del confirmation).
@@ -636,6 +734,37 @@ export async function registerManualPayment(
   ) as "paid_manual" | "pending";
 
   const amountCentavos = Math.round(input.amountMXN * 100);
+
+  // 3.5 FIX 2026-07-24 v3 (correccion #5 v3): pre-flight check para
+  // `stripe_payment_intent_id`. Si el admin proporciono un PI valido
+  // (verificacion paso contra Stripe), verificamos que NO este ya
+  // asociado a otro `event_payment` de cualquier confirmado. Esto
+  // evita registrar el mismo PI dos veces (replay attack / admin
+  // confundiendose). La columna `stripe_payment_intent_id` se
+  // persiste aqui (no se guardaba antes).
+  const verifiedPiId = verification?.ok ? verification.paymentIntentId ?? null : null;
+  if (verifiedPiId) {
+    const { data: existingPi, error: piCheckErr } = await supabase
+      .from("event_payments" as never)
+      .select("id, confirmation_id")
+      .eq("stripe_payment_intent_id", verifiedPiId)
+      .neq("confirmation_id", input.confirmationId)
+      .limit(1)
+      .maybeSingle();
+    if (piCheckErr) {
+      return {
+        ok: false,
+        error: `Error validando que el PaymentIntent no este duplicado: ${piCheckErr.message}. Por seguridad, no se registra el pago.`,
+      };
+    }
+    if (existingPi) {
+      return {
+        ok: false,
+        error: `El PaymentIntent ${verifiedPiId} ya esta registrado para otro confirmado (event_payment ${(existingPi as { id: string }).id}). No se puede reutilizar.`,
+      };
+    }
+  }
+
   const paymentMetadata: Record<string, unknown> = {
     manual: true,
     actor_email: input.actorEmail,
@@ -676,6 +805,9 @@ export async function registerManualPayment(
       currency: "MXN",
       external_reference: externalReference,
       idempotency_key: idempotencyKey,
+      // FIX 2026-07-24 v3: persistir stripe_payment_intent_id en su
+      // columna real. Antes solo quedaba en metadata.verification.
+      stripe_payment_intent_id: verifiedPiId,
       // payment_purpose se persiste en `metadata` (ver
       // paymentMetadata arriba). NO hay columna top-level todavia.
       metadata: paymentMetadata,
