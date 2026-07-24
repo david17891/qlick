@@ -41,6 +41,7 @@ import { grantEventAccess } from "@/lib/lms/event-entitlements";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { sendEmail } from "@/lib/email/brevo-client";
 import { renderPaymentConfirmedEmail } from "@/lib/email/templates/payment-confirmed";
+import { validatePaymentCents } from "./event-payment-progress";
 
 /* ------------------------------------------------------------------ */
 /*  Tipos publicos                                                    */
@@ -82,6 +83,21 @@ export interface ManualPaymentInput {
   voucherInput?: string | null;
   /** Monto cobrado. Default = event.price_mxn. */
   amountMXN: number;
+  /**
+   * Proposito del pago. Sprint 2026-07-24 (event-payment-progress):
+   * diferencia entre apartado, saldo y pago completo. El helper
+   * valida que el monto no exceda el maximo permitido segun el
+   * proposito y el acumulado actual.
+   *
+   * - `reservation` (apartado): monto <= event_rules.reservation_amount_mxn.
+   * - `full` (pago completo): monto <= event.price_mxn - collected.
+   * - `balance` (saldo): monto <= event.price_mxn - collected.
+   *
+   * Si el caller no lo pasa, default = "full" (compat con sprints
+   * anteriores). El server siempre debe derivar `payment_purpose`
+   * de los pagos existentes + el flag de apartado del evento.
+   */
+  paymentPurpose?: "full" | "reservation" | "balance";
   /** Notas libres del admin. */
   notes?: string | null;
   /** Email del admin que registra (del session actual). */
@@ -351,11 +367,205 @@ export async function registerManualPayment(
     };
   }
 
-  // Si ya esta paid con un pago previo, abortamos para evitar doble cobro.
-  if (confTyped.payment_status === "paid") {
+  // 1.5 FIX 2026-07-24 (sprint event-payment-progress): leemos el
+  // evento (total + event_rules) + los pagos previos del confirmado
+  // para:
+  //   - Derivar el `payment_purpose` si el caller no lo paso.
+  //   - Validar que el monto no exceda el maximo permitido segun el
+  //     proposito (apartado, saldo, pago completo).
+  //   - Determinar el `payment_status` final del `event_confirmation`
+  //     segun el acumulado TOTAL (no solo este pago).
+  type EventRowLocal = {
+    price_mxn: number | null;
+    event_rules: unknown;
+  };
+  const { data: evRow, error: evErr } = await supabase
+    .from("events")
+    .select("price_mxn, event_rules")
+    .eq("id", input.eventId)
+    .maybeSingle();
+  if (evErr || !evRow) {
     return {
       ok: false,
-      error: `El confirmado ${confTyped.name} ya esta marcado como pagado. Si necesitas re-registrar, primero revoca el pago previo.`,
+      error: `Evento ${input.eventId} no existe.`,
+    };
+  }
+  const evTyped = evRow as unknown as EventRowLocal;
+  const totalMXN =
+    typeof evTyped.price_mxn === "number" && Number.isFinite(evTyped.price_mxn)
+      ? Math.max(0, evTyped.price_mxn)
+      : 0;
+  if (totalMXN <= 0) {
+    return {
+      ok: false,
+      error: "Este evento es gratuito. No se permite registrar pagos manuales.",
+    };
+  }
+  // Extraer flag de apartado del JSONB event_rules.
+  const er =
+    evTyped.event_rules && typeof evTyped.event_rules === "object"
+      ? (evTyped.event_rules as {
+          reservation_enabled?: boolean;
+          reservation_amount_mxn?: number;
+        })
+      : null;
+  const eventHasReservation = er?.reservation_enabled === true;
+  const configuredReservationMXN =
+    typeof er?.reservation_amount_mxn === "number" &&
+    Number.isFinite(er.reservation_amount_mxn) &&
+    er.reservation_amount_mxn > 0
+      ? er.reservation_amount_mxn
+      : 0;
+
+  // 1.6 Leer los pagos previos del confirmado para calcular el
+  // acumulado. Esto es necesario para:
+  //   - Validar que el nuevo pago no haga overpayment.
+  //   - Determinar el `payment_status` final del confirmation.
+  // FIX 2026-07-24 v2 (correcciones #1, #7): falla cerrado ante
+  // errores de lectura. El helper de centavos (validatePaymentCents)
+  // valida el monto en centavos enteros para evitar drift por coma
+  // flotante.
+  type PayRowLocal = {
+    id: string;
+    amount_mxn: number;
+    status: string;
+    payment_purpose: string | null;
+    metadata: unknown;
+  };
+  const { data: prevPaymentsRaw, error: prevPayErr } = await supabase
+    .from("event_payments" as never)
+    .select("id, amount_mxn, status, payment_purpose, metadata")
+    .eq("confirmation_id", input.confirmationId);
+  // Falla cerrado: si la consulta falla, NO continuar (no
+  // podemos calcular el acumulado ni validar contra sobrepago).
+  if (prevPayErr) {
+    return {
+      ok: false,
+      error: `Error leyendo pagos previos del confirmado: ${prevPayErr.message}. Por seguridad, no se registra el pago.`,
+    };
+  }
+  const prevPayments = (prevPaymentsRaw ?? []) as unknown as PayRowLocal[];
+
+  // Calcular el acumulado de pagos cobrados.
+  let prevCollected = 0;
+  for (const p of prevPayments) {
+    if (p.status === "approved" || p.status === "paid_manual") {
+      prevCollected += Number(p.amount_mxn) || 0;
+    }
+  }
+  // Saldo real ANTES de este pago.
+  const realBalance = Math.max(0, totalMXN - prevCollected);
+  // El acumulado DESPUES de este pago (asumiendo que el status final
+  // es "paid" o "paid_manual"). Si queda pending_verification, el
+  // acumulado "visible" para el confirmation.payment_status no
+  // incluye este pago, pero la validacion de sobrepago SI lo
+  // considera (porque la intencion del admin fue cobrarlo).
+  const newCollected = prevCollected + Math.max(0, input.amountMXN);
+  const newBalance = Math.max(0, totalMXN - newCollected);
+
+  // 1.7 Derivar el paymentPurpose si el caller no lo paso. Default
+  // = "full" (compat con sprints anteriores).
+  const requestedPurpose = input.paymentPurpose ?? "full";
+
+  // 1.8 Validacion en centavos enteros (correccion #3):
+  // regla general 0 < nuevoPago <= saldoReal.
+  // Convertimos a centavos para validar sin drift por coma flotante.
+  const newPaymentCentavos = Math.round(input.amountMXN * 100);
+  const realBalanceCentavos = Math.round(realBalance * 100);
+  const totalCentavos = Math.round(totalMXN * 100);
+  const configuredReservationCentavos = Math.round(configuredReservationMXN * 100);
+
+  if (requestedPurpose === "reservation") {
+    if (!eventHasReservation) {
+      return {
+        ok: false,
+        error: "Este evento no tiene apartado configurado. Usa 'Pago completo' en lugar de 'Apartado'.",
+      };
+    }
+    if (prevCollected > 0) {
+      return {
+        ok: false,
+        error: "Este confirmado ya tiene un pago registrado. Para registrar un segundo apartado, primero revoca el pago previo.",
+      };
+    }
+    // FIX 2026-07-24 v2 (correccion #3): exigir exactamente el
+    // apartado configurado. El admin puede usar un monto distinto
+    // solo si pasa por una accion administrativa explicita (futuro).
+    if (configuredReservationCentavos > 0) {
+      if (newPaymentCentavos > configuredReservationCentavos) {
+        return {
+          ok: false,
+          error: `El monto del apartado ($${(newPaymentCentavos / 100).toLocaleString("es-MX")} MXN) excede el apartado configurado del evento ($${(configuredReservationCentavos / 100).toLocaleString("es-MX")} MXN).`,
+        };
+      }
+    }
+  } else if (requestedPurpose === "balance") {
+    // Correccion #3: balance solo si ya hay pago parcial y <= saldo real.
+    if (prevCollected <= 0) {
+      return {
+        ok: false,
+        error: "Para registrar un Saldo, el confirmado debe tener al menos un pago parcial previo (apartado). Si el evento no tiene pagos, usa 'Pago completo'.",
+      };
+    }
+    if (newPaymentCentavos > realBalanceCentavos) {
+      return {
+        ok: false,
+        error: `El monto del saldo ($${(newPaymentCentavos / 100).toLocaleString("es-MX")} MXN) no puede exceder el saldo real pendiente ($${(realBalanceCentavos / 100).toLocaleString("es-MX")} MXN).`,
+      };
+    }
+  } else if (requestedPurpose === "full") {
+    // Correccion #3: full solo si NO hay pagos previos Y el monto
+    // equivale al saldo total (no menos, no mas).
+    if (prevCollected > 0) {
+      return {
+        ok: false,
+        error: "Para registrar un Pago completo, el confirmado NO debe tener pagos previos. Si ya hay un apartado, registra el Saldo en lugar del Full.",
+      };
+    }
+    if (newPaymentCentavos !== totalCentavos) {
+      return {
+        ok: false,
+        error: `El monto del pago completo debe ser exactamente $${(totalCentavos / 100).toLocaleString("es-MX")} MXN. Monto recibido: $${(newPaymentCentavos / 100).toLocaleString("es-MX")} MXN.`,
+      };
+    }
+  }
+
+  // FIX 2026-07-24 v2 (correccion #3): si saldoReal == 0, bloquear
+  // cualquier pago nuevo aunque el status legacy del confirmation
+  // sea inconsistente.
+  if (realBalanceCentavos <= 0) {
+    return {
+      ok: false,
+      error: "El saldo real ya es $0. El confirmado esta pagado completo. No registres otro pago (usa revokeManualPayment si necesitas reasignar).",
+    };
+  }
+
+  // Validacion final con validatePaymentCents del helper (defense in
+  // depth: la regla 0 < nuevoPago <= saldoReal se verifica aca
+  // tambien, en centavos).
+  const centsValidation = validatePaymentCents({
+    newPaymentCentavos,
+    realBalanceCentavos,
+    purpose: requestedPurpose,
+    configuredReservationCentavos:
+      requestedPurpose === "reservation"
+        ? configuredReservationCentavos
+        : undefined
+  });
+  if (!centsValidation.valid) {
+    return {
+      ok: false,
+      error: centsValidation.error ?? "Validacion de centavos rechazo el pago."
+    };
+  }
+
+  // Si ya esta paid con un pago previo, abortamos para evitar doble
+  // cobro al total. El caller deberia usar revokeManualPayment primero
+  // o registrar un saldo (no un full adicional).
+  if (confTyped.payment_status === "paid" && newBalance > 0.01) {
+    return {
+      ok: false,
+      error: `El confirmado ${confTyped.name} ya esta marcado como pagado. Para re-registrar, primero revoca el pago previo.`,
     };
   }
 
@@ -371,7 +581,7 @@ export async function registerManualPayment(
     verification = await verifyStripeToken(input.method, input.voucherInput);
   }
 
-  // 3. Determinar el status final del pago.
+  // 3. Determinar el status final del PAGO (no del confirmation).
   // - cash / transfer: siempre 'paid' (admin confirma a mano).
   // - card/oxxo/spei con voucher que paso Stripe: 'paid'.
   // - card/oxxo/spei con voucher que NO paso: 'pending_verification'.
@@ -405,6 +615,16 @@ export async function registerManualPayment(
   // Mapping de status (event_payments_status_check):
   //   - "paid"               → "paid_manual" (admin confirma a mano)
   //   - "pending_verification" → "pending" (con metadata que documenta)
+  //
+  // FIX 2026-07-24: persistimos `payment_purpose` dentro de
+  // `metadata` (no como columna top-level). El brief de Fase 2
+  // explicito: "Exponer paymentPurpose desde metadata.payment_purpose.
+  // Mantener compatibilidad con registros antiguos donde no exista
+  // ese metadata." Como `event_payments` no tiene columna
+  // `payment_purpose` (no hay migracion para eso todavia), lo
+  // guardamos en metadata JSONB. El helper
+  // `event-payment-progress.ts` lee `metadata.payment_purpose` con
+  // fallback al flag de apartado del evento (compat legacy).
   const eventPaymentMethod = (
     input.method === "cash" ? "cash" :
     input.method === "transfer" ? "transfer" :
@@ -421,6 +641,7 @@ export async function registerManualPayment(
     actor_email: input.actorEmail,
     notes: input.notes ?? null,
     original_method: input.method,
+    payment_purpose: requestedPurpose,
     verification_status: finalPaymentStatus,
     verification: verification
       ? {
@@ -455,6 +676,8 @@ export async function registerManualPayment(
       currency: "MXN",
       external_reference: externalReference,
       idempotency_key: idempotencyKey,
+      // payment_purpose se persiste en `metadata` (ver
+      // paymentMetadata arriba). NO hay columna top-level todavia.
       metadata: paymentMetadata,
     } as never)
     .select("id")
@@ -472,12 +695,19 @@ export async function registerManualPayment(
   const paymentId = (payment as unknown as { id: string }).id;
 
   // 5. Crear/actualizar event_access.
-  // grantEventAccess ya es idempotente. Si ya habia uno active del mismo
-  // (user_id, event_id), actualiza el granted_reason. Como el user_id
-  // es null aca (no tenemos lead), la logica interna maneja eso.
-  // Workaround: si no hay user_id (guest checkout manual), el event_access
-  // queda con user_id=null y el bot puede link-earlo despues cuando el
-  // cliente se identifique.
+  // FIX 2026-07-24: cuando el acumulado llega al total, promovemos
+  // el source a `event_purchase` (acceso completo por compra).
+  // Antes SIEMPRE era `manual_event_admin`, lo cual no distinguia
+  // entre "ya pago completo" y "admin lo forzo". Ahora:
+  //   - Acumulado < total: `manual_event_admin` (pago parcial,
+  //     todavia falta liquidar).
+  //   - Acumulado >= total: `event_purchase` (compra confirmada).
+  // grantEventAccess ya es idempotente. Si ya habia uno active del
+  // mismo (user_id, event_id), actualiza el granted_reason.
+  // Workaround: si no hay user_id (guest checkout manual), el
+  // event_access queda con user_id=null y el bot puede link-earlo
+  // despues cuando el cliente se identifique.
+  const isFullyPaid = newBalance <= 0.01;
   let eventAccessId: string | undefined;
   try {
     // Si el email del confirmado matchea un user en auth.users, lo
@@ -491,14 +721,19 @@ export async function registerManualPayment(
       if (rpcId) userId = rpcId as string;
     }
     if (userId) {
+      const accessSource = isFullyPaid
+        ? "event_purchase"
+        : "manual_event_admin";
       const access = await grantEventAccess({
         userId,
         eventId: input.eventId,
-        source: "manual_event_admin",
+        source: accessSource,
         paymentId: paymentId,
-        grantedReason: `manual_admin_${input.method}_${new Date()
-          .toISOString()
-          .slice(0, 16)}`,
+        grantedReason: isFullyPaid
+          ? `manual_admin_full_${new Date().toISOString().slice(0, 16)}`
+          : `manual_admin_${requestedPurpose}_${new Date()
+              .toISOString()
+              .slice(0, 16)}`,
       });
       eventAccessId = access.id;
     }
@@ -514,12 +749,40 @@ export async function registerManualPayment(
     );
   }
 
-  // 6. Marcar event_confirmations.payment_status. Cast a `as never`
-  //    porque el typegen esta stale (la columna existe en DB post
-  //    migration 20260715014706).
+  // 6. FIX 2026-07-24 (sprint event-payment-progress): el
+  // `event_confirmation.payment_status` se calcula segun el
+  // ACUMULADO TOTAL del confirmado, no solo este pago. Antes se
+  // ponia siempre "paid" cuando el status del row era "paid" (lo
+  // cual marcaba como pagado un confirmado que solo habia pagado el
+  // apartado). Ahora:
+  //   - Si el acumulado >= total Y la verificacion (si aplica)
+  //     paso: `paid` (o `paid_manual` si fue cash/transfer).
+  //   - Si la verificacion no paso: `pending_verification`.
+  //   - Si el acumulado < total: `pending` (NO se promueve a paid
+  //     hasta que llegue al total).
+  //
+  // NOTA: `event_confirmation.payment_status` es el legacy de
+  // sprint pagos-manuales. La UI nueva usa
+  // `confirmationProgress.progress` (derivado de los pagos via
+  // helper) que es el source-of-truth. Pero mantenemos
+  // `payment_status` actualizado para compat con queries legacy
+  // (ej. el bot que filtra confirmados con `payment_status=pending`
+  // para no enviar el QR antes del pago completo).
+  let finalConfirmationStatus: "paid" | "paid_manual" | "pending" | "pending_verification" | "revoked" = "pending";
+  if (finalPaymentStatus === "pending_verification") {
+    finalConfirmationStatus = "pending_verification";
+  } else if (isFullyPaid) {
+    finalConfirmationStatus =
+      input.method === "cash" || input.method === "transfer"
+        ? "paid_manual"
+        : "paid";
+  } else {
+    finalConfirmationStatus = "pending";
+  }
+
   const { error: updateErr } = await supabase
     .from("event_confirmations")
-    .update({ payment_status: finalPaymentStatus } as never)
+    .update({ payment_status: finalConfirmationStatus } as never)
     .eq("id", input.confirmationId);
 
   if (updateErr) {
@@ -541,13 +804,20 @@ export async function registerManualPayment(
       event_id: input.eventId,
       method: input.method,
       amount_mxn: input.amountMXN,
+      payment_purpose: requestedPurpose,
       voucher_input_kind: detectTokenKind(input.method, input.voucherInput),
       stripe_payment_intent_id: verification?.paymentIntentId ?? null,
       stripe_verification_ok: verification?.ok ?? null,
       final_payment_status: finalPaymentStatus,
+      final_confirmation_status: finalConfirmationStatus,
+      accumulated_after_payment_mxn: newCollected,
+      balance_due_after_payment_mxn: newBalance,
     },
     before: { payment_status: confTyped.payment_status },
-    after: { payment_status: finalPaymentStatus, payment_id: paymentId },
+    after: {
+      payment_status: finalConfirmationStatus,
+      payment_id: paymentId,
+    },
   });
 
   // 8. Email transaccional: "recibimos tu pago". Solo cuando el pago
