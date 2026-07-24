@@ -311,6 +311,10 @@ export async function POST(req: NextRequest) {
   // Stripe sin comprobar ownership. Una confirmation de otro evento podría
   // desviar un pago y entregar acceso a la persona equivocada.
   let validatedConfirmationId: string | undefined;
+  // FIX 2026-07-24 v3 (correccion #4 v3): cleanup helper. Se
+  // reasigna dentro del bloque de evento (si productKind=event).
+  // Para cursos, queda undefined y el typeof check lo protege.
+  let cleanupIntent: (() => void) | undefined;
   if (productKind === "event" && typeof body.confirmationId === "string" && body.confirmationId) {
     const supabase = createSupabaseAdminClient();
     const { data: confirmation, error: confirmationError } = await supabase
@@ -386,6 +390,137 @@ export async function POST(req: NextRequest) {
         },
         { status: 409 }
       );
+    }
+
+    // FIX 2026-07-24 v3 (correccion #4 v3): proteccion contra cargos
+    // duplicados por concurrencia. ANTES: si dos requests POST llegan
+    // casi al mismo tiempo con el mismo confirmationId+paymentOption,
+    // ambos pasaban la verificacion de ledger (collected=0) y creaban
+    // dos Checkout Sessions en Stripe. AHORA: insertamos un row
+    // "intent" en event_payments con idempotency_key unico derivado
+    // de confirmationId + paymentOption + balanceVersion (cambia si
+    // cambia el saldo). Si el INSERT falla por unique constraint, hay
+    // otro intent en proceso: devolvemos 409 con el session id
+    // existente para que el cliente pueda reusar.
+    //
+    // El unique index vive en migration
+    // 20260724140000_event_payments_intent_idempotency.sql (entregable
+    // para auditoria, NO aplicada a produccion todavia). Aqui
+    // escribimos el codigo asumiendo que la migration esta aplicada.
+    //
+    // NOTA: el codigo NO inserta a event_payments como un pago real.
+    // El status='pending' indica que es solo un intent. El webhook
+    // de Stripe lo actualiza a 'approved' cuando el cargo se confirma,
+    // o lo borramos a 'cancelled' si el checkout creation falla.
+    const balanceVersion = Math.round(realBalance * 100); // centavos
+    const intentIdempotencyKey = `checkout:${body.confirmationId}:${paymentOption}:${balanceVersion}`;
+    const { data: existingIntent, error: existingIntentErr } = await supabase
+      .from("event_payments" as never)
+      .select("id, metadata")
+      .eq("idempotency_key", intentIdempotencyKey)
+      .maybeSingle();
+    if (existingIntentErr && existingIntentErr.code !== "PGRST116") {
+      // PGRST116 = no rows; cualquier OTRO error falla cerrado.
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Error verificando intent previo: ${existingIntentErr.message}. Por seguridad, no iniciamos un nuevo checkout.`,
+        },
+        { status: 500 }
+      );
+    }
+    if (existingIntent) {
+      // Hay un intent previo con el mismo balance version. Devolvemos
+      // 409 con el session id del intent para que el caller lo reuse.
+      const md = (existingIntent as unknown as { metadata?: { stripe_session_id?: string } })
+        .metadata;
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Ya hay un checkout en proceso para esta confirmation con el mismo saldo. Espera unos segundos y reintenta, o usa la URL existente si la tienes.",
+          existingSessionId: md?.stripe_session_id ?? null,
+          alreadyInProgress: true,
+        },
+        { status: 409 }
+      );
+    }
+    // Insertamos el intent. Si la unique constraint (de la migration)
+    // bloquea, otro request gano la carrera. El error.code sera
+    // '23505' (unique_violation). Cualquier otro error es un fallo
+    // cerrado.
+    const { data: intentRow, error: intentErr } = await supabase
+      .from("event_payments" as never)
+      .insert({
+        confirmation_id: body.confirmationId,
+        method: "other",
+        status: "pending",
+        amount_mxn: 0, // placeholder; el cobro real lo crea el webhook
+        currency: "MXN",
+        idempotency_key: intentIdempotencyKey,
+        metadata: {
+          checkout_intent: true,
+          payment_option: paymentOption,
+          balance_version_centavos: balanceVersion,
+          created_at_iso: new Date().toISOString(),
+        },
+      } as never)
+      .select("id")
+      .single();
+    if (intentErr) {
+      if (intentErr.code === "23505") {
+        // Unique constraint violation: otro request gano la carrera.
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Otro checkout para esta confirmation esta en proceso. Reintenta en unos segundos.",
+            alreadyInProgress: true,
+          },
+          { status: 409 }
+        );
+      }
+      // Falla cerrado: cualquier otro error.
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Error creando intent de checkout: ${intentErr.message}. Por seguridad, no iniciamos un nuevo checkout.`,
+        },
+        { status: 500 }
+      );
+    }
+    // Guardamos el intent id en metadata para cleanup si el provider
+    // falla. Lo pasamos via closure.
+    const checkoutIntentId = (intentRow as unknown as { id: string } | null)?.id ?? null;
+    // FIX 2026-07-24 v3: cleanup del intent si algo falla. La funcion
+    // helper cleanupIntent borra el row (o lo marca cancelled) si
+    // llegamos al catch del provider.
+    cleanupIntent = (): void => {
+      if (!checkoutIntentId) return;
+      void supabase
+        .from("event_payments" as never)
+        .update({ status: "cancelled" } as never)
+        .eq("id", checkoutIntentId)
+        .then(({ error: cleanupErr }) => {
+          if (cleanupErr) {
+            // eslint-disable-next-line no-console
+            console.error("[create-checkout] cleanup intent fallo", {
+              intentId: checkoutIntentId,
+              error: cleanupErr.message,
+            });
+          }
+        });
+    };
+    // Anadimos el intent id a validatedConfirmationId para que el
+    // provider lo serialice a metadata y el webhook lo encuentre
+    // cuando confirme el pago.
+    if (checkoutIntentId) {
+      validatedConfirmationId = body.confirmationId;
+      // Adjuntamos el intent id a productRef.metadata via un wrapper
+      // (lo lee el provider abajo).
+      (productRef as { metadata?: Record<string, unknown> }).metadata = {
+        ...((productRef as { metadata?: Record<string, unknown> }).metadata ?? {}),
+        checkout_intent_id: checkoutIntentId,
+        idempotency_key: intentIdempotencyKey,
+      };
     }
   }
 
@@ -551,6 +686,18 @@ export async function POST(req: NextRequest) {
       slug: body.slug,
       error: err instanceof Error ? err.message : String(err),
     });
+    // FIX 2026-07-24 v3 (correccion #4 v3): cleanup del intent si el
+    // provider fallo. Asi no queda un row pending huerfano.
+    if (typeof cleanupIntent === "function") {
+      try {
+        cleanupIntent();
+      } catch (cleanupErr) {
+        // eslint-disable-next-line no-console
+        console.error("[create-checkout] cleanup intent post-error fallo", {
+          error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+        });
+      }
+    }
     return NextResponse.json(
       {
         ok: false,
