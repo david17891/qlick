@@ -326,6 +326,67 @@ export async function POST(req: NextRequest) {
       );
     }
     validatedConfirmationId = confirmation.id;
+
+    // FIX 2026-07-24 v2 (correccion #4): evitar cargos duplicados.
+    // Antes de iniciar un nuevo checkout, leemos el ledger del
+    // confirmation para detectar:
+    //   - Apartado ya cobrado: rechazar purpose=reservation.
+    //   - Pago completo ya cobrado: rechazar cualquier pago.
+    //   - Saldo real 0 (ya liquidado): rechazar cualquier pago.
+    //   - Si ya hay pagos previos y caller pide "full", rechazar
+    //     (debe liquidar el saldo, no pagar el total encima).
+    // Esto previene que un cliente pague $1,000 encima de $500 ya
+    // cobrados como apartado (bug original del sprint).
+    const { data: ledgerRows, error: ledgerErr } = await supabase
+      .from("event_payments" as never)
+      .select("amount_mxn, status, metadata")
+      .eq("confirmation_id", body.confirmationId);
+    if (ledgerErr) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Error leyendo pagos previos del confirmado: ${ledgerErr.message}. Por seguridad, no iniciamos un nuevo checkout.`,
+        },
+        { status: 500 }
+      );
+    }
+    const collected = ((ledgerRows ?? []) as Array<{
+      amount_mxn: number;
+      status: string;
+      metadata: unknown;
+    }>)
+      .filter((p) => p.status === "approved" || p.status === "paid_manual")
+      .reduce((sum, p) => sum + (Number(p.amount_mxn) || 0), 0);
+    const totalMXN = productRef.priceMXN;
+    const realBalance = Math.max(0, totalMXN - collected);
+    if (realBalance <= 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Tu inscripcion ya esta liquidada. No se permiten pagos adicionales.",
+          alreadyPaid: true
+        },
+        { status: 409 }
+      );
+    }
+    if (paymentOption === "reservation" && collected > 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Este confirmado ya tiene un pago registrado. Para liquidar el saldo, usa la opcion 'Pago completo' o registralo manualmente desde el panel admin.",
+        },
+        { status: 409 }
+      );
+    }
+    if (paymentOption === "full" && collected > 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Para liquidar este confirmado, registra el saldo (no el pago completo). El pago completo solo aplica cuando NO hay pagos previos.",
+        },
+        { status: 409 }
+      );
+    }
   }
 
   // 4. Crear el checkout en el provider activo.
