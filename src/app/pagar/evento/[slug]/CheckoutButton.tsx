@@ -19,11 +19,13 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 type MethodKind = "card" | "oxxo" | "spei";
+type PaymentOption = "full" | "reservation";
 
 interface CheckoutButtonProps {
   eventSlug: string;
   eventTitle: string;
   amountMxn: number;
+  chargeAmountMxn?: number;
   /**
    * FIX 2026-07-18 (sprint atribución de pagos, David "el link de
    * pago es generico, como se relaciona con el cliente"): si la
@@ -32,6 +34,7 @@ interface CheckoutButtonProps {
    * esa confirmation (no por email del customer de Stripe).
    */
   confirmationId?: string | null;
+  paymentOption?: PaymentOption;
 }
 
 interface CreateCheckoutResponse {
@@ -54,12 +57,15 @@ export function CheckoutButton({
   eventSlug,
   eventTitle,
   amountMxn,
+  chargeAmountMxn,
   confirmationId,
+  paymentOption = "full",
 }: CheckoutButtonProps) {
   const router = useRouter();
   const [method, setMethod] = useState<MethodKind>("card");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const amountToPay = paymentOption === "reservation" ? chargeAmountMxn ?? amountMxn : amountMxn;
 
   async function handleCheckout() {
     setLoading(true);
@@ -78,6 +84,7 @@ export function CheckoutButton({
           slug: eventSlug,
           productKind: "event",
           method,
+          paymentOption,
           successUrl: `${baseUrl}/pagar/evento/${eventSlug}/exito?session_id={CHECKOUT_SESSION_ID}`,
           cancelUrl: `${baseUrl}/pagar/evento/${eventSlug}?cancelled=1`,
           // FIX 2026-07-18: pasar confirmationId al API para
@@ -131,7 +138,8 @@ export function CheckoutButton({
   return (
     <div>
       <p className="text-sm text-ink-muted mb-4">
-        Paga <strong>${amountMxn} MXN</strong> por tu entrada a{" "}
+        {paymentOption === "reservation" ? "Aparta" : "Paga"}{" "}
+        <strong>${amountToPay.toLocaleString("es-MX")} MXN</strong> por tu entrada a{" "}
         <strong>{eventTitle}</strong>. Elige tu método y te llevamos a la
         página de pago segura.
       </p>

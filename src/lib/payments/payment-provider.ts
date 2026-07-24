@@ -32,6 +32,8 @@ export interface ProductRefBase {
   title: string;
   /** Precio en MXN. En Fase 1 single-price; precios múltiples son Fase 2. */
   priceMXN: number;
+  chargeAmountMXN?: number;
+  paymentPurpose?: "full" | "reservation" | "balance";
 }
 
 export interface ProductRefCourse extends ProductRefBase {

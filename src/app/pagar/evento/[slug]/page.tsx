@@ -59,7 +59,10 @@ export default async function PayEventPage({
   searchParams,
 }: {
   params: { slug: string };
-  searchParams?: { confirmation?: string | string[] };
+  searchParams?: {
+    confirmation?: string | string[];
+    payment_option?: string | string[];
+  };
 }) {
   const eventSlug = params.slug;
   const event = await getEventBySlug(eventSlug);
@@ -155,6 +158,22 @@ export default async function PayEventPage({
     rawConfirmation,
     event.id
   );
+  const reservationAmount =
+    event.eventRules?.reservation_enabled === true &&
+    typeof event.eventRules.reservation_amount_mxn === "number" &&
+    event.eventRules.reservation_amount_mxn > 0 &&
+    event.eventRules.reservation_amount_mxn < event.priceMXN
+      ? event.eventRules.reservation_amount_mxn
+      : null;
+  const requestedPaymentOption =
+    typeof searchParams?.payment_option === "string"
+      ? searchParams.payment_option
+      : Array.isArray(searchParams?.payment_option)
+        ? searchParams.payment_option[0]
+        : null;
+  const paymentOption =
+    requestedPaymentOption === "full" || reservationAmount === null ? "full" : "reservation";
+  const balanceAmount = reservationAmount !== null ? event.priceMXN - reservationAmount : null;
 
   return (
     <>
@@ -206,7 +225,9 @@ export default async function PayEventPage({
                   ${event.priceMXN} {event.currency}
                 </p>
                 <p className="text-[10px] text-ink-muted mt-1 italic">
-                  Pago único. Una vez confirmado, recibís acceso completo al evento.
+                  {reservationAmount !== null
+                    ? `Total del evento: $${event.priceMXN.toLocaleString("es-MX")} ${event.currency}. Para apartar tu lugar paga $${reservationAmount.toLocaleString("es-MX")} ${event.currency}; el saldo de $${balanceAmount?.toLocaleString("es-MX")} se liquida el día del evento.`
+                    : "Pago único. Una vez confirmado, recibirás acceso completo al evento."}
                 </p>
               </div>
             </Card>
@@ -232,17 +253,19 @@ export default async function PayEventPage({
                   eventSlug={event.slug}
                   eventTitle={event.title}
                   amountMxn={event.priceMXN}
+                  chargeAmountMxn={reservationAmount ?? event.priceMXN}
                   // FIX 2026-07-18: pasar confirmationId al
                   // checkout para que el webhook atribuya el
                   // cargo a la confirmation correcta.
                   confirmationId={validatedConfirmationId}
+                  paymentOption={paymentOption}
                 />
               )}
               {validatedConfirmationId && confirmedEmail && (
                 <p className="mt-4 text-xs text-ink-muted italic">
                   Vas a pagar por la entrada registrada a{" "}
                   <strong>{confirmedEmail}</strong>. Si necesitás usar otro
-                  email, contactanos antes de pagar.
+                  email, contáctanos antes de pagar.
                 </p>
               )}
             </Card>

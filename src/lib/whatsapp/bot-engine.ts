@@ -287,14 +287,47 @@ function getActiveEvent(): {
  *   - `interactive_event_inscribir` (línea ~1890)
  *   - `provide_email`        (línea ~3004)
  */
-function noEventsText(): string {
+/**
+ * PARCHE TEMPORAL (HOY - Campaña activada antes de crear evento):
+ * Texto de fallback amigable para capturar datos del lead sin rebotarlo cuando
+ * no existen eventos publicados en DB.
+ *
+ * PARA REVERTIR (una vez creado el nuevo evento hoy):
+ * Restaurar el mensaje original "Por el momento no tenemos eventos próximos publicados...".
+ */
+function noEventsText(leadName?: string): string {
+  const clean = cleanFirstName(leadName);
+  const saludo = clean ? `¡Hola ${clean}!` : "¡Hola!";
   return [
-    "Por el momento no tenemos eventos próximos publicados.",
+    `${saludo} Gracias por escribirnos a Qlick Marketing Digital.`,
     "",
-    "Si te interesa enterarte cuando publiquemos uno, avísame por aquí",
-    "y te aviso. También puedes ver la lista en:",
-    "https://www.qlick.digital/eventos",
+    "Por el momento estamos registrando a las personas interesadas para ponernos en contacto directo contigo a la brevedad y darte atención personalizada.",
+    "Para enviarte la información, ¿nos podrías compartir tu nombre completo y tu correo electrónico?",
   ].join("\n");
+}
+
+/** Términos comerciales del apartado, derivados del evento publicado. */
+function getReservationTerms(event: ActiveEventContext | null): {
+  enabled: boolean;
+  amount: number;
+  balance: number;
+  note: string;
+} {
+  if (!event) return { enabled: false, amount: 0, balance: 0, note: "" };
+  const total = event.priceMxn ?? 0;
+  const amount = event.eventRules?.reservation_enabled === true
+    ? event.eventRules.reservation_amount_mxn
+    : undefined;
+  if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0 || amount >= total) {
+    return { enabled: false, amount: 0, balance: 0, note: "" };
+  }
+  const balance = event.eventRules.balance_amount_mxn ?? total - amount;
+  return {
+    enabled: true,
+    amount,
+    balance,
+    note: event.eventRules.balance_due_note ?? "El saldo se liquida el día del evento.",
+  };
 }
 
 /**
@@ -2029,6 +2062,29 @@ async function buildOpenerPlan(args: {
   const allActiveEventsForOpener = await loadAllActiveEvents().catch(
     () => [] as ActiveEventContext[]
   );
+
+  // PARCHE TEMPORAL (HOY - Campaña activada antes de crear evento):
+  // Si no hay eventos activos publicados en DB, pedir directamente los datos del lead.
+  if (allActiveEventsForOpener.length === 0) {
+    if (!clean) {
+      const bodyText = `${saludo} Soy Qlick, asistente de Qlick Marketing Digital. Gracias por escribirnos.\n\nPor el momento estamos registrando a los interesados para ponernos en contacto directo contigo a la brevedad. Para enviarte toda la información, ¿nos podrías compartir tu nombre completo?`;
+      return {
+        kind: "text",
+        body: bodyText,
+        metadata: { awaiting_field: "name" },
+        send: () => provider.send({ to: phoneNormalized, body: bodyText })
+      };
+    } else {
+      const bodyText = `${saludo} Para ponernos en contacto contigo a la brevedad y brindarte toda la información, ¿nos podrías compartir tu correo electrónico?`;
+      return {
+        kind: "text",
+        body: bodyText,
+        metadata: { awaiting_field: "email" },
+        send: () => provider.send({ to: phoneNormalized, body: bodyText })
+      };
+    }
+  }
+
   const singleEventShortcut =
     realActiveEvent &&
     realActiveEvent.source === "db" &&
@@ -2600,8 +2656,8 @@ case "interactive_event_inscribir": {
               const paymentLine = ps === "paid" || ps === "paid_manual"
                 ? `\n\n✅ Tu pago está confirmado.`
                 : ps === "pending"
-                  ? `\n\n⚠️ Tu pago está pendiente. Te paso el link para pagar: ` +
-                    `${appBaseUrl()}/pagar/evento/${evtReal.slug}?confirmation=${confRow.id}`
+                  ? `\n\n⚠️ Tu pago está pendiente. Te paso el link para apartar tu lugar: ` +
+                    `${appBaseUrl()}/pagar/evento/${evtReal.slug}?confirmation=${confRow.id}&payment_option=reservation`
                   : ps === "pending_verification"
                     ? `\n\n⏳ Estamos verificando tu pago. Te avisamos cuando esté listo.`
                     : ps === "revoked"
@@ -2684,18 +2740,34 @@ case "interactive_event_inscribir": {
       // a 10 rows por sección) para que el lead pueda elegir cualquiera.
       const allEvents = await loadAllActiveEvents().catch(() => [] as ActiveEventContext[]);
       if (allEvents.length === 0) {
-        // No hay eventos publicados. Degradar a texto simple.
-        // FIX 2026-07-16: voseo "tenes" -> tuteo "tienes", y agregar
-        // tildes faltantes ("próximos"). Memory: "Español MX, PROHIBIDO
-        // voseo, OK tuteo".
-        const bodyText =
-          "Por ahora no tenemos eventos publicados, pero estamos preparando los próximos. " +
-          "Te aviso cuando haya algo. Mientras tanto, ¿tienes alguna otra pregunta?";
-        return {
-          kind: "text",
-          body: bodyText,
-          send: () => provider.send({ to: phoneNormalized, body: bodyText })
-        };
+        // PARCHE TEMPORAL (HOY - Campaña activada antes de crear evento):
+        // Pedir los datos al lead para ponernos en contacto directo.
+        const clean = cleanFirstName(firstName);
+        const saludo = clean ? `¡Hola ${clean}!` : "¡Hola!";
+        if (!clean) {
+          const bodyText = `${saludo} Gracias por escribirnos a Qlick Marketing Digital.\n\nPor el momento estamos registrando los datos de las personas interesadas para ponernos en contacto directo contigo. Para enviarte la información, ¿nos podrías compartir tu nombre completo?`;
+          return {
+            kind: "text",
+            body: bodyText,
+            metadata: { awaiting_field: "name" },
+            send: () => provider.send({ to: phoneNormalized, body: bodyText })
+          };
+        } else if (!lead.email || isPlaceholderNameUI(lead.email)) {
+          const bodyText = `${saludo} Para ponernos en contacto contigo a la brevedad y brindarte toda la información, ¿nos podrías compartir tu correo electrónico?`;
+          return {
+            kind: "text",
+            body: bodyText,
+            metadata: { awaiting_field: "email" },
+            send: () => provider.send({ to: phoneNormalized, body: bodyText })
+          };
+        } else {
+          const bodyText = `${saludo} Ya tenemos registrados tus datos. Un asesor de nuestro equipo de Qlick Marketing Digital se pondrá en contacto contigo a la brevedad. ¡Que tengas un excelente día!`;
+          return {
+            kind: "text",
+            body: bodyText,
+            send: () => provider.send({ to: phoneNormalized, body: bodyText })
+          };
+        }
       }
       // 1-3 eventos → LIST MESSAGE con título (24 chars) + descripción
       // (72 chars). Meta limita button titles a 20 chars (quedaban
@@ -3895,11 +3967,14 @@ case "interactive_event_inscribir": {
         if (!bdEvent) {
           const fallback = getActiveEvent();
           if (fallback.source === "no_events") {
-            const noEvents = noEventsText();
+            // PARCHE TEMPORAL (HOY - Captura de datos al recibir email sin evento activo en DB):
+            const clean = cleanFirstName(firstName);
+            const bodyText = `¡Excelente${clean ? " " + clean : ""}! Ya registramos tus datos. Un asesor de nuestro equipo de Qlick se pondrá en contacto contigo a la brevedad para brindarte toda la información. ¡Que tengas un gran día!`;
             return {
               kind: "text",
-              body: noEvents,
-              send: () => provider.send({ to: phoneNormalized, body: noEvents })
+              body: bodyText,
+              metadata: { awaiting_field: null },
+              send: () => provider.send({ to: phoneNormalized, body: bodyText })
             };
           }
         }
@@ -3941,11 +4016,17 @@ case "interactive_event_inscribir": {
       const regEvtSlug = regEvt?.slug ?? null;
       const regEvtIsPaid =
         typeof regEvt?.priceMxn === "number" && regEvt.priceMxn > 0;
-      const checkoutUrl = regEvtSlug ? `${appBaseUrl()}/pagar/evento/${regEvtSlug}` : null;
+      const reservationTerms = getReservationTerms(regEvt ?? null);
+      const regPriceMxn = regEvt?.priceMxn ?? 0;
+      const checkoutUrl = regEvtSlug
+        ? `${appBaseUrl()}/pagar/evento/${regEvtSlug}${reservationTerms.enabled ? "?payment_option=reservation" : ""}`
+        : null;
       const paymentBlock = regEvtIsPaid
         ? checkoutUrl
-          ? `\n\nSobre el pago: el evento cuesta $${regEvt!.priceMxn} MXN. Tienes 2 opciones:\n1. Pagar en línea ahora (tarjeta/OXXO/SPEI): ${checkoutUrl}\n2. Pagar en puerta el día del evento (efectivo o tarjeta). Solo avísanos al llegar.`
-          : `\n\nSobre el pago: el evento cuesta $${regEvt!.priceMxn} MXN. Puedes pagar en puerta el día del evento (efectivo o tarjeta). Te enviaremos el link de pago en línea pronto.`
+          ? reservationTerms.enabled
+            ? `\n\nSobre el pago: el evento cuesta $${regPriceMxn.toLocaleString("es-MX")} MXN. Para apartar tu lugar paga $${reservationTerms.amount.toLocaleString("es-MX")} MXN en línea; el saldo de $${reservationTerms.balance.toLocaleString("es-MX")} MXN se liquida ${reservationTerms.note.toLowerCase()}\n\nAparta aquí (tarjeta/OXXO/SPEI): ${checkoutUrl}`
+            : `\n\nSobre el pago: el evento cuesta $${regPriceMxn} MXN. Tienes 2 opciones:\n1. Pagar en línea ahora (tarjeta/OXXO/SPEI): ${checkoutUrl}\n2. Pagar en puerta el día del evento (efectivo o tarjeta). Solo avísanos al llegar.`
+          : `\n\nSobre el pago: el evento cuesta $${regPriceMxn} MXN. Puedes pagar en puerta el día del evento (efectivo o tarjeta). Te enviaremos el link de pago en línea pronto.`
         : "";
       const eventLine = isVirtual && hasStreamingLink
         ? `\n\nEs un evento virtual. Te enviamos el link de acceso al stream por correo. Cuando estés listo, haz click y entras.${regEvt?.streamingAccessNote ? `\n\n${regEvt.streamingAccessNote}` : ""}`
@@ -5645,7 +5726,7 @@ export async function processInboundMessage(
     const looksLikeNamePrompt =
       /tu\s+nombre\s+completo/i.test(lastOutboundBody) ||
       /dime\s+tu\s+nombre/i.test(lastOutboundBody) ||
-      /(?:dime|decime)\s+tu\s+nombre/i.test(lastOutboundBody);
+      /indica\s+tu\s+nombre/i.test(lastOutboundBody);
     if (awaitingField === "name" && body && !looksLikeEmail) {
       intent = "provide_name";
     } else if (
@@ -6306,11 +6387,17 @@ export async function processInboundMessage(
           // FIX 2026-07-05: incluir el short_code para que el lead
           // pueda refirse a este evento en futuros mensajes sin ambigüedad.
           const evtCodeLabel = evt?.shortCode ? ` (código ${evt.shortCode})` : "";
-          const bodyText =
-            `${saludo} Ya estás registrado en *${evtName}*${evtCodeLabel} (${priceDisplay}). ` +
-            `\n\n⚠️ *Método de pago por implementar.* Te avisamos cuando esté ` +
-            `listo para que completes el registro.` +
-            `\n\nSi quieres acelerar, escríbenos a hola@qlick.marketing.`;
+          const terms = getReservationTerms(evt);
+          const paymentUrl = terms.enabled && existing.confirmationId
+            ? `${appBaseUrl()}/pagar/evento/${targetSlug}?confirmation=${existing.confirmationId}&payment_option=reservation`
+            : null;
+          const bodyText = terms.enabled && paymentUrl
+            ? `${saludo} Ya estás registrado en *${evtName}*${evtCodeLabel}. El precio total es de $${evt?.priceMxn?.toLocaleString("es-MX") ?? priceDisplay} MXN.\n\n` +
+              `Para apartar tu lugar paga $${terms.amount.toLocaleString("es-MX")} MXN aquí:\n${paymentUrl}\n\n` +
+              `El saldo de $${terms.balance.toLocaleString("es-MX")} MXN se liquida ${terms.note.toLowerCase()}`
+            : `${saludo} Ya estás registrado en *${evtName}*${evtCodeLabel} (${priceDisplay}). ` +
+              `\n\n⚠️ Tu registro está pendiente de pago. Te avisaremos cuando esté listo el enlace para completar el registro.` +
+              `\n\nSi quieres acelerar, escríbenos a hola@qlick.marketing.`;
           const provider = getActiveWhatsAppProvider();
           let sendResult: { ok: boolean; externalId?: string; demo?: boolean } = {
             ok: false
@@ -6791,14 +6878,18 @@ export async function processInboundMessage(
 
             // 3. Responder al lead con copy HONESTO + link al checkout.
             const baseUrl = appBaseUrl();
-            const checkoutUrl = `${baseUrl}/pagar/evento/${targetSlug}?confirmation=${confirmationId}`;
+            const paymentTerms = getReservationTerms(evtForPayment);
+            const checkoutUrl = `${baseUrl}/pagar/evento/${targetSlug}?confirmation=${confirmationId}${paymentTerms.enabled ? "&payment_option=reservation" : ""}`;
             const clean = cleanFirstName(lead.name);
             const saludo = clean ? `¡Listo ${clean}!` : "¡Listo!";
-            const bodyText =
-              `${saludo} Tu lugar para *${evtName}*${evtCodeLabel} (${priceDisplay}) está apartado.\n\n` +
-              `Para confirmar tu lugar, completa el pago aquí:\n${checkoutUrl}\n\n` +
-              `Aceptamos tarjeta, OXXO, SPEI y transferencia. Si pagas en ` +
-              `efectivo en puerta, avísanos y lo registramos a mano.`;
+            const bodyText = paymentTerms.enabled
+              ? `${saludo} Tu registro para *${evtName}*${evtCodeLabel} quedó listo. El precio total es de $${evtForPayment?.priceMxn?.toLocaleString("es-MX") ?? priceDisplay} MXN.\n\n` +
+                `Para apartar tu lugar paga $${paymentTerms.amount.toLocaleString("es-MX")} MXN aquí:\n${checkoutUrl}\n\n` +
+                `El saldo de $${paymentTerms.balance.toLocaleString("es-MX")} MXN se liquida ${paymentTerms.note.toLowerCase()}`
+              : `${saludo} Tu lugar para *${evtName}*${evtCodeLabel} (${priceDisplay}) está apartado.\n\n` +
+                `Para confirmar tu lugar, completa el pago aquí:\n${checkoutUrl}\n\n` +
+                `Aceptamos tarjeta, OXXO, SPEI y transferencia. Si pagas en ` +
+                `efectivo en puerta, avísanos y lo registramos a mano.`;
 
             const provider = getActiveWhatsAppProvider();
             let sendResult: { ok: boolean; externalId?: string; demo?: boolean } = {

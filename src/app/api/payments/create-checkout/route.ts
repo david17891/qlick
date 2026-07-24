@@ -110,9 +110,12 @@ interface CreateCheckoutBody {
    * productos tipo "event" (los cursos no tienen confirmation_id).
    */
   confirmationId?: unknown;
+  /** Opción de cobro para eventos con apartado configurado. */
+  paymentOption?: unknown;
 }
 
 type SupportedProductKind = "course" | "event";
+type EventPaymentOption = "full" | "reservation";
 
 function parseProductKind(v: unknown): SupportedProductKind {
   if (v === "event") return "event";
@@ -123,6 +126,10 @@ const VALID_METHODS: PaymentMethod[] = ["card", "oxxo", "spei"];
 
 function isValidMethod(m: unknown): m is PaymentMethod {
   return typeof m === "string" && VALID_METHODS.includes(m as PaymentMethod);
+}
+
+function parsePaymentOption(v: unknown): EventPaymentOption {
+  return v === "reservation" ? "reservation" : "full";
 }
 
 export async function POST(req: NextRequest) {
@@ -177,6 +184,7 @@ export async function POST(req: NextRequest) {
 
   const productKind = parseProductKind(body.productKind);
   const method: PaymentMethod = isValidMethod(body.method) ? body.method : "card";
+  let paymentOption: EventPaymentOption = parsePaymentOption(body.paymentOption);
 
   // 3. Resolver el producto por slug + kind. Cada branch construye su
   //    propio `productRef` con el shape correcto para que el provider
@@ -226,12 +234,35 @@ export async function POST(req: NextRequest) {
         );
       }
     }
+    const rules = (event.eventRules ?? {}) as {
+      reservation_enabled?: boolean;
+      reservation_amount_mxn?: number;
+    };
+    const reservationAmount =
+      typeof rules.reservation_amount_mxn === "number" && Number.isFinite(rules.reservation_amount_mxn)
+        ? rules.reservation_amount_mxn
+        : null;
+    const reservationEnabled = rules.reservation_enabled === true && reservationAmount !== null;
+    if (paymentOption === "reservation") {
+      if (!reservationEnabled || reservationAmount <= 0 || reservationAmount >= event.priceMXN) {
+        return NextResponse.json(
+          { ok: false, error: "Este evento no tiene un apartado válido configurado." },
+          { status: 400 },
+        );
+      }
+    }
+    const chargeAmountMXN =
+      paymentOption === "reservation" && reservationAmount !== null
+        ? reservationAmount
+        : event.priceMXN;
     productRef = {
       kind: "event",
       id: event.id,
       slug: event.slug,
       title: event.title,
       priceMXN: event.priceMXN,
+      chargeAmountMXN,
+      paymentPurpose: paymentOption,
       startsAt: event.startsAt,
     };
   } else {

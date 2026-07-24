@@ -114,6 +114,14 @@ export interface EventBotRules {
    * bot NO lo modifica (es decision de David). Default seguro: "test".
    */
   payment_mode?: "test" | "live";
+  /**
+   * Configuración de apartado para eventos de pago. Vive en el JSONB para
+   * evitar una migración urgente; el precio total sigue siendo `price_mxn`.
+   */
+  reservation_enabled?: boolean;
+  reservation_amount_mxn?: number;
+  balance_amount_mxn?: number;
+  balance_due_note?: string;
 }
 
 /* ------------------------------------------------------------------ */

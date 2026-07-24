@@ -90,13 +90,37 @@ export function normalizeEventRules(
   if (!raw || typeof raw !== "object") {
     return { personality: "", rules: [] };
   }
-  const obj = raw as { personality?: unknown; rules?: unknown };
-  return {
+  const obj = raw as {
+    personality?: unknown;
+    rules?: unknown;
+    payment_mode?: unknown;
+    reservation_enabled?: unknown;
+    reservation_amount_mxn?: unknown;
+    balance_amount_mxn?: unknown;
+    balance_due_note?: unknown;
+  };
+  const normalized: EventBotRules = {
     personality: typeof obj.personality === "string" ? obj.personality : "",
     rules: Array.isArray(obj.rules)
       ? obj.rules.filter((r) => typeof r === "string" && r.trim().length > 0)
       : []
   };
+  if (obj.payment_mode === "test" || obj.payment_mode === "live") {
+    normalized.payment_mode = obj.payment_mode;
+  }
+  if (typeof obj.reservation_enabled === "boolean") {
+    normalized.reservation_enabled = obj.reservation_enabled;
+  }
+  if (typeof obj.reservation_amount_mxn === "number" && Number.isFinite(obj.reservation_amount_mxn)) {
+    normalized.reservation_amount_mxn = obj.reservation_amount_mxn;
+  }
+  if (typeof obj.balance_amount_mxn === "number" && Number.isFinite(obj.balance_amount_mxn)) {
+    normalized.balance_amount_mxn = obj.balance_amount_mxn;
+  }
+  if (typeof obj.balance_due_note === "string" && obj.balance_due_note.trim()) {
+    normalized.balance_due_note = obj.balance_due_note.trim();
+  }
+  return normalized;
 }
 
 export function mapEventConfirmationRowToEventConfirmation(
