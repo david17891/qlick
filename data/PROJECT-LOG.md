@@ -411,3 +411,30 @@ ote_type + is_pinned).
 - Fix critico de invitados: el webhook de eventos ya no exige resolver un usuario de Auth antes de registrar un pago de invitado; la vinculacion usa `confirmation_id`/correo. Los cursos conservan el requisito de usuario autenticado.
 - Verificacion: `npm run type-check`, `npm run lint`, `npm run audit:voseo`, `npm run test:ci` (1535/1535), `npm run test:e2e:funnel` (1/1 con Stripe test firmado y acceso activo), y build de Vercel en verde. No hubo errores runtime en la ultima hora.
 - Sin cargo real en esta validacion; queda monitoreo operativo de conversaciones, `event_email_log`, webhooks y primeras inscripciones reales. Pendientes de negocio: direccion exacta y conciliacion del saldo.
+
+
+## 2026-07-24 13:30 Mavis -- Sprint event-payment-progress v3 (re-auditoria Codex v3)
+
+- **Contexto:** Codex hizo una re-auditoria del sprint v2 y encontro issues adicionales (voseo residual, contrato de event_payments sin columna payment_purpose, falta de proteccion de concurrencia en checkout, copy del bot no consultaba el ledger, etc). David pidio rehacer el sprint desde cero en un worktree limpio basado en origin/main, con cherry-pick selectivo de los commits utiles de v2 y correcciones nuevas.
+- **Worktree:** `C:\Users\User\fix-event-payment-progress-v3` en branch `fix/event-payment-progress-v3` desde `origin/main` (commit `3a9132c`).
+- **Cherry-pick selectivo** (7 commits de codigo, 0 docs):
+  - `2925457` helper event-payment-progress (computa progress del ledger)
+  - `a709d2d` manual-payment validacion estricta en centavos
+  - `c5a4b27` create-checkout rechazo duplicados segun ledger
+  - `d07b3f1` pagar-evento CTAs segun progress del ledger
+  - `c013a86` audit-voseo extension v2 (NUEVO, override)
+  - `654a6ea` webhook + ui-admin (falla cerrado en acumulado + badge)
+  - `c857ccf` registry de regresiones v2
+- **Commits nuevos v3** (sobre los cherry-picks):
+  - `b0835c0` event-payments-server usa el helper (SELECT estricto sin payment_purpose top-level, KPIs sin doble conteo, confirmationProgress aplanado).
+  - `cfe56b3` admin: conectar flujo manual con paymentPurpose (API route + modal con opciones segun progress).
+  - `68ae54e` payments: PI manual con selector dual-mode (test/live via event_rules.payment_mode), validacion currency=mxn, monto exacto en centavos, preflight anti-duplicado, persistencia de stripe_payment_intent_id.
+  - `af97eec` audit-voseo: lookarounds Unicode con `(?<!\p{L})` y `(?!\p{L})` + flag `u`, ALLOWLIST separado en WORD vs LINE, modo --self-test. Copy corregido en 11 archivos.
+  - `18f07c1` checkout: proteccion contra cargos duplicados por concurrencia (intent row en event_payments con idempotency_key derivado de confirmationId+paymentOption+balanceVersion; unique index nuevo en migration 20260724140000).
+  - `d57b011` bot: copy dinamico segun progress del ledger (no solo payment_status). Sin link de apartado despues de cobrar apartado.
+  - `fc48d60` notify: copy 'Saldo liquidado' cuando paymentPurpose=balance.
+- **Migration entregable** (NO aplicada a prod todavia, espera re-auditoria de Codex): `supabase/migrations/20260724140000_event_payments_intent_idempotency.sql`. Anade unique index sobre `(confirmation_id, idempotency_key) WHERE idempotency_key LIKE 'checkout:%'` con pre-flight de duplicados.
+- **Politica CANACO respetada:** $1,000 total, $500 apartado, $500 saldo el dia del evento. Sin pago -> ofrece apartado + full. Con apartado cobrado -> NO ofrece otro checkout online, informa saldo. Liquidado -> NO ofrece pagos adicionales. Check-in (no pago) convierte a asistente.
+- **Gates** (a verificar al cierre): type-check 0, lint 0, audit:voseo 0 matches (294/294 limpios), test:ci 1618/1621 (3 pre-existentes fallan sin Supabase real), build Compiled successfully, git diff --check 0 trailing whitespace, 11 archivos ajenos intactos.
+- **NO se modifico:** CANACO en DB, secrets de Stripe (live o test), webhooks configurados, variables de Vercel, los 11 archivos ajenos del working tree original.
+- **NO mergeado.** Espera re-auditoria de Codex antes de merge a main.
