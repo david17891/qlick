@@ -533,16 +533,21 @@ export function ConversationsTab() {
     setSending(true);
     setSendFeedback(null);
     try {
-      // FIX 2026-07-12 (auditoría v16 #R1 + #A4): safeFetch valida 2xx.
-      await safeFetch("/api/admin/crm/conversations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          leadId: selectedLeadId,
-          body,
-          direction: "outbound"
-        })
-      });
+      // Esta pestana debe enviar por el proveedor real. El endpoint
+      // generico solo registra mensajes manuales y podia mostrar "Enviado"
+      // sin que WhatsApp hubiera recibido nada.
+      const res = await safeFetch(
+        "/api/admin/crm/conversations/" + encodeURIComponent(selectedLeadId) + "/send-whatsapp",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ body })
+        }
+      );
+      const json = (await res.json()) as { ok?: boolean; error?: string };
+      if (json.ok !== true) {
+        throw new Error(json.error ?? "No se pudo enviar el mensaje por WhatsApp.");
+      }
       if (isMountedRef.current) {
         setDraftBody("");
         setSendFeedback("Enviado ✓");

@@ -41,6 +41,62 @@ interface RequestBody {
 /* UUID v4-ish shape check. */
 const UUID_LIKE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * GET /api/admin/leads/[id]/bot-pause
+ *
+ * The Conversations tab needs the current state before enabling its toggle.
+ * This mirrors the PATCH response using the snake_case client contract.
+ */
+export async function GET(_req: NextRequest, { params }: RouteParams) {
+  if (!checkSupabaseConfig().configured) {
+    return NextResponse.json(
+      { ok: false, error: "Supabase no configurado (modo demo)." },
+      { status: 501 },
+    );
+  }
+  const admin = await requireAdmin();
+  if (!admin) {
+    return NextResponse.json(
+      { ok: false, error: "No autenticado como admin." },
+      { status: 401 },
+    );
+  }
+  if (!UUID_LIKE.test(params.id)) {
+    return NextResponse.json(
+      { ok: false, error: "leadId invalido (UUID)." },
+      { status: 400 },
+    );
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("leads")
+    .select("id, bot_paused, bot_paused_reason, bot_paused_at, bot_paused_by_email")
+    .eq("id", params.id)
+    .maybeSingle();
+  if (error) {
+    return NextResponse.json(
+      { ok: false, error: "Lead lookup fallo: " + error.message },
+      { status: 500 },
+    );
+  }
+  if (!data) {
+    return NextResponse.json(
+      { ok: false, error: "Lead no existe." },
+      { status: 404 },
+    );
+  }
+
+  return NextResponse.json({
+    ok: true,
+    leadId: params.id,
+    bot_paused: Boolean(data.bot_paused),
+    bot_paused_reason: data.bot_paused_reason ?? null,
+    bot_paused_at: data.bot_paused_at ?? null,
+    bot_paused_by_email: data.bot_paused_by_email ?? null,
+  });
+}
+
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
   if (!checkSupabaseConfig().configured) {
     return NextResponse.json(
