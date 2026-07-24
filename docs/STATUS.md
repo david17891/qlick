@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-23 — Preparación del lanzamiento express del evento CANACO. Se publicó en Supabase el evento `desarrollo-estructura-curso-canaco` (20 de agosto de 2026, 16:00–20:00, CANACO), con precio total de $1,000 MXN y apartado en línea de $500 MXN. El código del apartado ya está validado localmente; falta promover este release a Production y ejecutar una reserva controlada.
+> **Última actualización:** 2026-07-23 — Lanzamiento express del evento CANACO. El evento `desarrollo-estructura-curso-canaco` está publicado en Supabase y desplegado en Vercel Production (20 de agosto de 2026, 16:00–20:00, CANACO), con precio total de $1,000 MXN y apartado en línea de $500 MXN. La página pública y el bot ya muestran el horario en la zona local del evento.
 >
 > **Body del doc (líneas debajo):** es archivo histórico de sprints cerrados. Para estado actual, ver este snapshot.
 
@@ -19,7 +19,7 @@
 - Evento publicado: `Desarrollo y estructura del curso CANACO` (`short_code=CN26`, `id=4100ffe3-54c1-45c1-a3a6-515595a646ad`). La fecha se persiste en UTC para mostrar 20 de agosto, 16:00–20:00 en `America/Phoenix`; sede mostrada: `CANACO` (la dirección exacta sigue pendiente).
 - Modelo comercial: total $1,000 MXN; apartado Stripe $500 MXN; saldo $500 MXN el día del evento. El webhook deja la confirmación en `pending` y no entrega acceso completo hasta liquidar el total.
 - Bot: el flujo de inscripción genera un enlace con `payment_option=reservation`, explica total/apartado/saldo y mantiene español mexicano neutro. El contexto de IA recibe las mismas reglas desde `event_rules`.
-- Release de código: pendiente de branch/PR/deploy de este sprint. No se debe considerar la campaña lista para cobro real hasta que el deploy quede `Ready` y se valide una reserva de $500 MXN.
+- Release de código: PR #41 mergeado a `main`; el deploy de Production quedó `Ready` y la página pública fue verificada. Falta únicamente ejecutar una reserva live controlada de $500 MXN para la comprobación operativa final.
 - Pendiente de producto: confirmar dirección exacta de CANACO, política operativa para el saldo y quién concilia los apartados; no se inventaron esos datos en el bot.
 
 - Migración `20260722130000_stripe_session_conflict_targets.sql` aplicada y verificada en Supabase Production; PR34 la versiona para reproducibilidad.
