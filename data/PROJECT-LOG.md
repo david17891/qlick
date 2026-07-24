@@ -404,4 +404,26 @@ ote_type + is_pinned).
 
 - **Gates al cierre:** `npm run type-check` verde, `npm run lint` 0 warnings, `npm run audit:voseo` 0 matches, `npm run test:ci` 1579/1579 verde, `npm run build` Compiled successfully.
 
+- **Gates al cierre (re-auditoria v2, 2026-07-24):**
+  - `npm run type-check`: verde, 0 errores.
+  - `npm run lint`: verde, 0 warnings, 0 errores.
+  - `npm run audit:voseo`: 0 matches, 294/294 archivos limpios.
+  - `npm run test:ci`: 1607/1607 verde.
+  - `npm run build` (con env vars dummy): Compiled successfully.
+  - `npm run test:e2e:funnel`: 1/1 verde (Stripe test firmado, datos sinteticos, cleanup verificado).
+  - `git diff --check 2925457^..HEAD`: 0 trailing whitespace introducido por el sprint.
+- **Archivos modificados por el sprint (rama feat/event-payment-progress, 7 commits atomicos):**
+  - `src/lib/payments/event-payment-progress.ts` (helper puro, 708 lineas).
+  - `src/lib/payments/manual-payment.ts` (validacion estricta en centavos + falla cerrado).
+  - `src/lib/payments/event-payments-server.ts` (lectura desde metadata.payment_purpose).
+  - `src/lib/payments/notify-lead-payment-confirmed.ts` (copy 'Saldo liquidado').
+  - `src/app/api/webhooks/stripe/route.ts` (caso balance + falla cerrado).
+  - `src/app/api/payments/create-checkout/route.ts` (rechazo de duplicados via ledger).
+  - `src/app/pagar/evento/[slug]/page.tsx` (CTAs segun progress del ledger).
+  - `src/app/admin/eventos/[id]/page.tsx` (badge needs_reconciliation + 'Movimientos de pago').
+  - `scripts/audit-voseo.mjs` (extension: necesitás, intentá, etc.).
+  - 8 archivos de copy corregidos (Pedile -> Pidele, Proba -> Prueba, etc.).
+  - 4 archivos de tests (helper unit, integracion, validacion, registry de regresiones): 38 + 11 + 7 + 16 = 72 tests nuevos.
+- **Archivos ajenos intactos:** 11 archivos verificados via `git diff` (acerca, beneficios, cursos, page, StatCard, ServiceCard, ServiceDetailInteractive, Card, agent-prompts, globals.css, tailwind.config.ts).
+- **NO se toco:** secrets, Stripe live, Checkout Session, webhook secrets, `event_rules` de CANACO.
 - **Pendiente:** merge a main solo despues de re-auditoria de Codex.
