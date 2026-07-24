@@ -355,7 +355,94 @@ function joinSpanishList(items: string[]): string {
  * depender de una respuesta libre del LLM ni inventar datos.
  */
 export function buildEventInfoCopy(event: ActiveEventContext): string {
-  const description = event.description ?? "";
+  const description = event.description?.trim() ?? "";
+
+  // WhatsApp usa un solo asterisco para negritas. El panel puede guardar
+  // Markdown web con `**texto**`; normalizarlo aquí evita que el lead vea
+  // los asteriscos duplicados como texto literal.
+  const toWhatsAppMarkdown = (text: string): string =>
+    text.replace(/\*\*(.+?)\*\*/gs, "*$1*");
+
+  // Si el admin ya escribió el copy completo del evento, esa es la fuente
+  // de verdad. No lo resumimos ni lo reemplazamos por un menú corto.
+  if (description) {
+    return toWhatsAppMarkdown(description);
+  }
+
+  // Fallback factual para el evento CANACO "Las 4 Patas..." cuando la fila
+  // aún no tiene description. El copy fue proporcionado por el negocio y
+  // usa únicamente los datos dinámicos del evento para fecha, duración y
+  // precio. El mensaje se envía como texto separado del menú interactivo
+  // porque Meta limita el body de botones a 1024 caracteres.
+  if (/4\s+patas.*negocio.*vende/i.test(event.title)) {
+    const reservation = getReservationTerms(event);
+    const total = event.priceMxn && event.priceMxn > 0
+      ? `$${event.priceMxn.toLocaleString("es-MX")} MXN`
+      : "por confirmar";
+    const reserve = reservation.enabled
+      ? `$${reservation.amount.toLocaleString("es-MX")} MXN`
+      : "$500 MXN";
+    const balance = reservation.enabled
+      ? `$${reservation.balance.toLocaleString("es-MX")} MXN`
+      : "$500 MXN";
+    const dateLabel = new Intl.DateTimeFormat("es-MX", {
+      timeZone: "America/Phoenix",
+      day: "numeric",
+      month: "long",
+      year: "numeric"
+    }).format(event.startsAt);
+    const timeLabel = new Intl.DateTimeFormat("es-MX", {
+      timeZone: "America/Phoenix",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true
+    }).format(event.startsAt);
+    const endTimeLabel = event.endsAt
+      ? new Intl.DateTimeFormat("es-MX", {
+          timeZone: "America/Phoenix",
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true
+        }).format(event.endsAt)
+      : null;
+    const location = /av\.|obreg[oó]n/i.test(event.location)
+      ? event.location
+      : "CANACO, Av. Álvaro Obregón 14-15, San Luis Río Colorado, Sonora";
+    return [
+      `📌 *${event.title.toUpperCase()}*`,
+      "",
+      "Curso presencial diseñado para ayudarte a fortalecer cuatro áreas esenciales para atraer clientes, generar oportunidades de venta y mejorar el funcionamiento de tu negocio.",
+      "",
+      "Durante el curso aprenderás a trabajar en:",
+      "",
+      "🎨 *1. Creación y edición de publicidad*",
+      "Aprende a crear y editar imágenes publicitarias atractivas para promocionar tus productos o servicios.",
+      "",
+      "📱 *2. Publicidad pagada con Facebook Ads*",
+      "Conoce cómo crear y configurar campañas publicitarias desde una computadora o un teléfono celular.",
+      "",
+      "🤖 *3. Inteligencia artificial aplicada al negocio*",
+      "Utiliza la IA como herramienta estratégica para generar textos publicitarios, crear respuestas para clientes, desarrollar ideas y mejorar tareas operativas de tu negocio.",
+      "",
+      "💬 *4. Seguimiento de clientes y prospectos*",
+      "Aprende a dar seguimiento a las personas interesadas, mantener la comunicación y aumentar las posibilidades de convertir una consulta en una venta.",
+      "",
+      `📅 *Fecha:* ${dateLabel}`,
+      `🕓 *Horario:* ${timeLabel}${endTimeLabel ? ` a ${endTimeLabel}` : ""}`,
+      `⏱️ *Duración:* ${event.humanDuration}`,
+      `📍 *Lugar:* ${location}`,
+      `💰 *Inversión total:* ${total}`,
+      "",
+      `Puedes reservar tu lugar con *${reserve}* y liquidar los *${balance}* ${reservation.note || "el día del evento"}.`,
+      "",
+      "📄 Al finalizar, recibirás una *constancia de participación*.",
+      "",
+      "⚠️ *Cupo limitado.*",
+      "",
+      "¿Quieres apartar tu lugar?"
+    ].join("\n");
+  }
+
   const topics: string[] = [];
   if (/video/i.test(description)) topics.push("crear videos que comuniquen con claridad");
   if (/publicidad\s+pagada|facebook\s*ads|\bads\b/i.test(description)) {
@@ -2237,11 +2324,18 @@ async function buildOpenerPlan(args: {
   const shortcutBody: string = singleEventShortcut
     ? buildShortcutBody(singleEventShortcut)
     : "";
+  // El body de un mensaje interactivo de Meta tiene un límite de 1024
+  // caracteres. El detalle completo del curso es más largo, así que el
+  // menú lleva solo una invitación corta y el copy completo se manda antes
+  // como mensaje de texto normal.
+  const interactiveBody = singleEventShortcut
+    ? `¿Quieres apartar tu lugar en *${singleEventShortcut.title}*?`
+    : `${saludo} Soy Qlick, asistente de Qlick Marketing Digital. ¿Qué te interesa?${eventLine}`;
   const interactive = singleEventShortcut
     ? {
         type: "button" as const,
         body: {
-          text: shortcutBody,
+          text: interactiveBody,
         },
         action: {
           buttons: [
@@ -2263,7 +2357,7 @@ async function buildOpenerPlan(args: {
     : {
         type: "button" as const,
         body: {
-          text: `${saludo} Soy Qlick, asistente de Qlick Marketing Digital. ¿Qué te interesa?${eventLine}`,
+          text: interactiveBody,
         },
         action: {
           buttons: [
@@ -2279,17 +2373,45 @@ async function buildOpenerPlan(args: {
         },
         footer: { text: "Responde con un botón o escribe tu pregunta" },
       };
-  const bodyText = interactive.body.text;
+  const bodyText = singleEventShortcut ? shortcutBody : interactiveBody;
   return {
     kind: "interactive",
     body: bodyText,
     interactive,
-    send: () =>
-      provider.send({
+    send: async () => {
+      if (!singleEventShortcut) {
+        return provider.send({
+          to: phoneNormalized,
+          body: interactiveBody,
+          interactive,
+        });
+      }
+
+      // Primero entregamos el contenido completo como texto. Después
+      // enviamos el menú corto; si Meta lo rechaza, el detalle ya llegó y
+      // el lead puede responder escribiendo "Inscribirme".
+      const detailResult = await provider.send({
         to: phoneNormalized,
-        body: bodyText,
+        body: shortcutBody,
+      });
+      if (!detailResult.ok) return detailResult;
+
+      const menuResult = await provider.send({
+        to: phoneNormalized,
+        body: interactiveBody,
         interactive,
-      }),
+      });
+      if (!menuResult.ok) {
+        return {
+          ...detailResult,
+          note: `${detailResult.note} Menú no enviado: ${menuResult.note}`
+        };
+      }
+      return {
+        ...detailResult,
+        note: `${detailResult.note} Menú de inscripción enviado.`
+      };
+    },
   };
 }
 

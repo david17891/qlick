@@ -257,9 +257,65 @@ export const metaCloudApiProvider: WhatsAppProvider = {
           };
         }
 
-const errMsg =
+        const errMsg =
           data.error?.message ?? `HTTP ${res.status} ${res.statusText}`;
           const isRetryable = res.status >= 500;
+
+        // Meta puede rechazar un interactive con 131009 aun cuando el
+        // contenido textual sea válido (por ejemplo, por restricciones de
+        // cuenta/ventana o por un campo interactivo no aceptado). No dejamos
+        // al lead sin respuesta: dentro de la ventana de servicio reenviamos
+        // el mismo cuerpo como texto plano.
+        if (data.error?.code === 131009 && request.interactive) {
+          const fallbackController = new AbortController();
+          const fallbackTimeout = setTimeout(
+            () => fallbackController.abort(),
+            8_000
+          );
+          try {
+            const fallbackRes = await fetch(url, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify(
+                buildMessagePayload({
+                  to: request.to,
+                  body: request.body,
+                  templateName: request.templateName,
+                  templateLanguage: request.templateLanguage
+                })
+              ),
+              signal: fallbackController.signal
+            });
+            const fallbackData = (await fallbackRes
+              .json()
+              .catch(() => ({}))) as CloudApiResponse;
+            if (fallbackRes.ok && fallbackData.messages?.[0]?.id) {
+              return {
+                ok: true,
+                provider: "meta_cloud_api",
+                externalId: fallbackData.messages[0].id,
+                note: `Mensaje interactivo rechazado por Meta (131009); enviado como texto (wamid=${fallbackData.messages[0].id}).`
+              };
+            }
+            errorLog("[whatsapp/meta] text fallback también falló", {
+              status: fallbackRes.status,
+              errorCode: fallbackData.error?.code,
+              message: fallbackData.error?.message
+            });
+          } catch (fallbackErr) {
+            errorLog("[whatsapp/meta] text fallback lanzó error", {
+              error:
+                fallbackErr instanceof Error
+                  ? fallbackErr.message
+                  : String(fallbackErr)
+            });
+          } finally {
+            clearTimeout(fallbackTimeout);
+          }
+        }
 
         // eslint-disable-next-line no-console
         errorLog("[whatsapp/meta] Cloud API error", {
