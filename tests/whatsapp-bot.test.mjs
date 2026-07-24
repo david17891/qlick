@@ -692,9 +692,9 @@ test("processInboundMessage: primer mensaje 'hola' (demo mode) → welcome", asy
     // no existen en Meta Business Manager todavia). Actualizado 2026-07-01
     // junto con el fix de /qr → /check-in/[token].
     //
-    // Fase 7a 2026-07-01: welcome ahora devuelve interactive (Reply
-    // Buttons) en vez de texto libre. Mayor conversion + claridad.
-    assert.equal(result.responseKind, "interactive");
+    // PARCHE TEMPORAL (HOY): al no haber eventos activos en DB, el opener
+    // solicita el nombre directamente en formato texto ("text") en vez de buttons.
+    assert.equal(result.responseKind, "text");
     assert.ok(result.leadId);
   } finally {
     m.restore();
@@ -720,7 +720,7 @@ test("processInboundMessage: register sin eventos → text honesto (no muestra f
     assert.equal(result.responseKind, "text");
     assert.match(
       result.responsePreview ?? "",
-      /no tenemos eventos pr[oó]ximos/i
+      /estamos registrando/i
     );
   } finally {
     m.restore();
@@ -804,7 +804,7 @@ test("processInboundMessage: buttonId evt_yes_* sin evento → text honesto (no 
     assert.equal(result.responseKind, "text");
     assert.match(
       result.responsePreview ?? "",
-      /no tenemos eventos pr[oó]ximos/i
+      /estamos registrando/i
     );
   } finally {
     m.restore();

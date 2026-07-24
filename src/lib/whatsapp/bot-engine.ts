@@ -301,7 +301,7 @@ function noEventsText(leadName?: string): string {
   return [
     `${saludo} Gracias por escribirnos a Qlick Marketing Digital.`,
     "",
-    "Por el momento estamos registrando a las personas interesadas para ponernos en contacto directo contigo a la brevedad y darte atención personalizada.",
+    "Por el momento no tenemos eventos próximos publicados. Estamos registrando a las personas interesadas para ponernos en contacto directo contigo a la brevedad y darte atención personalizada.",
     "Para enviarte la información, ¿nos podrías compartir tu nombre completo y tu correo electrónico?",
   ].join("\n");
 }
@@ -2067,7 +2067,7 @@ async function buildOpenerPlan(args: {
   // Si no hay eventos activos publicados en DB, pedir directamente los datos del lead.
   if (allActiveEventsForOpener.length === 0) {
     if (!clean) {
-      const bodyText = `${saludo} Soy Qlick, asistente de Qlick Marketing Digital. Gracias por escribirnos.\n\nPor el momento estamos registrando a los interesados para ponernos en contacto directo contigo a la brevedad. Para enviarte toda la información, ¿nos podrías compartir tu nombre completo?`;
+      const bodyText = `${saludo} Soy Qlick, asistente de Qlick Marketing Digital. Gracias por escribirnos.\n\nPor el momento no tenemos eventos próximos publicados. Estamos registrando a los interesados para ponernos en contacto directo contigo a la brevedad. Para enviarte toda la información, ¿nos podrías compartir tu nombre completo?`;
       return {
         kind: "text",
         body: bodyText,
