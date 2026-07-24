@@ -1964,34 +1964,6 @@ multi-agente, dividir en <8 archivos o aceptar partial-state.
 
 ## 6. Resueltos reciente
 
-### ✅ Sprint CANACO apartado + 4 rondas de auditoria PR #43 (2026-07-24)
-
-**Contexto:** David audito el PR #43 (panel admin de apartado) en 4 rondas consecutivas. Cada ronda destapó un defecto del PATCH endpoint que podía romper la persistencia JSONB de CANACO.
-
-**Defectos corregidos (4 commits atomicos en rama `feat/admin-event-reservation-apartado`):**
-
-1. **`personality`/`rules` se pisaban con `""`/`[]` en updates parciales.** El server hacia `?? ""` y `?? []` cuando el caller omitia estos campos. Fix: opcionales en `FormEventRulesChanges`, helper preserva del current cuando `undefined`. Distincion explicita: `""` = limpiar, `undefined` = preservar.
-
-2. **Update solo con `priceMXN` no revalidaba reserva existente.** Si el admin actualizaba solo el precio y el evento tenia apartado activo, el saldo quedaba stale. Fix: si hay apartado activo, validar `currentAmount < newPrice` (error 400 si no) y recalcular balance atomicamente con `preserveReservation: true`.
-
-3. **`reservation_amount_mxn` sin `reservation_enabled` se interpretaba como `false` (silent clean).** El server aceptaba el monto y mi codigo borraba todos los campos. Fix: error 400 claro pidiendo el flag.
-
-4. **No habia modal al transicionar a `payment_mode="live"`.** Solo habia badge amarillo + hint pasivo. Fix: nuevo `LiveModeConfirm` con el mismo patron visual que `StatusChangeConfirm`, friccion explicita al momento del submit.
-
-5. **Pagina /pagar solo mostraba 1 boton.** David pidio confirmar que existan 2 botones (apartado $500 + pago completo $1,000). Fix: renderizar 2 `CheckoutButton` cuando hay apartado, con su `paymentOption` y `chargeAmountMxn` correctos. NO toca el checkout ni el webhook.
-
-**CANACO configurado en DB (iter 4, 2026-07-24 08:31 UTC):**
-
-- `event_rules.payment_mode: "live"` (preflight Vercel OK).
-- `reservation_enabled: true`, `reservation_amount_mxn: 500`, `balance_amount_mxn: 500`, `balance_due_note: "el dia del evento"`.
-- Reglas: 6 → 5 (las 2 que duplicaban $1,000/$500 se reemplazaron por la regla clara de David).
-- Personality, title, slug, status, price_mxn, currency, fecha, ubicacion: preservados.
-- Snapshot pre-cambio: `docs/canaco-snapshots/canaco-pre-iter-3-2026-07-24T08-07-58-228Z.json`.
-
-**Gates finales:** type-check 0, lint 0, voseo 0, tests 1529/1529, build OK, git diff --check 0.
-
-**PR #43** (4 commits) listo para merge. Pendiente: merge + deploy + verificacion programatica del webhook live en dashboard de Stripe + E2E controlado en evento draft separado en modo test.
-
 ### ✅ Kill-switch diario outbounds disparado (2026-07-20)
 
 **Síntoma:** "el bot no contesta". David sospechó que era Flash (red herring). El otro agente que David mandó a investigar encontró la causa real.
@@ -2187,7 +2159,7 @@ post-limpieza de docs. Detalle completo en `EVENTS_FUNNEL_FOUNDATION.md`.
   $env:SUPABASE_DB_PASSWORD = "<db-password-del-dashboard>"
   node --env-file=.env.local scripts/exec-sql.mjs supabase/migrations/20260702180000_add_requires_name_to_events.sql
   `
-  O pegar el SQL en https://supabase.com/dashboard/project/ugpejblymtbwtsoiykyj/sql/new. Sin esto, el flow funciona con 
+  O pegar el SQL en https://supabase.com/dashboard/project/ugpejblymtbwtsoiykyj/sql/new. Sin esto, el flow funciona con
 equiresName=false (fallback silencioso, sin pedir nombre).
 
 ### 🟠 Planificados para próxima sesión
@@ -2202,7 +2174,7 @@ equiresName=false (fallback silencioso, sin pedir nombre).
 
 - **N-5 · P1-5 de auditoría previa: rate limit en endpoints públicos.** /api/check-in/[token] (POST/GET) y /api/event-qr/[token] (GET) son públicos. Sin rate limit, alguien puede hacer 10K requests/seg. Mitigación: rate limit por IP via middleware (src/middleware.ts). Bajo riesgo ahora (DB aguanta), alto riesgo si crece tráfico.
 
-- **N-6 · P2-6 de auditoría previa: assert NEXT_PUBLIC_APP_URL al startup.** Hoy fallback a localhost:3000 si no está seteado en prod, lo que causaría URLs de email/QR rotas. Fix: assert en 
+- **N-6 · P2-6 de auditoría previa: assert NEXT_PUBLIC_APP_URL al startup.** Hoy fallback a localhost:3000 si no está seteado en prod, lo que causaría URLs de email/QR rotas. Fix: assert en
 ext.config.mjs o src/lib/env.ts.
 
 - **N-7 · P2-2 de auditoría previa: summary se actualiza solo si intent !== question.** En ot-engine.ts:1594, summary: intent === "question" ? lead.summary : .... Backwards. Fix: registrar el content del LLM cuando hay question.
@@ -2482,3 +2454,31 @@ El commit `9c606de` ("captura universal de nombre humano en cualquier turno", me
 - `node scripts/_preview-survey-invite-email.mjs` → ✓ genera preview HTML
 - `git log --oneline -8` muestra todos los commits del sprint mergeados a main + origin/main.
 
+
+
+### Sprint event-payment-progress (2026-07-24) - rama feat/event-payment-progress, NO mergeado
+
+- **Fase 7 (docs) y gates al cierre (verificados):**
+  - `docs/STATUS.md`: snapshot refrescado con el bug critico del saldo, helper puro, conteo de tests, no-merge-a-main explicito.
+  - `data/PROJECT-LOG.md`: entrada nueva con detalle de bug, helper, fases, gates.
+  - `docs/OPEN_ITEMS.md`: esta seccion agregada (sin reescribir historico).
+- **Gates al cierre (verificados):**
+  - `npm run type-check` - verde, 0 errores.
+  - `npm run lint` - verde, 0 warnings.
+  - `npm run audit:voseo` - verde, 0 matches, 294/294 archivos limpios.
+  - `npm run build` con env vars dummy - verde, todas las rutas compilan.
+  - `npm run test:ci` - 1579/1579 verde.
+  - `git diff --check` - sin nuevos trailing whitespace introducidos por el sprint (pre-existentes en lineas heredadas de sesiones anteriores; fuera de scope).
+- **Pendiente operativo (post-merge):**
+  - Re-auditoria de Codex (Mavis NO se autoaprueba).
+  - Merge a main + Vercel auto-deploy.
+  - Smoke en Vercel production: webhook con firma 200, evento de prueba borrador.
+  - NO cargo real en CANACO (sigue en produccion, no se toca).
+- **Riesgos abiertos (deuda P2):**
+  - `event_payments.payment_purpose` columna top-level no existe; el helper lee de metadata con fallback. Migracion futura recomendada si DB >10k pagos.
+  - `getEventPaymentsSnapshot` llama a Supabase 4 veces. Cacheable en sprint futuro.
+- **Cerrado en este sprint:**
+  - Bug saldo pendiente: `pendientes_count x defaultPriceMXN` -> `max(total - collected, 0)` por confirmado. Helper puro testeado.
+  - Webhook balance: nuevo caso que verifica acumulado antes de promover a `paid`. Idempotente.
+  - UI admin: 6 KPIs, columna Pago en Confirmados, columna Tipo en Pagos confirmados, nota visible en Asistentes.
+  - 11 tests en `tests/event-payment-progress-integration.test.mjs` (renombrado desde e2e; ver correccion #10).

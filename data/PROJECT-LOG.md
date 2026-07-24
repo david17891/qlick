@@ -146,13 +146,13 @@
     para que las simulaciones del bot no se filtren.
 
 - **Verificaci�n:**
-  - 
+  -
 pm run type-check ? 0 errores
-  - 
+  -
 pm run lint ? 0 warnings
-  - 
+  -
 pm test ? 1473/1473 pasan
-  - 
+  -
 pm run build ? ? Compiled successfully
   - Migration aplicada via Management API (status 201)
   - Seed corri�: ensureProximamenteStatus: 0 a actualizar (ya est�n en
@@ -172,7 +172,7 @@ pm run build ? ? Compiled successfully
     - service_variants (Esencial/Profesional, Zoom/Presencial, VideoIA/VideoPersonas). FK a services.
     - service_orders (cabecera del pedido con customer_{name,email,phone,notes} snapshot-eados, lead_id FK opcional, status con CHECK 7 valores, payment_mode con CHECK 5 valores).
     - service_order_events (timeline append-only con 	ype, ctor_type admin/system/customer, payload jsonb).
-    - service_order_notes (notas internas con 
+    - service_order_notes (notas internas con
 ote_type + is_pinned).
     - service_order_documents (archivos con ile_type receipt/certificate/brief/deliverable/contract/other).
 
@@ -377,37 +377,31 @@ ote_type + is_pinned).
 - Flujo completo evento -> Stripe live -> webhook firmado -> ledger -> acceso validado. No se repitio el cargo ni se solicito reembolso automatico. Pendiente: archivar evento QA y validar QR/email/WhatsApp en evento real.
 
 
-## 2026-07-24 02:30 Mavis -- Sprint CANACO apartado + 4 rondas de auditoria (PR #43)
-- **Pregunta:** David pidio cerrar la auditoria del PR #43 antes de dejar produccion lista. Detectados 4 defectos del PATCH endpoint en 4 rondas sucesivas + 1 mejora de UI (2 botones en /pagar para confirmar apartado + completo).
-- **Decisión:** 4 commits atomicos en rama eat/admin-event-reservation-apartado (PR #43). Iter 1 (91c9b25) implementación base, Iter 2 (53a369a) fixes ronda 2 (payment_mode preservation, priceMXN string normalization, error 400 en apartado inválido, parser MX estricto), Iter 3 (ebfe6de) fix ronda 3 (preservación apartado en update parcial), Iter 4 (ae9e7bc) fix ronda 4 (4 defectos del PATCH + 2 botones checkout).
-- **Razón:** David audito el PR durante 4 rondas consecutivas detectando defectos sutiles de persistencia JSONB. El principio guia: preservar TODO lo que el caller no toca explicitamente, jamas hacer whitelist destructivo del JSONB.
-- **Defectos del PATCH corregidos:**
-  1. personality/ules se pisaban con ""/[] en updates parciales. Fix: opcionales en FormEventRulesChanges, helper preserva del current cuando undefined.
-  2. Update solo con priceMXN no revalidaba reserva existente. Fix: si hay apartado activo, validar currentAmount < newPrice (error 400 si no) y recalcular balance atomico.
-  3. eservation_amount_mxn sin eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 claro.
-  4. No habia modal al transicionar a payment_mode=live. Fix: nuevo LiveModeConfirm con el mismo patron visual que StatusChangeConfirm.
-- **UI: 2 botones en /pagar.** Cuando hay apartado, la pagina muestra "Aparta " + "Paga ,000 completo" como opciones separadas. NO toca el checkout ni el webhook.
-- **CANACO configurado en DB** (snapshot pre-cambio en docs/canaco-snapshots/canaco-pre-iter-3-2026-07-24T08-07-58-228Z.json):
-  - payment_mode: live (preflight Vercel OK)
-  - reservation_enabled: true
-  - reservation_amount_mxn: 500
-  - balance_amount_mxn: 500
-  - balance_due_note: el dia del evento
-  - rules: 5 (las 4 que no duplican ,000/ + 1 regla clara de David)
-  - personality: preservada
-  - title, slug, status, price_mxn, currency, fecha, ubicacion: NO TOCADOS
-- **Preflight Vercel:** STRIPE_SECRET_KEY_LIVE + STRIPE_WEBHOOK_SECRET_LIVE + NEXT_PUBLIC_PAYMENT_PROVIDER=stripe presentes en Production. Verificacion programatica del webhook live pendiente (requiere key).
-- **Gates:** type-check 0, lint 0, voseo 0, tests 1529/1529, build OK, git diff --check 0. PR #43 listo para merge.
-- **Pendiente:** merge + deploy + verificar webhook live en dashboard de Stripe + E2E controlado en evento draft separado en modo test antes de cargo real publico.
+## 2026-07-24 - Sprint event-payment-progress (rama feat/event-payment-progress, pendiente re-auditoria Codex)
 
+- **Bug critico arreglado:** el agregado del admin calculaba el saldo pendiente como `pendientes_count x defaultPriceMXN x 100` (FIJO). Un confirmado con apartado de 500 MXN cobrado quedaba con saldo pendiente de 1,000 MXN adicional encima de los 500 ya cobrados. Ahora `balance_due_mxn = max(total - collected, 0)` por confirmado, agregado = suma de balances individuales. Helper puro `src/lib/payments/event-payment-progress.ts` (computeEventPaymentProgress + aggregateEventPaymentProgress) es la fuente de verdad.
 
-## 2026-07-24 — Produccion activa: bot de informacion + E2E de invitado
+- **Helper puro testeable:** NO consulta DB, NO muta nada, deterministico. 26 unit tests verdes en `tests/event-payment-progress.test.mjs`. payment_purpose se persiste en `metadata.payment_purpose` (no columna top-level, sin migracion en este sprint). El helper lee con fallback al flag de apartado del evento (compat legacy).
 
-- PR #43 mergeado a `main` en `6a0571c3c3b756db2c4cb70bff5d5855a231401a`; deployment Vercel `dpl_EuD3P5nQ546KWvY6aLixnU4heJLj` en estado `READY` con aliases publicos activos.
-- Webhook live de Stripe: configurado y verificado manualmente por David en el dashboard; se considera cerrado, sin accion manual pendiente.
-- CANACO permanece publicado en Stripe live con total de $1,000 MXN, apartado de $500 MXN y saldo de $500 MXN el dia del evento.
-- Bot: se agrego una respuesta determinista para `info`/`informacion` y preguntas del evento. Explica las cuatro bases del curso, fecha, horario, sede, precio, apartado y enlace oficial; mantiene espanol mexicano y no inventa la direccion pendiente.
-- Seguridad de efectos secundarios: el flujo implicito de nombre + correo crea una sola confirmacion, QR y correo; el estado inicial de un evento pagado queda `pending` hasta confirmacion firmada de Stripe.
-- Fix critico de invitados: el webhook de eventos ya no exige resolver un usuario de Auth antes de registrar un pago de invitado; la vinculacion usa `confirmation_id`/correo. Los cursos conservan el requisito de usuario autenticado.
-- Verificacion: `npm run type-check`, `npm run lint`, `npm run audit:voseo`, `npm run test:ci` (1535/1535), `npm run test:e2e:funnel` (1/1 con Stripe test firmado y acceso activo), y build de Vercel en verde. No hubo errores runtime en la ultima hora.
-- Sin cargo real en esta validacion; queda monitoreo operativo de conversaciones, `event_email_log`, webhooks y primeras inscripciones reales. Pendientes de negocio: direccion exacta y conciliacion del saldo.
+- **Fase 3 manual-payment:** registerManualPayment ahora valida monto segun proposito:
+  - `reservation` <= `event_rules.reservation_amount_mxn` (rechaza sobrepaso).
+  - `balance` <= `max(total - collected, 0)` (rechaza sobrepaso con tolerancia 0.01 MXN).
+  - `full` <= `total` (rechaza sobrepaso).
+  - `event_confirmations.payment_status` se promueve a `paid` solo cuando acumulado == total. Apartado mantiene `pending`. 7 tests verdes en `tests/manual-payment-validation.test.mjs`.
+
+- **Fase 4 webhook + notify:** el webhook de Stripe distingue 3 propositos:
+  - `reservation` (apartado): confirmation permanece `pending`, notify "Apartado confirmado".
+  - `full` (pago completo): confirmation `paid`, notify pago confirmado.
+  - `balance` (saldo): NUEVO. Calcula acumulado, si >= total promueve a `paid` (source `event_purchase`), si < total mantiene `pending` (source `manual_event_admin`), notify "Saldo liquidado" solo si acumulado == total. Idempotencia existente (idempotency_key, stripe_webhook_receipts, existing-payment check) previene duplicados.
+
+- **Fase 5 UI admin:** tab Confirmados tiene nueva columna "Pago" con badge derivado del progress ("Sin pago", "Apartado - saldo $X MXN", "Pagado completo", "Verificacion", "Fallido", "Reembolsado", "Revocado"). Tab Pagos tiene nueva columna "Tipo". KPIs ampliados a 6: Cobrado, Saldo pendiente, Apartados, Pagos completos, Verificacion, Revocados. Tab Asistentes tiene nota visible: "Pagar confirma la inscripcion; el check-in confirma la asistencia".
+
+- **Fase 6 tests:** nuevo archivo `tests/event-payment-progress-e2e.test.mjs` (renombrado a `tests/event-payment-progress-integration.test.mjs` porque es integracion con mocks, no E2E real). 11 tests cubren los 10 casos del brief.
+
+- **Privacy:** 0 PII. Emails `mavis+...@qlick.app`. Telefonos sinteticos `+5215511112222`. Snapshot redacted de CANACO guardado en `docs/canaco-snapshots/canaco-pre-sprint-pagos-2026-07-24T14-37-48-381Z.json`.
+
+- **NO se toco:** secrets, Stripe live, Checkout Session, webhook secrets, `event_rules` de CANACO, archivos ajenos del working tree (11 archivos). Solo se modifico el codigo del webhook para agregar el caso balance (idempotente, conserva firma y secretos).
+
+- **Gates al cierre:** `npm run type-check` verde, `npm run lint` 0 warnings, `npm run audit:voseo` 0 matches, `npm run test:ci` 1579/1579 verde, `npm run build` Compiled successfully.
+
+- **Pendiente:** merge a main solo despues de re-auditoria de Codex.

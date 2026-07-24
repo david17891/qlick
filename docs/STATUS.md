@@ -8,28 +8,26 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-24 — Producción activa tras el merge del PR #43 (`6a0571c3c3b756db2c4cb70bff5d5855a231401a`). Vercel deployment `dpl_EuD3P5nQ546KWvY6aLixnU4heJLj` está `READY` con aliases `qlick.digital` y `www.qlick.digital`. CANACO está publicado en modo Stripe live con total de $1,000 MXN, apartado de $500 MXN y saldo de $500 MXN el día del evento. El webhook live ya fue configurado y verificado manualmente por David en Stripe; no queda esa acción pendiente. El bot ya responde solicitudes de información con un resumen factual del curso y enlace de apartado. Gates: type-check, lint, audit:voseo y build de Vercel verdes; 1,535/1,535 tests; E2E de funnel 1/1; sin errores runtime en la última hora.
+> **Ultima actualizacion:** 2026-07-24 - Sprint `event-payment-progress` completado en rama `feat/event-payment-progress` (pendiente de re-auditoria por Codex; NO mergeado a `main`). Bug critico arreglado: el saldo pendiente se calculaba como `pendientes x precio_total` (FIJO), cobrando el total completo encima de apartados ya cobrados. Nuevo helper puro `event-payment-progress.ts` calcula `balance_due = max(total - collected, 0)` por confirmado. Aplicado a `event-payments-server.ts`, `manual-payment.ts`, webhook de Stripe (caso balance), notify helper y UI admin. Tests: 1579/1579 verde. Gates: type-check, lint, audit:voseo, test:ci, build verdes. CANACO sigue intacto en Stripe live, snapshot redacted guardado. NO se tocaron secrets, Stripe live, checkout ni webhook live (solo la rama del codigo del webhook para agregar el caso `balance`, idempotente).
 >
 > **Body del doc (líneas debajo):** es archivo histórico de sprints cerrados. Para estado actual, ver este snapshot.
 
 ---
 
-## Estado actual — 2026-07-24 · Producción activa
+## Estado actual — 2026-07-23 · lanzamiento express CANACO
 
-- Evento publicado: `Desarrollo y estructura del curso CANACO` (`short_code=CN26`, `id=4100ffe3-54c1-45c1-a3a6-515595a646ad`). Título actual en DB: `"Las 4 Patas de un Negocio que Vende"`. Fecha: 20 de agosto de 2026, 16:00–20:00; sede mostrada: `CANACO` (la dirección exacta sigue pendiente de confirmación).
-- Modelo comercial activo: total $1,000 MXN; apartado $500 MXN; saldo $500 MXN el día del evento. `event_rules.payment_mode: "live"`. La ruta pública ofrece botones independientes para apartar o pagar completo.
-- Bot de información: cuando una persona escribe `info`, `información` o pregunta por el evento, entrega un resumen del objetivo, las cuatro bases (video, publicidad pagada, inteligencia artificial y seguimiento por WhatsApp), fecha, horario, sede, precio y esquema de apartado; no inventa la dirección pendiente y ofrece el enlace oficial.
-- Flujo de inscripción: el bot conserva español mexicano neutro, genera el enlace `payment_option=reservation`, registra la confirmación en `pending` y deja que el webhook de Stripe la marque como pagada. El flujo de nombre + correo crea un solo QR y un solo correo; no duplica efectos secundarios.
-- Webhook de Stripe: el checkout de invitados de eventos ya no depende de crear un usuario de Auth antes de registrar el pago. El evento se vincula por `confirmation_id`/correo y los cursos conservan su requisito de usuario autenticado. La idempotencia y las referencias Stripe permanecen activas.
-- Release: PR #43 mergeado a `main`; la producción está desplegada y sin errores runtime en la última hora. No se hizo un cargo real durante la validación posterior al fix; el E2E controlado usó Stripe test por $10 MXN y dejó acceso activo correctamente.
-- Pendientes no bloqueantes: confirmar la dirección exacta de CANACO, definir cómo se concilia el saldo de $500 y vigilar las primeras conversaciones reales en CRM, `event_email_log`, registros de webhook y Vercel.
+- Evento publicado: `Desarrollo y estructura del curso CANACO` (`short_code=CN26`, `id=4100ffe3-54c1-45c1-a3a6-515595a646ad`). La fecha se persiste en UTC para mostrar 20 de agosto, 16:00–20:00 en `America/Phoenix`; sede mostrada: `CANACO` (la dirección exacta sigue pendiente).
+- Modelo comercial: total $1,000 MXN; apartado Stripe $500 MXN; saldo $500 MXN el día del evento. El webhook deja la confirmación en `pending` y no entrega acceso completo hasta liquidar el total.
+- Bot: el flujo de inscripción genera un enlace con `payment_option=reservation`, explica total/apartado/saldo y mantiene español mexicano neutro. El contexto de IA recibe las mismas reglas desde `event_rules`.
+- Release de código: PR #41 mergeado a `main`; el deploy de Production quedó `Ready` y la página pública fue verificada. Falta únicamente ejecutar una reserva live controlada de $500 MXN para la comprobación operativa final.
+- Pendiente de producto: confirmar dirección exacta de CANACO, política operativa para el saldo y quién concilia los apartados; no se inventaron esos datos en el bot.
 
 - Migración `20260722130000_stripe_session_conflict_targets.sql` aplicada y verificada en Supabase Production; PR34 la versiona para reproducibilidad.
 - `npm run test:ci`: 1483/1483 PASS (gate estático portable; las suites E2E con secretos quedan fuera). `npm run test:e2e:funnel`: PASS con WhatsApp/Brevo mock y webhook Stripe test firmado. `npm run type-check`: PASS. `npm run lint`: PASS.
 - Suite completa: 1488 PASS y 3 fallos preexistentes de fixtures CRM (aislamiento/duplicado de teléfono); no son fallos del flujo de pagos.
 - Smoke Production seguro: Checkout test 200; webhook sin firma 400; firma falsa 401. E2E backend firmado de paid/pending/async/refund/dispute/service validado y cleanup verificado.
-- Estado Stripe: **GO validado para eventos** (cargo real + webhook + acceso verificados). El evento QA ya fue archivado (`status=draft`) tras conciliar el cargo; el ledger y el acceso quedan conservados como evidencia. Publicar solo eventos reales con `event_rules.payment_mode=live`. Servicios siguen en test salvo `STRIPE_SERVICE_PAYMENT_MODE=live`; cursos siguen en test por diseño. La entrega de QR/email/WhatsApp quedó verificada en el E2E controlado; las primeras entregas reales quedan bajo monitoreo operativo.
-- Producción: deployment Vercel `dpl_F7kRJYrYHrE58y19P5pAFvQM8NeV` en estado `READY`, aliases `qlick.digital` y `www.qlick.digital` responden (200 final tras la redirección canónica).
+- Estado Stripe: **GO validado para eventos** (cargo real + webhook + acceso verificados). El evento QA ya fue archivado (`status=draft`) tras conciliar el cargo; el ledger y el acceso quedan conservados como evidencia. Publicar solo eventos reales con `event_rules.payment_mode=live`. Servicios siguen en test salvo `STRIPE_SERVICE_PAYMENT_MODE=live`; cursos siguen en test por diseño. Falta validar manualmente la entrega de QR/email/WhatsApp del evento real.
+- Producción: deployment Vercel `qlick-e66jw1toi` en estado `Ready`, aliases `qlick.digital` y `www.qlick.digital` responden (200 final tras la redirección canónica).
 
 ## Sprint v0.10 — 4 bloques hardening + 4 hotfixes E2E (2026-07-14 02:30 → 04:35)
 
@@ -690,10 +688,10 @@ David detectó conjugaciones voseantes argentinas en el template `survey-invite.
 
 ## Sprint security G-18 — RLS en ot_usage_daily (2026-07-14 14:00 → 14:35)
 
-**Trigger:** email CRITICAL de Supabase notificando 
+**Trigger:** email CRITICAL de Supabase notificando
 ls_disabled_in_public en
 ot_usage_daily. Diagnóstico confirmó que SOLO esta tabla de las 27 en
-public estaba sin RLS (escrita por 
+public estaba sin RLS (escrita por
 ecordDeepseekUsage en
 src/lib/ai/deepseek-cost.ts y leída por /api/admin/bot/stats/route.ts).
 
