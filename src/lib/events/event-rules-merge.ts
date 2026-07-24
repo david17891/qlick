@@ -33,27 +33,58 @@ import type { EventBotRules } from "@/types/events";
 
 /**
  * Convierte un string de input admin ("", "500", "1,500.50", "  1.5  ") a
- * número válido con 2 decimales. Acepta coma o punto como separador
- * decimal (costumbre mexicana: "1,500.50"). Devuelve null si:
- *   - el string vacío,
- *   - no parsea,
- *   - es negativo,
- *   - tiene más de 2 decimales.
+ * número válido con 2 decimales. Acepta SOLO el formato MX estándar:
  *
- * Regla de "decimales excesivos": 1.234 → null. Esto protege contra que
- * un admin tipee "1.999" pensando que se trunca, y que el checkout
- * después cobre 1.999 (con redondeo del banco puede variar).
+ *   - Enteros:            "1500"        → 1500
+ *   - Decimales:          "1500.50"     → 1500.5
+ *   - Miles:              "1,500"       → 1500
+ *   - Miles + decimal:    "1,500.50"    → 1500.5
+ *   - Decimales chicos:   "1.5"         → 1.5
+ *
+ * Reglas de rechazo (devuelve null):
+ *
+ *   - String vacío.
+ *   - Negativos (incluye "-500").
+ *   - Más de 2 decimales (ej. "1.999" → null; defensa contra que el
+ *     banco redondee diferente a lo que el admin escribió).
+ *   - Formato ambiguo: "10,50" sin punto → null. Esto lo dejó claro
+ *     la auditoría de David el 2026-07-23: el formato "10,50" puede
+ *     significar "10.50" (decimal) o "1050" (miles mal escritos), y
+ *     NO queremos adivinar. Si el admin quiere 10.50 MXN, que escriba
+ *     "10.50" explícito.
+ *   - Formato europeo: "1.500,50" → null. Solo aceptamos MX: coma
+ *     para miles, punto para decimal.
+ *   - Miles mal formateados: "1,50" o "1,50,000" → null (los grupos
+ *     después de la primera coma deben ser exactamente 3 dígitos).
+ *   - Texto no numérico: "abc", "500abc", "--500" → null.
+ *
+ * Esto protege contra errores silenciosos: un admin que tipea "1,500"
+ * esperando 1500 MXN lo obtiene; uno que tipea "10,50" recibe un error
+ * de validación y debe corregir a "10.50".
  */
 export function parseReservationAmount(raw: string | null | undefined): number | null {
   if (raw === null || raw === undefined) return null;
   const trimmed = String(raw).trim();
   if (trimmed === "") return null;
-  // Aceptar coma como separador de miles y como decimal (costumbre MX).
-  // Estrategia: si hay AMBOS, el último es el decimal; si no, asumimos
-  // MX: "." es decimal y "," es miles. Simplificado: remover comas
-  // (separador de miles) y dejar el punto.
-  const normalized = trimmed.replace(/,/g, "");
-  if (!/^-?\d+(\.\d+)?$/.test(normalized)) return null;
+
+  // FIX 2026-07-23 (auditoría David): distinguir explícitamente entre
+  // formato MX con coma (miles) y formato ambiguo. Si el input tiene
+  // coma, EXIGIMOS formato MX estricto: "1,500" o "1,500.50" o
+  // "1,500,000.50" (grupos de a 3 después de la primera coma, con
+  // opcional decimal al final con punto).
+  let normalized: string;
+  if (trimmed.includes(",")) {
+    // -?\d{1,3}    parte entera de hasta 3 dígitos (puede empezar con -)
+    // (,\d{3})+    uno o más grupos de miles
+    // (\.\d+)?     opcional parte decimal con punto
+    if (!/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(trimmed)) return null;
+    normalized = trimmed.replace(/,/g, "");
+  } else {
+    // Sin coma: número simple con o sin decimal.
+    if (!/^-?\d+(\.\d+)?$/.test(trimmed)) return null;
+    normalized = trimmed;
+  }
+
   const n = Number(normalized);
   if (!Number.isFinite(n)) return null;
   if (n < 0) return null;
@@ -203,8 +234,18 @@ export interface FormEventRulesChanges {
   personality: string;
   /** Reglas del bot (una por línea, ya spliteadas y trimmed). */
   rules: string[];
-  /** Modo de Stripe. Default "test" si no viene. */
-  paymentMode: "test" | "live";
+  /**
+   * Modo de Stripe. OPCIONAL: si el caller no lo está cambiando, debe
+   * pasar `undefined` para preservar el valor actual del JSONB.
+   *
+   * FIX 2026-07-23 (auditoría David): antes, el server siempre pasaba
+   * `?? "test"` al helper cuando el input no traía payment_mode, lo
+   * que pisaba el valor "live" actual con "test" en cada update que
+   * no tocaba explícitamente el modo de Stripe. Ahora el caller es
+   * quien decide: si lo quiere cambiar, manda "test" | "live"; si no,
+   * `undefined` y el helper lo respeta.
+   */
+  paymentMode?: "test" | "live";
   /**
    * Resultado de `validateReservation` aplicado al form actual.
    * El caller (EventDrawer) lo calcula y lo pasa. NO recalculamos acá
@@ -251,11 +292,18 @@ export interface BuildEventRulesArgs {
  */
 export function buildEventRulesFromForm(args: BuildEventRulesArgs): EventBotRules {
   const { current, changes } = args;
+  // Construimos el resultado con los campos que el form SIEMPRE maneja.
+  // El resto se mergea abajo desde `current`.
   const result: EventBotRules = {
     personality: changes.personality.trim(),
     rules: (changes.rules ?? []).map((r) => r.trim()).filter((r) => r.length > 0),
-    payment_mode: changes.paymentMode,
   };
+  // FIX 2026-07-23 (auditoría David): payment_mode solo se setea si
+  // el caller lo está cambiando explícitamente. Si es undefined,
+  // NO pisamos el current — el merge de abajo lo va a traer.
+  if (changes.paymentMode !== undefined) {
+    result.payment_mode = changes.paymentMode;
+  }
 
   if (changes.reservation.shouldClearReservationFields) {
     // Apartado desactivado o free: marcar explícitamente enabled=false y
@@ -266,8 +314,7 @@ export function buildEventRulesFromForm(args: BuildEventRulesArgs): EventBotRule
     // Para borrar, NO seteamos las keys. El JSONB persistido simplemente
     // no tendrá `reservation_amount_mxn`, `balance_amount_mxn`, etc.
     // El mapper los lee como undefined, lo que es la semántica correcta.
-    // PERO: si el evento YA tenía esos campos seteados, queremos que se
-    // borren. Eso lo hace el spread selectivo más abajo.
+    // El loop de merge de abajo se encarga de no copiarlos del current.
   } else {
     // Apartado activo: persistir enabled, monto, balance y nota.
     result.reservation_enabled = true;
@@ -282,32 +329,35 @@ export function buildEventRulesFromForm(args: BuildEventRulesArgs): EventBotRule
     result.balance_due_note = "el día del evento";
   }
 
-  // Preservar cualquier campo extra que exista en `current` y que NO
-  // estamos pisando arriba. Defense in depth: si en el futuro alguien
-  // agrega un campo a `current` (ej. `cohort_id`), no lo perdemos.
+  // Merge del current: preservar campos que el resultado NO setea
+  // explícitamente. Esto cubre:
+  //   - payment_mode cuando el caller pasó undefined (no se está cambiando)
+  //   - campos desconocidos futuros (defense in depth: si alguien agrega
+  //     `cohort_id` a EventBotRules, no se pierde).
+  //   - balance_due_note u otros campos que el form no maneja todavía
+  //     pero que pueden estar en producción (preservamos en vez de borrar).
   const currentRecord = (current ?? {}) as unknown as Record<string, unknown>;
   for (const key of Object.keys(currentRecord)) {
-    if (key === "personality" || key === "rules" || key === "payment_mode") {
-      continue; // ya los manejamos arriba
-    }
-    if (key === "reservation_enabled" || key === "reservation_amount_mxn" ||
-        key === "balance_amount_mxn" || key === "balance_due_note") {
-      // Manejado arriba. Si "debe limpiarse", no copiamos del current.
-      if (changes.reservation.shouldClearReservationFields) {
-        continue;
-      }
-      // Si no, ya los seteamos arriba con los valores del form.
-      // Pero si el form no los proveyó (caso raro), caemos al current
-      // para no perderlos.
-      if (result[key as keyof EventBotRules] === undefined) {
-        const v = currentRecord[key];
-        if (v !== undefined) {
-          (result as unknown as Record<string, unknown>)[key] = v;
-        }
-      }
+    if (key === "personality" || key === "rules") {
+      // Siempre se pisan desde el form.
       continue;
     }
-    // Campo desconocido: preservar tal cual.
+    if (key === "payment_mode") {
+      // Solo preservar si el form no lo está pisando.
+      if (changes.paymentMode !== undefined) continue;
+    }
+    if (
+      key === "reservation_enabled" ||
+      key === "reservation_amount_mxn" ||
+      key === "balance_amount_mxn" ||
+      key === "balance_due_note"
+    ) {
+      // Si el helper dijo "limpiar", borrar explícitamente: NO copiar del current.
+      if (changes.reservation.shouldClearReservationFields) continue;
+      // Si el resultado ya tiene este campo seteado, no copiar.
+      if ((result as unknown as Record<string, unknown>)[key] !== undefined) continue;
+    }
+    // Campo no manejado o no seteado: copiar del current.
     const v = currentRecord[key];
     if (v !== undefined) {
       (result as unknown as Record<string, unknown>)[key] = v;

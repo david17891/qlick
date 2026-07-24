@@ -394,6 +394,20 @@ export async function createEvent(
           ? input.eventRules.reservation_amount_mxn
           : null,
     });
+    // FIX 2026-07-23 (auditoría David): rechazo explícito de
+    // apartado inválido al crear. Antes el helper limpiaba
+    // silenciosamente; ahora devolvemos error claro.
+    if (
+      input.eventRules.reservation_enabled === true &&
+      !reservationValidation.valid
+    ) {
+      return {
+        ok: false,
+        note:
+          reservationValidation.error ??
+          "La configuración del apartado es inválida.",
+      };
+    }
     const reservationAmountParsed = parseReservationAmount(
       String(input.eventRules.reservation_amount_mxn ?? ""),
     );
@@ -402,7 +416,12 @@ export async function createEvent(
       changes: {
         personality: input.eventRules.personality ?? "",
         rules: input.eventRules.rules ?? [],
-        paymentMode: input.eventRules.payment_mode ?? "test",
+        // FIX 2026-07-23 (auditoría): paymentMode se pasa tal cual
+        // viene. Si el caller no lo incluye (ej. EventDrawer
+        // enviando un objeto incompleto), preservamos undefined y
+        // el helper lo trata como "no change". El form admin
+        // SIEMPRE lo manda, pero esto es defense in depth.
+        paymentMode: input.eventRules.payment_mode,
         reservation: reservationValidation,
         reservationAmountParsed,
       },
@@ -564,6 +583,22 @@ export async function updateEvent(
   const currentEventRules =
     (prevRowForMerge as Record<string, unknown>).event_rules ?? null;
 
+  // FIX 2026-07-23 (auditoría David): el typegen de Supabase está
+  // stale y `price_mxn` puede llegar como string desde la DB
+  // (ej. "1000.00"). Si el caller del update NO incluye priceMXN en
+  // el patch, necesitamos leer el actual para validar el apartado
+  // contra él. Normalizamos a number explícitamente para que la
+  // validación posterior no caiga al default 0 (que trataría el
+  // evento como free y limpiaría el apartado silenciosamente).
+  const rawCurrentPrice = (prevRowForMerge as Record<string, unknown>)
+    .price_mxn;
+  const currentPriceAsNumber =
+    typeof rawCurrentPrice === "string"
+      ? Number(rawCurrentPrice)
+      : typeof rawCurrentPrice === "number"
+        ? rawCurrentPrice
+        : 0;
+
   // Construimos el patch con los campos provistos (no vacíos → omitir).
   // Tipamos explícitamente para que Supabase acepte el `.update()`.
   const patch: {
@@ -611,24 +646,22 @@ export async function updateEvent(
     if (input.eventRules === null) {
       patch.event_rules = null;
     } else {
-      // FIX 2026-07-23 (sprint apartado CANACO): usar el helper puro
-      // `buildEventRulesFromForm` para hacer merge del JSONB. Esto
-      // PRESERVA campos que el form no maneja explicitamente
-      // (payment_mode, reservation_*, balance_*, o cualquier key
-      // futura) en vez de hacer whitelist destructivo.
+      // FIX 2026-07-23 (sprint apartado CANACO + auditoría): usar el
+      // helper puro `buildEventRulesFromForm` para hacer merge del
+      // JSONB. Esto PRESERVA campos que el form no maneja
+      // explicitamente (payment_mode, reservation_*, balance_*, o
+      // cualquier key futura) en vez de hacer whitelist destructivo.
       //
       // El precio que se pasa al validador es el del PATCH (si viene)
-      // o el actual del row. Esto es porque el admin puede estar
-      // cambiando el precio y el apartado en la misma operacion: si
-      // baja el precio a 500, el apartado de 500 deja de ser valido
-      // (apartado < precio). El helper hace la validacion y si falla,
-      // `shouldClearReservationFields=true` limpia los montos.
+      // o el actual del row (normalizado a number — fix auditoría:
+      // el typegen stale puede traerlo como string "1000.00"). Esto
+      // es porque el admin puede estar cambiando el precio y el
+      // apartado en la misma operacion: si baja el precio a 500, el
+      // apartado de 500 deja de ser valido (apartado < precio).
       const priceForValidation =
         input.priceMXN !== undefined && input.priceMXN !== null
           ? Math.max(0, input.priceMXN)
-          : ((prevRowForMerge as Record<string, unknown>).price_mxn as
-              | number
-              | null) ?? 0;
+          : currentPriceAsNumber;
       const reservationValidation = validateReservation({
         priceMXN: priceForValidation,
         enabled: input.eventRules.reservation_enabled === true,
@@ -637,13 +670,35 @@ export async function updateEvent(
             ? input.eventRules.reservation_amount_mxn
             : null,
       });
+      // FIX 2026-07-23 (auditoría David): si el form está activando
+      // apartado y la validación falla, NO limpiamos silenciosamente.
+      // Devolvemos error claro para que el admin sepa que su input
+      // es inválido. El form admin YA bloquea el submit con la misma
+      // validación, pero si un caller externo (API) manda un payload
+      // inválido, el server también lo rechaza.
+      if (
+        input.eventRules.reservation_enabled === true &&
+        !reservationValidation.valid
+      ) {
+        return {
+          ok: false,
+          note:
+            reservationValidation.error ??
+            "La configuración del apartado es inválida.",
+        };
+      }
       const reservationAmountParsed = parseReservationAmount(
         String(input.eventRules.reservation_amount_mxn ?? ""),
       );
+      // FIX 2026-07-23 (auditoría David): payment_mode se pasa TAL
+      // CUAL viene del input. Si no viene (undefined), el helper de
+      // merge preserva el current en vez de pisarlo con "test".
+      // Antes usábamos `?? "test"` que rompía eventos con
+      // payment_mode="live" cada vez que se tocaba el evento.
       const mergeChanges: FormEventRulesChanges = {
         personality: input.eventRules.personality ?? "",
         rules: input.eventRules.rules ?? [],
-        paymentMode: input.eventRules.payment_mode ?? "test",
+        paymentMode: input.eventRules.payment_mode,
         reservation: reservationValidation,
         reservationAmountParsed,
       };

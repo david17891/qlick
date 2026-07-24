@@ -53,9 +53,34 @@ test("parseReservationAmount: decimal con > 2 lugares → null (decimales excesi
 });
 
 test("parseReservationAmount: separador de miles con coma MX", () => {
-  // "1,500.50" → removemos comas → "1500.50" → 1500.5
+  // FIX 2026-07-23 (auditoría David): "1,500" es miles MX, "1,500.50"
+  // es miles + decimal MX. Ambos válidos.
   assert.equal(parseReservationAmount("1,500.50"), 1500.5);
   assert.equal(parseReservationAmount("1,500"), 1500);
+  assert.equal(parseReservationAmount("1,500,000.99"), 1500000.99);
+});
+
+test("parseReservationAmount: decimal sin punto (MX ambiguo) → null", () => {
+  // FIX 2026-07-23 (auditoría David): "10,50" puede ser "10.50" (decimal)
+  // o "1050" (miles mal escritos). No adivinamos. Devolvemos null para
+  // que el form muestre error y el admin lo corrija a "10.50" explícito.
+  assert.equal(parseReservationAmount("10,50"), null);
+  assert.equal(parseReservationAmount("1,50"), null);
+  assert.equal(parseReservationAmount("1,5"), null);
+});
+
+test("parseReservationAmount: miles mal formateados → null", () => {
+  // Los grupos después de la primera coma deben ser EXACTAMENTE 3 dígitos.
+  assert.equal(parseReservationAmount("1,50,000"), null);
+  assert.equal(parseReservationAmount("1234,567"), null);
+  assert.equal(parseReservationAmount(",500"), null);
+});
+
+test("parseReservationAmount: formato europeo → null", () => {
+  // Formato europeo es "1.500,50" (punto para miles, coma para decimal).
+  // NO lo aceptamos. Solo MX: coma para miles, punto para decimal.
+  assert.equal(parseReservationAmount("1.500,50"), null);
+  assert.equal(parseReservationAmount("1.500"), null);
 });
 
 test("parseReservationAmount: negativos → null", () => {
@@ -418,4 +443,78 @@ test("buildEventRulesFromForm: trimea personality y rules", () => {
   const out = buildEventRulesFromForm({ current: null, changes });
   assert.equal(out.personality, "Bot con espacios");
   assert.deepEqual(out.rules, ["regla 1", "regla 2"]);
+});
+
+/* ------------------------------------------------------------------ */
+/* FIX 2026-07-23 (auditoría David): preservación de payment_mode      */
+/* ------------------------------------------------------------------ */
+
+test("buildEventRulesFromForm: payment_mode undefined en changes → preserva el current 'live'", () => {
+  // Caso del bug: el admin edita un evento que tenía payment_mode='live'
+  // y no toca el modo de Stripe. El server llama al helper con
+  // payment_mode=undefined. El helper debe preservar el current.
+  const current = {
+    personality: "Bot v1",
+    rules: ["r1"],
+    payment_mode: "live",
+  };
+  const changes = makeChanges({
+    personality: "Bot v2", // cambió personalidad, no payment_mode
+    rules: ["r1"],
+    paymentMode: undefined, // NO lo está cambiando
+  });
+  const out = buildEventRulesFromForm({ current, changes });
+  assert.equal(out.personality, "Bot v2");
+  assert.equal(out.payment_mode, "live"); // preservado, no pisado a "test"
+});
+
+test("buildEventRulesFromForm: payment_mode 'test' en changes → pisa el current 'live'", () => {
+  // Caso opuesto: el admin SÍ quiere cambiar el modo.
+  const current = {
+    personality: "X",
+    rules: [],
+    payment_mode: "live",
+  };
+  const changes = makeChanges({
+    paymentMode: "test",
+  });
+  const out = buildEventRulesFromForm({ current, changes });
+  assert.equal(out.payment_mode, "test");
+});
+
+test("buildEventRulesFromForm: payment_mode 'test' en changes con current undefined → setea 'test'", () => {
+  // Creación de evento nuevo: no hay current, el form provee 'test'.
+  const changes = makeChanges({
+    paymentMode: "test",
+  });
+  const out = buildEventRulesFromForm({ current: null, changes });
+  assert.equal(out.payment_mode, "test");
+});
+
+test("buildEventRulesFromForm: payment_mode undefined con current undefined → queda undefined", () => {
+  // El form admin SIEMPRE provee paymentMode. Pero defense in depth:
+  // si llega undefined y no hay current, no se setea nada.
+  const changes = makeChanges({
+    paymentMode: undefined,
+  });
+  const out = buildEventRulesFromForm({ current: null, changes });
+  assert.equal(out.payment_mode, undefined);
+});
+
+test("buildEventRulesFromForm: CANACO con payment_mode undefined NO lo baja a 'test'", () => {
+  // Test de regresión específico del bug de David: si CANACO tiene
+  // payment_mode='live' (futuro) y un admin edita el título sin
+  // tocar el modo, el helper no debe pisarlo a 'test'.
+  const current = {
+    personality: "Bot amable, cercano y profesional.",
+    rules: ["r1"],
+    payment_mode: "live",
+  };
+  const changes = makeChanges({
+    personality: "Bot amable, cercano y profesional.",
+    rules: ["r1"],
+    paymentMode: undefined,
+  });
+  const out = buildEventRulesFromForm({ current, changes });
+  assert.equal(out.payment_mode, "live");
 });
