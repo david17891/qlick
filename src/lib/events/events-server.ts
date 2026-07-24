@@ -28,6 +28,12 @@ import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { logAdminAction } from "@/lib/crm/audit-server";
 import { generateShortCode, isValidShortCode } from "./short-code";
+import {
+  buildEventRulesFromForm,
+  parseReservationAmount,
+  validateReservation,
+  type FormEventRulesChanges,
+} from "./event-rules-merge";
 
 /** ¿Está activa la persistencia real? Server-only (defensa contra browser). */
 function isRealMode(): boolean {
@@ -368,6 +374,42 @@ export async function createEvent(
   // hace el código legacy con event_rules. La columna existe en la DB
   // (migration 20260705120000) y la pasará al INSERT.
   // Mismo caso para price_mxn y currency (migration 20260714230000).
+  //
+  // FIX 2026-07-23 (sprint apartado CANACO): si el form manda
+  // `eventRules`, lo construimos con el helper de merge (con
+  // `current: null` porque es creación). El helper se encarga de
+  // validar el apartado contra el precio y de armar el JSONB final
+  // con personality, rules, payment_mode, reservation_*.
+  const finalPrice =
+    typeof input.priceMXN === "number" && Number.isFinite(input.priceMXN)
+      ? Math.max(0, input.priceMXN)
+      : 0;
+  let eventRulesForInsert: unknown;
+  if (input.eventRules) {
+    const reservationValidation = validateReservation({
+      priceMXN: finalPrice,
+      enabled: input.eventRules.reservation_enabled === true,
+      amount:
+        typeof input.eventRules.reservation_amount_mxn === "number"
+          ? input.eventRules.reservation_amount_mxn
+          : null,
+    });
+    const reservationAmountParsed = parseReservationAmount(
+      String(input.eventRules.reservation_amount_mxn ?? ""),
+    );
+    eventRulesForInsert = buildEventRulesFromForm({
+      current: null,
+      changes: {
+        personality: input.eventRules.personality ?? "",
+        rules: input.eventRules.rules ?? [],
+        paymentMode: input.eventRules.payment_mode ?? "test",
+        reservation: reservationValidation,
+        reservationAmountParsed,
+      },
+    });
+  } else {
+    eventRulesForInsert = { personality: "", rules: [] };
+  }
   const insertPayload: Record<string, unknown> = {
     slug: input.slug.trim().toLowerCase(),
     title: input.title.trim(),
@@ -377,7 +419,7 @@ export async function createEvent(
     location: input.location?.trim() || null,
     cover_image_url: input.coverImageUrl?.trim() || null,
     status: input.status ?? "draft",
-    event_rules: input.eventRules ?? { personality: "", rules: [] },
+    event_rules: eventRulesForInsert,
     // Streaming (migration 20260707000000). Solo se incluyen si vienen
     // en el input — el default `in_person` lo aplica la DB.
     format: input.format ?? "in_person",
@@ -386,10 +428,7 @@ export async function createEvent(
     streaming_access_note: input.streamingAccessNote?.trim() || null,
     // Pago (migration 20260714230000). Clampeamos a >=0 para que un
     // caller malicioso no inserte precio negativo. Default 0 (gratis).
-    price_mxn:
-      typeof input.priceMXN === "number" && Number.isFinite(input.priceMXN)
-        ? Math.max(0, input.priceMXN)
-        : 0,
+    price_mxn: finalPrice,
     currency: input.currency?.trim() || "MXN",
   };
   // Solo agregar short_code si el generador devolvió algo válido.
@@ -407,6 +446,9 @@ export async function createEvent(
   // error definitivo.
   if (error?.code === "23505" && (error.message ?? "").includes("short_code")) {
     const retryCode = generateShortCode();
+    // FIX 2026-07-23: reusar `eventRulesForInsert` ya construido arriba
+    // (con el helper de merge + validación). Antes este path reinsertaba
+    // el input crudo, perdiendo cualquier sanitización.
     const retryPayload: Record<string, unknown> = {
       slug: input.slug.trim().toLowerCase(),
       title: input.title.trim(),
@@ -416,16 +458,13 @@ export async function createEvent(
       location: input.location?.trim() || null,
       cover_image_url: input.coverImageUrl?.trim() || null,
       status: input.status ?? "draft",
-      event_rules: input.eventRules ?? { personality: "", rules: [] },
+      event_rules: eventRulesForInsert,
       format: input.format ?? "in_person",
       streaming_url: input.streamingUrl?.trim() || null,
       streaming_provider: input.streamingProvider ?? null,
       streaming_access_note: input.streamingAccessNote?.trim() || null,
       // Pago (migration 20260714230000). Mismo clamp que en el primer INSERT.
-      price_mxn:
-        typeof input.priceMXN === "number" && Number.isFinite(input.priceMXN)
-          ? Math.max(0, input.priceMXN)
-          : 0,
+      price_mxn: finalPrice,
       currency: input.currency?.trim() || "MXN",
       short_code: retryCode
     };
@@ -500,6 +539,31 @@ export async function updateEvent(
     return { ok: false, note: "Faltan datos (eventId/actor)." };
   }
 
+  const supabase = createSupabaseAdminClient();
+
+  // FIX 2026-07-23 (sprint apartado CANACO): leemos el `event_rules`
+  // actual ANTES de construir el patch para que el merge del JSONB
+  // pueda preservar campos que el form no maneja (payment_mode,
+  // reservation_*, balance_*, o cualquier key futura). Antes el
+  // updateEvent hacia whitelist destructivo `{personality, rules}` y
+  // BORRABA payment_mode / reservation_* cada vez que el admin tocaba
+  // cualquier campo del evento. Con este read upfront, el helper
+  // `buildEventRulesFromForm` puede hacer el merge correcto.
+  const { data: prevRowForMerge, error: prevErrForMerge } = await supabase
+    .from("events")
+    .select("*")
+    .eq("id", eventId)
+    .maybeSingle();
+
+  if (prevErrForMerge || !prevRowForMerge) {
+    return {
+      ok: false,
+      note: prevErrForMerge ? "Error leyendo evento." : "Evento no existe.",
+    };
+  }
+  const currentEventRules =
+    (prevRowForMerge as Record<string, unknown>).event_rules ?? null;
+
   // Construimos el patch con los campos provistos (no vacíos → omitir).
   // Tipamos explícitamente para que Supabase acepte el `.update()`.
   const patch: {
@@ -547,12 +611,46 @@ export async function updateEvent(
     if (input.eventRules === null) {
       patch.event_rules = null;
     } else {
-      // Normalizamos para serializar limpio (solo campos validos).
-      const personality = input.eventRules.personality?.trim() ?? "";
-      const rules = (input.eventRules.rules ?? [])
-        .map((r) => r.trim())
-        .filter((r) => r.length > 0);
-      patch.event_rules = { personality, rules } as never;
+      // FIX 2026-07-23 (sprint apartado CANACO): usar el helper puro
+      // `buildEventRulesFromForm` para hacer merge del JSONB. Esto
+      // PRESERVA campos que el form no maneja explicitamente
+      // (payment_mode, reservation_*, balance_*, o cualquier key
+      // futura) en vez de hacer whitelist destructivo.
+      //
+      // El precio que se pasa al validador es el del PATCH (si viene)
+      // o el actual del row. Esto es porque el admin puede estar
+      // cambiando el precio y el apartado en la misma operacion: si
+      // baja el precio a 500, el apartado de 500 deja de ser valido
+      // (apartado < precio). El helper hace la validacion y si falla,
+      // `shouldClearReservationFields=true` limpia los montos.
+      const priceForValidation =
+        input.priceMXN !== undefined && input.priceMXN !== null
+          ? Math.max(0, input.priceMXN)
+          : ((prevRowForMerge as Record<string, unknown>).price_mxn as
+              | number
+              | null) ?? 0;
+      const reservationValidation = validateReservation({
+        priceMXN: priceForValidation,
+        enabled: input.eventRules.reservation_enabled === true,
+        amount:
+          typeof input.eventRules.reservation_amount_mxn === "number"
+            ? input.eventRules.reservation_amount_mxn
+            : null,
+      });
+      const reservationAmountParsed = parseReservationAmount(
+        String(input.eventRules.reservation_amount_mxn ?? ""),
+      );
+      const mergeChanges: FormEventRulesChanges = {
+        personality: input.eventRules.personality ?? "",
+        rules: input.eventRules.rules ?? [],
+        paymentMode: input.eventRules.payment_mode ?? "test",
+        reservation: reservationValidation,
+        reservationAmountParsed,
+      };
+      patch.event_rules = buildEventRulesFromForm({
+        current: currentEventRules as never,
+        changes: mergeChanges,
+      }) as never;
     }
   }
   // Streaming (migration 20260707000000). Patch aditivo — solo aplica si
@@ -586,21 +684,12 @@ export async function updateEvent(
     return { ok: false, note: "Sin cambios para aplicar." };
   }
 
-  const supabase = createSupabaseAdminClient();
-
   // Capturamos el estado previo para el audit log (qué cambió de qué a qué).
-  const { data: prev, error: prevErr } = await supabase
-    .from("events")
-    .select("*")
-    .eq("id", eventId)
-    .maybeSingle();
-
-  if (prevErr || !prev) {
-    return {
-      ok: false,
-      note: prevErr ? "Error leyendo evento." : "Evento no existe.",
-    };
-  }
+  // NOTA: arriba ya hicimos un SELECT al inicio del updateEvent para
+  // tener el `event_rules` previo. Reusamos esa misma fila acá para el
+  // diff, en vez de hacer una segunda query. El campo `prev` (alias)
+  // se mantiene para no tocar el resto del audit log.
+  const prev = prevRowForMerge;
 
   const { data, error } = await supabase
     .from("events")

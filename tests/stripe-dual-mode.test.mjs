@@ -121,10 +121,28 @@ test("EventDrawer persiste payment_mode en eventRules al crear/editar", () => {
     source("src/components/events/EventDrawer.tsx"),
     "utf-8"
   );
-  // Hay 2 sitios (create + update) que pasan payment_mode.
-  const matches = eventDrawer.match(/payment_mode: form\.paymentMode/g);
-  assert.ok(matches && matches.length >= 2,
-    "EventDrawer debe persistir payment_mode en create + update");
+  // FIX 2026-07-23 (sprint apartado CANACO): la persistencia de
+  // payment_mode ahora pasa por el helper `buildEventRulesFromForm`,
+  // no por 2 referencias literales a `payment_mode: form.paymentMode`
+  // en los branches de create/update. Lo que importa es que el
+  // FormState → buildEventRulesFromForm → eventRulesForPayload →
+  // createEvent/updateEvent siga incluyendo payment_mode.
+  assert.match(
+    eventDrawer,
+    /buildEventRulesFromForm/,
+    "EventDrawer debe usar el helper de merge para construir eventRules"
+  );
+  assert.match(
+    eventDrawer,
+    /paymentMode:\s*form\.paymentMode/,
+    "EventDrawer debe pasar el paymentMode del form al helper de merge"
+  );
+  // Y el resultado del merge se persiste en create + update.
+  assert.match(
+    eventDrawer,
+    /eventRules:\s*eventRulesForPayload/,
+    "EventDrawer debe pasar el eventRules mergeado a createEvent/updateEvent"
+  );
 });
 
 test("EventDrawer FormState incluye paymentMode", () => {
