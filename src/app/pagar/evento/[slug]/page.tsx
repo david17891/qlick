@@ -30,6 +30,7 @@ import { Container, Card, Button, Badge } from "@/components/ui";
 import { getCurrentStudent } from "@/lib/auth/session";
 import { getEventBySlug } from "@/lib/events/events-server";
 import { checkEventAccess } from "@/lib/lms/event-entitlements";
+import { EVENT_TIMEZONE } from "@/lib/datetime";
 import { SimulatorForm } from "./SimulatorForm";
 import { CheckoutButton } from "./CheckoutButton";
 
@@ -203,7 +204,14 @@ export default async function PayEventPage({
                   {new Date(event.startsAt).toLocaleString("es-MX", {
                     dateStyle: "long",
                     timeStyle: "short",
+                    timeZone: EVENT_TIMEZONE,
                   })}
+                  {event.endsAt &&
+                    ` a ${new Date(event.endsAt).toLocaleTimeString("es-MX", {
+                      hour: "numeric",
+                      minute: "2-digit",
+                      timeZone: EVENT_TIMEZONE,
+                    })}`}
                 </li>
                 {event.format && event.format !== "in_person" && (
                   <li>

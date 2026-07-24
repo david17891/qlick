@@ -39,7 +39,7 @@
 
 | Item | Estado | Acción requerida |
 |---|---|---|
-| Deploy del flujo de apartado `$500 MXN` | 🟠 En curso | Promover el branch del release, esperar Vercel `Ready` y ejecutar una reserva controlada. |
+| Deploy del flujo de apartado `$500 MXN` | ✅ Desplegado | PR #41 mergeado a `main`, Vercel Production `Ready` y página pública verificada. Falta ejecutar una reserva live controlada. |
 | Dirección exacta de CANACO | ⚪ Bloqueado por negocio | David/socio deben confirmar la dirección antes de publicarla en bot, correo o pase QR. |
 | Liquidación del saldo `$500 MXN` | 🟡 Definición operativa | Confirmar si se cobra en puerta, por transferencia o con un segundo link; el release actual solo deja el registro en `pending`. |
 | Suite E2E externa con fixtures de evento | 🟡 Documentado | Tres fallos de `npm test` provienen de fixtures que seleccionan el evento activo más reciente y datos sintéticos repetidos; `npm run test:ci` (1483/1483) permanece verde. Aislar fixtures en un sprint separado. |
