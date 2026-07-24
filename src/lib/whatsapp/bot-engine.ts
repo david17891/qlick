@@ -2170,24 +2170,60 @@ async function buildOpenerPlan(args: {
     ? buildEventInfoCopy(singleEventShortcut)
     : null;
 
+  // FIX 2026-07-24 (sprint bot-welcome-copy): el formato anterior
+  // envolvia `humanStartsAt` en parentesis adicionales, lo cual
+  // generaba un paréntesis doble porque `humanStartsAt` ya viene
+  // con sufijo "(hora Pacifico)" desde `formatEventDateTimeWithZone`.
+  // Ademas el copy amontonaba todo en una sola linea y no mostraba
+  // la ubicacion.
+  //
+  // Cuando hay un solo evento activo (`singleEventShortcut`), el
+  // welcome ahora usa SIEMPRE el mismo formato del `detailedInfo`
+  // (con emojis, duracion, lugar, inversion, constancia, cupo).
+  // Antes solo se mostraba ese formato si el body del lead matcheaba
+  // `isEventInfoRequest`, lo cual dejaba al primer "hola" con el
+  // formato corto y feo.
+  //
+  // Cuando hay multiples eventos, mantenemos el formato corto con
+  // `eventLine` (lista resumida) para no abrumar al lead.
+  //
+  // IMPORTANTE: NO inventamos direccion exacta. CANACO policy
+  // ("No inventes direccion, cupos, descuentos, materiales ni
+  // constancias") se respeta en ambos paths.
   const eventLine =
     realActiveEvent && realActiveEvent.source === "db"
-      ? `\n\nPróximo evento: ${realActiveEvent.title} (${realActiveEvent.humanStartsAt})` +
-        // FIX 2026-07-16 (sprint pago-en-puerta): si el evento es de
-        // pago, lo decimos en el welcome para que el lead NO se inscriba
-        // pensando que es gratis. Antes el "Marketing + IA para
-        // Emprendedores (Copia - Pago)" tenía el sufijo raro entre
-        // paréntesis y el lead no entendía.
+      ? `\n\n📅 ${realActiveEvent.humanStartsAt}` +
+        (realActiveEvent.location &&
+        realActiveEvent.location.trim().length > 0 &&
+        realActiveEvent.location.trim() !== "—"
+          ? `\n📍 ${realActiveEvent.location.trim()}`
+          : "") +
         (realActiveEvent.priceMxn && realActiveEvent.priceMxn > 0
-          ? ` — evento de pago ($${realActiveEvent.priceMxn} MXN)`
+          ? `\n💰 Inversión: $${realActiveEvent.priceMxn.toLocaleString("es-MX")} MXN`
           : "")
       : "";
+  // FIX 2026-07-24 (sprint bot-welcome-copy): cuando hay un solo
+  // evento activo, el welcome usa SIEMPRE el formato largo
+  // (`detailedInfo` via `buildEventInfoCopy`), no solo cuando el
+  // body matchea `isEventInfoRequest`. Asi el primer "hola" ya
+  // muestra fecha, lugar, inversion, constancia, cupo — todo
+  // ordenado con emojis. Si detailedInfo falla, fallback al
+  // formato corto con eventLine.
+  const shortcutDetailedInfo = singleEventShortcut
+    ? (() => {
+        try {
+          return buildEventInfoCopy(singleEventShortcut);
+        } catch {
+          return null;
+        }
+      })()
+    : null;
   const interactive = singleEventShortcut
     ? {
         type: "button" as const,
         body: {
-          text: detailedInfo
-            ? `${detailedInfo}\n\n¿Quieres apartar tu lugar?`
+          text: shortcutDetailedInfo
+            ? `${shortcutDetailedInfo}\n\n¿Quieres apartar tu lugar?`
             : `${saludo} Soy Qlick, asistente de Qlick Marketing Digital. ¿Te interesa "${singleEventShortcut.title}"?${eventLine}`,
         },
         action: {
