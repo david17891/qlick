@@ -114,6 +114,13 @@ function _legacyGetStripeClient(): Stripe {
  * `productRef.priceMXN`, cae al valor legacy para compatibilidad.
  */
 function resolveAmount(input: CreateCheckoutInput): number {
+  if (
+    input.productRef &&
+    typeof input.productRef.chargeAmountMXN === "number" &&
+    Number.isFinite(input.productRef.chargeAmountMXN)
+  ) {
+    return input.productRef.chargeAmountMXN;
+  }
   if (input.productRef && Number.isFinite(input.productRef.priceMXN)) {
     return input.productRef.priceMXN;
   }
@@ -170,6 +177,7 @@ export const stripeProvider: PaymentProvider = {
       // (tarjeta/OXXO/SPEI) se configura en Dashboard y no se congela en
       // `payment_method_types`. Conservamos la preferencia para auditoría.
       requested_payment_method: input.method,
+      payment_purpose: productRef.paymentPurpose ?? "full",
       // FIX 2026-07-18: persistir el modo en metadata del session
       // para que el webhook sepa con qué Stripe client (test o live)
       // tiene que verificar la firma + leer el payment.
@@ -225,7 +233,9 @@ export const stripeProvider: PaymentProvider = {
                   productRef.kind === "course"
                     ? "Acceso completo al curso en Qlick"
                     : productRef.kind === "event"
-                      ? `Acceso al evento (${(productRef as { startsAt?: string }).startsAt ?? "próximamente"})`
+                      ? productRef.paymentPurpose === "reservation"
+                        ? `Apartado de $${(productRef.chargeAmountMXN ?? productRef.priceMXN).toLocaleString("es-MX")} MXN. Precio total del evento: $${productRef.priceMXN.toLocaleString("es-MX")} MXN.`
+                        : `Acceso al evento (${(productRef as { startsAt?: string }).startsAt ?? "próximamente"})`
                       : productRef.kind === "service"
                         ? "Servicio contratado con Qlick Marketing Digital"
                         : "Acceso al video de la masterclass",

@@ -8,13 +8,19 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-23 — PR39 mergeado a `main` (`ac0b278`) y Production READY (`qlick-e66jw1toi`). Se normalizó el voseo a tuteo mexicano en WhatsApp, prompts, pagos, eventos y mensajes de soporte; la regresión nueva y `npm run test:ci` pasan (1483/1483). El cargo controlado real de $10 MXN de PR34 sigue conciliado y sin repetición. Evidencia: `docs/AUDIT_PAYMENTS_EVENTS_PRE_PR34_2026-07-23.md`, `docs/BOT_AUDIT_2026-07-23.md` y `docs/COPY_MEXICAN_TUTEO.md`.
+> **Última actualización:** 2026-07-23 — Preparación del lanzamiento express del evento CANACO. Se publicó en Supabase el evento `desarrollo-estructura-curso-canaco` (20 de agosto de 2026, 16:00–20:00, CANACO), con precio total de $1,000 MXN y apartado en línea de $500 MXN. El código del apartado ya está validado localmente; falta promover este release a Production y ejecutar una reserva controlada.
 >
 > **Body del doc (líneas debajo):** es archivo histórico de sprints cerrados. Para estado actual, ver este snapshot.
 
 ---
 
-## Estado actual — 2026-07-23
+## Estado actual — 2026-07-23 · lanzamiento express CANACO
+
+- Evento publicado: `Desarrollo y estructura del curso CANACO` (`short_code=CN26`, `id=4100ffe3-54c1-45c1-a3a6-515595a646ad`). La fecha se persiste en UTC para mostrar 20 de agosto, 16:00–20:00 en `America/Phoenix`; sede mostrada: `CANACO` (la dirección exacta sigue pendiente).
+- Modelo comercial: total $1,000 MXN; apartado Stripe $500 MXN; saldo $500 MXN el día del evento. El webhook deja la confirmación en `pending` y no entrega acceso completo hasta liquidar el total.
+- Bot: el flujo de inscripción genera un enlace con `payment_option=reservation`, explica total/apartado/saldo y mantiene español mexicano neutro. El contexto de IA recibe las mismas reglas desde `event_rules`.
+- Release de código: pendiente de branch/PR/deploy de este sprint. No se debe considerar la campaña lista para cobro real hasta que el deploy quede `Ready` y se valide una reserva de $500 MXN.
+- Pendiente de producto: confirmar dirección exacta de CANACO, política operativa para el saldo y quién concilia los apartados; no se inventaron esos datos en el bot.
 
 - Migración `20260722130000_stripe_session_conflict_targets.sql` aplicada y verificada en Supabase Production; PR34 la versiona para reproducibilidad.
 - `npm run test:ci`: 1483/1483 PASS (gate estático portable; las suites E2E con secretos quedan fuera). `npm run test:e2e:funnel`: PASS con WhatsApp/Brevo mock y webhook Stripe test firmado. `npm run type-check`: PASS. `npm run lint`: PASS.

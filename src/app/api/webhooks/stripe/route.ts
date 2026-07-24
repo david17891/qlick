@@ -360,7 +360,12 @@ async function handleCheckoutPending(
           stripe_session_id: session.id,
           stripe_payment_intent_id: stripePaymentIntentId,
           stripe_mode: stripeMode,
-          metadata: { source: "stripe-webhook", payment_status: session.payment_status },
+          metadata: {
+            source: "stripe-webhook",
+            payment_status: session.payment_status,
+            payment_purpose: productRef.paymentPurpose ?? "full",
+            event_total_mxn: productRef.priceMXN,
+          },
         } as never,
         { onConflict: "stripe_session_id" }
       );
@@ -764,11 +769,12 @@ async function handleCheckoutCompleted(
   // llegar al webhook (se otorgan inline en /create-checkout). Si llegan,
   // es bug — loggeamos y dejamos pasar (la UI de scholarship ya otorgo
   // access, duplicar el grant daria unique constraint violation).
-  const expectedAmountCentavos = Math.round(productRef.priceMXN * 100);
+  const expectedChargeMXN = productRef.chargeAmountMXN ?? productRef.priceMXN;
+  const expectedAmountCentavos = Math.round(expectedChargeMXN * 100);
   const actualAmountCentavos =
     typeof session.amount_total === "number" ? session.amount_total : 0;
   if (
-    productRef.priceMXN > 0 &&
+    expectedChargeMXN > 0 &&
     actualAmountCentavos !== expectedAmountCentavos
   ) {
     // eslint-disable-next-line no-console
@@ -778,7 +784,7 @@ async function handleCheckoutCompleted(
       user_id: userId,
       product_kind: productRef.kind,
       product_id: productRef.id,
-      expected_mxn: productRef.priceMXN,
+      expected_mxn: expectedChargeMXN,
       actual_mxn: actualAmountCentavos / 100,
       expected_centavos: expectedAmountCentavos,
       actual_centavos: actualAmountCentavos,
@@ -795,7 +801,7 @@ async function handleCheckoutCompleted(
         status: "failed",
         metadata: {
           reason: "amount_discrepancy",
-          expected_mxn: productRef.priceMXN,
+          expected_mxn: expectedChargeMXN,
           actual_mxn: actualAmountCentavos / 100,
           expected_centavos: expectedAmountCentavos,
           actual_centavos: actualAmountCentavos,
@@ -1030,6 +1036,8 @@ async function handleCheckoutCompleted(
           source: "stripe-webhook",
           session_id: session.id,
           user_id: userId,
+          payment_purpose: productRef.paymentPurpose ?? "full",
+          event_total_mxn: productRef.priceMXN,
         },
       } as never)
       .select("id")
@@ -1180,6 +1188,51 @@ async function handleCheckoutCompleted(
           mode: "event_not_published",
           event_id: event.id,
           note: "Evento no está publicado. Grant bloqueado. Investigar (posible refund).",
+        },
+      };
+    }
+    const isReservation =
+      (productRef.kind === "event" || productRef.kind === "masterclass") &&
+      productRef.paymentPurpose === "reservation";
+    if (isReservation) {
+      // El apartado confirma la intención y se registra en el ledger, pero
+      // no entrega acceso completo ni cambia la confirmación a `paid`.
+      if (eventConfirmationId) {
+        const { error: pendingError } = await supabase
+          .from("event_confirmations")
+          .update({ payment_status: "pending" } as never)
+          .eq("id", eventConfirmationId)
+          .neq("payment_status", "revoked");
+        if (pendingError) {
+          errorLog("[stripe-webhook] reservation payment_status update fallo", {
+            confirmationId: eventConfirmationId,
+            error: pendingError.message,
+          });
+        }
+        try {
+          await notifyLeadPaymentConfirmedLib({
+            confirmationId: eventConfirmationId,
+            eventId: productRef.id,
+            amountTotalMXN,
+            paymentPurpose: "reservation",
+            logSource: "stripe-webhook",
+          });
+        } catch (notifyErr) {
+          errorLog("[stripe-webhook] reservation notification fallo", {
+            error: notifyErr instanceof Error ? notifyErr.message : String(notifyErr),
+          });
+        }
+      }
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          mode: "reservation_payment_processed",
+          event_id: event.id,
+          payment_id: payment.id,
+          payment_purpose: "reservation",
+          access_granted: false,
+          confirmation_payment_status: "pending",
         },
       };
     }

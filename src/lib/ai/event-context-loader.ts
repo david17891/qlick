@@ -274,6 +274,20 @@ function formatPromptBlock(args: {
   // "¿cuánto cuesta?", el bot a veces no lo decía.
   if (typeof args.priceMxn === "number" && args.priceMxn > 0) {
     lines.push(`Precio: $${args.priceMxn} MXN (evento de pago)`);
+    const reservationAmount = args.eventRules.reservation_enabled === true
+      ? args.eventRules.reservation_amount_mxn
+      : undefined;
+    if (
+      typeof reservationAmount === "number" &&
+      reservationAmount > 0 &&
+      reservationAmount < args.priceMxn
+    ) {
+      const balance = args.eventRules.balance_amount_mxn ?? args.priceMxn - reservationAmount;
+      lines.push(
+        `Apartado disponible: $${reservationAmount} MXN. Saldo pendiente: $${balance} MXN.`,
+        args.eventRules.balance_due_note ?? "El saldo se liquida según las instrucciones oficiales del evento.",
+      );
+    }
   } else {
     lines.push("Precio: evento gratuito");
   }

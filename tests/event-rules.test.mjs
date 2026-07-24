@@ -55,6 +55,36 @@ test("normalizeEventRules: input que no es objeto → defaults", () => {
   assert.deepEqual(normalizeEventRules(true), { personality: "", rules: [] });
 });
 
+test("normalizeEventRules: conserva configuración válida de apartado", () => {
+  const out = normalizeEventRules({
+    payment_mode: "live",
+    reservation_enabled: true,
+    reservation_amount_mxn: 500,
+    balance_amount_mxn: 500,
+    balance_due_note: "el día del evento",
+  });
+  assert.equal(out.payment_mode, "live");
+  assert.equal(out.reservation_enabled, true);
+  assert.equal(out.reservation_amount_mxn, 500);
+  assert.equal(out.balance_amount_mxn, 500);
+  assert.equal(out.balance_due_note, "el día del evento");
+});
+
+test("normalizeEventRules: descarta valores inválidos de apartado", () => {
+  const out = normalizeEventRules({
+    payment_mode: "sandbox",
+    reservation_enabled: "yes",
+    reservation_amount_mxn: "500",
+    balance_amount_mxn: Number.NaN,
+    balance_due_note: 123,
+  });
+  assert.equal(out.payment_mode, undefined);
+  assert.equal(out.reservation_enabled, undefined);
+  assert.equal(out.reservation_amount_mxn, undefined);
+  assert.equal(out.balance_amount_mxn, undefined);
+  assert.equal(out.balance_due_note, undefined);
+});
+
 test("normalizeEventRules: trim no aplicado a strings validos (mantiene tal cual)", () => {
   const out = normalizeEventRules({
     personality: "  casual con espacios  ",
