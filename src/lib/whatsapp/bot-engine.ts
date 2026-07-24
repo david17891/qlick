@@ -3849,10 +3849,35 @@ case "interactive_event_inscribir": {
             ? ` ${regEvtIc.streamingAccessNote}`
             : " Te enviamos el link de Zoom 24 horas antes."
           : " El día del evento presenta tu QR en la entrada.";
+        // FIX 2026-07-24 (auditoría E2E CANACO): el copy de pago del
+        // implicit_capture estaba hardcodeado como "pago completo" y
+        // NO respetaba el apartado configurado en event_rules. Para
+        // CANACO, el bot decía "pago completo de $1,000" cuando en
+        // realidad el evento tiene apartado de $500. Ahora usamos
+        // getReservationTerms(regEvtIc) para detectar si hay apartado
+        // y armar el copy correcto:
+        //   - reservation_enabled=true → copy de apartado con
+        //     total + apartado + enlace ?payment_option=reservation +
+        //     saldo + nota del balance_due_note.
+        //   - sin apartado → copy original de pago completo / pago
+        //     en puerta (preservado tal cual para no romper el flow
+        //     legacy de eventos sin apartado).
+        // NO se cambió el copy cuando no hay apartado. NO se
+        // cambiaron checkout ni webhook (los montos siguen
+        // resolviéndose desde event_rules, no desde constantes).
+        const reservationTermsIc = getReservationTerms(
+          regEvtIc && regEvtIc.source === "db" ? regEvtIc : null,
+        );
         const paymentLineIc = regEvtIsPaidIc && regEvtSlugIc
-          ? ` El evento cuesta $${regEvtIc!.priceMxn} MXN. Tienes 2 opciones: 1) Pagar en línea ahora (tarjeta/OXXO/SPEI): ${appBaseUrl()}/pagar/evento/${regEvtSlugIc}  2) Pagar en puerta el día del evento (efectivo o tarjeta). Solo avísanos al llegar.`
+          ? reservationTermsIc.enabled
+            // FIX 2026-07-24: hay apartado configurado. Generamos
+            // el copy de apartado con el monto del event_rules.
+            ? ` El evento cuesta $${regEvtIc!.priceMxn!.toLocaleString("es-MX")} MXN. Para apartar tu lugar paga $${reservationTermsIc.amount.toLocaleString("es-MX")} MXN en línea; el saldo de $${reservationTermsIc.balance.toLocaleString("es-MX")} MXN se liquida ${reservationTermsIc.note.toLowerCase()}\n\nAparta aquí (tarjeta/OXXO/SPEI): ${appBaseUrl()}/pagar/evento/${regEvtSlugIc}?payment_option=reservation`
+            // Sin apartado: copy legacy de pago completo / pago
+            // en puerta (preservado).
+            : ` El evento cuesta $${regEvtIc!.priceMxn!.toLocaleString("es-MX")} MXN. Tienes 2 opciones: 1) Pagar en línea ahora (tarjeta/OXXO/SPEI): ${appBaseUrl()}/pagar/evento/${regEvtSlugIc}  2) Pagar en puerta el día del evento (efectivo o tarjeta). Solo avísanos al llegar.`
           : regEvtIsPaidIc
-            ? ` El evento cuesta $${regEvtIc!.priceMxn} MXN. Puedes pagar en puerta el día del evento (efectivo o tarjeta). Te enviaremos el link de pago en línea pronto.`
+            ? ` El evento cuesta $${regEvtIc!.priceMxn!.toLocaleString("es-MX")} MXN. Puedes pagar en puerta el día del evento (efectivo o tarjeta). Te enviaremos el link de pago en línea pronto.`
             : "";
         const bodyText =
           `${saludoIc} Ya te tengo registrado. Te enviamos tu QR al ` +

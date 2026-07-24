@@ -281,9 +281,11 @@ test("REGRESION implicit_capture presencial+de_pago: NO dice 'link de Zoom', men
       `BUG REGRESION: copy dice "link de Zoom" para evento presencial. Got: ${preview}`
     );
     // Debe mencionar el pago con el precio del evento.
+    // FIX 2026-07-24: el copy ahora usa formato MX (con coma para
+    // miles) via toLocaleString. Aceptamos ambos formatos.
     assert.ok(
-      /\$1000/.test(preview),
-      `copy debe mencionar el precio $1000 MXN. Got: ${preview}`
+      /\$1,?000/.test(preview),
+      `copy debe mencionar el precio $1,000 MXN. Got: ${preview}`
     );
     assert.ok(
       /Pagar en línea|pagar en puerta/i.test(preview),
@@ -333,8 +335,9 @@ test("REGRESION implicit_capture virtual+de_pago: SI menciona link de Zoom, menc
       `copy debe mencionar el link de Zoom para evento virtual. Got: ${preview}`
     );
     // Tambien debe mencionar el pago.
+    // FIX 2026-07-24: formato MX con toLocaleString.
     assert.ok(
-      /\$1000/.test(preview),
+      /\$1,?000/.test(preview),
       `copy debe mencionar el precio. Got: ${preview}`
     );
   } finally {
