@@ -113,7 +113,7 @@ export default function AcercaPage() {
           <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {values.map((v) => (
               <Card key={v.title} className="p-6">
-                <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+                <div className="mb-4 inline-flex h-12 w-12 items-center justify-center chip-brand">
                   <LucideIcon icon={v.icon} size="lg" tone="inherit" />
                 </div>
                 <h3 className="font-bold text-ink">{v.title}</h3>

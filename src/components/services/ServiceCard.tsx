@@ -34,7 +34,7 @@ export function ServiceCard({ service }: { service: ServiceWithVariants }) {
       className="group block h-full"
       aria-label={`Ver paquetes de ${service.displayName}`}
     >
-      <Card hover className="h-full flex flex-col overflow-hidden">
+      <Card hover variant="pro" className="h-full flex flex-col overflow-hidden">
         {/* Header con brand-gradient + contenido en blanco */}
         <div className="relative bg-gradient-to-br from-brand-700 via-brand-500 to-brand-400 p-5 min-h-[180px] flex flex-col gap-2">
           {/* Badge con N paquetes en top-right */}

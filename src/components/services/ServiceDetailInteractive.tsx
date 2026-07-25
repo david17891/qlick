@@ -122,7 +122,7 @@ function VariantCard({
       )}
 
       <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center chip-brand">
           <LucideIcon
             icon={Package}
             size="md"

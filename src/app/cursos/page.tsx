@@ -97,7 +97,7 @@ export default function CursosProximamentePage() {
             ].map((alt, i) => (
               <Reveal key={alt.title} delay={i * 100}>
                 <Card hover className="h-full p-6 flex flex-col">
-                  <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+                  <div className="mb-4 inline-flex h-12 w-12 items-center justify-center chip-brand">
                     <alt.icon className="h-6 w-6" />
                   </div>
                   <h3 className="font-bold text-lg text-ink">{alt.title}</h3>

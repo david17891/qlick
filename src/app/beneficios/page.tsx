@@ -95,7 +95,7 @@ export default function BeneficiosPage() {
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {benefits.map((b) => (
               <Card key={b.title} hover className="p-6">
-                <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+                <div className="mb-4 inline-flex h-12 w-12 items-center justify-center chip-brand">
                   <LucideIcon icon={b.icon} size="lg" tone="inherit" />
                 </div>
                 <h3 className="font-bold text-lg text-ink">{b.title}</h3>

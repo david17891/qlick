@@ -194,6 +194,17 @@ export function buildSystemPrompt(
       `- Empieza DIRECTO con la info del evento, sin saludo ni presentacion.`,
       `- NO uses frases vagas tipo 'te contactaremos pronto' si tienes dato concreto.`
     );
+  } else {
+    lines.push(
+      ``,
+      `=== PARCHE TEMPORAL (HOY): CAPTURA DE LEADS SIN EVENTO ACTIVO ===`,
+      `Actualmente no hay un evento publicado en el sistema porque el evento principal se está configurando.`,
+      `Si el usuario realiza preguntas sobre eventos, cursos, capacitaciones o información de Qlick:`,
+      `- Sé muy amable, cercano y profesional (español de México).`,
+      `- Explícale que estamos registrando los datos de todos los interesados para ponernos en contacto directo con ellos y darles atención personalizada.`,
+      `- Pídele amablemente su nombre completo y su correo electrónico (un dato por turno si no los tiene).`,
+      `- Confírmale que un asesor del equipo de Qlick se pondrá en contacto directamente con él a la brevedad.`
+    );
   }
 
   return lines.join("\n");

@@ -45,20 +45,32 @@ const config: Config = {
         sans: ["var(--font-sans)", "system-ui", "sans-serif"],
         display: ["var(--font-display)", "system-ui", "sans-serif"]
       },
-      // Radio scale estandarizado: usar `rounded-sm/md/lg/xl/2xl` para
+      // Radio scale estandarizado: usar `rounded-sm/md/lg/xl/2xl/3xl/4xl` para
       // mantener jerarquía visual consistente entre primitivos.
+      // v3 (2026-07-21 — "no veo lo redondeado en cards grandes"): el
+      // 2xl subió a 28 y el 3xl a 36. La ServiceCard y Por-Qué-Qlick
+      // usan 3xl (36) para que se note el redondeo a 1200px de ancho.
       borderRadius: {
         sm: "8px",
         md: "12px",
         lg: "16px",
         xl: "20px",
-        "2xl": "24px"
+        "2xl": "28px",
+        "3xl": "36px",
+        "4xl": "48px"
       },
       boxShadow: {
         glow: "0 0 60px -15px rgba(171, 63, 234, 0.45)",
         "glow-accent": "0 0 60px -15px rgba(239, 159, 8, 0.45)",
         card: "0 8px 30px -12px rgba(15, 10, 26, 0.18)",
-        soft: "0 4px 20px -8px rgba(15, 10, 26, 0.10)"
+        soft: "0 4px 20px -8px rgba(15, 10, 26, 0.10)",
+        // Card "pro" — sombra con tinte morado sutil. Usada en Card.tsx
+        // cuando se quiere que la tarjeta destaque sobre fondos claros.
+        "card-pro":
+          "0 10px 30px -10px rgba(123, 34, 176, 0.18), 0 2px 6px -2px rgba(15, 10, 26, 0.08)",
+        // Hover para Card "pro" — efecto glow con borde sutil.
+        "glow-pro":
+          "0 0 0 1px rgba(171, 63, 234, 0.10), 0 14px 36px -10px rgba(123, 34, 176, 0.24)"
       },
       ringColor: {
         DEFAULT: "rgba(171, 63, 234, 0.4)"

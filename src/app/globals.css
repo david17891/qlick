@@ -114,6 +114,54 @@ h1, h2, h3, h4, h5 {
   @apply bg-white/10 backdrop-blur-md border border-white/20;
 }
 
+/* === Section soft (cambio 6, redesign 2026-07-21) ===
+   Fondo lavanda muy claro para secciones que tienen Cards blancas encima.
+   Hace que las tarjetas "floten" en lugar de perderse contra el fondo.
+   Usar en lugar de `bg-white` en secciones con grid de Cards. */
+.section-soft {
+  @apply bg-brand-50/60 text-ink;
+}
+
+/* === Section mesh suave (variante 2, 2026-07-21) ===
+   Versión más "presente" con mesh radial sutil brand+accent.
+   Usar en secciones principales (Servicios disponibles, Próximos eventos). */
+.section-soft-mesh {
+  background:
+    radial-gradient(ellipse 60% 80% at 0% 0%, rgba(171, 63, 234, 0.10), transparent 55%),
+    radial-gradient(ellipse 50% 70% at 100% 100%, rgba(239, 159, 8, 0.08), transparent 60%),
+    radial-gradient(ellipse 70% 60% at 100% 0%, rgba(161, 64, 220, 0.08), transparent 55%),
+    linear-gradient(180deg, #faf3ff 0%, #fbf9ff 100%);
+  @apply text-ink;
+}
+
+/* === Chip brand (cambio 2, redesign 2026-07-21) ===
+   Reemplaza el patrón inline `rounded-xl bg-brand-50 text-brand-600` plano.
+   Aporta gradiente interior, ring inset y color brand-700 para mejor lectura.
+   v3 (2026-07-21 — "no veo lo redondeado en cards grandes"): 3xl (36px)
+   para que matchee visualmente con el radio del Card pro.
+   Variante `.chip-brand-accent` para casos con acento naranja. */
+.chip-brand {
+  @apply inline-flex items-center justify-center rounded-3xl;
+  background: linear-gradient(135deg, #f3e6ff 0%, #ffffff 100%);
+  color: #7e22b0;
+  border: 1px solid #e6ccff;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+}
+.chip-brand-accent {
+  @apply inline-flex items-center justify-center rounded-3xl;
+  background: linear-gradient(135deg, #fff5dc 0%, #ffffff 100%);
+  color: #b86f00;
+  border: 1px solid #fbe1a4;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+}
+.chip-brand-neutral {
+  @apply inline-flex items-center justify-center rounded-3xl;
+  background: linear-gradient(135deg, #f1f5f9 0%, #ffffff 100%);
+  color: #334155;
+  border: 1px solid #e2e8f0;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.6);
+}
+
 /* === Reduced motion GLOBAL ===
    Respeto por la preferencia del usuario. Desactiva TODAS las animaciones
    y transiciones, no solo el toast-progress. */

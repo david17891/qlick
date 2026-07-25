@@ -58,7 +58,7 @@ export function buildCloseMessage(
   const course = courseInterest ?? lead.courseOfInterest ?? "nuestro curso";
   return [
     `¡Hola ${name}! 😊`,
-    `Soy David de Qlick. Vi que te interesa mucho ${course} y quería ayudarte a dar el siguiente paso.`,
+    `Te escribo de Qlick. Vi que te interesa mucho ${course} y quería ayudarte a dar el siguiente paso.`,
     `Tenemos ${course} con precio de lanzamiento. ¿Quieres que te comparta el link de pago o prefieres que resolvamos cualquier duda primero?`,
     `Estoy por aquí para lo que necesites. 🙌`,
   ].join("\n");
@@ -85,7 +85,7 @@ export function buildReactivateMessage(
   const course = courseInterest ?? lead.courseOfInterest ?? "nuestros cursos";
   return [
     `¡Hola ${name}! 🙂`,
-    `Soy David de Qlick. Hace un tiempo nos escribiste sobre ${course} y quería retomar la conversación para saber cómo te fue y si aún te interesa.`,
+    `Te escribo de Qlick. Hace un tiempo nos escribiste sobre ${course} y quería retomar la conversación para saber cómo te fue y si aún te interesa.`,
     `¿Tienes 5 min para platicar?`,
   ].join("\n");
 }

@@ -1,0 +1,30 @@
+{
+  "id": "4100ffe3-54c1-45c1-a3a6-515595a646ad",
+  "slug": "desarrollo-estructura-curso-canaco",
+  "title": "Las 4 Patas de un Negocio que Vende",
+  "status": "published",
+  "price_mxn": 1000,
+  "currency": "MXN",
+  "format": "in_person",
+  "location": "CANACO",
+  "starts_at": "2026-08-20T23:00:00+00:00",
+  "ends_at": "2026-08-21T03:00:00+00:00",
+  "event_rules": {
+    "rules": [
+      "Usa tuteo mexicano, nunca voseo rioplatense.",
+      "No inventes dirección, cupos, descuentos, materiales ni constancias.",
+      "Si preguntan por dirección exacta, indica que está por confirmar y canaliza con el equipo humano.",
+      "Para apartar, envía el enlace oficial de pago y no confirmes el apartado hasta que el webhook confirme el cobro.",
+      "El curso cuesta $1,000 MXN. Para apartar tu lugar se pagan $500 MXN y el saldo de $500 MXN se liquida el día del evento.",
+      "Cuando alguien pida información o escriba info, responde con un resumen claro del objetivo del curso, sus cuatro bases (videos, publicidad pagada, inteligencia artificial y seguimiento por WhatsApp), fecha, horario, lugar, precio total y esquema de apartado; ofrece el enlace oficial para apartar y aclara que la dirección exacta está por confirmar."
+    ],
+    "personality": "Bot amable, cercano y profesional, con español mexicano neutro.",
+    "payment_mode": "live",
+    "balance_due_note": "el día del evento",
+    "balance_amount_mxn": 500,
+    "reservation_enabled": true,
+    "reservation_amount_mxn": 500
+  },
+  "created_at": "2026-07-24T03:48:26.150778+00:00",
+  "updated_at": "2026-07-24T11:31:44.295356+00:00"
+}

@@ -15,20 +15,27 @@ export function StatCard({
   icon?: ReactNode;
   tone?: "brand" | "accent" | "neutral";
 }) {
-  const ring =
+  // v2 (2026-07-21 — redesign "está muy blanco"):
+  //  - fondo: wash estático (linear-gradient brand wash 6% → blanco)
+  //    en lugar de `bg-gradient-to-br from-brand-100 to-white` plano.
+  //  - chip: gradiente brand-100→blanco con ring inset, color brand-700.
+  //    Reemplaza el `bg-brand-100` plano que se perdía contra el fondo.
+  const wash =
     tone === "accent"
-      ? "from-amber-100"
+      ? "rgba(245, 158, 11, 0.06)"
       : tone === "neutral"
-        ? "from-slate-100"
-        : "from-brand-100";
-  const iconBg =
+        ? "rgba(15, 10, 26, 0.04)"
+        : "rgba(171, 63, 234, 0.06)";
+
+  const chipClass =
     tone === "accent"
-      ? "bg-amber-100 text-amber-700"
+      ? "chip-brand-accent"
       : tone === "neutral"
-        ? "bg-slate-100 text-slate-700"
-        : "bg-brand-100 text-brand-700";
+        ? "chip-brand-neutral"
+        : "chip-brand";
+
   return (
-    <Card className={cn("p-5 bg-gradient-to-br to-white", ring)}>
+    <Card variant="pro" className="p-5" style={{ background: `linear-gradient(180deg, ${wash}, #ffffff 70%)` }}>
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs font-bold uppercase tracking-wide text-ink-muted">
@@ -40,8 +47,8 @@ export function StatCard({
         {icon && (
           <div
             className={cn(
-              "flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg",
-              iconBg
+              "flex h-10 w-10 flex-shrink-0 items-center justify-center",
+              chipClass
             )}
           >
             {icon}

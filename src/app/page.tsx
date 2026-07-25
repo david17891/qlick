@@ -181,7 +181,7 @@ export default async function HomePage() {
       </section>
 
       {/* --------------------------- POR QUÉ QLICK --------------------------- */}
-      <section className="py-20">
+      <section className="py-20 section-soft">
         <Container size="wide">
           <SectionHeading
             center
@@ -215,7 +215,7 @@ export default async function HomePage() {
                 {
                   icon: MessageCircle,
                   title: "Hablas directo conmigo",
-                  body: "David responde tus mensajes. No es un call center, no es un bot, no es un vendedor. Una sola persona de inicio a fin."
+                  body: "Un especialista responde tus mensajes. No es un call center, no es un bot, no es un vendedor. Una sola persona de inicio a fin."
                 },
                 {
                   icon: Award,
@@ -225,8 +225,8 @@ export default async function HomePage() {
               ] satisfies Array<{ icon: ComponentType<SVGProps<SVGSVGElement>>; title: string; body: string }>
             ).map((b, i) => (
               <Reveal key={b.title} delay={i * 80}>
-                <Card hover className="p-6 h-full">
-                  <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
+                <Card hover variant="pro" className="p-6 h-full">
+                  <div className="mb-4 inline-flex h-12 w-12 items-center justify-center chip-brand">
                     <LucideIcon icon={b.icon} size="lg" tone="inherit" strokeWidth={2} />
                   </div>
                   <h3 className="font-bold text-lg text-ink">{b.title}</h3>
@@ -407,7 +407,7 @@ export default async function HomePage() {
                 name: "Paula Garza",
                 role: "Community Manager",
                 quote:
-                  "Contraté el Kickstart de Meta Ads. David me explicó todo sin tecnicismos y la campaña quedó lista. Ahora la escalo sola.",
+                  "Contraté el Kickstart de Meta Ads. Me explicaron todo sin tecnicismos y la campaña quedó lista. Ahora la escalo sola.",
                 rating: 5,
               },
             ].map((t, i) => (

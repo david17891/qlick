@@ -74,8 +74,8 @@ export interface NotifyLeadPaymentConfirmedArgs {
    * para distinguir pago-en-puerta de pago-en-linea.
    */
   paymentStatusOverride?: "paid" | "paid_manual";
-  /** Distingue un apartado confirmado de la liquidación total. */
-  paymentPurpose?: "full" | "reservation";
+  /** Distingue un apartado confirmado, la liquidación de un saldo, o pago completo. */
+  paymentPurpose?: "full" | "reservation" | "balance";
   /**
    * Source tag del log para distinguir de donde viene la llamada
    * (webhook / simulator / mark-paid). Default: "payment-notify".
@@ -190,6 +190,12 @@ export async function notifyLeadPaymentConfirmed(
             ? `✅ *Apartado confirmado — ${eventTitle}*\n\n` +
               `Recibimos tu apartado${amountText} para reservar tu lugar. ` +
               `El saldo se liquida el día del evento. Tu registro seguirá pendiente de liquidación completa.`
+            : args.paymentPurpose === "balance"
+            ? `✅ *Saldo liquidado — ${eventTitle}*\n\n` +
+              `Recibimos tu pago de saldo${amountText}. ` +
+              `Tu registro quedó pagado completo. ` +
+              `Te re-enviamos el QR al correo ${leadEmail ?? "(tu email)"}. ` +
+              `Nos vemos el día del evento.`
             : ps === "paid_manual"
             ? `✅ *Comprobante de pago — ${eventTitle}*\n\n` +
               `💰 Monto: $${(args.amountTotalMXN ?? 0).toLocaleString("es-MX")} MXN\n` +
