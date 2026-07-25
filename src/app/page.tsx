@@ -22,6 +22,13 @@ import { getActiveServices } from "@/lib/services";
 import { listPublishedEvents } from "@/lib/events/events-server";
 import { formatMXN } from "@/lib/utils";
 
+function formatEventDate(iso: string): string {
+  return new Date(iso).toLocaleString("es-MX", {
+    dateStyle: "full",
+    timeStyle: "short",
+  });
+}
+
 /**
  * Home pública de Qlick.
  *
@@ -288,43 +295,54 @@ export default async function HomePage() {
                     href={`/eventos/${event.slug}`}
                     className="group block h-full"
                   >
-                    <Card hover className="h-full overflow-hidden flex flex-col">
-                      <div className="relative aspect-video overflow-hidden bg-brand-50">
-                        {event.coverImageUrl ? (
-                          <Image
-                            src={event.coverImageUrl}
-                            alt={event.title}
-                            fill
-                            sizes="(max-width: 768px) 100vw, 33vw"
-                            className="object-cover transition-transform duration-500 group-hover:scale-105"
-                          />
-                        ) : null}
-                      </div>
-                      <div className="p-5 flex flex-col flex-1">
-                        <div className="flex items-center gap-2 text-xs text-ink-muted mb-2">
-                          <Calendar className="h-3.5 w-3.5" />
-                          <time dateTime={event.startsAt}>
-                            {new Date(event.startsAt).toLocaleDateString("es-MX", {
-                              day: "numeric",
-                              month: "long",
-                              year: "numeric",
-                            })}
-                          </time>
+                    <Card hover className="overflow-hidden h-full transition group-hover:shadow-md group-hover:border-brand-300 flex flex-col">
+                      <div className="relative w-full overflow-hidden bg-gradient-to-br from-brand-700 via-brand-500 to-brand-400 group-hover:scale-[1.02] transition-transform duration-300 flex flex-col gap-3 p-4">
+                        <div
+                          aria-hidden="true"
+                          className="absolute inset-0 opacity-20"
+                          style={{
+                            backgroundImage:
+                              "radial-gradient(circle at 20% 80%, white 0%, transparent 40%), radial-gradient(circle at 80% 20%, white 0%, transparent 35%)",
+                          }}
+                        />
+                        <div className="relative z-10 flex items-center justify-between gap-2">
+                          <Badge tone="success">Próximo</Badge>
+                          <span className="text-xs text-white/90 font-semibold drop-shadow-sm">Evento Qlick</span>
                         </div>
-                        <h3 className="font-bold text-lg text-ink leading-snug group-hover:text-brand-700 transition">
-                          {event.title}
-                        </h3>
+                        <div className="relative z-10">
+                          <h3 className="text-white font-bold text-lg leading-tight drop-shadow-md line-clamp-3">
+                            {event.title}
+                          </h3>
+                        </div>
+                      </div>
+                      <div className="p-5 space-y-3 flex-1 flex flex-col justify-between">
                         {event.description && (
-                          <p className="mt-2 text-sm text-ink-muted line-clamp-2">
+                          <p className="text-sm text-ink-soft line-clamp-2">
                             {event.description}
                           </p>
                         )}
-                        {event.priceMXN != null && event.priceMXN > 0 && (
-                          <div className="mt-auto pt-4">
-                            <span className="font-display text-xl font-bold text-ink">
+                        <div className="space-y-1 pt-2 border-t border-brand-50 text-sm">
+                          <p className="text-ink-soft flex items-center gap-1">
+                            <LucideIcon icon={Calendar} size="sm" tone="muted" />
+                            {formatEventDate(event.startsAt)}
+                          </p>
+                          {event.location && (
+                            <p className="text-ink-muted flex items-center gap-1">
+                              <LucideIcon icon={MapPin} size="sm" tone="muted" />
+                              {event.location}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-auto px-5 pb-5 pt-3 border-t border-brand-50">
+                        {event.priceMXN == null || event.priceMXN <= 0 ? (
+                          <span className="text-lg font-bold text-emerald-600">Gratis</span>
+                        ) : (
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-lg font-bold text-ink">
                               {formatMXN(event.priceMXN)}
                             </span>
-                            <span className="text-xs text-ink-muted ml-1">MXN</span>
+                            <span className="text-xs text-ink-muted">MXN</span>
                           </div>
                         )}
                       </div>
