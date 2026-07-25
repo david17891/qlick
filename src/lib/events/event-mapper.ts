@@ -57,11 +57,7 @@ export function mapEventRowToEvent(row: EventRow): Event {
     streamingUrl: row.streaming_url ?? undefined,
     streamingProvider: row.streaming_provider ?? undefined,
     streamingAccessNote: row.streaming_access_note ?? undefined,
-    coverImageUrl:
-      row.cover_image_url ??
-      (row.title?.includes("Las 4 Patas") || row.slug?.includes("canaco")
-        ? "/events/las-4-patas-de-un-negocio-que-vende.png"
-        : undefined),
+    coverImageUrl: row.cover_image_url ?? undefined,
     // Pago (migration 20260714230000). Typegen puede estar stale (las
     // columnas son nuevas), asi que casteamos el row a `Record<string,
     // unknown>` y leemos con fallback. Si la columna no esta, queda
