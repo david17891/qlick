@@ -48,11 +48,22 @@ let mockDbRules = /** @type {Array<{
 let mockFlagEnabled = false;
 let mockMaxActiveRules = 8;
 let mockSkippedScopes = /** @type {string[]} */ ([]);
+// FIX 2026-07-25 (corrección final David): cuando true, getActiveBotRules
+// lanza una excepción real. LOADER 12 la usa para verificar el camino
+// FAIL-OPEN (catch → [] + errorLog). Antes el test usaba DB vacía como
+// sustituto, que NO cubre el catch real.
+let mockGetActiveBotRulesShouldThrow = false;
+let mockGetActiveBotRulesThrowMessage = "getActiveBotRules simulated failure";
+// Captura del último error registrado por errorLog (para asserts).
+let mockLastErrorMessage = /** @type {string | null} */ (null);
 
 // Mock del módulo `ai-bot-rules-server` (provee `getActiveBotRules`).
 mock.module("../src/lib/ai/ai-bot-rules-server.ts", {
   namedExports: {
     getActiveBotRules: async () => {
+      if (mockGetActiveBotRulesShouldThrow) {
+        throw new Error(mockGetActiveBotRulesThrowMessage);
+      }
       // Simulamos la lógica del helper real: filtra is_active y expiradas.
       const now = Date.now();
       return mockDbRules.filter((r) => {
@@ -88,6 +99,13 @@ mock.module("../src/lib/log.ts", {
       const a = args[1];
       if (a && typeof a === "object" && Array.isArray(a.scopes)) {
         mockSkippedScopes = a.scopes;
+      }
+      // Capturar mensaje de error del catch (LOADER 12).
+      const err = args[1]?.error;
+      if (typeof err === "string") {
+        mockLastErrorMessage = err;
+      } else if (err instanceof Error) {
+        mockLastErrorMessage = err.message;
       }
     },
     infoLog: () => {},
@@ -126,6 +144,9 @@ beforeEach(() => {
   mockFlagEnabled = false;
   mockMaxActiveRules = 8;
   mockSkippedScopes = [];
+  mockGetActiveBotRulesShouldThrow = false;
+  mockGetActiveBotRulesThrowMessage = "getActiveBotRules simulated failure";
+  mockLastErrorMessage = null;
 });
 
 /* ==================================================================
@@ -337,17 +358,65 @@ test("LOADER 11: maxRules override del caller > system_settings", async () => {
 });
 
 /* ==================================================================
- * CASO 12 — DB caída (getActiveBotRules lanza) → FAIL-OPEN con []
+ * CASO 12 — DB caída (getActiveBotRules lanza excepción real) →
+ * FAIL-OPEN con [] y errorLog registrado.
+ *
+ * FIX 2026-07-25 (corrección final David): antes este test usaba una
+ * DB vacía como sustituto, que NO cubre el catch real del loader. La
+ * versión actual lanza una excepción real desde getActiveBotRules
+ * y verifica:
+ *   1. El loader devuelve [] (FAIL-OPEN, el bot sigue funcionando).
+ *   2. El error fue registrado vía errorLog con el mensaje del throw.
+ *   3. La excepción NO se propaga (no rompe el flujo del bot).
  * ================================================================== */
-test("LOADER 12: DB caída → [] sin romper el bot", async () => {
-  // Re-mock getActiveBotRules para que lance.
-  // (El mock original se registra una vez; para sobrescribirlo
-  // necesitaríamos un mecanismo más complejo. Como alternativa,
-  // verificamos que la DB vacía produce el mismo resultado.)
-  mockDbRules = [];
+test("LOADER 12: getActiveBotRules lanza excepción → [] + errorLog (FAIL-OPEN)", async () => {
+  // Configurar: flag prendido (si no, el loader devuelve [] antes de
+  // tocar la DB, y no podemos probar el catch real).
   mockFlagEnabled = true;
+  // Activar el throw simulado.
+  mockGetActiveBotRulesShouldThrow = true;
+  mockGetActiveBotRulesThrowMessage =
+    "connection terminated unexpectedly (test simulado)";
+  // La DB tiene reglas pero el loader NO debe verlas porque getActiveBotRules
+  // lanza antes de devolver cualquier cosa.
+  mockDbRules = [
+    {
+      id: "would-be-loaded",
+      scope: "global",
+      instruction: "no debe llegar al prompt",
+      priority: 100,
+      is_active: true,
+      expires_at: null,
+      usage_count: 0,
+      metadata: {},
+      created_by: "test",
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }
+  ];
+  // Limpiar el estado del log antes de la prueba.
+  mockLastErrorMessage = null;
+  mockSkippedScopes = [];
+
+  // Acción: el loader NO debe lanzar y debe devolver [].
   const r = await loadInjectableGlobalRules();
-  assert.deepEqual(r, []);
+  assert.deepEqual(
+    r,
+    [],
+    "el loader debe devolver [] cuando getActiveBotRules lanza"
+  );
+  // El error DEBE haberse registrado con el mensaje del throw.
+  assert.ok(
+    mockLastErrorMessage !== null,
+    "el errorLog debe haber sido invocado"
+  );
+  assert.ok(
+    typeof mockLastErrorMessage === "string" &&
+      mockLastErrorMessage.includes("connection terminated unexpectedly"),
+    `el mensaje del error debe contener el del throw; fue: ${JSON.stringify(
+      mockLastErrorMessage
+    )}`
+  );
 });
 
 afterEach(() => {
