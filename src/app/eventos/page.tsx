@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
 import { Navbar, Footer } from "@/components/layout";
 import { Badge, Card, Container } from "@/components/ui";
 import { LucideIcon } from "@/components/ui/Icon";
@@ -130,38 +131,45 @@ function EventCard({
 }) {
   return (
     <Link href={`/eventos/${event.slug}`} className="group block">
-      <Card className="overflow-hidden h-full transition group-hover:shadow-md group-hover:border-brand-300">
-        {/*
-          B-5 v2: cover visual con gradiente de marca + título del evento.
-          Consistente con la página, no depende de assets externos, único
-          por evento (no emoji genérico repetido en todas las cards).
-          El campo `cover_image_url` en DB se conserva por compat con
-          imports previos. Ver `docs/OPEN_ITEMS.md` → B-5.
-        */}
-        <div className="relative w-full overflow-hidden bg-gradient-to-br from-brand-700 via-brand-500 to-brand-400 group-hover:scale-[1.02] transition-transform duration-300 flex flex-col gap-3 p-4">
-          {/* Patrón sutil para textura, no dominante */}
-          <div
-            aria-hidden="true"
-            className="absolute inset-0 opacity-20"
-            style={{
-              backgroundImage:
-                "radial-gradient(circle at 20% 80%, white 0%, transparent 40%), radial-gradient(circle at 80% 20%, white 0%, transparent 35%)",
-            }}
-          />
-          {/* Fila superior: Badge y Evento Qlick */}
-          <div className="relative z-10 flex items-center justify-between gap-2">
-            <Badge tone={status === "upcoming" ? "success" : "neutral"}>
-              {status === "upcoming" ? "Próximo" : "Finalizado"}
-            </Badge>
-            <span className="text-xs text-white/90 font-semibold drop-shadow-sm">Evento Qlick</span>
+      <Card className="overflow-hidden h-full transition group-hover:shadow-md group-hover:border-brand-300 flex flex-col">
+        {event.coverImageUrl ? (
+          <div className="relative aspect-video w-full overflow-hidden bg-brand-50">
+            <Image
+              src={event.coverImageUrl}
+              alt={event.title}
+              fill
+              sizes="(max-width: 768px) 100vw, 33vw"
+              className="object-cover transition-transform duration-500 group-hover:scale-105"
+            />
+            <div className="absolute top-3 left-3 z-10">
+              <Badge tone={status === "upcoming" ? "success" : "neutral"}>
+                {status === "upcoming" ? "Próximo" : "Finalizado"}
+              </Badge>
+            </div>
           </div>
-          {/* Fila inferior: Título del evento */}
-          <div className="relative z-10">
-            <h3 className="text-white font-bold text-lg leading-tight drop-shadow-md line-clamp-3">
-              {event.title}
-            </h3>
+        ) : (
+          <div className="relative w-full overflow-hidden bg-gradient-to-br from-brand-700 via-brand-500 to-brand-400 group-hover:scale-[1.02] transition-transform duration-300 flex flex-col gap-3 p-4">
+            <div
+              aria-hidden="true"
+              className="absolute inset-0 opacity-20"
+              style={{
+                backgroundImage:
+                  "radial-gradient(circle at 20% 80%, white 0%, transparent 40%), radial-gradient(circle at 80% 20%, white 0%, transparent 35%)",
+              }}
+            />
+            <div className="relative z-10 flex items-center justify-between gap-2">
+              <Badge tone={status === "upcoming" ? "success" : "neutral"}>
+                {status === "upcoming" ? "Próximo" : "Finalizado"}
+              </Badge>
+              <span className="text-xs text-white/90 font-semibold drop-shadow-sm">Evento Qlick</span>
+            </div>
+            <div className="relative z-10">
+              <h3 className="text-white font-bold text-lg leading-tight drop-shadow-md line-clamp-3">
+                {event.title}
+              </h3>
+            </div>
           </div>
-        </div>
+        )}
         <div className="p-5 space-y-3">
           {event.description && (
             <p className="text-sm text-ink-soft line-clamp-2">
