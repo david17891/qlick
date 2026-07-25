@@ -15,6 +15,10 @@ import type { AIAgentProfile } from "@/types";
 import type { ActiveEventContext } from "./event-context-loader";
 import type { ConversationWindow } from "./conversation-window";
 import type { AgentContext, AgentTask } from "./agent-provider";
+import {
+  formatRulesBlock,
+  type InjectableRule
+} from "./ai-bot-rules-injector";
 
 /* ------------------------------------------------------------------ */
 /*  Tipos                                                              */
@@ -42,7 +46,8 @@ export function buildSystemPrompt(
   profile: AIAgentProfile,
   activeEvent?: ActiveEventContext,
   isFirstMessage: boolean = true,
-  eventsListBlock?: string
+  eventsListBlock?: string,
+  globalRules?: InjectableRule[]
 ): string {
   const lines: string[] = [
     `Eres ${profile.name}, asistente conversacional de ${profile.businessName}.`,
@@ -94,6 +99,25 @@ export function buildSystemPrompt(
     `Si no estás seguro o falta información, responde:`,
     `"${profile.fallbackMessage}"`
   ];
+
+  // FIX 2026-07-25 (sprint "activar ai_bot_rules en el bot real"):
+  // bloque de Reglas de Oro Globales para el modo socrático. Es la
+  // versión SIMPLE (sin D-025 explícito) porque este prompt es el más
+  // antiguo y minimalista; la idea es solo darle al LLM las reglas
+  // activas si el feature flag está prendido. Si está vacío (default
+  // actual), el bloque completo se omite.
+  if (globalRules && globalRules.length > 0) {
+    lines.push(``, `=== REGLAS DE ORO GLOBALES (cargadas por el orquestador) ===`);
+    lines.push(
+      `Estas reglas son mandatorias. Si contradicen tu copy por defecto, las reglas ganan.`,
+      ``
+    );
+    globalRules.forEach((r, i) => {
+      const n = i + 1;
+      lines.push(`[${n}] (priority=${r.priority}, ${r.scope === "global" ? "global" : r.scope}) ${r.instruction}`);
+    });
+    lines.push(``);
+  }
 
   // Inyectar contexto del evento(s) activo(s) (si hay).
   // FIX 2026-07-02 (sesion David):
@@ -519,6 +543,16 @@ export function buildSuperExecutivePrompt(context: AgentContext): string {
     "La regla local aplica SOLO si NO contradice la global."
   ].join("\n");
 
+  // FIX 2026-07-25 (sprint "activar ai_bot_rules en el bot real"):
+  // bloque CONCRETO de Reglas de Oro Globales. Antes este slot solo
+  // decía "inyectadas en runtime desde ai_bot_rules; la SSOT vive en
+  // DB" (placeholder); ahora renderea la lista numerada de
+  // instrucciones reales cuando `context.globalRules` viene poblado.
+  // Si está vacío (feature flag OFF o DB sin reglas), el bloque
+  // completo se omite (NO queda un header fantasma) y el LLM sigue
+  // trabajando solo con las cláusulas de jerarquía + reglas locales.
+  const globalRulesBlock = formatRulesBlock(context.globalRules ?? []);
+
   // Reglas locales del evento (si las hay). El LLM las ve, pero
   // entiende la jerarquía: una global siempre gana.
   const localRulesBlock =
@@ -615,9 +649,14 @@ export function buildSuperExecutivePrompt(context: AgentContext): string {
       "- LIMITACIÓN: `add_event_guest` solo agrega al array JSONB. NO le mandamos email de confirmación al acompañante automáticamente (es solo registro interno para que el admin lo vea). Si el lead pregunta, acláralo: 'Listo, lo registro en la base. El día del evento tu socio pasa con su nombre y listo 🎯'."
     ].join("\n"),
     ``,
-    `=== REGLAS DE ORO GLOBALES (cargadas por el orquestador) ===`,
-    `(inyectadas en runtime desde ai_bot_rules; la SSOT vive en DB)`,
-    ``,
+    // FIX 2026-07-25 (post-revisión David): las Reglas de Oro Globales
+    // (de `ai_bot_rules`, ya con precedencia GLOBAL → EVENTO aplicada
+    // por el loader) van ANTES de las reglas locales del evento.
+    // Antes el orden era "header placeholder → locales → bloque real",
+    // lo que provocaba (1) un header duplicado y (2) que el LLM
+    // procesara primero las locales y luego las globales. Ahora las
+    // globales van primero para reforzar la jerarquía D-025.
+    ...(globalRulesBlock ? [globalRulesBlock, ""] : []),
     localRulesBlock,
     ``,
     `=== ESCALAMIENTO A HUMANO ===`,
@@ -917,6 +956,20 @@ export function buildHumanFirstPrompt(context: AgentContext): string {
     `Las Reglas de Oro Globales (cargadas por el orquestador desde ai_bot_rules)`,
     `PREVALECEN sobre cualquier directriz local. Si una regla global`,
     `contradice tu copy por defecto, la regla global gana.`,
+    // FIX 2026-07-25 (sprint "activar ai_bot_rules en el bot real"):
+    // bloque CONCRETO de Reglas de Oro. Si `context.globalRules` está
+    // poblado (feature flag ON y hay reglas activas), rendereamos la
+    // lista numerada de instrucciones reales. Si está vacío, este
+    // bloque se omite completo (sin header fantasma). Mismo patrón
+    // que `buildSuperExecutivePrompt`.
+    // FIX 2026-07-25 (post-revisión David): el bloque de reglas
+    // globales ya viene con precedencia GLOBAL → EVENTO aplicada por
+    // el loader. Rendereamos el bloque completo (que incluye su
+    // propio header "REGLAS DE ORO GLOBALES"); eliminamos el
+    // sub-header "Reglas activas (top-N...)" que era duplicación.
+    ...(formatRulesBlock(context.globalRules ?? [])
+      ? [formatRulesBlock(context.globalRules ?? []), ``]
+      : []),
     ``,
     `=== REGLAS DE FORMATO Y ESTILO WHATSAPP (NO NEGOCIABLE) ===`,
     `- BREVEDAD: máximo 2-3 oraciones cortas. WhatsApp no es correo formal.`,

@@ -157,14 +157,37 @@ test("T6: copyByOffer[unknown] (defensivo) sigue protegiendo contra inventar", a
 
 test("T7: el bloque REGLAS WHATSAPP aparece ANTES de las Reglas de Oro", async () => {
   const { buildSuperExecutivePrompt } = await import(PROMPTS_URL);
-  const prompt = buildSuperExecutivePrompt(buildContext());
-  const idxWhatsapp = prompt.indexOf("REGLAS DE FORMATO Y ESTILO WHATSAPP");
-  const idxReglasOro = prompt.indexOf("REGLAS DE ORO GLOBALES");
+  // FIX 2026-07-25 (post-revisión David): el test verificaba el orden
+  // de un bloque placeholder que ya NO existe. El nuevo contrato:
+  // si `globalRules` está poblado, el bloque "REGLAS DE ORO GLOBALES"
+  // (via `formatRulesBlock`) debe aparecer DESPUÉS de "REGLAS DE
+  // FORMATO Y ESTILO WHATSAPP" (jerarquía D-025: las reglas de
+  // formato mandan, las reglas de oro las refuerzan). Si NO hay
+  // reglas, el bloque no debe aparecer (sin header fantasma).
+  const promptWithRules = buildSuperExecutivePrompt(
+    buildContext({
+      globalRules: [
+        { id: "g1", instruction: "REGLA GOLD", priority: 90, scope: "global" }
+      ]
+    })
+  );
+  const idxWhatsapp = promptWithRules.indexOf(
+    "REGLAS DE FORMATO Y ESTILO WHATSAPP"
+  );
+  const idxReglasOro = promptWithRules.indexOf("REGLAS DE ORO GLOBALES");
   assert.ok(idxWhatsapp > 0, "debe aparecer el bloque WhatsApp");
   assert.ok(idxReglasOro > 0, "debe aparecer el bloque de Reglas de Oro");
   assert.ok(
     idxWhatsapp < idxReglasOro,
     `el bloque WhatsApp (idx ${idxWhatsapp}) debe aparecer ANTES de las Reglas de Oro (idx ${idxReglasOro})`
+  );
+
+  // Si NO hay reglas, el bloque no debe aparecer.
+  const promptWithoutRules = buildSuperExecutivePrompt(buildContext());
+  assert.equal(
+    promptWithoutRules.indexOf("REGLAS DE ORO GLOBALES"),
+    -1,
+    "sin globalRules el header REGLAS DE ORO GLOBALES NO debe aparecer (sin fantasma)"
   );
 });
 

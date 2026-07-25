@@ -8,13 +8,21 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-24 — Producción activa tras el merge del PR #43 (`6a0571c3c3b756db2c4cb70bff5d5855a231401a`). Vercel deployment `dpl_EuD3P5nQ546KWvY6aLixnU4heJLj` está `READY` con aliases `qlick.digital` y `www.qlick.digital`. CANACO está publicado en modo Stripe live con total de $1,000 MXN, apartado de $500 MXN y saldo de $500 MXN el día del evento. El webhook live ya fue configurado y verificado manualmente por David en Stripe; no queda esa acción pendiente. El bot ya responde solicitudes de información con un resumen factual del curso y enlace de apartado. Gates: type-check, lint, audit:voseo y build de Vercel verdes; 1,535/1,535 tests; E2E de funnel 1/1; sin errores runtime en la última hora.
+> **Última actualización:** 2026-07-25 12:30 GMT-7 — Sprint "activar ai_bot_rules en el bot real" código listo en working tree, **aún NO commiteado ni mergeado a main**. Feature flag `bot_global_rules_enabled` en `false` por default (FAIL-CLOSED). El bot sigue funcionando como antes; las Reglas de Oro del admin llegan al prompt del LLM solo cuando David active el flag. Se pidió una segunda corrección (post-revisión) para (1) unificar `event:<id>` con compat `event:<slug>`, (2) rechazar scopes desconocidos (`course:`, `mode:`) en lugar de tratarlos como globales, (3) garantizar piso de slots para evento en el top-N, (4) limpiar header placeholder duplicado en los prompts, (5) tests reales del loader con mocks. Todos los bloqueadores corregidos y verificados: 24/24 tests verde (12 del loader + 12 del prompt), `npm run type-check` y `npm run lint` en verde. Pendiente: commit + merge a main antes de activar el flag. Ver `docs/ACTIVATION_GRADUAL_BOT_GLOBAL_RULES.md` para el rollout y `docs/PLAN_ROLLBACK_BOT_GLOBAL_RULES.md` para los 3 escenarios de rollback.
 >
 > **Body del doc (líneas debajo):** es archivo histórico de sprints cerrados. Para estado actual, ver este snapshot.
 
 ---
 
-## Estado actual — 2026-07-24 · Producción activa
+## Estado actual — 2026-07-25 · Producción activa
+
+- **Sprint "activar ai_bot_rules en el bot real" (Mavis, 11:12 + 12:30 GMT-7):** código listo en working tree, **aún NO commiteado a main** (segunda corrección post-revisión de David aplicada a las 12:30). Feature flag `system_settings.bot_global_rules_enabled` en `false` por default (FAIL-CLOSED). El código de inyección de Reglas de Oro Globales al prompt del LLM (Super Ejecutivo, Human First, Socrático) está deployable y probado, pero gateado por el flag. 24 tests nuevos (12 del loader + 12 del prompt) cubren el scope unificado `event:<id>`/`event:<slug>`, rechazo de scopes desconocidos (`course:`, `mode:`), piso de slots para evento en el top-N, y header placeholder duplicado eliminado. `npm run type-check`, `npm run lint` y `npm run build` en verde. Pendiente: commit del working tree + push + merge a main antes de activar el flag. Ver `docs/ACTIVATION_GRADUAL_BOT_GLOBAL_RULES.md` (4 fases) y `docs/PLAN_ROLLBACK_BOT_GLOBAL_RULES.md` (3 opciones: soft/hard/emergency).
+- Tarjeta destacada de la home actualizada a una superficie oscura integrada al hero; se conservan la jerarquía del servicio, beneficios, precio y CTA sin el bloque blanco anterior.
+- Deployment de producción: `https://www.qlick.digital`; deployment inspectable en `https://vercel.com/david17891-9351s-projects/qlick/3zKMPnrYqNRvf1BhjjpCQm7P5s4L`.
+
+- Rediseño premium de `/`: hero editorial, oferta dinámica destacada, diferenciadores, catálogo de servicios, flujo breve de trabajo, estándar de entrega y CTA final; se eliminó la prueba social no verificada y se actualizó el copy del footer/metadatos para reflejar servicios y eventos reales.
+- Deployment de producción: `https://www.qlick.digital` responde con el rediseño; deployment inspectable en `https://vercel.com/david17891-9351s-projects/qlick/DMrn4X7rxvCZuYnGPZMm523aJLyt`.
+- Verificación visual: escritorio 1280×720, móvil 390×844, menú móvil, enlaces principales y estado de consola revisados. La home se dejó como `force-dynamic` porque catálogo/eventos dependen de Supabase en runtime.
 
 - Evento publicado: `Desarrollo y estructura del curso CANACO` (`short_code=CN26`, `id=4100ffe3-54c1-45c1-a3a6-515595a646ad`). Título actual en DB: `"Las 4 Patas de un Negocio que Vende"`. Fecha: 20 de agosto de 2026, 16:00–20:00; sede mostrada: `CANACO` (la dirección exacta sigue pendiente de confirmación).
 - Modelo comercial activo: total $1,000 MXN; apartado $500 MXN; saldo $500 MXN el día del evento. `event_rules.payment_mode: "live"`. La ruta pública ofrece botones independientes para apartar o pagar completo.

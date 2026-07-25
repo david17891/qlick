@@ -51,6 +51,13 @@ export const KEY_DEEPSEEK_TOOLS_ENABLED = "deepseek_tools_enabled" as const;
 export const KEY_BOT_GLOBAL_MODE = "bot_global_mode" as const;
 export const KEY_BOT_MAX_ACTIVE_RULES = "bot_max_active_rules" as const;
 export const KEY_BOT_CONTEXT_BLOCKS_CONFIG = "bot_context_blocks_config" as const;
+// FIX 2026-07-25 (sprint bot, David "activar ai_bot_rules gradualmente"):
+// feature flag maestro para inyectar las Reglas de Oro (ai_bot_rules) al
+// prompt real del bot. Default OFF. Activar en system_settings con
+// `value: true` (jsonb boolean) para arrancar el rollout. Mientras esté
+// `false` o la fila no exista, el bot se comporta EXACTAMENTE como antes
+// (FAIL-CLOSED, sin inyeccion, sin telemetría, sin escrituras).
+export const KEY_BOT_GLOBAL_RULES_ENABLED = "bot_global_rules_enabled" as const;
 // Sprint v16 (M4): switch maestro "Pausar Bot para Todos". Si true, ningún
 // lead responde (precedencia sobre `leads.bot_paused`). El bot-engine
 // consulta esta key antes de generar respuesta y aborta si está activa.
@@ -282,6 +289,78 @@ export function invalidateCache(key?: string): void {
     box.map = {};
   } else {
     delete box.map[key];
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* FIX 2026-07-25 — Feature flag BOT_GLOBAL_RULES_ENABLED               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Lee el feature flag maestro `bot_global_rules_enabled` con caché propia
+ * (10s) más agresiva que el TTL general. Justificación: el admin lo
+ * togglea en vivo y queremos que el cambio se vea en <1 turno. El TTL
+ * corto evita martillar la DB (se llama 1 vez por turno del bot en el
+ * path real + 1 vez por turno en el simulador).
+ *
+ * Acepta `true` (jsonb boolean nativo), `"true"` (string), `1` o `"1"`.
+ * Cualquier otro valor (incluyendo `null`, `false`, fila inexistente,
+ * error de DB) → `false`. FAIL-CLOSED: si la DB está caída, el bot
+ * sigue funcionando como antes sin reglas.
+ *
+ * IMPORTANTE: este helper NO llama a `readSystemSetting` para evitar
+ * acoplar el orden de invalidación de cachés. Lee la DB directo con su
+ * propia caché.
+ */
+const RULES_ENABLED_CACHE_TTL_MS = 10_000;
+const RULES_ENABLED_CACHE_KEY = "__qlickBotGlobalRulesEnabledCache";
+
+interface RulesEnabledCacheBox {
+  value: boolean;
+  expiresAt: number;
+}
+
+function getRulesEnabledCacheBox(): RulesEnabledCacheBox {
+  const g = globalThis as unknown as { [RULES_ENABLED_CACHE_KEY]?: RulesEnabledCacheBox };
+  if (!g[RULES_ENABLED_CACHE_KEY]) {
+    g[RULES_ENABLED_CACHE_KEY] = { value: false, expiresAt: 0 };
+  }
+  return g[RULES_ENABLED_CACHE_KEY]!;
+}
+
+export async function readBotGlobalRulesEnabled(): Promise<boolean> {
+  const box = getRulesEnabledCacheBox();
+  const now = Date.now();
+  if (box.expiresAt > now) {
+    return box.value;
+  }
+  let resolved = false;
+  try {
+    const supabase = createSupabaseAdminClient();
+    const { data, error } = await supabase
+      .from("system_settings" as never)
+      .select("value" as never)
+      .eq("key" as never, KEY_BOT_GLOBAL_RULES_ENABLED)
+      .maybeSingle();
+    if (!error && data && typeof data === "object" && "value" in data) {
+      const v = (data as { value: unknown }).value;
+      // Aceptar: true, "true", 1, "1".
+      resolved = v === true || v === "true" || v === 1 || v === "1";
+    }
+  } catch {
+    // DB caída o sin configurar → FAIL-CLOSED.
+    resolved = false;
+  }
+  box.value = resolved;
+  box.expiresAt = now + RULES_ENABLED_CACHE_TTL_MS;
+  return resolved;
+}
+
+/** Invalida la caché del feature flag (para tests o toggle manual). */
+export function _invalidateRulesEnabledCacheForTest(): void {
+  const g = globalThis as unknown as { [RULES_ENABLED_CACHE_KEY]?: RulesEnabledCacheBox };
+  if (g[RULES_ENABLED_CACHE_KEY]) {
+    g[RULES_ENABLED_CACHE_KEY] = { value: false, expiresAt: 0 };
   }
 }
 

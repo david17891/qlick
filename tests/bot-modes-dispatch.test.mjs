@@ -3,11 +3,21 @@ import assert from "node:assert/strict";
 
 let activeMode = "socratic_autopilot_v2";
 
+// FIX 2026-07-25 (sprint "activar ai_bot_rules en el bot real"):
+// el injector de Reglas de Oro importa `KEY_BOT_MAX_ACTIVE_RULES` y
+// `readBotGlobalRulesEnabled`. Si el mock no las provee, los tests
+// que cargan `deepseek-provider.ts` (que carga `agent-prompts.ts`
+// que carga el injector) fallan con "does not provide an export
+// named X". Las agregamos para que el mock siga siendo compatible
+// con el código de producción sin tocar el resto del test.
 mock.module("../src/lib/admin/system-settings-server.ts", {
   namedExports: {
     KEY_BOT_GLOBAL_MODE: "bot_global_mode",
     KEY_DEEPSEEK_TOOLS_ENABLED: "deepseek_tools_enabled",
+    KEY_BOT_MAX_ACTIVE_RULES: "bot_max_active_rules",
+    KEY_BOT_GLOBAL_RULES_ENABLED: "bot_global_rules_enabled",
     readSystemSetting: async (key) => key === "bot_global_mode" ? activeMode : null,
+    readBotGlobalRulesEnabled: async () => false,
   },
 });
 

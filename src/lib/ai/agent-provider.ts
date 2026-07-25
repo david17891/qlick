@@ -180,6 +180,29 @@ export interface AgentContext {
    * flash→pro si Flash falla o tiene confianza baja).
    */
   tierOverride?: "flash" | "pro";
+  /**
+   * FIX 2026-07-25 (sprint "activar ai_bot_rules en el bot real"):
+   * Reglas de Oro Globales (Reglas de Oro) pre-cargadas por el
+   * orquestador (`bot-engine.ts` o `simulator.ts`) desde la tabla
+   * `ai_bot_rules`. Ya están filtradas por:
+   *   - feature flag `bot_global_rules_enabled` (si está apagado, esta
+   *     lista viene vacía),
+   *   - `is_active = true` y `expires_at` vigente (defensa en profundidad
+   *     contra reglas expiradas),
+   *   - precedencia GLOBAL → EVENTO con `priority DESC`,
+   *   - top-N según `bot_max_active_rules`,
+   *   - `instruction` truncada a `MAX_INSTRUCTION_LENGTH` (defensa contra
+   *     prompts excesivos).
+   *
+   * El provider las inyecta al system prompt de los 3 modos LLM
+   * (Super Ejecutivo, Human First, Socrático) y, en el camino feliz,
+   * trackea los IDs para incrementar `usage_count` post-respuesta.
+   *
+   * Backward compatible: si está ausente, el provider se comporta
+   * EXACTAMENTE como antes (renderea el header "Reglas de Oro
+   * Globales" pero sin instrucciones concretas).
+   */
+  globalRules?: import("./ai-bot-rules-injector").InjectableRule[];
 }
 
 export type AgentTask =

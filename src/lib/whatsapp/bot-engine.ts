@@ -146,6 +146,12 @@ import {
 import { findLatestAttendedEventForPhone } from "../events/attendees-server";
 import { markSurveyOfferSent } from "../crm/leads-server";
 import { isInDevBypass } from "../dev/bypass-list";
+// FIX 2026-07-25 (sprint "activar ai_bot_rules en el bot real"):
+// cargador de Reglas de Oro Globales para inyectar al prompt del bot
+// (Super Ejecutivo / Human First / Socrático). FAIL-OPEN: si la DB
+// está caída o el feature flag `bot_global_rules_enabled` está
+// apagado, devuelve [] y el bot sigue funcionando como antes.
+import { loadInjectableGlobalRules } from "../ai/ai-bot-rules-injector";
 
 /* ------------------------------------------------------------------ */
 /*  Tipos                                                              */
@@ -4528,6 +4534,24 @@ case "interactive_event_inscribir": {
           })
         : "unknown";
       const isFreeEvent = eventOfferType === "free_masterclass";
+      // FIX 2026-07-25 (sprint "activar ai_bot_rules en el bot real"):
+      // cargar las Reglas de Oro Globales AHORA (después de conocer el
+      // activeEvent) para que el loader pueda concatenar las reglas
+      // específicas del evento después de las globales. FAIL-OPEN: si
+      // la DB está caída o el feature flag está apagado, devuelve [].
+      // Cache 30s del módulo subyacente + cache 10s del feature flag
+      // hacen que un toggle del admin tarde <30s en verse (intencional
+      // para rollout gradual).
+      //
+      // FIX 2026-07-25 (post-revisión David): pasamos `eventId` Y
+      // `eventSlug` para que el loader matchee reglas creadas con
+      // cualquiera de los dos formatos. El CRM (`AIBotFeedbackSection`)
+      // puede guardar el scope con el slug o con el id del evento,
+      // dependiendo de cuál esté disponible en el momento.
+      const globalRules = await loadInjectableGlobalRules({
+        eventId: activeEvent?.id,
+        eventSlug: activeEvent?.slug
+      }).catch(() => []);
       if (rateLimit.allowed) {
         // FIX 2026-07-10 (Sprint 2 sub-sprint 2D): resolver el cliente
         // Supabase admin localmente para pasárselo al tool loop. En la
@@ -4584,7 +4608,16 @@ case "interactive_event_inscribir": {
           // - `supabase`: cliente admin pre-instanciado. Si el timeout de
           //   5s ya disparó (Supabase caído), el ejecutor cae a modo demo.
           leadId: lead.id,
-          supabase: supabaseForTool ?? undefined
+          supabase: supabaseForTool ?? undefined,
+          // FIX 2026-07-25 (sprint "activar ai_bot_rules en el bot real"):
+          // Reglas de Oro Globales pre-cargadas (loader respeta el
+          // feature flag, precedencia GLOBAL→EVENTO, top-N, expiración
+          // y truncado). El provider las inyecta al system prompt del
+          // modo LLM que esté activo y, en el camino feliz, trackea los
+          // IDs para incrementar `usage_count` post-respuesta.
+          // IMPORTANTE: si el feature flag está apagado o la DB falló,
+          // `globalRules` viene `[]` y el provider skipea el bloque.
+          globalRules
         });
       } else {
         // Política del proyecto: cero PII en logs (solo flags/IDs/contadores).

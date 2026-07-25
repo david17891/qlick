@@ -90,6 +90,11 @@ import {
 // bot_usage_daily (acumulador diario de tokens + costo DeepSeek).
 import { calculateDeepseekCostUsdCents, recordDeepseekUsage } from "./deepseek-cost";
 import { debugLog } from "@/lib/log";
+// FIX 2026-07-25 (sprint "activar ai_bot_rules en el bot real"):
+// incrementador de `usage_count` de Reglas de Oro. Se llama post-result
+// en el flujo real del provider (no simulador, no mock) para registrar
+// qué reglas se "usaron" en una respuesta real. Fire-and-forget.
+import { incrementRuleUsage } from "./ai-bot-rules-server";
 
 // ---------------------------------------------------------------------------
 // Configuracion
@@ -1059,7 +1064,13 @@ export async function pickSystemPromptForMode(
     context.profile,
     context.activeEvent,
     isFirstMessage,
-    context.eventsListBlock
+    context.eventsListBlock,
+    // FIX 2026-07-25 (sprint "activar ai_bot_rules en el bot real"):
+    // propagar las Reglas de Oro al modo socrático. Si el feature
+    // flag está OFF o no hay reglas, la lista viene `[]` y el
+    // `buildSystemPrompt` skipea el bloque completo (sin header
+    // fantasma). Si está poblado, renderea la lista numerada.
+    context.globalRules
   );
 }
 
@@ -1075,6 +1086,70 @@ export async function isSocraticNoToolsMode(supabase?: unknown): Promise<boolean
   } catch {
     return false;
   }
+}
+
+/**
+ * FIX 2026-07-25 (sprint "activar ai_bot_rules en el bot real"):
+ * Helper que incrementa `usage_count` de las Reglas de Oro que
+ * fueron inyectadas al prompt en este turno, SOLO si se cumplen
+ * las 4 condiciones de la regla:
+ *   1. El feature flag `bot_global_rules_enabled` está prendido
+ *      (verificamos al inicio, no al final, para no hacer I/O
+ *      extra después de la respuesta del LLM).
+ *   2. La respuesta vino de un provider real (`result.provider ===
+ *      "deepseek"` y `result.demo !== true`). Mock y stubs NUNCA
+ *      incrementan.
+ *   3. La respuesta fue exitosa (`result.ok === true`).
+ *   4. El task es `suggest_reply` (los otros tasks no son parte
+ *      del flujo real del bot).
+ *
+ * Fire-and-forget: usa `void Promise.all` para no bloquear el
+ * response. Si el increment falla (DB caída, etc.), el bot sigue
+ * funcionando; el log warning queda para observabilidad.
+ *
+ * Telemetría: solo se registran los IDs de reglas (sin PII). El
+ * motivo: la SSOT de `usage_count` vive en `ai_bot_rules.id` y
+ * el panel admin la consulta por id; el cuerpo del prompt NO
+ * se loggea.
+ *
+ * Por qué se incrementan TODAS las inyectadas y no solo las
+ * "usadas": la SSOT de "usada" es que el LLM las vio al construir
+ * la respuesta. Hacer tracking más granular (regex match del
+ * output contra las instrucciones) es frágil (paraphraseo,
+ * sinónimos, etc.) y no aporta valor al panel admin. El admin
+ * quiere saber "esta regla es estable / esta nunca se usa",
+ * no "esta regla se mencionó 0.7 veces en el response".
+ */
+function recordGlobalRulesUsageIfApplicable(
+  result: AgentResult,
+  context: AgentContext,
+  task: AgentTask
+): void {
+  // Condición 4: solo en suggest_reply.
+  if (task !== "suggest_reply") return;
+  // Condición 2: provider real, no mock ni demo.
+  if (result.provider !== "deepseek") return;
+  if (result.demo === true) return;
+  // Condición 3: respuesta OK.
+  if (!result.ok) return;
+  // Debe haber reglas inyectadas.
+  const rules = context.globalRules;
+  if (!rules || rules.length === 0) return;
+
+  // Fire-and-forget. Promise.all en paralelo para minimizar
+  // latencia acumulada.
+  void Promise.all(
+    rules.map((r) =>
+      incrementRuleUsage(r.id).catch((err) => {
+        // best-effort: un fallo en el increment NO rompe la
+        // conversación del lead. Solo loggeamos para debug.
+        debugLog("[ai/deepseek] incrementRuleUsage failed (non-fatal)", {
+          ruleId: r.id,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      })
+    )
+  );
 }
 
 export const deepseekAgentProvider: AIAgentProvider = {
@@ -1115,6 +1190,9 @@ export const deepseekAgentProvider: AIAgentProvider = {
     // ── Path 2C: tool loop (solo suggest_reply + flag ON) ──
     if (task === "suggest_reply" && flagEnabled) {
       const result = await runWithToolLoop(task, context);
+      // FIX 2026-07-25 (sprint "activar ai_bot_rules en el bot real"):
+      // telemetría de Reglas de Oro (post-respuesta real). Fire-and-forget.
+      recordGlobalRulesUsageIfApplicable(result, context, task);
       // Inyectar el activeEvent-aware fallback si el wrapper usó el
       // fallback genérico. (El wrapper ya inyecta fallback contextual
       // en el path de doble falla; este es solo defense in depth.)
@@ -1251,6 +1329,12 @@ export const deepseekAgentProvider: AIAgentProvider = {
       );
     }
 
+    // FIX 2026-07-25 (sprint "activar ai_bot_rules en el bot real"):
+    // telemetría de Reglas de Oro (post-respuesta real). Fire-and-forget.
+    // El increment se hace DESPUÉS de aplicar el sale guard (si aplica)
+    // porque eso no cambia el "result.ok" ni el provider, solo el copy.
+    recordGlobalRulesUsageIfApplicable(result, context, task);
+
     return result;
   }
 };
@@ -1289,6 +1373,26 @@ export const _runWithToolLoopForTest = runWithToolLoop;
 /** Visible para tests: el copy de fallback. */
 export function _pickFallbackForTest(activeEvent: ActiveEventContext | undefined): string {
   return pickFallback(activeEvent);
+}
+
+/**
+ * FIX 2026-07-25 (sprint "activar ai_bot_rules en el bot real"):
+ * Visible para tests — devuelve cuántos incrementos se hubieran
+ * disparado para un par (result, context) dado. Útil para asserts
+ * en tests sin tocar la DB.
+ */
+export function _wouldRecordGlobalRulesUsage(
+  result: AgentResult,
+  context: AgentContext,
+  task: AgentTask
+): number {
+  if (task !== "suggest_reply") return 0;
+  if (result.provider !== "deepseek") return 0;
+  if (result.demo === true) return 0;
+  if (!result.ok) return 0;
+  const rules = context.globalRules;
+  if (!rules || rules.length === 0) return 0;
+  return rules.length;
 }
 
 /** Visible para tests: timeout duro de una promesa. */

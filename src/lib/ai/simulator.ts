@@ -281,6 +281,23 @@ export async function simulateConversationTurn(
     }
   }
 
+  // FIX 2026-07-25 (sprint "activar ai_bot_rules en el bot real"):
+  // cargar las Reglas de Oro Globales para inyectar al prompt que se
+  // construye localmente. El simulador respeta el feature flag
+  // `bot_global_rules_enabled` y la precedencia GLOBAL→EVENTO.
+  // FAIL-OPEN: si la DB está caída o el flag apagado, devuelve [] y
+  // el simulador se comporta como antes. NO escribe en la DB (esto
+  // es regla dura del aislamiento del simulador).
+  //
+  // FIX 2026-07-25 (post-revisión David): pasamos `eventId` Y
+  // `eventSlug` para matching completo (mismo motivo que en
+  // `bot-engine.ts`).
+  const { loadInjectableGlobalRules } = await import("./ai-bot-rules-injector");
+  const injectableRules = await loadInjectableGlobalRules({
+    eventId: activeEvent?.id,
+    eventSlug: activeEvent?.slug
+  }).catch(() => []);
+
   // 4. Hidratar perfil del lead si el cliente dio un leadId y no proveyó
   //    el perfil pre-cargado. Lectura best-effort: si Supabase falla, sigue
   //    con perfil vacío.
@@ -335,6 +352,10 @@ export async function simulateConversationTurn(
   //    agregado a `AgentContext`) para que `pickSystemPromptForMode` lo
   //    respete y no lea DB. Esto es crucial para que el override de UI
   //    funcione sin esperar el caché 30s de `bot_global_mode`.
+  //    FIX 2026-07-25: propagar `globalRules` al context para que el
+  //    prompt renderee el bloque de Reglas de Oro Globales cuando el
+  //    feature flag esté prendido. Si está apagado, la lista viene `[]`
+  //    y el bloque se omite.
   let systemPrompt: string;
   if (modeUsed === "super_executive") {
     systemPrompt = buildSuperExecutivePrompt({
@@ -343,13 +364,20 @@ export async function simulateConversationTurn(
       eventOfferType: (activeEvent
         ? classifyOfferFromEvent(activeEvent)
         : "unknown") as EventOfferType,
-      eventRules: []
+      eventRules: [],
+      globalRules: injectableRules
     });
   } else {
     // Modos socráticos: primer mensaje si el historial está vacío.
     const isFirstMessage =
       req.leadContext?.isFirstMessage ?? req.history.filter((m) => m.direction === "inbound").length === 0;
-    systemPrompt = buildSystemPrompt(aiAgentProfile, activeEvent, isFirstMessage);
+    systemPrompt = buildSystemPrompt(
+      aiAgentProfile,
+      activeEvent,
+      isFirstMessage,
+      undefined,
+      injectableRules
+    );
   }
 
   // 8. Construir el contexto del agente.
@@ -373,6 +401,15 @@ export async function simulateConversationTurn(
     // solo inyectaba el evento en el system prompt, dejando al provider
     // sin acceso estructurado al evento. Esto rompía el safety net.
     ...(activeEvent ? { activeEvent } : {}),
+    // FIX 2026-07-25 (sprint "activar ai_bot_rules en el bot real"):
+    // pasar las Reglas de Oro Globales al context. El provider las usa
+    // para telemetría de `usage_count` post-respuesta. Como el
+    // simulador usa `systemPromptOverride`, el provider NO las va a
+    // inyectar al prompt (ya viene en el override), pero sí las tiene
+    // disponibles para el contador. SIN EMBARGO: el simulador NO debe
+    // incrementar `usage_count` (regla de aislamiento del simulador).
+    // El provider decide eso (solo lo hace en provider real + ok).
+    ...(injectableRules.length > 0 ? { globalRules: injectableRules } : {}),
     // Override del system prompt (clave del aislamiento de modo).
     systemPromptOverride: systemPrompt,
     // Sprint v0.9.7 (Switch Flash/Pro): propagamos el override del tier

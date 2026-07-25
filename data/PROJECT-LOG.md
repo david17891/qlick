@@ -1,6 +1,50 @@
 
+## 2026-07-25 12:30 Mavis â€” Segunda correcciÃ³n post-revisiÃ³n David (3 bloqueadores + tests reales del loader)
 
-## 2026-07-19 14:00 Mavis â€” Sprint bot final con DeepSeek real (David "funcionalidad, efectividad, que funcione")
+- **Pregunta:** David revisÃ³ el sprint de la maÃ±ana y reportÃ³ 3 bloqueadores que impedÃ­an activar `bot_global_rules_enabled` en producciÃ³n: (1) `event:<id>` vs `event:<slug>` inconsistente entre CRM y bot, (2) scopes `course:`/`mode:` se volvÃ­an globales, (3) top-N aplicado antes del filtrado por scope (regla de evento podÃ­a quedar fuera). AdemÃ¡s pidiÃ³ (4) tests reales del loader con mocks, (5) eliminar el header placeholder duplicado en los prompts, (6) NO activar hasta tener commit/deploy verificable.
+
+- **DecisiÃ³n:** Reescribir el loader (`loadInjectableGlobalRules`) con scope unificado `event:<id>` âˆª `event:<slug>`, rechazo explÃ­cito de scopes desconocidos (course, mode, otros), carga de TODAS las reglas activas antes del filtrado, y piso de slots para evento en el top-N. Tests reales con `mock.module` para `ai-bot-rules-server`, `system-settings-server` y `log`. Limpiar el header placeholder duplicado en `buildSuperExecutivePrompt` y `buildHumanFirstPrompt`. NO merge a main hasta que el working tree tenga commit verificable.
+
+- **RazÃ³n:** Los 3 bloqueadores eran bugs latentes que solo se manifestaban bajo condiciones reales (mix de scopes, mix de prioridades). El test original pasaba reglas ya filtradas al prompt, sin probar el flujo end-to-end del loader. Sin los fixes, activar el flag podrÃ­a causar (1) reglas creadas desde el CRM no aparecÃ­an en el prompt, (2) reglas de curso contaminando conversaciones generales, (3) reglas de evento crÃ­ticas fuera del top-N. El piso de slots para evento (`min(maxRules/2, eventRules.length)` con mÃ­nimo 1) garantiza que la regla de evento siempre estÃ© presente cuando hay matching, sin permitir que domine sobre las globales (cap a la mitad del maxRules).
+
+- **Cambios clave (delta sobre la entrega de la maÃ±ana):**
+  - `src/lib/ai/ai-bot-rules-injector.ts`:
+    - `LoadInjectableRulesOptions` ahora acepta `eventSlug?` ademÃ¡s de `eventId?`.
+    - El loader acepta AMBOS formatos de scope de evento: `event:<id>` y `event:<slug>`, para compat retroactiva con el CRM (`AIBotFeedbackSection`) que puede guardar el scope con el slug o con el id.
+    - El loader carga TODAS las reglas activas SIN `limit` (antes pasaba `limit: maxRules` que recortaba antes del filtrado). Ahora el `limit` se aplica al final, despuÃ©s de separar global/evento.
+    - Scopes desconocidos (`course:<slug>`, `mode:...`, etc.) se DESCATAN explÃ­citamente en lugar de caer en global. Se loggean via `errorLog` para observabilidad.
+    - El top-N ahora garantiza piso de slots para evento: `eventSlots = min(max(1, eventRules.length), ceil(maxRules/2))`. El resto son globales. Esto evita que una avalancha de globales con priority 1-10 deje fuera una regla de evento con priority 100.
+  - `src/lib/whatsapp/bot-engine.ts` y `src/lib/ai/simulator.ts`: propagan `eventSlug` al loader ademÃ¡s de `eventId`.
+  - `src/lib/ai/agent-prompts.ts`:
+    - `buildSuperExecutivePrompt`: eliminado el header placeholder "REGLAS DE ORO GLOBALES (cargadas por el orquestador) / inyectadas en runtime desde ai_bot_rules" y el sub-bloque "--- Reglas activas (top-N, ...) ---". Ahora el bloque real (que ya tiene su header "REGLAS DE ORO GLOBALES" via `formatRulesBlock`) va ANTES de las reglas locales del evento (jerarquÃ­a D-025).
+    - `buildHumanFirstPrompt`: eliminado el sub-bloque "--- Reglas activas (top-N, ...) ---" por la misma razÃ³n.
+    - `buildSystemPrompt` (socrÃ¡tico): sin cambios (su bloque ya era correcto).
+  - `tests/ai-bot-rules-loader.test.mjs` (NEW, 12 tests): tests REALES del loader con `mock.module` de `ai-bot-rules-server` (provee `getActiveBotRules` con lÃ³gica real de filtrado por `is_active`/`expires_at`), `system-settings-server` (provee `readBotGlobalRulesEnabled` y `readSystemSetting`), y `log` (captura `errorLog` para asserts de scopes descartados). Cubre los 6 casos que pidiÃ³ David: feature flag ON/OFF, regla global, evento por id, evento por slug, evento incorrecto, regla de curso (descartada), scope invÃ¡lido, top-N con piso para evento, expiradas, override de maxRules, DB vacÃ­a.
+  - `tests/ai-bot-rules-injection.test.mjs` (actualizado): el CASO 6 (feature flag apagado) ahora verifica que el header "REGLAS DE ORO GLOBALES" tampoco estÃ© presente (antes verificaba solo el sub-bloque que se eliminÃ³).
+  - `docs/STATUS.md` corregido: ya no dice "mergeado a main" â€” el cÃ³digo estÃ¡ en el working tree pero aÃºn no commiteado. La activaciÃ³n requiere commit + push + merge a main primero.
+
+- **VerificaciÃ³n:**
+  - `npm run type-check` â†’ verde.
+  - `npm run lint` â†’ verde (0 warnings, 0 errors).
+  - Tests del loader: 12/12 verde en `tests/ai-bot-rules-loader.test.mjs`.
+  - Tests del prompt: 12/12 verde en `tests/ai-bot-rules-injection.test.mjs` (CASO 6 actualizado).
+  - Total tests del sprint: 24/24 verde.
+
+- **Bloqueadores resueltos:**
+  1. âœ… Alcance de evento unificado (`event:<id>` + compat `event:<slug>`).
+  2. âœ… Scopes desconocidos descartados (no se vuelven globales).
+  3. âœ… Top-N garantiza piso de slots para evento.
+
+- **Pendiente para activar el flag:**
+  1. Commit del working tree (mensaje Conventional Commits, ver `docs/GITHUB_WORKFLOW.md`).
+  2. Push y merge a `main` (o rama de integraciÃ³n si existe `develop`).
+  3. Vercel redeploy automÃ¡tico.
+  4. (Opcional) Smoke test con 1 regla de prueba.
+  5. Seguir el plan de `docs/ACTIVATION_GRADUAL_BOT_GLOBAL_RULES.md` (4 fases).
+
+- **DecisiÃ³n de David (post-revisiÃ³n):** NO activar en producciÃ³n hasta tener commit/deploy verificable. La direcciÃ³n de la implementaciÃ³n es correcta; los 3 bloqueadores corregidos permiten proceder al commit.
+
+## 2026-07-25 11:12 Mavis â€” ActivaciÃ³n controlada de ai_bot_rules en el bot real (David "implementar de forma controlada la activaciÃ³n de ai_bot_rules")
 
 - **Pregunta:** David dijo: "vamos con lo recomendado y luego con la fase mÃ¡s realista... necesitamos funcionalidad, efectividad y que funcione. Hacer las pruebas reales, reales simuladas lo mÃ¡s realistas que se puedan para encontrar cualquier problema antes de producciÃ³n". PasÃ³ API key DeepSeek temporal. Quiere la versiÃ³n final del bot consolidada, probada a fondo con data realista.
 
@@ -90,29 +134,29 @@
   - Se subiÃ³ el fix a `main` para hacer deploy en producciÃ³n.
   - Se corriÃ³ un script manual local (`scratch/resend-david.mjs`) para disparar manualmente la notificaciÃ³n retrasada de la prueba reciente de David (con Ã©xito).
 
-## 2026-07-21 04:53 Mavis — FASE 8A: WhatsApp directo + cursos "próximamente" (David "Luz verde")
+## 2026-07-21 04:53 Mavis ï¿½ FASE 8A: WhatsApp directo + cursos "prï¿½ximamente" (David "Luz verde")
 
-- **Pregunta:** David aprobó el plan integral (A) y dio 3 confirmaciones puntuales:
-  1. "Si, es algo que se tiene que hacer, vamos por A" — luz verde para el sistema
+- **Pregunta:** David aprobï¿½ el plan integral (A) y dio 3 confirmaciones puntuales:
+  1. "Si, es algo que se tiene que hacer, vamos por A" ï¿½ luz verde para el sistema
      completo de pedidos/servicios (FASE 8A-8F).
-  2. "Aun no hay curso, pongamos por ahora todos proximamente" — los 5 cursos del
-     demo del LMS deben mostrarse con badge "Próximamente" y CTA deshabilitado.
-  3. "No te preocupes, usa el whatsapp directo" — fallback duro al wa.me real
+  2. "Aun no hay curso, pongamos por ahora todos proximamente" ï¿½ los 5 cursos del
+     demo del LMS deben mostrarse con badge "Prï¿½ximamente" y CTA deshabilitado.
+  3. "No te preocupes, usa el whatsapp directo" ï¿½ fallback duro al wa.me real
      de David (+52 1 653 293 5492) sin depender de la env var.
 
-- **Decisión:** FASE 8A = fixes puntuales sin tocar el sistema de orders aún.
-  FASE 8B (schema SQL de service_orders) viene después, con OK previo de David
+- **Decisiï¿½n:** FASE 8A = fixes puntuales sin tocar el sistema de orders aï¿½n.
+  FASE 8B (schema SQL de service_orders) viene despuï¿½s, con OK previo de David
   antes de aplicar a prod.
 
 - **Cambios:**
 
   - **WhatsApp directo** (src/lib/contact/whatsapp.ts):
     - getSalesNumber() ahora retorna +5216532935492 como fallback hardcoded
-      cuando NEXT_PUBLIC_WHATSAPP_SALES_NUMBER no está seteada.
-    - getSupportNumber() cae a getSalesNumber() si su env var está vacía.
+      cuando NEXT_PUBLIC_WHATSAPP_SALES_NUMBER no estï¿½ seteada.
+    - getSupportNumber() cae a getSalesNumber() si su env var estï¿½ vacï¿½a.
     - .env.example documenta el valor como override opcional.
 
-  - **Cursos "próximamente"** (David "todavía no hay curso"):
+  - **Cursos "prï¿½ximamente"** (David "todavï¿½a no hay curso"):
     - **Migration nueva** 20260721044345_courses_status_proximamente.sql:
       agrega 'proximamente' al CHECK constraint de public.courses.status
       (antes solo aceptaba 'draft' | 'published' | 'archived'). Aplicada a
@@ -122,15 +166,15 @@
     - src/lib/lms/courses-server.ts: getPublishedCourses() y
       getCourseBySlug() traen tanto 'published' como 'proximamente'
       (los draft y rchived siguen ocultos). El nombre mental es ahora
-      "cursos visibles del catálogo público".
+      "cursos visibles del catï¿½logo pï¿½blico".
     - src/app/cursos/page.tsx (adapter legacy): si el LMS devuelve
-      status='proximamente', el card muestra badge "Próximamente"
+      status='proximamente', el card muestra badge "Prï¿½ximamente"
       independientemente del ccessType (free/paid/freemium).
-    - src/app/cursos/[slug]/page.tsx (detalle): si el curso es próximamente,
-      el hero muestra un banner ámbar con WhatsApp "Avísame cuando abra",
+    - src/app/cursos/[slug]/page.tsx (detalle): si el curso es prï¿½ximamente,
+      el hero muestra un banner ï¿½mbar con WhatsApp "Avï¿½same cuando abra",
       el CTA principal se deshabilita, los CTAs secundarios ("Vista previa" /
-      "Ver primera lección gratis") se ocultan, y la sección "Contenido del
-      curso" no se renderiza (queda el EmptyState "Volvé pronto").
+      "Ver primera lecciï¿½n gratis") se ocultan, y la secciï¿½n "Contenido del
+      curso" no se renderiza (queda el EmptyState "Volvï¿½ pronto").
     - scripts/seed-courses.mjs: el INSERT inicial usa status='proximamente'
       y se agrega ensureProximamenteStatus() que actualiza los 5 slugs del
       demo de 'published' ? 'proximamente' (idempotente).
@@ -138,14 +182,14 @@
   - **DB post-seed** (verificado via REST):
     - 5 cursos del demo: proximamente ?
     - masterclass-marketing-ia (externo al seed): sigue en published
-      (correcto, no debe tocarse automáticamente).
+      (correcto, no debe tocarse automï¿½ticamente).
 
   - **Cleanup**: commit previo borra src/app/servicios/web/* y
-    src/app/api/servicios/web/* (8 archivos de la migración vieja a
-    /diseno-paginas). También se agrega /tests/output/ al .gitignore
+    src/app/api/servicios/web/* (8 archivos de la migraciï¿½n vieja a
+    /diseno-paginas). Tambiï¿½n se agrega /tests/output/ al .gitignore
     para que las simulaciones del bot no se filtren.
 
-- **Verificación:**
+- **Verificaciï¿½n:**
   - 
 pm run type-check ? 0 errores
   - 
@@ -155,20 +199,20 @@ pm test ? 1473/1473 pasan
   - 
 pm run build ? ? Compiled successfully
   - Migration aplicada via Management API (status 201)
-  - Seed corrió: ensureProximamenteStatus: 0 a actualizar (ya están en
-    'proximamente' u otro) — la DB ya refleja el cambio
+  - Seed corriï¿½: ensureProximamenteStatus: 0 a actualizar (ya estï¿½n en
+    'proximamente' u otro) ï¿½ la DB ya refleja el cambio
   - https://qlick.digital ? 200 OK
 
-## 2026-07-21 04:57 Mavis — FASE 8B: schema service_orders aplicado (David "01 — Aplica el schema completo")
+## 2026-07-21 04:57 Mavis ï¿½ FASE 8B: schema service_orders aplicado (David "01 ï¿½ Aplica el schema completo")
 
-- **Pregunta:** David aprobó opción 01 del menú binario: aplicar el schema completo de 6 tablas con RLS, índices, triggers y seed de 3 servicios digitales (cada uno con sus variants).
+- **Pregunta:** David aprobï¿½ opciï¿½n 01 del menï¿½ binario: aplicar el schema completo de 6 tablas con RLS, ï¿½ndices, triggers y seed de 3 servicios digitales (cada uno con sus variants).
 
-- **Decisión:** Construir el sistema de pedidos sobre un modelo explícito de catálogo (services + variants) y pedidos (orders + timeline + notes + documents). Cada servicio es un producto independiente, no una variante de un producto genérico — extensible desde día 1.
+- **Decisiï¿½n:** Construir el sistema de pedidos sobre un modelo explï¿½cito de catï¿½logo (services + variants) y pedidos (orders + timeline + notes + documents). Cada servicio es un producto independiente, no una variante de un producto genï¿½rico ï¿½ extensible desde dï¿½a 1.
 
 - **Cambios en DB** (migration 20260721045701_service_orders.sql, aplicada via Management API, status 201):
 
-  - **6 tablas** con timestamps, RLS, índices y triggers de updated_at:
-    - services (catálogo público, lectura solo activos).
+  - **6 tablas** con timestamps, RLS, ï¿½ndices y triggers de updated_at:
+    - services (catï¿½logo pï¿½blico, lectura solo activos).
     - service_variants (Esencial/Profesional, Zoom/Presencial, VideoIA/VideoPersonas). FK a services.
     - service_orders (cabecera del pedido con customer_{name,email,phone,notes} snapshot-eados, lead_id FK opcional, status con CHECK 7 valores, payment_mode con CHECK 5 valores).
     - service_order_events (timeline append-only con 	ype, ctor_type admin/system/customer, payload jsonb).
@@ -177,26 +221,26 @@ ote_type + is_pinned).
     - service_order_documents (archivos con ile_type receipt/certificate/brief/deliverable/contract/other).
 
   - **RLS**:
-    - services + service_variants: lectura pública solo activos.
+    - services + service_variants: lectura pï¿½blica solo activos.
     - service_orders + events + notes + documents: service-role only (CRUD via /api/admin/orders/*).
 
   - **Seed inicial idempotente** (ON CONFLICT DO UPDATE):
-    1. **Sitio Web Express** (\,500) — Esencial \,500 (2-3d) / Profesional \,500 (5-7d).
-    2. **Auditoría & Diagnóstico 1a1** (\,000) — Zoom \,000 / Presencial SLR-MXL \,000.
-    3. **Kickstart de Meta Ads** (\,500) — Video IA \,500 / Video Personas \,500.
+    1. **Sitio Web Express** (\,500) ï¿½ Esencial \,500 (2-3d) / Profesional \,500 (5-7d).
+    2. **Auditorï¿½a & Diagnï¿½stico 1a1** (\,000) ï¿½ Zoom \,000 / Presencial SLR-MXL \,000.
+    3. **Kickstart de Meta Ads** (\,500) ï¿½ Video IA \,500 / Video Personas \,500.
 
-  - **Decisión sobre el estado inicial del order**: pending_contact (no confirmed). El admin valida al cliente antes de confirmar, especialmente para auditoría 1a1 (donde el scheduling es manual) y para evitar fraude con tarjeta de prueba.
+  - **Decisiï¿½n sobre el estado inicial del order**: pending_contact (no confirmed). El admin valida al cliente antes de confirmar, especialmente para auditorï¿½a 1a1 (donde el scheduling es manual) y para evitar fraude con tarjeta de prueba.
 
-- **Verificación post-migration** (vía REST con anon + service role):
-  - 6 tablas creadas (orders/events/notes/documents vacías, OK).
+- **Verificaciï¿½n post-migration** (vï¿½a REST con anon + service role):
+  - 6 tablas creadas (orders/events/notes/documents vacï¿½as, OK).
   - 3 services + 6 variants en seed.
   - RLS: anon lee services (3) + variants (6), NO lee service_orders. service_role bypasea RLS correctamente.
 
 - **Pendiente para FASE 8C-8F** (siguiente sprint):
   - 8C: APIs REST (POST /api/services/checkout, GET/POST /api/admin/orders, GET/PATCH /api/admin/orders/[id], sub-rutas para notes/documents/timeline).
-  - 8D: Catálogo público /servicios + /servicios/[slug] + ServiceCheckoutModal.
+  - 8D: Catï¿½logo pï¿½blico /servicios + /servicios/[slug] + ServiceCheckoutModal.
   - 8E: Admin tab "Pedidos" + OrderDetailDrawer con tabs (Info, Cliente, Notas, Documentos, Timeline).
-  - 8F: Integración CRM — LeadDetailDrawer muestra "Servicios contratados".
+  - 8F: Integraciï¿½n CRM ï¿½ LeadDetailDrawer muestra "Servicios contratados".
 
 
 ## 2026-07-21 06:00 Mavis â€” FASE 8C-1: lib server + types + mappers para service_orders (David "Luz verde")
@@ -274,45 +318,45 @@ ote_type + is_pinned).
 - **Por quÃ© importa:** el sprint entrega la base de facturaciÃ³n de servicios profesionales de Qlick. David puede ahora recibir pedidos de clientes reales vÃ­a `/servicios`, gestionarlos desde el panel admin, y linkearlos al CRM. Es el habilitador del cobro real.
 
 
-## 2026-07-21 07:50 Mavis — Catálogo de servicios v2 + Google Business Profile (David "actualización del módulo de Servicios")
+## 2026-07-21 07:50 Mavis ï¿½ Catï¿½logo de servicios v2 + Google Business Profile (David "actualizaciï¿½n del mï¿½dulo de Servicios")
 
-- **Pregunta:** David pidió (07:40) un sprint grande: agregar Google Business Profile como servicio nuevo, reformular el copy de los 4 servicios con enfoque al cliente final, eliminar jerga técnica (UX, SEO On Page, Analytics, Capacitación incluida, Pixel, Conversiones), y que la arquitectura permita agregar más paquetes sin tocar código. Inspiarse en un diseño de cards con bullets, badge 'X paquetes' dinámico, y 'MÁS POPULAR' en la card estratégica.
+- **Pregunta:** David pidiï¿½ (07:40) un sprint grande: agregar Google Business Profile como servicio nuevo, reformular el copy de los 4 servicios con enfoque al cliente final, eliminar jerga tï¿½cnica (UX, SEO On Page, Analytics, Capacitaciï¿½n incluida, Pixel, Conversiones), y que la arquitectura permita agregar mï¿½s paquetes sin tocar cï¿½digo. Inspiarse en un diseï¿½o de cards con bullets, badge 'X paquetes' dinï¿½mico, y 'Mï¿½S POPULAR' en la card estratï¿½gica.
 
-- **Decisión:** Commit atómico \4bf432f\ con migration + tipos + mappers + UI + tests en 1 solo paso. Todo data-driven via DB (bullets, includes, is_popular como JSONB/boolean en services + service_variants). El service 'google-business-profile' tiene 1 solo paquete Básico por ahora — agregar más paquetes en el futuro es solo INSERT a service_variants sin código.
+- **Decisiï¿½n:** Commit atï¿½mico \4bf432f\ con migration + tipos + mappers + UI + tests en 1 solo paso. Todo data-driven via DB (bullets, includes, is_popular como JSONB/boolean en services + service_variants). El service 'google-business-profile' tiene 1 solo paquete Bï¿½sico por ahora ï¿½ agregar mï¿½s paquetes en el futuro es solo INSERT a service_variants sin cï¿½digo.
 
-- **Razón:** David quiere facturar ASAP con la nueva estrategia comercial de la agencia. Google Business Profile es el servicio de entrada más barato (\,500) y resuelve el problema típico del cliente local (no aparece en Google Maps). El 'is_popular' badge es la palanca de marketing para empujar el servicio que la agencia quiere vender más. Los variants existentes pasan de 'Esencial/Profesional' a 'Básico/Pro' para tener naming consistente entre los 3 servicios multi-paquete.
+- **Razï¿½n:** David quiere facturar ASAP con la nueva estrategia comercial de la agencia. Google Business Profile es el servicio de entrada mï¿½s barato (\,500) y resuelve el problema tï¿½pico del cliente local (no aparece en Google Maps). El 'is_popular' badge es la palanca de marketing para empujar el servicio que la agencia quiere vender mï¿½s. Los variants existentes pasan de 'Esencial/Profesional' a 'Bï¿½sico/Pro' para tener naming consistente entre los 3 servicios multi-paquete.
 
 - **Schema aditivo (migration \20260721074500_service_catalog_v2.sql\):**
-  - \services.bullets JSONB\: features comunes del servicio (5 bullets en cada card del catálogo)
-  - \services.is_popular BOOLEAN\: badge 'MÁS POPULAR' en la card
-  - \service_variants.includes JSONB\': qué incluye cada paquete específico (reemplaza el campo \description\ texto plano)
+  - \services.bullets JSONB\: features comunes del servicio (5 bullets en cada card del catï¿½logo)
+  - \services.is_popular BOOLEAN\: badge 'Mï¿½S POPULAR' en la card
+  - \service_variants.includes JSONB\': quï¿½ incluye cada paquete especï¿½fico (reemplaza el campo \description\ texto plano)
 
-- **Catálogo final (4 servicios, 7 variants, 100% data-driven):**
+- **Catï¿½logo final (4 servicios, 7 variants, 100% data-driven):**
   | slug | display | popular | variants | prices |
   |---|---|---|---|---|
-  | sitio-web | Diseño web | false | básico / pro | \,500 / \,500 MXN |
-  | google-business-profile | Google Business Profile | true | básico | \,500 MXN |
-  | auditoria-1a1 | Auditoría y diagnóstico de negocio | false | online / presencial | \,000 / \,000 MXN |
-  | kickstart-meta-ads | Kickstart de Meta Ads | false | básico / pro | \,500 / \,500 MXN |
+  | sitio-web | Diseï¿½o web | false | bï¿½sico / pro | \,500 / \,500 MXN |
+  | google-business-profile | Google Business Profile | true | bï¿½sico | \,500 MXN |
+  | auditoria-1a1 | Auditorï¿½a y diagnï¿½stico de negocio | false | online / presencial | \,000 / \,000 MXN |
+  | kickstart-meta-ads | Kickstart de Meta Ads | false | bï¿½sico / pro | \,500 / \,500 MXN |
 
-- **UI (ServiceCard rediseñado):**
-  - Header brand-gradient: badge 'X paquete(s)' top-right + 'MÁS POPULAR' top-center (verde con estrella) cuando is_popular=true
+- **UI (ServiceCard rediseï¿½ado):**
+  - Header brand-gradient: badge 'X paquete(s)' top-right + 'Mï¿½S POPULAR' top-center (verde con estrella) cuando is_popular=true
   - Body blanco: top 5 bullets de \service.bullets\ con CheckCircle2 verde + precio 'Desde \ MXN' + CTA 'Ver paquetes'
 
 - **UI (VariantCard en ServiceDetailInteractive):**
-  - \ariant.includes[]\ se renderiza como bullets (preferencia). Fallback a \ariant.description\ (legacy) si \includes\ está vacío.
-  - Label 'Esencial/Profesional/Con Video IA/...' ? 'Básico/Pro/Online (Zoom)/Presencial' según spec
+  - \ariant.includes[]\ se renderiza como bullets (preferencia). Fallback a \ariant.description\ (legacy) si \includes\ estï¿½ vacï¿½o.
+  - Label 'Esencial/Profesional/Con Video IA/...' ? 'Bï¿½sico/Pro/Online (Zoom)/Presencial' segï¿½n spec
 
-- **Verificación:** type-check 0, lint 0, build OK, **1484/1484 tests** (1480 ? 1484, +4 tests para mapServiceRow con bullets/is_popular y mapServiceVariantRow con includes, casos null/undefined/no-string). Vercel deployó en 90s. Live check: /servicios muestra los 4 servicios con bullets + badge 'MÁS POPULAR' en GBP, /servicios/sitio-web y /servicios/kickstart-meta-ads muestran variants con bullets nuevos sin jerga técnica. '/servicios/google-business-profile' muestra solo Básico \,500. Google Business Profile pasa de 0 ? 1 servicio activo.
+- **Verificaciï¿½n:** type-check 0, lint 0, build OK, **1484/1484 tests** (1480 ? 1484, +4 tests para mapServiceRow con bullets/is_popular y mapServiceVariantRow con includes, casos null/undefined/no-string). Vercel deployï¿½ en 90s. Live check: /servicios muestra los 4 servicios con bullets + badge 'Mï¿½S POPULAR' en GBP, /servicios/sitio-web y /servicios/kickstart-meta-ads muestran variants con bullets nuevos sin jerga tï¿½cnica. '/servicios/google-business-profile' muestra solo Bï¿½sico \,500. Google Business Profile pasa de 0 ? 1 servicio activo.
 
 - **Archivos tocados (8):**
-  - 1 migration: \20260721074500_service_catalog_v2.sql\ (+278 líneas, schema + seed)
+  - 1 migration: \20260721074500_service_catalog_v2.sql\ (+278 lï¿½neas, schema + seed)
   - 2 types: \src/types/services.ts\ (Service: +bullets, +isPopular), \src/lib/services/mappers.ts\ (ServiceRow/VariantRow: +bullets, +includes, +is_popular; mapServiceRow/Row filtran no-strings del array)
-  - 3 componentes: ServiceCard (rediseñado con bullets + MÁS POPULAR), ServiceIcon (+MapPin), ServiceDetailInteractive.VariantCard (includes como bullets)
-  - 1 typegen: \src/types/supabase.ts\ regenerado vía \scripts/regen-supabase-types.mjs\
+  - 3 componentes: ServiceCard (rediseï¿½ado con bullets + Mï¿½S POPULAR), ServiceIcon (+MapPin), ServiceDetailInteractive.VariantCard (includes como bullets)
+  - 1 typegen: \src/types/supabase.ts\ regenerado vï¿½a \scripts/regen-supabase-types.mjs\
   - 1 test: \	ests/services-orders.test.mjs\ (+4 tests)
 
-- **Lección operativa:** "1 servicio = N variants es el modelo correcto. 1 variant = 1 row con includes[] = arquitectura extensible sin código. Si hubiera modelado 'paquete' como un campo enum en services, hoy tendría que migrar para agregar el paquete Pro de Google Business Profile. El servicio GBP hereda TODO: el modal de checkout, el admin tab, el email de notificación, el flujo de Stripe. Solo es INSERT a la DB. 0 líneas de código."
+- **Lecciï¿½n operativa:** "1 servicio = N variants es el modelo correcto. 1 variant = 1 row con includes[] = arquitectura extensible sin cï¿½digo. Si hubiera modelado 'paquete' como un campo enum en services, hoy tendrï¿½a que migrar para agregar el paquete Pro de Google Business Profile. El servicio GBP hereda TODO: el modal de checkout, el admin tab, el email de notificaciï¿½n, el flujo de Stripe. Solo es INSERT a la DB. 0 lï¿½neas de cï¿½digo."
 
 
 ## 2026-07-21 09:35 Mavis â€” feat(admin): 1-click payment link para service_orders
@@ -382,9 +426,12 @@ ote_type + is_pinned).
 - **DecisiÃ³n:** 4 commits atomicos en rama eat/admin-event-reservation-apartado (PR #43). Iter 1 (91c9b25) implementaciÃ³n base, Iter 2 (53a369a) fixes ronda 2 (payment_mode preservation, priceMXN string normalization, error 400 en apartado invÃ¡lido, parser MX estricto), Iter 3 (ebfe6de) fix ronda 3 (preservaciÃ³n apartado en update parcial), Iter 4 (ae9e7bc) fix ronda 4 (4 defectos del PATCH + 2 botones checkout).
 - **RazÃ³n:** David audito el PR durante 4 rondas consecutivas detectando defectos sutiles de persistencia JSONB. El principio guia: preservar TODO lo que el caller no toca explicitamente, jamas hacer whitelist destructivo del JSONB.
 - **Defectos del PATCH corregidos:**
-  1. personality/ules se pisaban con ""/[] en updates parciales. Fix: opcionales en FormEventRulesChanges, helper preserva del current cuando undefined.
+  1. personality/
+ules se pisaban con ""/[] en updates parciales. Fix: opcionales en FormEventRulesChanges, helper preserva del current cuando undefined.
   2. Update solo con priceMXN no revalidaba reserva existente. Fix: si hay apartado activo, validar currentAmount < newPrice (error 400 si no) y recalcular balance atomico.
-  3. eservation_amount_mxn sin eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 claro.
+  3. 
+eservation_amount_mxn sin 
+eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 claro.
   4. No habia modal al transicionar a payment_mode=live. Fix: nuevo LiveModeConfirm con el mismo patron visual que StatusChangeConfirm.
 - **UI: 2 botones en /pagar.** Cuando hay apartado, la pagina muestra "Aparta " + "Paga ,000 completo" como opciones separadas. NO toca el checkout ni el webhook.
 - **CANACO configurado en DB** (snapshot pre-cambio en docs/canaco-snapshots/canaco-pre-iter-3-2026-07-24T08-07-58-228Z.json):
