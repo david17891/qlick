@@ -36,8 +36,11 @@ const COPY_FILES = [
 ];
 
 // Common Argentine voseo forms that must not reach Mexican Spanish copy.
+// `\\b` en JavaScript no reconoce letras acentuadas como caracteres de
+// palabra. Con ese límite, `decía` se interpreta erróneamente como `decí`.
+// Usamos límites Unicode para detectar solo la palabra voseante completa.
 const VOSEO_RE =
-  /\b(?:respondé|escribí|pagá|pagás|elegí|probá|usá|tenés|podés|querés|sos|decí|contanos|mandá|volvé|empezá|asegurá|loguéate|disculpá|hacé|mirá|sumá|llamá|avisá|seguí|compartí|cargá|ingresá|invitá|confirmá|reservá|anotá|continuá|devolvé)\b/iu;
+  /(?<!\p{L})(?:respondé|escribí|pagá|pagás|elegí|probá|usá|tenés|podés|querés|sos|decí|contanos|mandá|volvé|empezá|asegurá|loguéate|disculpá|hacé|mirá|sumá|llamá|avisá|seguí|compartí|cargá|ingresá|invitá|confirmá|reservá|anotá|continuá|devolvé)(?!\p{L})/iu;
 
 test("el copy visible mantiene tuteo mexicano", async () => {
   const offenders = [];

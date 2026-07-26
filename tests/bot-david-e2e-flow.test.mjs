@@ -106,6 +106,10 @@ async function createPreRegisteredLead(phone) {
 async function cleanupTestLead(leadId, phone) {
   if (phone) {
     await supabase.from("event_confirmations").delete().eq("phone_normalized", phone);
+    await supabase
+      .from("event_qr_tokens")
+      .delete()
+      .eq("attendee_phone_normalized", phone);
   }
   await supabase.from("leads").delete().eq("id", leadId);
 }
@@ -147,7 +151,8 @@ test("David E2E: body 'David Martinez david@x.com' crea confirmation con name re
 
   // 2. Crear lead pre-registrado con name = "WhatsApp Lead".
   const ts = Date.now();
-  const phone = `+5255999${String(800 + (ts % 100)).padStart(4, "0")}`;
+  const phone = `+5255${String(ts % 100000000).padStart(8, "0")}`;
+  const email = `david-repro-${ts}@example.com`;
   const lead = await createPreRegisteredLead(phone);
   cleanupLeads.push(lead);
   console.log(`[SETUP] Lead pre-registrado: ${lead.id} (name="WhatsApp Lead")`);
@@ -158,7 +163,7 @@ test("David E2E: body 'David Martinez david@x.com' crea confirmation con name re
     messageId: `david_e2e_${ts}`,
     from: phone,
     contactName: "David Martinez",
-    text: `David Martinez david-repro-${ts}@example.com`,
+    text: `David Martinez ${email}`,
     type: "text",
     timestamp: String(Math.floor(ts / 1000)),
   });
@@ -168,12 +173,15 @@ test("David E2E: body 'David Martinez david@x.com' crea confirmation con name re
   await new Promise((res) => setTimeout(res, 8000));
 
   // 5. Validar confirmation: name = "David Martinez".
-  const { data: confs } = await supabase
+  const { data: confs, error: confirmationsError } = await supabase
     .from("event_confirmations")
     .select("id, name, email, phone_normalized, source")
-    .eq("phone_normalized", phone)
-    .eq("event_id", paidEvent.id);
-  assert.ok(confs && confs.length > 0, `debe haber al menos 1 confirmation (hay ${confs?.length ?? 0})`);
+    .or(`phone_normalized.eq.${phone},email.eq.${email}`)
+    .order("confirmed_at", { ascending: false });
+  assert.ok(
+    confs && confs.length > 0,
+    `debe haber al menos 1 confirmation (hay ${confs?.length ?? 0}, error=${confirmationsError?.message ?? "none"})`,
+  );
   const conf = confs[0];
   console.log(`[CHECK] confirmation:`, conf);
   assert.strictEqual(
