@@ -294,6 +294,9 @@ export async function simulateConversationTurn(
   // `bot-engine.ts`).
   const { loadInjectableGlobalRules } = await import("./ai-bot-rules-injector");
   const injectableRules = await loadInjectableGlobalRules({
+    // Shadow-only: permite validar la lectura y el alcance de reglas reales
+    // en el simulador sin activar la inyección del bot para leads reales.
+    shadowOnly: true,
     eventId: activeEvent?.id,
     eventSlug: activeEvent?.slug
   }).catch(() => []);

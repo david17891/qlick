@@ -65,6 +65,15 @@ export interface InjectableRule {
 
 export interface LoadInjectableRulesOptions {
   /**
+   * Permite al simulador probar reglas reales de Supabase cuando el flag
+   * global sigue apagado. Solo funciona si `BOT_GLOBAL_RULES_SHADOW_ONLY`
+   * está explícitamente habilitado en el entorno de preview/local.
+   *
+   * El bot real nunca pasa esta opción, por lo que este camino no puede
+   * activar la inyección en conversaciones de leads por accidente.
+   */
+  shadowOnly?: boolean;
+  /**
    * Si viene, también se cargan reglas con `scope === "event:<eventId>"`
    * o `scope === "event:<eventSlug>"` y se concatenan después de las
    * globales (ordenadas por priority desc). Si el evento no tiene reglas
@@ -112,6 +121,16 @@ export const MAX_INSTRUCTION_LENGTH = 600;
 
 /** Prefijo del scope para reglas específicas del evento. */
 const EVENT_SCOPE_PREFIX = "event:";
+
+/**
+ * Override aislado para el simulador: permite validar reglas reales sin
+ * activar el bot. El valor se mantiene opt-in y no se considera habilitado
+ * para ninguna llamada que no pase `shadowOnly: true`.
+ */
+function isShadowOnlyEnabled(): boolean {
+  const value = process.env.BOT_GLOBAL_RULES_SHADOW_ONLY?.trim().toLowerCase();
+  return value === "true" || value === "1";
+}
 
 /* ------------------------------------------------------------------ */
 /* Helpers internos                                                     */
@@ -194,7 +213,13 @@ export async function loadInjectableGlobalRules(
 ): Promise<InjectableRule[]> {
   try {
     // 1. Feature flag — FAIL-CLOSED. Si la DB está caída, ya devuelve false.
-    const enabled = await readBotGlobalRulesEnabled();
+    //    El shadow path solo lo puede abrir explícitamente el simulador;
+    //    el bot real no pasa `shadowOnly`, así que sigue dependiendo del
+    //    flag global aunque exista la variable de preview.
+    const enabled =
+      options.shadowOnly === true && isShadowOnlyEnabled()
+        ? true
+        : await readBotGlobalRulesEnabled();
     if (!enabled) {
       return [];
     }
