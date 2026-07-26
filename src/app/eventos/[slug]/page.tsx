@@ -4,6 +4,7 @@ import { Navbar, Footer } from "@/components/layout";
 import { Badge } from "@/components/ui";
 import { getPublishedEventBySlug } from "@/lib/events/events-server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { cleanEventTitle } from "@/lib/utils";
 import { EventView } from "./EventView";
 
 interface Props {
@@ -32,12 +33,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
   const description =
     event.description?.slice(0, 160) ??
-    `Confirma tu asistencia a ${event.title} en Qlick Marketing Digital.`;
+    `Confirma tu asistencia a ${cleanEventTitle(event.title)} en Qlick Marketing Digital.`;
   return {
-    title: `${event.title} · Qlick`,
+    title: `${cleanEventTitle(event.title)} · Qlick`,
     description,
     openGraph: {
-      title: event.title,
+      title: cleanEventTitle(event.title),
       description,
       // Decisión B-5: sin cover images en OG (no hay cover real todavía).
       // Si se reactiva, ver OPEN_ITEMS.md → B-5.

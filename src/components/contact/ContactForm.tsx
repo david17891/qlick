@@ -25,7 +25,7 @@ const initialForm: ContactMessage = {
   name: "",
   email: "",
   phone: "",
-  topic: "Quiero tomar un curso",
+  topic: "Servicios para mi negocio",
   message: "",
   courseSlug: "",
   consentToContact: false
@@ -38,14 +38,15 @@ const initialForm: ContactMessage = {
  * (campo `consent_to_contact` en Supabase) como evidencia del consentimiento.
  */
 const CONSENT_LEAD =
-  "Acepto que Qlick Marketing Digital use mis datos para contactarme sobre cursos, servicios y seguimiento comercial";
+  "Acepto que Qlick Marketing Digital use mis datos para responder mi consulta y dar seguimiento";
 const CONSENT_TAIL = "conforme al Aviso de Privacidad.";
 
 const topics = [
-  "Quiero tomar un curso",
-  "Capacitación para mi equipo",
-  "Servicios de agencia",
-  "Duda sobre pagos o facturación",
+  "Servicios para mi negocio",
+  "Diseño web o presencia local",
+  "Campañas y publicidad",
+  "Diagnóstico y estrategia",
+  "Eventos o cursos próximos",
   "Otro"
 ];
 
@@ -257,7 +258,7 @@ export function ContactForm() {
           </Field>
         </div>
 
-        <Field label="Curso de interés (opcional)" htmlFor="course">
+        <Field label="Servicio o curso de interés (opcional)" htmlFor="course">
           <select
             id="course"
             name="course"

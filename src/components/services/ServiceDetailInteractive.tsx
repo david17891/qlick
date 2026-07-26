@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Container, Badge, LucideIcon } from "@/components/ui";
+import { Container, LucideIcon } from "@/components/ui";
 import { CheckCircle2, Package } from "lucide-react";
 import { ServiceCheckoutModal } from "./ServiceCheckoutModal";
 import { resolveIcon } from "./ServiceIcon";
@@ -39,11 +39,44 @@ export function ServiceDetailInteractive({
 
   return (
     <>
-      <section className="bg-brand-50/30 py-14 sm:py-20 border-y border-brand-100">
+      <section className="service-detail-intro site-page">
+        <Container size="wide">
+          <div className="service-detail-panel p-7 sm:p-10">
+            <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+              <div className="max-w-3xl">
+                <p className="site-eyebrow">
+                  <span className="site-eyebrow__line" aria-hidden="true" />
+                  Servicio Qlick
+                </p>
+                <h1 className="mt-5 font-display text-4xl font-bold tracking-tight text-ink sm:text-5xl">
+                  {service.displayName}
+                </h1>
+                <p className="mt-4 max-w-2xl text-lg leading-8 text-ink-muted">
+                  {service.shortDescription ??
+                    "Elige el alcance que mejor encaja con lo que tu negocio necesita hoy."}
+                </p>
+              </div>
+              <div className="shrink-0 text-left sm:text-right">
+                <span className="service-card__price-label">Opciones disponibles</span>
+                <span className="mt-1 block font-display text-3xl font-bold tracking-tight text-ink">
+                  {service.variants.length}
+                </span>
+              </div>
+            </div>
+          </div>
+        </Container>
+      </section>
+
+      <section className="site-page border-y border-brand-100 bg-brand-50/35 py-14 sm:py-20">
         <Container size="wide">
           <div className="mx-auto max-w-2xl text-center">
-            <Badge tone="brand" className="mb-4">Paquetes</Badge>
-            <h2 className="display-2 text-ink">Elige el paquete que se ajusta a tu momento</h2>
+            <p className="site-eyebrow justify-center">
+              <span className="site-eyebrow__line" aria-hidden="true" />
+              Alcance claro
+            </p>
+            <h2 className="mt-5 font-display text-3xl font-bold tracking-tight text-ink sm:text-4xl">
+              Elige el paquete que se ajusta a tu momento
+            </h2>
             <p className="mt-4 text-lg text-ink-soft">
               {service.variants.length === 1
                 ? "Un solo paquete, todo incluido."
@@ -109,18 +142,9 @@ function VariantCard({
   return (
     <div
       className={
-        "relative flex flex-col rounded-2xl border bg-white p-6 shadow-sm transition hover:shadow-lg " +
-        (isFeatured
-          ? "border-brand-500 ring-1 ring-brand-500/20"
-          : "border-brand-100")
-      }
-    >
-      {isFeatured && (
-        <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-          <Badge tone="accent">Más elegido</Badge>
-        </div>
-      )}
-
+      "service-variant-card " + (isFeatured ? "service-variant-card--featured" : "")
+    }
+  >
       <div className="flex items-start gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center chip-brand">
           <LucideIcon

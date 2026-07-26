@@ -17,6 +17,14 @@ export function formatMXN(amount: number): string {
   }).format(amount);
 }
 
+/** Limpia marcadores de formato que pueden venir de importaciones de eventos. */
+export function cleanEventTitle(title: string): string {
+  return title
+    .replace(/\*\*/g, "")
+    .replace(/^\s*📌\s*/u, "")
+    .trim();
+}
+
 /** Formatea minutos como "X h Y min" o "Y min". */
 export function formatDuration(minutes: number): string {
   if (minutes < 60) return `${minutes} min`;
