@@ -370,9 +370,74 @@ export function buildEventInfoCopy(event: ActiveEventContext): string {
     text.replace(/\*\*(.+?)\*\*/gs, "*$1*");
 
   // Si el admin ya escribió el copy completo del evento, esa es la fuente
-  // de verdad. No lo resumimos ni lo reemplazamos por un menú corto.
+  // de verdad. No lo resumimos ni lo reemplazamos por un menú corto. Si la
+  // descripción no trae precio o condiciones de apartado, completamos esos
+  // datos desde las columnas estructuradas del evento para no ocultar
+  // información comercial que el lead sí necesita.
   if (description) {
-    return toWhatsAppMarkdown(description);
+    const reservation = getReservationTerms(event);
+    const hasPriceAmount =
+      typeof event.priceMxn === "number" &&
+      event.priceMxn > 0 &&
+      description.includes(event.priceMxn.toLocaleString("es-MX"));
+    const hasPriceLanguage = /inversi[oó]n|precio|costo|\$\s*\d/i.test(description);
+    const hasReservationLanguage = /apart|saldo|liquid/i.test(description);
+    const hasDate = /\b\d{1,2}\s+de\s+\p{L}+\s+de\s+\d{4}\b/iu.test(description);
+    const hasLocation = /lugar|ubicaci[oó]n|direcci[oó]n|\bCANACO\b|\bAv\.?\b/i.test(
+      description,
+    );
+    const eventRulesText = event.eventRules.rules.join(" ");
+    const exactAddressPending =
+      /direcci[oó]n exacta/i.test(eventRulesText) &&
+      /por confirmar/i.test(eventRulesText);
+    const location =
+      /4\s+patas.*negocio.*vende/i.test(event.title) &&
+      !/av\.|obreg[oó]n/i.test(event.location ?? "")
+        ? "CANACO, Av. Álvaro Obregón 14-15, San Luis Río Colorado, Sonora"
+        : event.location;
+    const factLines: string[] = [];
+    const commercialLines: string[] = [];
+
+    if (!hasDate) {
+      const dateLabel = new Intl.DateTimeFormat("es-MX", {
+        timeZone: "America/Phoenix",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      }).format(event.startsAt);
+      const timeLabel = new Intl.DateTimeFormat("es-MX", {
+        timeZone: "America/Phoenix",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      }).format(event.startsAt);
+      factLines.push(`📅 ${dateLabel} · ${timeLabel}`);
+    }
+    if (!hasLocation && location) {
+      factLines.push(
+        `📍 ${location}${exactAddressPending ? ". La dirección exacta está por confirmar." : "."}`,
+      );
+    }
+
+    if (
+      typeof event.priceMxn === "number" &&
+      event.priceMxn > 0 &&
+      !hasPriceAmount &&
+      !hasPriceLanguage
+    ) {
+      commercialLines.push(
+        `💰 Inversión total: $${event.priceMxn.toLocaleString("es-MX")} MXN.`
+      );
+    }
+    if (reservation.enabled && !hasReservationLanguage) {
+      commercialLines.push(
+        `Puedes reservar tu lugar con *$${reservation.amount.toLocaleString("es-MX")} MXN* y liquidar los *$${reservation.balance.toLocaleString("es-MX")} MXN* ${reservation.note.toLowerCase()}.`
+      );
+    }
+
+    return [toWhatsAppMarkdown(description), ...factLines, ...commercialLines]
+      .filter(Boolean)
+      .join("\n\n");
   }
 
   // Fallback factual para el evento CANACO "Las 4 Patas..." cuando la fila
@@ -2316,8 +2381,14 @@ async function buildOpenerPlan(args: {
         : `${text}\n\n¿Quieres apartar tu lugar?`;
     const adminDesc = event.description?.trim();
     if (adminDesc && adminDesc.length > 0) {
-      // El admin ya escribió la descripción. La mostramos tal cual.
-      return withReservationPrompt(adminDesc);
+      // El admin controla la descripción, pero los datos estructurados de
+      // fecha, ubicación y pago también son verdad factual del evento. El
+      // helper central los agrega solo cuando la descripción los omite.
+      try {
+        return withReservationPrompt(buildEventInfoCopy(event));
+      } catch {
+        return withReservationPrompt(adminDesc);
+      }
     }
     // Sin descripción: usamos el formato generado.
     try {
@@ -7848,8 +7919,16 @@ export async function processInboundMessage(
           });
         }
       }
-      const icEventSlug = icMatchedEvent?.slug ?? registrationEventSlug;
-      const icEventTitle = icMatchedEvent?.title ?? registrationEventTitle;
+      let icEventSlug = icMatchedEvent?.slug ?? registrationEventSlug;
+      let icEventTitle = icMatchedEvent?.title ?? registrationEventTitle;
+      // `generateQrToken` también cae al evento publicado más próximo cuando
+      // no hay slug en el historial. Resolver ese mismo fallback aquí evita
+      // generar QR/correo sin crear la confirmation asociada.
+      if (!icEventSlug) {
+        const fallbackEvent = await loadActiveEventContext().catch(() => null);
+        icEventSlug = fallbackEvent?.slug ?? null;
+        icEventTitle = icEventTitle ?? fallbackEvent?.title ?? null;
+      }
       // d) Generate QR token.
       const qr = await generateQrToken(
         supabase,
