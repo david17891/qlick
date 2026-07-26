@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-25 12:30 GMT-7 — Sprint "activar ai_bot_rules en el bot real" código listo en working tree, **aún NO commiteado ni mergeado a main**. Feature flag `bot_global_rules_enabled` en `false` por default (FAIL-CLOSED). El bot sigue funcionando como antes; las Reglas de Oro del admin llegan al prompt del LLM solo cuando David active el flag. Se pidió una segunda corrección (post-revisión) para (1) unificar `event:<id>` con compat `event:<slug>`, (2) rechazar scopes desconocidos (`course:`, `mode:`) en lugar de tratarlos como globales, (3) garantizar piso de slots para evento en el top-N, (4) limpiar header placeholder duplicado en los prompts, (5) tests reales del loader con mocks. Todos los bloqueadores corregidos y verificados: 24/24 tests verde (12 del loader + 12 del prompt), `npm run type-check` y `npm run lint` en verde. Pendiente: commit + merge a main antes de activar el flag. Ver `docs/ACTIVATION_GRADUAL_BOT_GLOBAL_RULES.md` para el rollout y `docs/PLAN_ROLLBACK_BOT_GLOBAL_RULES.md` para los 3 escenarios de rollback.
+> **Última actualización:** 2026-07-26 06:25 GMT-7 — PR #51 (reglas del bot) y PR #50 (CRM + autenticación preview) están mergeados en `main` (`0e9fe01`, `4c945fb`). Producción está desplegada en `dpl_4W8FK6azBhnKnUzmA8Ka7yTum946` con estado READY. Las reglas globales permanecen apagadas (fail-closed); no se activó ningún canary.
 >
 > **Body del doc (líneas debajo):** es archivo histórico de sprints cerrados. Para estado actual, ver este snapshot.
 
