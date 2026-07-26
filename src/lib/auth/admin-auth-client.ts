@@ -43,7 +43,7 @@ export async function requestMagicLinkClient(
   const publishableKey =
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const appUrl = window.location.origin;
 
   if (!supabaseUrl || !publishableKey) {
     return {
