@@ -101,6 +101,8 @@ export interface SubmitEventRegistrationResult {
   created: boolean;
   /** true si quedó en Supabase. false si Supabase no está configurado (demo). */
   persisted: boolean;
+  /** true/false cuando se intentó enviar el pase por email. */
+  emailSent?: boolean;
   /** Mensaje listo para mostrar al usuario. */
   note: string;
   /**
@@ -252,21 +254,31 @@ export async function submitEventRegistration(
   // "Reenviar email" del admin — el form público quedaba en silencio
   // (Luz Elena / biheca8075@buloan.com confirmado a las 09:51, sin email).
   //
-  // Best-effort: el helper ya tiene try/catch interno y loggea en
-  // event_email_log. Si falla, NO rompe el flow. Fire-and-forget con
-  // `void` para no bloquear el response del form.
+  // Esperamos el resultado: en Vercel una tarea fire-and-forget puede
+  // terminar abruptamente cuando el Server Action ya devolvió la respuesta.
+  // El helper registra el intento en event_email_log y devuelve fallo sin
+  // lanzar, para que la confirmación no se pierda si el proveedor falla.
+  let emailSent: boolean | undefined;
   if (result.created && result.confirmation && email) {
-    void sendQrPassForConfirmation({
-      confirmationId: result.confirmation.id,
-      event,
-    }).catch((err) => {
+    try {
+      const emailResult = await sendQrPassForConfirmation({
+        confirmationId: result.confirmation.id,
+        event,
+      });
+      emailSent = emailResult.ok;
+      if (!emailResult.ok) {
+        infoLog("[eventos/actions] sendQrPassForConfirmation fallo (no fatal)", {
+          error: emailResult.error ?? "unknown",
+        });
+      }
+    } catch (err) {
+      emailSent = false;
       infoLog(
         "[eventos/actions] sendQrPassForConfirmation fallo (no fatal)",
         err instanceof Error ? { error: err.message } : {},
       );
-    });
+    }
   }
-
   // created=false → ya estaba registrada (dedup atómico por email/phone).
   // Lo tratamos como éxito con copy distinto: no la "molestamos" con otro
   // email de bienvenida, pero sí confirmamos que sigue vigente.
@@ -274,8 +286,13 @@ export async function submitEventRegistration(
     ok: true,
     created: result.created,
     persisted: result.persisted,
+    emailSent,
     note: result.created
-      ? "¡Listo! Confirmamos tu asistencia. Te enviaremos los detalles antes del evento."
+      ? emailSent === true
+        ? "¡Listo! Confirmamos tu asistencia. Te enviamos por correo tu QR y las instrucciones de pago."
+        : emailSent === false
+          ? "¡Listo! Confirmamos tu asistencia, pero no pudimos entregar el correo. Revisa tu email o contacta al equipo de Qlick."
+          : "¡Listo! Confirmamos tu asistencia. Te enviaremos los detalles antes del evento."
       : "Ya estás registrada en este evento. Te esperamos.",
     gateUrl,
   };

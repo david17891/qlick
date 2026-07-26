@@ -241,9 +241,22 @@ export async function sendQrPassForConfirmation(args: {
   }
 
   // 4. Link al checkout publico si el evento es de pago (sprint 2026-07-15).
+  // Si el evento ofrece apartado, el correo debe llevar al flujo de reserva
+  // y no al checkout del total completo.
+  const reservationAmount = args.event.eventRules?.reservation_amount_mxn;
+  const canReserve =
+    args.event.eventRules?.reservation_enabled === true &&
+    typeof reservationAmount === "number" &&
+    Number.isFinite(reservationAmount) &&
+    reservationAmount > 0 &&
+    reservationAmount < (args.event.priceMXN ?? 0);
   const paymentUrl =
     args.event.priceMXN && args.event.priceMXN > 0
-      ? `${baseUrl}/pagar/evento/${args.event.slug}?confirmation=${conf.id}`
+      ? (() => {
+          const params = new URLSearchParams({ confirmation: conf.id });
+          if (canReserve) params.set("payment_option", "reservation");
+          return `${baseUrl}/pagar/evento/${args.event.slug}?${params.toString()}`;
+        })()
       : undefined;
 
   // FIX auditoria 2026-07-15f: paymentStatus se pasa al template para
