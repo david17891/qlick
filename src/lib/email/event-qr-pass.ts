@@ -275,6 +275,7 @@ export async function sendQrPassForConfirmation(args: {
       checkInUrl,
       format: args.event.format,
       priceMXN: args.event.priceMXN,
+      reservationAmountMXN: canReserve ? reservationAmount : undefined,
       paymentUrl,
       paymentStatus,
       // Si el evento es virtual/hybrid, gateUrl lo arma el caller
