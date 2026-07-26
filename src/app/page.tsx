@@ -144,7 +144,6 @@ export default async function HomePage() {
         <section className="home-hero relative overflow-hidden">
           <div className="home-hero-grid" aria-hidden="true" />
           <div className="home-hero-orb home-hero-orb--one" aria-hidden="true" />
-          <div className="home-hero-orb home-hero-orb--two" aria-hidden="true" />
 
           <Container size="wide" className="relative z-10 py-16 sm:py-20 lg:py-24">
             <div className="grid items-center gap-14 lg:grid-cols-[0.92fr_1.08fr] lg:gap-16">

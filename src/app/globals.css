@@ -623,14 +623,6 @@ h1, h2, h3, h4, h5 {
   box-shadow: 0 0 0 28px rgba(171, 63, 234, 0.05), 0 0 0 58px rgba(171, 63, 234, 0.025);
 }
 
-.home-hero-orb--two {
-  bottom: 8%;
-  left: 38%;
-  width: 11rem;
-  height: 11rem;
-  border-color: rgba(239, 159, 8, 0.22);
-}
-
 .home-kicker,
 .home-eyebrow {
   display: inline-flex;
