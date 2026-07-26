@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { Navbar, Footer } from "@/components/layout";
-import { Container, Card, Badge, SectionHeading } from "@/components/ui";
+import { Navbar, Footer, PageHero } from "@/components/layout";
+import { Container, Card, SectionHeading } from "@/components/ui";
 
 export const metadata: Metadata = {
   title: "Aviso de Privacidad | Qlick",
@@ -142,20 +142,15 @@ export default function PrivacidadPage() {
     <>
       <Navbar />
 
-      <section className="bg-brand-50/40 border-b border-brand-100">
-        <Container className="py-16">
-          <Badge tone="brand" className="mb-4">
-            Legal
-          </Badge>
-          <h1 className="display-1 text-ink">Aviso de Privacidad</h1>
-          <p className="mt-5 text-lg text-ink-soft max-w-2xl">
-            Cómo tratamos los datos que nos compartes al contactarnos,
-            solicitar información de cursos o escribirnos por WhatsApp.
-          </p>
-        </Container>
-      </section>
+      <PageHero
+        variant="dark"
+        centered={false}
+        badge="Legal"
+        title="Aviso de Privacidad"
+        subtitle="Cómo tratamos los datos que nos compartes al contactarnos, solicitar información de servicios o escribirnos por WhatsApp."
+      />
 
-      <section className="py-16">
+      <section className="site-page py-16 sm:py-24">
         <Container size="narrow">
           <div className="space-y-10">
             {secciones.map((s) => (

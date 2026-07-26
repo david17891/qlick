@@ -1,4 +1,4 @@
-import { Navbar, Footer } from "@/components/layout";
+import { Navbar, Footer, PageHero, CTABanner } from "@/components/layout";
 import { Container, Button } from "@/components/ui";
 import { WhatsAppButton } from "@/components/contact/WhatsAppButton";
 import type { Metadata } from "next";
@@ -30,52 +30,21 @@ export default function FilosofiaPage() {
     <>
       <Navbar />
 
-      {/* ----------------------------- HERO ----------------------------- */}
-      <section className="relative overflow-hidden bg-hero-mesh">
-        <div className="absolute inset-0 -z-10 opacity-50" />
-        <Container size="wide" className="pt-16 pb-20 sm:pt-24 sm:pb-28">
-          <div className="grid lg:grid-cols-12 gap-12 items-center">
-            {/* Bloque centrado — la frase */}
-            <div className="lg:col-span-12 max-w-4xl mx-auto text-center animate-fade-up">
-              <span className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-white/70 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-brand-600">
-                <span className="h-1.5 w-1.5 rounded-full bg-brand-accent" />
-                Filosofía Qlick
-              </span>
-
-              <h1 className="display-1 mt-6 text-ink">
-                <span className="text-brand-gradient">No basta con existir.</span>
-                <br />
-                <span>Hay que ser imposible de ignorar.</span>
-              </h1>
-
-              <p className="mt-6 max-w-2xl mx-auto text-lg text-ink-soft">
-                Marketing que se traduce en ventas.{" "}
-                <span className="text-ink">Y que se nota.</span>
-              </p>
-
-              <p className="mt-6 max-w-2xl mx-auto text-base text-ink-muted">
-                Esta frase es lo que hay detrás de cada curso, cada
-                masterclass, cada asesoría. Si lo que haces hoy no te hace
-                visible, no te hace vender, no te hace recordar — entonces
-                no es marketing. Es ruido. Y este es el lugar para dejar
-                de hacer ruido.
-              </p>
-
-              <div className="mt-10 flex flex-wrap justify-center gap-3">
-                <Button href="/cursos" size="lg">
-                  Ver cursos →
-                </Button>
-                <Button href="/masterclass" variant="outline" size="lg">
-                  Próximas masterclasses
-                </Button>
-              </div>
-            </div>
-          </div>
-        </Container>
-      </section>
+      <PageHero
+        variant="dark"
+        badge="Filosofía Qlick"
+        title="No basta con existir. Hay que ser imposible de ignorar."
+        subtitle="Marketing que se traduce en ventas. Y que se nota. Si lo que haces hoy no te hace visible, no te hace vender o no te hace recordar, entonces es ruido."
+        actions={
+          <>
+            <Button href="/servicios" variant="accent" size="lg">Ver servicios</Button>
+            <Button href="/eventos" variant="ghost" size="lg" className="!text-white hover:!bg-white/10">Próximos eventos</Button>
+          </>
+        }
+      />
 
       {/* ----------------------------- PRINCIPIOS ----------------------------- */}
-      <section className="bg-ink text-white py-20">
+      <section className="bg-ink py-20 text-white">
         <Container size="wide">
           <div className="max-w-2xl">
             <h2 className="display-2 text-white">
@@ -92,8 +61,8 @@ export default function FilosofiaPage() {
                 key={item.title}
                 className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 hover:bg-white/[0.06] transition-colors"
               >
-                <div className="text-[11px] uppercase tracking-[0.2em] text-brand-accent font-bold">
-                  {item.tag}
+                <div className="text-[11px] font-bold uppercase tracking-[0.2em] text-brand-accent">
+                  {item.number}
                 </div>
                 <h3 className="mt-3 text-xl font-bold text-white">
                   {item.title}
@@ -108,7 +77,7 @@ export default function FilosofiaPage() {
       </section>
 
       {/* ----------------------------- LO QUE SÍ HACEMOS ----------------------------- */}
-      <section className="py-20 bg-white">
+      <section className="site-page py-20 sm:py-24">
         <Container size="wide">
           <div className="max-w-2xl">
             <h2 className="display-2 text-ink">
@@ -140,29 +109,18 @@ export default function FilosofiaPage() {
         </Container>
       </section>
 
-      {/* ----------------------------- CTA ----------------------------- */}
-      <section className="bg-hero-mesh py-20">
-        <Container size="narrow" className="text-center">
-          <h2 className="display-2 text-ink">
-            Empieza <span className="text-brand-gradient">hoy</span>.
-          </h2>
-          <p className="mt-4 text-lg text-ink-soft">
-            El primer paso es gratis y toma 30 segundos.
-          </p>
-          <div className="mt-8 flex flex-wrap justify-center gap-3">
-            <Button href="/cursos" size="lg">
-              Ver cursos →
-            </Button>
-            <Button
-              href="https://wa.me/5215555555555?text=Hola%20Qlick%2C%20me%20interesa%20saber%20m%C3%A1s"
-              variant="outline"
-              size="lg"
-            >
-              Hablar por WhatsApp
-            </Button>
-          </div>
-        </Container>
-      </section>
+      <CTABanner
+        variant="gradient"
+        badge="Empieza hoy"
+        title="Haz que el siguiente click cuente."
+        subtitle="Elige un servicio, mira la agenda o escríbenos con tu contexto."
+        actions={
+          <>
+            <a href="/servicios" className="home-button home-button--accent">Ver servicios</a>
+            <a href="/contacto" className="home-button home-button--dark-ghost">Hablar con Qlick</a>
+          </>
+        }
+      />
 
       <WhatsAppButton />
       <Footer />
@@ -173,17 +131,17 @@ export default function FilosofiaPage() {
 /** Tres principios negativos — dicen lo que NO es Qlick. */
 const NO_VENDEMOS = [
   {
-    tag: "01 · Sin relleno",
+    number: "01",
     title: "Cursos vacíos de teoría",
     body: "Nada de frameworks genéricos importados del 2014 que nadie aplica. Cada lección es una acción concreta que puedes correr esta semana.",
   },
   {
-    tag: "02 · Sin moldes",
+    number: "02",
     title: "Plantillas para copiar y pegar",
     body: "Si tuvieras que copiarlo, lo encontraría tu competencia en Google en 5 minutos. Lo que enseñamos se adapta a tu negocio, no al revés.",
   },
   {
-    tag: "03 · Sin humo",
+    number: "03",
     title: "Gurús con frases ingeniosas",
     body: "Cero 'secrets revealed'. Cero 'esto cambió mi vida en 7 días'. Solo sistema probado por +2,600 alumnos y aplicable a México.",
   },

@@ -13,16 +13,9 @@ import { isValidSupabaseUrl } from "@/lib/supabase/config";
 import type { User } from "@/types";
 
 const links = [
-  { href: "/cursos", label: "Cursos", badge: "Próximamente" },
   { href: "/eventos", label: "Eventos" },
-  // FASE 8 (2026-07-21): el catálogo público de servicios comerciales
-  // (diseño, auditoría 1a1, kickstart Meta Ads) vive en /servicios.
-  // /diseno-paginas era la landing legacy sin checkout; la reemplazamos
-  // por el nuevo catálogo que tiene modal de checkout real.
   { href: "/servicios", label: "Servicios" },
   { href: "/acerca", label: "Acerca de" },
-  { href: "/beneficios", label: "Beneficios" },
-  { href: "/faq", label: "Preguntas" },
   { href: "/contacto", label: "Contacto" }
 ];
 
@@ -142,10 +135,10 @@ export function Navbar({ initialIdentity }: { initialIdentity?: NavbarIdentity }
   };
 
   return (
-    <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-brand-100/70">
-      <nav className="mx-auto max-w-7xl px-5 sm:px-8 h-16 flex items-center justify-between">
+    <header className="sticky top-0 z-50 border-b border-black/5 bg-[#fffdfb]/85 shadow-[0_10px_30px_-26px_rgba(15,10,26,0.45)] backdrop-blur-xl">
+      <nav className="mx-auto flex h-[4.25rem] max-w-[1440px] items-center justify-between px-5 sm:px-8">
         <div className="flex items-center gap-10">
-          <Logo href="/" lockup="noTagline" height={36} />
+          <Logo href="/" lockup="noTagline" height={38} />
           <ul className="hidden md:flex items-center gap-1">
             {links.map((l) => {
               const active = pathname?.startsWith(l.href);
@@ -157,15 +150,10 @@ export function Navbar({ initialIdentity }: { initialIdentity?: NavbarIdentity }
                       "px-3 py-2 rounded-full text-sm font-medium transition inline-flex items-center gap-1.5",
                       active
                         ? "text-brand-700 bg-brand-50"
-                        : "text-ink-soft hover:text-brand-700 hover:bg-brand-50/60"
+                        : "text-ink-soft hover:bg-brand-50/60 hover:text-brand-700"
                     )}
                   >
                     {l.label}
-                    {"badge" in l && l.badge ? (
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-200 text-slate-600">
-                        {l.badge}
-                      </span>
-                    ) : null}
                   </Link>
                 </li>
               );
@@ -200,8 +188,8 @@ export function Navbar({ initialIdentity }: { initialIdentity?: NavbarIdentity }
               <Button href="/login" variant="ghost" size="sm">
                 Acceso alumnos
               </Button>
-              <Button href="/cursos" size="sm">
-                Empezar ahora
+              <Button href="/servicios" size="sm">
+                Empezar con Qlick
               </Button>
             </>
           )}
@@ -267,11 +255,6 @@ function MobileMenu({
             className="block px-3 py-2.5 rounded-xl text-ink-soft hover:bg-brand-50 font-medium"
           >
             {l.label}
-            {"badge" in l && l.badge ? (
-              <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-200 text-slate-600">
-                {l.badge}
-              </span>
-            ) : null}
           </Link>
         ))}
         <div className="pt-3 flex flex-col gap-2">
@@ -301,8 +284,8 @@ function MobileMenu({
               <Button href="/login" variant="outline" className="w-full" size="sm">
                 Acceso alumnos
               </Button>
-              <Button href="/cursos" className="w-full" size="sm">
-                Empezar ahora
+              <Button href="/servicios" className="w-full" size="sm">
+                Empezar con Qlick
               </Button>
             </>
           )}

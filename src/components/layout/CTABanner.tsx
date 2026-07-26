@@ -20,9 +20,7 @@ export interface CTABannerProps {
 }
 
 /**
- * CTA banner estandarizado. Reemplaza el patrón ad-hoc que existía en:
- * - Homepage (línea 364-388): bg-brand-gradient con glow + Isotipo
- * - `/acerca`, `/faq`, etc.: card con bg-brand-50/50 simple
+ * CTA banner estandarizado para las superficies públicas.
  *
  * Patrón:
  *   <CTABanner
@@ -42,44 +40,42 @@ export function CTABanner({
 }: CTABannerProps) {
   if (variant === "subtle") {
     return (
-      <section className={cn("py-16 sm:py-20", className)}>
-        <div className="mx-auto max-w-4xl rounded-2xl border border-brand-100 bg-brand-50/50 px-6 py-12 text-center sm:px-12">
+      <section className={cn("site-cta-wrap", className)}>
+        <div className="site-cta site-cta--quiet">
           {badge && (
-            <p className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-brand-600">
+            <p className="site-eyebrow justify-center">
+              <span className="site-eyebrow__line" aria-hidden="true" />
               {badge}
             </p>
           )}
-          <h2 className="font-display text-3xl font-bold text-ink sm:text-4xl">
-            {title}
-          </h2>
-          {subtitle && <p className="mx-auto mt-3 max-w-2xl text-lg text-ink-muted">{subtitle}</p>}
+          <h2 className="site-cta__title">{title}</h2>
+          {subtitle && <p className="site-cta__subtitle">{subtitle}</p>}
           {actions && <div className="mt-6 flex flex-wrap justify-center gap-3">{actions}</div>}
         </div>
       </section>
     );
   }
 
-  // variant === "gradient" — el patrón premium de la home
+  // variant === "gradient" — CTA oscuro compartido con la portada
   return (
-    <section className={cn("py-16 sm:py-20", className)}>
-      <div className="mx-auto max-w-6xl px-5 sm:px-8">
-        <div className="relative overflow-hidden rounded-3xl bg-brand-gradient px-8 py-16 text-center text-white shadow-glow sm:px-16 sm:py-20">
-          <div className="absolute inset-0 bg-brand-radial opacity-50" aria-hidden="true" />
-          <div className="relative">
+    <section className={cn("site-cta-wrap", className)}>
+      <div className="site-cta site-cta--dark">
+        <div className="site-cta__grid" aria-hidden="true" />
+        <div className="relative z-10">
             <Link href="/" className="inline-block">
-              <Isotipo size={48} className="mx-auto mb-6 brightness-0 invert" />
+              <Isotipo size={42} className="mx-auto mb-6" />
             </Link>
             {badge && (
-              <p className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-white/80">
+              <p className="site-eyebrow site-eyebrow--light justify-center">
+                <span className="site-eyebrow__line" aria-hidden="true" />
                 {badge}
               </p>
             )}
-            <h2 className="display-2 text-white">{title}</h2>
+            <h2 className="site-cta__title site-cta__title--dark">{title}</h2>
             {subtitle && (
-              <p className="mx-auto mt-4 max-w-xl text-lg text-white/90">{subtitle}</p>
+              <p className="site-cta__subtitle site-cta__subtitle--dark">{subtitle}</p>
             )}
             {actions && <div className="mt-8 flex flex-wrap justify-center gap-3">{actions}</div>}
-          </div>
         </div>
       </div>
     </section>

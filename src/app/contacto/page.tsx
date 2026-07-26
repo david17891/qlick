@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import { Navbar, Footer } from "@/components/layout";
-import { Container, Card, Button, Badge } from "@/components/ui";
+import { Navbar, Footer, PageHero } from "@/components/layout";
+import { Container, Card, Button } from "@/components/ui";
 import { ContactForm } from "@/components/contact/ContactForm";
 import { WhatsAppButton } from "@/components/contact/WhatsAppButton";
 import { getContactEmail, getMailtoLink } from "@/lib/contact/whatsapp";
@@ -9,7 +9,7 @@ import { Lock } from "lucide-react";
 export const metadata: Metadata = {
   title: "Contacto",
   description:
-    "¿Tienes dudas sobre los cursos de Qlick o necesitas asesoría? Escríbenos y te respondemos en menos de 24 horas hábiles.",
+    "Cuéntanos qué necesita tu negocio. Hablemos de diseño web, campañas, presencia local o una auditoría clara.",
   alternates: { canonical: "/contacto" }
 };
 
@@ -19,20 +19,15 @@ export default function ContactoPage() {
   return (
     <>
       <Navbar />
-      <section className="bg-brand-50/40 border-b border-brand-100">
-        <Container className="py-16">
-          <Badge tone="brand" className="mb-4">
-            Hablemos
-          </Badge>
-          <h1 className="display-1 text-ink">Cuéntanos tu reto</h1>
-          <p className="mt-5 text-lg text-ink-soft max-w-2xl">
-            ¿No sabes qué curso elegir? ¿Necesitas capacitación para tu equipo?
-            Te ayudamos a encontrar el camino correcto.
-          </p>
-        </Container>
-      </section>
+      <PageHero
+        variant="dark"
+        centered={false}
+        badge="Contacto"
+        title="Cuéntanos qué quieres mover."
+        subtitle="Si necesitas una página, una campaña, una auditoría o simplemente ordenar tus ideas, empecemos por el contexto."
+      />
 
-      <section className="py-16">
+      <section className="site-page py-16 sm:py-24">
         <Container size="wide" className="grid lg:grid-cols-3 gap-10">
           <div className="lg:col-span-2">
             <ContactForm />
@@ -43,12 +38,13 @@ export default function ContactoPage() {
               <h3 className="font-bold text-ink mb-3">Otras vías</h3>
               <ul className="space-y-4 text-sm">
                 <li>
-                  <p className="font-semibold text-ink mb-1">WhatsApp ventas</p>
-                  <WhatsAppButton intent="sales" size="sm" variant="outline" />
-                </li>
-                <li>
-                  <p className="font-semibold text-ink mb-1">WhatsApp soporte</p>
-                  <WhatsAppButton intent="support" size="sm" variant="outline" />
+                  <p className="font-semibold text-ink mb-1">WhatsApp</p>
+                  <WhatsAppButton
+                    intent="sales"
+                    size="sm"
+                    variant="outline"
+                    label="Hablar por WhatsApp"
+                  />
                 </li>
                 <li>
                   <p className="font-semibold text-ink mb-1">Email</p>
@@ -71,19 +67,18 @@ export default function ContactoPage() {
               </h3>
               <p className="text-sm text-ink-soft leading-relaxed">
                 Al enviarnos tu información aceptas ser contactado por Qlick por
-                WhatsApp, llamada o correo. El CRM de este sitio está en modo
-                <strong> demo</strong>: no almacena datos reales todavía. No lo
-                uses con información sensible hasta que exista un backend y un
-                aviso de privacidad publicado.
+                WhatsApp, llamada o correo. Usamos tus datos únicamente para
+                responder tu solicitud y dar seguimiento a lo que nos pidas.
+                Consulta el aviso completo antes de enviar el formulario.
               </p>
             </Card>
             <Card className="p-6 bg-brand-gradient text-white">
-              <h3 className="font-bold mb-2">¿Primera vez?</h3>
+              <h3 className="font-bold mb-2">¿Ya tienes algo en mente?</h3>
               <p className="text-sm text-white/90 mb-4">
-                Mira el catálogo y empieza con un curso gratis.
+                Revisa el catálogo y encuentra el punto de partida más cercano.
               </p>
-              <Button href="/cursos" variant="accent" className="w-full">
-                Ver cursos
+              <Button href="/servicios" variant="accent" className="w-full">
+                Ver servicios
               </Button>
             </Card>
           </aside>
