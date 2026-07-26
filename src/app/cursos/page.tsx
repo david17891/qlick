@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Navbar, Footer } from "@/components/layout";
-import { Container, Button, Card, Badge, SectionHeading } from "@/components/ui";
+import { Navbar, Footer, PageHero, CTABanner } from "@/components/layout";
+import { Container, Button, Card, SectionHeading } from "@/components/ui";
 import { Reveal } from "@/components/feedback/Reveal";
 import { BookOpen, Calendar, Compass } from "lucide-react";
 
@@ -35,35 +35,26 @@ export default function CursosProximamentePage() {
     <>
       <Navbar />
 
-      {/* Hero */}
-      <section className="relative overflow-hidden bg-brand-50/40 border-b border-brand-100">
-        <Container size="wide" className="py-20 sm:py-24">
-          <div className="mx-auto max-w-2xl text-center">
-            <Badge tone="info" className="mb-5">
-              Próximamente
-            </Badge>
-            <h1 className="display-1 text-ink">
-              Los cursos de Qlick están en preparación.
-            </h1>
-            <p className="mt-5 text-lg text-ink-soft">
-              Estamos diseñando el catálogo de cursos con el mismo nivel de
-              calidad que nuestros servicios. Mientras tanto, ya puedes
-              trabajar con nosotros por otras vías.
-            </p>
-            <div className="mt-8 flex flex-wrap justify-center gap-3">
-              <Button href="/servicios" size="lg">
-                Ver servicios disponibles
-              </Button>
-              <Button href="/eventos" variant="outline" size="lg">
-                Próximos eventos
-              </Button>
-            </div>
-          </div>
-        </Container>
-      </section>
+      <PageHero
+        variant="dark"
+        centered={false}
+        badge="Cursos en preparación"
+        title="Estamos preparando el próximo capítulo de Qlick."
+        subtitle="El catálogo de cursos todavía no está abierto. Mientras tanto, puedes trabajar con nosotros a través de servicios profesionales y eventos en vivo."
+        actions={
+          <>
+            <Button href="/servicios" variant="accent" size="lg">
+              Ver servicios disponibles
+            </Button>
+            <Button href="/eventos" variant="ghost" size="lg" className="!text-white hover:!bg-white/10">
+              Próximos eventos
+            </Button>
+          </>
+        }
+      />
 
       {/* Alternativas reales */}
-      <section className="py-20">
+      <section className="site-page py-20 sm:py-24">
         <Container size="wide">
           <SectionHeading
             center
@@ -115,28 +106,22 @@ export default function CursosProximamentePage() {
         </Container>
       </section>
 
-      {/* CTA WhatsApp */}
-      <section className="py-16">
-        <Container size="wide">
-          <div className="rounded-3xl bg-ink text-white px-8 py-12 sm:px-16 sm:py-16 text-center">
-            <h2 className="display-3 text-white">
-              ¿Quieres saber cuándo lanzamos los cursos?
-            </h2>
-            <p className="mt-3 text-white/70 max-w-xl mx-auto">
-              Mándanos WhatsApp y te avisamos cuando el catálogo esté listo.
-              Sin compromiso, sin spam.
-            </p>
-            <a
-              href="https://wa.me/5216532935492?text=Hola%2C%20quiero%20saber%20cu%C3%A1ndo%20lanzan%20los%20cursos."
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-6 inline-flex items-center justify-center rounded-full bg-brand-500 px-7 py-3 text-base font-semibold text-white shadow-sm transition hover:bg-brand-600"
-            >
-              Hablar por WhatsApp →
-            </a>
-          </div>
-        </Container>
-      </section>
+      <CTABanner
+        variant="gradient"
+        badge="Cuando llegue el momento"
+        title="¿Quieres enterarte cuando abramos el catálogo?"
+        subtitle="Escríbenos y te avisamos. Sin compromiso, sin ruido."
+        actions={
+          <a
+            href="https://wa.me/5216532935492?text=Hola%2C%20quiero%20saber%20cu%C3%A1ndo%20lanzan%20los%20cursos."
+            target="_blank"
+            rel="noopener noreferrer"
+            className="home-button home-button--accent"
+          >
+            Hablar por WhatsApp
+          </a>
+        }
+      />
 
       <Footer />
     </>
