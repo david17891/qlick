@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-26 06:35 GMT-7 — El orb decorativo inferior de la home fue eliminado. Producción está desplegada en `dpl_wwbf6pQWHQuE3iVn1N4beTNE9Jov` con estado READY; las reglas globales del bot continúan apagadas (fail-closed).
+> **Última actualización:** 2026-07-26 07:57 GMT-7 — Corregido el envío del pase QR y las instrucciones de pago desde el formulario público de eventos. Producción está desplegada en dpl_9pUuW4tZtXvEfRWZxXSLXhqmWsd1 con estado READY y alias https://www.qlick.digital; se revalidaron 3 confirmaciones reales, cada una con QR activo y correo Brevo aceptado. Las reglas globales del bot continúan apagadas (fail-closed).
 >
 > **Body del doc (líneas debajo):** es archivo histórico de sprints cerrados. Para estado actual, ver este snapshot.
 
