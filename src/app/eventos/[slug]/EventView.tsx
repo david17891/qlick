@@ -27,7 +27,6 @@ import {
   Field,
   Input,
   Button,
-  Badge,
   Container,
 } from "@/components/ui";
 import { LucideIcon } from "@/components/ui/Icon";
@@ -35,6 +34,7 @@ import { Calendar, Check, MapPin, Video } from "lucide-react";
 import type { Event } from "@/types/events";
 import { submitEventRegistration } from "./actions";
 import { EVENT_TIMEZONE } from "@/lib/datetime";
+import { cleanEventTitle } from "@/lib/utils";
 
 type Status = "idle" | "success" | "already-registered" | "error";
 
@@ -150,15 +150,18 @@ export function EventView({ event, pastEvent }: Props) {
     !pastEvent && (status === "idle" || status === "error");
   const showForm =
     !pastEvent && status !== "success" && status !== "already-registered";
+  const displayTitle = cleanEventTitle(event.title);
 
   return (
     <>
-      {/* Hero: detalles del evento — visible para todos, sin registro. */}
-      <section className="py-12 sm:py-16">
+      <section className="event-detail-hero">
         <Container>
-          <Badge tone="accent">Evento Qlick</Badge>
-          <h1 className="mt-4 text-4xl sm:text-5xl font-bold text-ink leading-tight">
-            {event.title}
+          <p className="site-eyebrow">
+            <span className="site-eyebrow__line" aria-hidden="true" />
+            Evento Qlick
+          </p>
+          <h1 className="mt-6 max-w-4xl font-display text-4xl font-bold leading-tight tracking-tight text-ink sm:text-6xl">
+            {displayTitle}
           </h1>
           {/* FIX 2026-07-05 (sesión David, ya-estas-registrado con nombre
               duplicado): mostramos el short_code en la landing pública.
@@ -168,24 +171,24 @@ export function EventView({ event, pastEvent }: Props) {
           {event.shortCode && (
             <p className="mt-3 text-sm text-ink-soft">
               Código del evento:{" "}
-              <span className="font-mono font-semibold tracking-wider bg-ink/5 px-2 py-0.5 rounded">
+              <span className="rounded bg-ink/5 px-2 py-0.5 font-mono font-semibold tracking-wider">
                 {event.shortCode}
               </span>
             </p>
           )}
-          <ul className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm text-ink-soft">
+          <ul className="event-detail-meta mt-8 flex flex-wrap gap-x-6 gap-y-3 text-sm">
             <li className="flex items-center gap-2">
-              <LucideIcon icon={Calendar} size="sm" tone="muted" /> <strong>Cuándo:</strong> {startsAtFormatted}
+              <LucideIcon icon={Calendar} size="sm" tone="brand" /> <span>{startsAtFormatted}</span>
               {endsAtFormatted && (
                 <>
                   {" — "}
-                  <span className="text-ink-muted">{endsAtFormatted}</span>
+                  <span>{endsAtFormatted}</span>
                 </>
               )}
             </li>
             {event.location && (
               <li>
-                📍 <strong>Lugar:</strong> {event.location}
+                <LucideIcon icon={MapPin} size="sm" tone="brand" /> {event.location}
               </li>
             )}
           </ul>
@@ -195,8 +198,8 @@ export function EventView({ event, pastEvent }: Props) {
             en DB se conserva (no se borra) por compat.
           */}
           {event.description && (
-            <p className="mt-8 text-lg text-ink-soft whitespace-pre-line leading-relaxed">
-              {event.description}
+            <p className="mt-8 max-w-3xl whitespace-pre-line text-lg leading-relaxed text-ink-soft">
+              {event.description.replace(/\*\*/g, "")}
             </p>
           )}
           {showHeroCta && (
@@ -220,7 +223,7 @@ export function EventView({ event, pastEvent }: Props) {
       {/* Sección de confirmación — fondo distinto, heading prominent. */}
       <section
         id="confirmar-asistencia"
-        className="py-12 sm:py-16 bg-brand-50/60 border-t border-brand-100 scroll-mt-20"
+        className="event-registration-section scroll-mt-20 py-12 sm:py-16"
       >
         <Container size="narrow">
           {pastEvent ? (
@@ -232,8 +235,8 @@ export function EventView({ event, pastEvent }: Props) {
                 <h2 className="text-2xl font-bold text-ink">
                   Este evento ya pasó
                 </h2>
-                <p className="mt-2 text-ink-muted text-sm max-w-md mx-auto">
-                  Las confirmaciones para {event.title} ya cerraron. Si te
+              <p className="mt-2 text-ink-muted text-sm max-w-md mx-auto">
+                  Las confirmaciones para {displayTitle} ya cerraron. Si te
                   interesa algo similar, mira los próximos eventos o escríbenos
                   por WhatsApp.
                 </p>
@@ -337,7 +340,7 @@ export function EventView({ event, pastEvent }: Props) {
                 Déjanos tus datos y te enviaremos los detalles del evento por
                 email o WhatsApp.
               </p>
-              <Card className="mt-6 p-6 sm:p-8">
+              <Card className="event-registration-card mt-6 p-6 sm:p-8">
                 <form onSubmit={handleSubmit} noValidate className="space-y-4">
                   <Field label="Nombre" htmlFor="ev-name">
                     <Input

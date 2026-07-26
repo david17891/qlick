@@ -662,17 +662,13 @@ export function LeadDetailDrawer({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      {/* Overlay */}
-      <div
-        className="absolute inset-0 bg-ink/40 backdrop-blur-sm"
-        onClick={onClose}
-        aria-hidden
-      />
-      {/* Drawer */}
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-[#faf8fd]">
+      {/* Vista de detalle enfocada: el CRM queda fuera de escena para evitar
+          una segunda pantalla visible detrás del contacto. */}
       <aside
-        className="relative h-full w-full max-w-xl bg-white shadow-2xl overflow-y-auto"
+        className="mx-auto min-h-full w-full max-w-6xl bg-white shadow-[0_24px_80px_-32px_rgba(38,16,54,0.45)] sm:my-6 sm:min-h-[calc(100%-3rem)] sm:rounded-[28px] sm:border sm:border-brand-100"
         role="dialog"
+        aria-modal="true"
         aria-label={`Detalle de ${currentLead.name}`}
       >
         {/* Header */}

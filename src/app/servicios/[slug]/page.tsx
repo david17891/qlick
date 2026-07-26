@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Container, Badge } from "@/components/ui";
+import { Container } from "@/components/ui";
 import { CTABanner } from "@/components/layout";
 import { ServiceDetailInteractive } from "@/components/services/ServiceDetailInteractive";
 import { ServiceDemosSection } from "@/components/services/ServiceDemosSection";
@@ -51,12 +51,13 @@ export default async function ServicioDetallePage({ params }: PageProps) {
 
       {/* Descripción larga al final (no compite con la decisión). */}
       {service.longDescription && (
-        <section className="py-14 sm:py-20">
+        <section className="site-page py-14 sm:py-20">
           <Container size="wide">
             <div className="mx-auto max-w-3xl text-center">
-              <Badge tone="brand" className="mb-4">
+              <p className="site-eyebrow justify-center">
+                <span className="site-eyebrow__line" aria-hidden="true" />
                 Acerca de este servicio
-              </Badge>
+              </p>
               <p className="text-lg text-ink-soft whitespace-pre-line">
                 {service.longDescription}
               </p>

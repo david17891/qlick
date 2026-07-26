@@ -38,6 +38,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Card, CardBody, CardHeader, Badge, Button, Input } from "@/components/ui";
+import { MessageCircle } from "lucide-react";
+import { buildDirectWhatsAppLink, buildLeadOutreachMessage } from "@/lib/contact/whatsapp";
 import type { Conversation, ConversationMessage } from "@/types/crm";
 
 /* ------------------------------------------------------------------ */
@@ -618,6 +620,10 @@ export function ConversationsTab() {
                     (!c.lastReadAt ||
                       new Date(m.at).getTime() > new Date(c.lastReadAt).getTime())
                 );
+                const whatsappHref = buildDirectWhatsAppLink(
+                  c.leadPhone,
+                  buildLeadOutreachMessage({ leadName: c.leadName ?? "" })
+                );
                 return (
                   <li
                     key={c.id}
@@ -631,9 +637,32 @@ export function ConversationsTab() {
                       <p className="text-sm font-medium text-ink truncate">
                         {c.leadName || c.leadPhone || c.leadId.slice(0, 8)}
                       </p>
-                      {isUnread && (
-                        <Badge tone="success" title="Mensaje nuevo del lead">🟢 Nuevo</Badge>
-                      )}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {whatsappHref ? (
+                          <a
+                            href={whatsappHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(event) => event.stopPropagation()}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-emerald-300 bg-emerald-50 text-emerald-700 transition hover:bg-emerald-100"
+                            aria-label={"Contactar por WhatsApp a " + (c.leadName || "este lead")}
+                            title="Contactar por WhatsApp"
+                          >
+                            <MessageCircle className="h-4 w-4" aria-hidden="true" />
+                          </a>
+                        ) : (
+                          <span
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 text-slate-300"
+                            title="Este lead no tiene un teléfono válido"
+                            aria-label="Este lead no tiene un teléfono válido"
+                          >
+                            <MessageCircle className="h-4 w-4" aria-hidden="true" />
+                          </span>
+                        )}
+                        {isUnread && (
+                          <Badge tone="success" title="Mensaje nuevo del lead">🟢 Nuevo</Badge>
+                        )}
+                      </div>
                     </div>
                     {lastMsg && (
                       <p className="text-xs text-ink-muted truncate mt-1">
@@ -696,11 +725,28 @@ export function ConversationsTab() {
                 >
                   {botPauseByLead[selectedLeadId ?? ""]?.bot_paused ? "▶️ Reanudar Bot (Este Lead)" : "🤖 Pausar Bot (Este Lead)"}
                 </Button>
+                {selectedConv && buildDirectWhatsAppLink(
+                  selectedConv.leadPhone,
+                  buildLeadOutreachMessage({ leadName: selectedConv.leadName ?? "" })
+                ) && (
+                  <a
+                    href={buildDirectWhatsAppLink(
+                      selectedConv.leadPhone,
+                      buildLeadOutreachMessage({ leadName: selectedConv.leadName ?? "" })
+                    ) ?? undefined}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
+                  >
+                    <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" />
+                    Contactar
+                  </a>
+                )}
                 <Button
                   type="button"
                   size="sm"
                   variant="ghost"
-                  onClick={() => window.open(`/admin?tab=crm&leadId=${encodeURIComponent(selectedLeadId ?? "")}`, "_blank")}
+                  onClick={() => window.location.assign("/admin?tab=crm&leadId=" + encodeURIComponent(selectedLeadId ?? ""))}
                 >
                   Ver en CRM
                 </Button>

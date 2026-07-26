@@ -4,17 +4,10 @@ import { cn } from "@/lib/utils";
 type PageHeroVariant = "light" | "dark" | "mesh" | "gradient";
 
 const variantClasses: Record<PageHeroVariant, string> = {
-  light: "bg-brand-50/40 border-b border-brand-100 text-ink",
-  dark: "bg-ink text-white",
-  mesh: "bg-hero-mesh text-ink",
-  gradient: "bg-brand-gradient text-white"
-};
-
-const eyebrowColorClasses: Record<PageHeroVariant, string> = {
-  light: "text-brand-600",
-  dark: "text-brand-300",
-  mesh: "text-brand-600",
-  gradient: "text-white/80"
+  light: "site-page-hero site-page-hero--light",
+  dark: "site-page-hero site-page-hero--dark",
+  mesh: "site-page-hero site-page-hero--light",
+  gradient: "site-page-hero site-page-hero--dark"
 };
 
 export interface PageHeroProps {
@@ -37,7 +30,7 @@ export interface PageHeroProps {
 }
 
 /**
- * Hero estandarizado para todas las páginas internas del LMS.
+ * Hero estandarizado para las superficies públicas de Qlick.
  *
  * Reemplaza el patrón ad-hoc que existía en ~15 páginas:
  *   - `/acerca`, `/faq`, `/cursos`, `/eventos`, etc.: `bg-brand-50/40 border-b`
@@ -47,11 +40,11 @@ export interface PageHeroProps {
  *
  * Patrón:
  *   <PageHero
- *     variant="light"
- *     badge="Cursos"
- *     title="Catálogo de cursos"
- *     subtitle="Formación práctica en marketing"
- *     actions={<Button>Ver todos</Button>}
+ *     variant="dark"
+ *     badge="Servicios"
+ *     title="Marketing aplicado para avanzar"
+ *     subtitle="Estrategia y ejecución con alcance claro."
+ *     actions={<Button>Ver servicios</Button>}
  *   />
  */
 export function PageHero({
@@ -74,29 +67,25 @@ export function PageHero({
         className
       )}
     >
-      {variant === "gradient" && (
-        <div className="absolute inset-0 bg-brand-radial opacity-50" aria-hidden="true" />
-      )}
+      <div className="site-page-hero__grid" aria-hidden="true" />
+      <div className="site-page-hero__orb site-page-hero__orb--one" aria-hidden="true" />
+      <div className="site-page-hero__orb site-page-hero__orb--two" aria-hidden="true" />
       <div
         className={cn(
-          "relative mx-auto w-full max-w-6xl px-5 py-16 sm:px-8 sm:py-20 lg:py-24",
+          "relative mx-auto w-full max-w-7xl px-5 py-16 sm:px-8 sm:py-20 lg:py-24",
           centered ? "text-center" : ""
         )}
       >
         {badge && (
-          <p
-            className={cn(
-              "mb-3 text-xs font-bold uppercase tracking-[0.2em]",
-              eyebrowColorClasses[variant]
-            )}
-          >
+          <p className={cn("site-eyebrow", isDark && "site-eyebrow--light", centered && "justify-center")}>
+            <span className="site-eyebrow__line" aria-hidden="true" />
             {badge}
           </p>
         )}
         <h1
           className={cn(
-            "display-2",
-            variant === "light" || variant === "mesh" ? "text-ink" : "text-white"
+            "site-page-hero__title",
+            centered ? "mx-auto" : ""
           )}
         >
           {title}
@@ -104,15 +93,16 @@ export function PageHero({
         {subtitle && (
           <p
             className={cn(
-              "mx-auto mt-5 max-w-2xl text-lg",
-              isDark ? "text-white/85" : "text-ink-soft"
+              "site-page-hero__subtitle mt-5 max-w-2xl",
+              centered ? "mx-auto" : "",
+              isDark ? "site-page-hero__subtitle--dark" : ""
             )}
           >
             {subtitle}
           </p>
         )}
         {actions && <div className={cn("mt-8 flex flex-wrap gap-3", centered ? "justify-center" : "")}>{actions}</div>}
-        {stats && <div className={cn("mt-10", centered ? "flex flex-wrap justify-center gap-6" : "")}>{stats}</div>}
+        {stats && <div className={cn("site-page-hero__stats mt-10", centered ? "justify-center" : "")}>{stats}</div>}
         {children}
       </div>
     </section>

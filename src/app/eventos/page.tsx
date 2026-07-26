@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Navbar, Footer } from "@/components/layout";
-import { Badge, Card, Container } from "@/components/ui";
+import { Navbar, Footer, PageHero } from "@/components/layout";
+import { Button, Container } from "@/components/ui";
 import { LucideIcon } from "@/components/ui/Icon";
 import { Calendar, MapPin, Ticket } from "lucide-react";
 import { listPublishedEvents } from "@/lib/events";
 import type { Event } from "@/types/events";
+import { cleanEventTitle, formatMXN } from "@/lib/utils";
+import { EVENT_TIMEZONE } from "@/lib/datetime";
 
 export const dynamic = "force-dynamic";
 
@@ -50,41 +52,51 @@ export default async function EventosIndexPage() {
   return (
     <>
       <Navbar />
-      <main className="min-h-screen bg-brand-50/30">
-        <section className="bg-brand-50/40 border-b border-brand-100">
-          <Container size="wide" className="py-14">
-            <Badge tone="brand" className="mb-4">
-              Eventos abiertos
-            </Badge>
-            <h1 className="text-4xl sm:text-5xl font-bold text-ink tracking-tight">
-              Eventos para hacer crecer tu negocio
-            </h1>
-            <p className="mt-3 text-ink-soft max-w-2xl">
-              Talleres, masterclasses y conferencias presenciales y en línea.
-              Confirma tu asistencia gratis — te enviamos los detalles por
-              email o WhatsApp.
-            </p>
-            <p className="mt-4 text-sm text-ink-muted">
-              {upcoming.length === 0 && past.length === 0
-                ? "Aún no hay eventos publicados."
-                : `${upcoming.length} próximo${upcoming.length === 1 ? "" : "s"}${
-                    past.length > 0 ? ` · ${past.length} finalizado${past.length === 1 ? "" : "s"}` : ""
-                  }`}
-            </p>
-          </Container>
-        </section>
+      <main className="site-page min-h-screen">
+        <PageHero
+          variant="dark"
+          centered={false}
+          badge="Agenda Qlick"
+          title="Ideas que se entienden mejor en vivo."
+          subtitle="Talleres, masterclasses y encuentros para mover tu negocio con contexto, práctica y otras personas que también están construyendo."
+          actions={
+            <Button href="/contacto" variant="accent" size="lg">
+              Quiero enterarme
+            </Button>
+          }
+          stats={
+            <>
+              <div>
+                <strong>{String(upcoming.length).padStart(2, "0")}</strong>
+                <span>próximos eventos</span>
+              </div>
+              <div>
+                <strong>{String(past.length).padStart(2, "0")}</strong>
+                <span>eventos realizados</span>
+              </div>
+              <div>
+                <strong>MX</strong>
+                <span>presencial y en línea</span>
+              </div>
+            </>
+          }
+        />
 
-        <Container size="wide" className="py-12">
+        <Container size="wide" className="py-16 sm:py-24">
           {events.length === 0 ? (
             <EmptyState />
           ) : (
-            <div className="space-y-12">
+            <div className="space-y-16">
               {upcoming.length > 0 && (
                 <section>
-                  <h2 className="text-xl font-bold text-ink mb-6">
+                  <p className="site-eyebrow">
+                    <span className="site-eyebrow__line" aria-hidden="true" />
+                    Lo que viene
+                  </p>
+                  <h2 className="mt-5 font-display text-3xl font-bold tracking-tight text-ink sm:text-4xl">
                     Próximos eventos
                   </h2>
-                  <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                     {upcoming.map((e) => (
                       <EventCard key={e.id} event={e} status="upcoming" />
                     ))}
@@ -93,10 +105,14 @@ export default async function EventosIndexPage() {
               )}
               {past.length > 0 && (
                 <section>
-                  <h2 className="text-xl font-bold text-ink mb-6">
+                  <p className="site-eyebrow">
+                    <span className="site-eyebrow__line" aria-hidden="true" />
+                    Archivo
+                  </p>
+                  <h2 className="mt-5 font-display text-3xl font-bold tracking-tight text-ink sm:text-4xl">
                     Eventos finalizados
                   </h2>
-                  <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
                     {past.map((e) => (
                       <EventCard key={e.id} event={e} status="past" />
                     ))}
@@ -116,8 +132,9 @@ export default async function EventosIndexPage() {
 
 function formatEventDate(iso: string): string {
   return new Date(iso).toLocaleString("es-MX", {
-    dateStyle: "full",
+    dateStyle: "medium",
     timeStyle: "short",
+    timeZone: EVENT_TIMEZONE,
   });
 }
 
@@ -130,98 +147,53 @@ function EventCard({
 }) {
   return (
     <Link href={`/eventos/${event.slug}`} className="group block">
-      <Card className="overflow-hidden h-full transition group-hover:shadow-md group-hover:border-brand-300">
-        {/*
-          B-5 v2: cover visual con gradiente de marca + título del evento.
-          Consistente con la página, no depende de assets externos, único
-          por evento (no emoji genérico repetido en todas las cards).
-          El campo `cover_image_url` en DB se conserva por compat con
-          imports previos. Ver `docs/OPEN_ITEMS.md` → B-5.
-        */}
-        <div className="relative w-full overflow-hidden bg-gradient-to-br from-brand-700 via-brand-500 to-brand-400 group-hover:scale-[1.02] transition-transform duration-300 flex flex-col gap-3 p-4">
-          {/* Patrón sutil para textura, no dominante */}
-          <div
-            aria-hidden="true"
-            className="absolute inset-0 opacity-20"
-            style={{
-              backgroundImage:
-                "radial-gradient(circle at 20% 80%, white 0%, transparent 40%), radial-gradient(circle at 80% 20%, white 0%, transparent 35%)",
-            }}
-          />
-          {/* Fila superior: Badge y Evento Qlick */}
-          <div className="relative z-10 flex items-center justify-between gap-2">
-            <Badge tone={status === "upcoming" ? "success" : "neutral"}>
-              {status === "upcoming" ? "Próximo" : "Finalizado"}
-            </Badge>
-            <span className="text-xs text-white/90 font-semibold drop-shadow-sm">Evento Qlick</span>
-          </div>
-          {/* Fila inferior: Título del evento */}
-          <div className="relative z-10">
-            <h3 className="text-white font-bold text-lg leading-tight drop-shadow-md line-clamp-3">
-              {event.title}
-            </h3>
-          </div>
+      <article className="public-event-card h-full">
+        <div className="public-event-card__top">
+          <span className="public-event-card__status">
+            <i aria-hidden="true" />
+            {status === "upcoming" ? "Próximo" : "Finalizado"}
+          </span>
+          <h3 className="font-display text-2xl font-bold leading-tight tracking-tight text-white">
+            {cleanEventTitle(event.title)}
+          </h3>
         </div>
-        <div className="p-5 space-y-3">
+        <div className="public-event-card__body">
           {event.description && (
-            <p className="text-sm text-ink-soft line-clamp-2">
-              {event.description}
+            <p className="line-clamp-3 text-sm leading-6 text-ink-muted">
+              {event.description.replace(/\*\*/g, "")}
             </p>
           )}
-          <div className="space-y-1 pt-2 border-t border-brand-50 text-sm">
-            <p className="text-ink-soft flex items-center gap-1">
+          <div className="public-event-card__meta">
+            <p className="flex items-start gap-2">
               <LucideIcon icon={Calendar} size="sm" tone="muted" />
               {formatEventDate(event.startsAt)}
             </p>
             {event.location && (
-              <p className="text-ink-muted flex items-center gap-1">
+              <p className="flex items-start gap-2">
                 <LucideIcon icon={MapPin} size="sm" tone="muted" />
                 {event.location}
               </p>
             )}
           </div>
         </div>
-        {/*
-          Bloque de precio (sprint 2026-07-15). Mismo patron visual que
-          CourseCard: precio grande y visible abajo de la card, "Gratis"
-          si priceMXN es 0/undefined, formato MXN. Asi el usuario ve
-          inmediatamente si el evento es de pago o no, sin tener que
-          entrar al detalle.
-        */}
-        <div className="mt-auto px-5 pb-5 pt-3 border-t border-brand-50">
+          <div className="public-event-card__price">
           {event.priceMXN == null || event.priceMXN <= 0 ? (
-            <span className="text-lg font-bold text-emerald-600">Gratis</span>
+              <span className="text-emerald-700">Gratis</span>
           ) : (
-            <div className="flex items-baseline gap-2">
-              <span className="text-lg font-bold text-ink">
-                {formatMXN(event.priceMXN)}
-              </span>
+              <div className="flex items-baseline gap-2">
+                <span>{formatMXN(event.priceMXN)}</span>
               <span className="text-xs text-ink-muted">MXN</span>
             </div>
           )}
         </div>
-      </Card>
+      </article>
     </Link>
   );
 }
 
-/**
- * Formato MXN con separador de miles y 2 decimales. Mismo helper que
- * usa CourseCard — si existe en lib/utils, importarlo de ahi en sprint
- * futuro (sprint 2026-07-15: lo duplico localmente para no acoplarme).
- */
-function formatMXN(value: number): string {
-  return new Intl.NumberFormat("es-MX", {
-    style: "currency",
-    currency: "MXN",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
-}
-
 function EmptyState() {
   return (
-    <div className="rounded-2xl border border-dashed border-brand-200 bg-white p-10 text-center">
+    <div className="rounded-3xl border border-dashed border-brand-200 bg-white p-10 text-center shadow-card">
       <div className="mb-3 inline-flex justify-center">
         <LucideIcon icon={Ticket} size="2xl" tone="brand" />
       </div>

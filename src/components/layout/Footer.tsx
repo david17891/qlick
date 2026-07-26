@@ -4,24 +4,19 @@ import { Container } from "@/components/ui";
 
 const cols = [
   {
-    title: "Plataforma",
+    title: "Explora",
     links: [
-      { href: "/cursos", label: "Cursos" },
+      { href: "/servicios", label: "Servicios" },
       { href: "/eventos", label: "Eventos" },
-      { href: "/dashboard", label: "Mi panel" },
-      { href: "/login", label: "Acceso alumnos" }
+      { href: "/cursos", label: "Cursos próximos" },
+      { href: "/filosofia", label: "Nuestra filosofía" }
     ]
   },
   {
     title: "Empresa",
     links: [
       { href: "/acerca", label: "Acerca de Qlick" },
-      // FASE 8 (2026-07-21): catálogo público de servicios comerciales
-      // (diseño web, auditoría 1a1, kickstart Meta Ads). Label "Servicios
-      // profesionales" para diferenciarlo de "Plataforma" (que es sobre
-      // cursos/eventos del LMS, no sobre la oferta comercial).
-      { href: "/servicios", label: "Servicios profesionales" },
-      { href: "/beneficios", label: "Beneficios" },
+      { href: "/beneficios", label: "Qué obtienes" },
       { href: "/contacto", label: "Contacto" },
       { href: "/privacidad", label: "Aviso de Privacidad" }
     ]
@@ -31,7 +26,7 @@ const cols = [
     links: [
       { href: "/faq", label: "Preguntas frecuentes" },
       { href: "/contacto", label: "Ayuda" },
-      { href: "/admin", label: "Admin" }
+      { href: "/login", label: "Acceso alumnos" }
     ]
   }
 ];
@@ -44,8 +39,8 @@ export function Footer() {
           <div className="space-y-4">
             <BrandLockup href="/" variant="dark" showTagline size="md" />
             <p className="text-sm text-white/60 max-w-xs">
-              Formación práctica en marketing, ventas, publicidad y automatización
-              para hacer crecer negocios en México.
+              Estrategia, diseño y marketing aplicado para que los negocios en
+              México avancen con claridad.
             </p>
           </div>
           {cols.map((c) => (
@@ -71,7 +66,7 @@ export function Footer() {
             © {new Date().getFullYear()} Qlick. Hecho en México.
           </p>
           <p>
-            Plataforma educativa de Qlick Marketing Digital.
+            Servicios y eventos de marketing para negocios en México.
           </p>
         </div>
       </Container>

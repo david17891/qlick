@@ -1,13 +1,11 @@
 import Link from "next/link";
-import Image from "next/image";
 import { Navbar, Footer } from "@/components/layout";
-import { Container, Button, Card, Badge, SectionHeading } from "@/components/ui";
+import { Button, Container, LucideIcon } from "@/components/ui";
 import { ServiceCard } from "@/components/services/ServiceCard";
-import { Logo, Isotipo } from "@/components/brand";
-import { WhatsAppButton } from "@/components/contact/WhatsAppButton";
+import { Isotipo, Logo } from "@/components/brand";
 import { Reveal } from "@/components/feedback/Reveal";
-import { LucideIcon } from "@/components/ui/Icon";
 import {
+  ArrowUpRight,
   Award,
   Calendar,
   CheckCircle2,
@@ -15,467 +13,536 @@ import {
   Infinity as InfinityIcon,
   MapPin,
   MessageCircle,
-  Target,
+  Sparkles,
+  Target
 } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
 import { getActiveServices } from "@/lib/services";
 import { listPublishedEvents } from "@/lib/events/events-server";
-import { formatMXN } from "@/lib/utils";
+import { cleanEventTitle, formatMXN } from "@/lib/utils";
+import { EVENT_TIMEZONE } from "@/lib/datetime";
+
+export const dynamic = "force-dynamic";
 
 function formatEventDate(iso: string): string {
   return new Date(iso).toLocaleString("es-MX", {
-    dateStyle: "full",
+    dateStyle: "medium",
     timeStyle: "short",
+    timeZone: EVENT_TIMEZONE
   });
 }
 
+const benefits = [
+  {
+    index: "01",
+    icon: Compass,
+    title: "Diagnóstico antes de ejecutar",
+    body: "Empezamos por entender tu negocio. Si algo no te conviene, te lo decimos antes de venderte una solución."
+  },
+  {
+    index: "02",
+    icon: Target,
+    title: "Entregables que sí usas",
+    body: "Sitios publicados, campañas listas y reportes accionables. Lo que pagas se convierte en algo que puedes operar."
+  },
+  {
+    index: "03",
+    icon: MapPin,
+    title: "Pensado para México",
+    body: "Precios en MXN, contexto local y decisiones aterrizadas al mercado donde realmente vendes."
+  },
+  {
+    index: "04",
+    icon: InfinityIcon,
+    title: "Sin ataduras innecesarias",
+    body: "Pago único, alcance claro y propiedad sobre tu trabajo. Sin renovaciones automáticas ni letras pequeñas."
+  },
+  {
+    index: "05",
+    icon: MessageCircle,
+    title: "Trato directo",
+    body: "Hablas con la persona que entiende el proyecto. Menos intermediarios, más velocidad para decidir."
+  },
+  {
+    index: "06",
+    icon: Award,
+    title: "Una siguiente acción clara",
+    body: "Cada servicio termina con una recomendación concreta para que sepas qué mover después."
+  }
+] satisfies Array<{
+  index: string;
+  icon: ComponentType<SVGProps<SVGSVGElement>>;
+  title: string;
+  body: string;
+}>;
+
+const processSteps = [
+  {
+    step: "01",
+    title: "Elige el punto de partida",
+    body: "Selecciona el servicio que mejor encaja con lo que tu negocio necesita hoy."
+  },
+  {
+    step: "02",
+    title: "Aterrizamos el alcance",
+    body: "Revisamos tu contexto, confirmamos prioridades y dejamos claro qué vas a recibir."
+  },
+  {
+    step: "03",
+    title: "Lo ponemos a trabajar",
+    body: "Entregamos una solución lista para usar, con los siguientes pasos sobre la mesa."
+  }
+];
+
+const workingStack = [
+  "Meta Ads",
+  "Google Ads",
+  "Google Business",
+  "WhatsApp Business",
+  "Canva",
+  "CapCut",
+  "GA4"
+];
+
 /**
- * Home pública de Qlick.
+ * Portada pública de Qlick.
  *
- * v3 (2026-07-21 — David "pequeño problema de realidad"):
- * La home anterior asumía que Qlick era una plataforma LMS (cursos +
- * instructores + "Aula Qlick" + "+2,600 alumnos"). Refactor completo
- * para reflejar lo que REALMENTE ofrecemos hoy: servicios + eventos.
- *
- * Cambios clave:
- * - Hero apunta a /servicios y /eventos (no /cursos).
- * - Stats reemplazados: servicios activos, eventos publicados (no "+2,600 alumnos").
- * - Sección "Cursos destacados" → "Servicios destacados" (3 servicios más populares).
- * - Sección "Instructores" eliminada por completo (no tenemos profesores).
- * - "Lo que dicen nuestros alumnos" → testimonios de clientes (mock, sin ligas a cursos).
- * - "Cómo funciona" ajustado al flujo de servicios: eliges → te contactamos → entregamos.
- * - CTA final apunta a /servicios, no /cursos.
- *
- * Los cursos siguen existiendo en /cursos pero como landing "Próximamente"
- * (decisión confirmada por David en esta misma sesión).
+ * La home prioriza la oferta real de servicios y eventos: dirección visual,
+ * entregables concretos y una ruta de contacto simple. Los datos del catálogo
+ * siguen siendo dinámicos para que el contenido visible siempre refleje la DB.
  */
 export default async function HomePage() {
-  // Servicios activos (catálogo público, FASE 8D).
   const services = await getActiveServices();
-  // Top 3 servicios por display_order (los más relevantes para la home).
   const featuredServices = services.slice(0, 3);
 
-  // Próximos eventos: tomamos los publicados y filtramos los que ya pasaron.
   const allEvents = await listPublishedEvents();
   const now = new Date();
   const upcomingEvents = allEvents
-    .filter((e) => new Date(e.startsAt) >= now)
-    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())
+    .filter((event) => new Date(event.startsAt) >= now)
+    .sort(
+      (a, b) =>
+        new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()
+    )
     .slice(0, 3);
 
-  // Stats reales (no fake).
   const stats = {
     services: services.length,
-    events: upcomingEvents.length,
-    packages: services.reduce((acc, s) => acc + s.variants.length, 0),
+    packages: services.reduce((total, service) => total + service.variants.length, 0),
+    events: upcomingEvents.length
   };
 
+  const heroService = featuredServices[0];
+  const heroPrice = heroService?.variants.length
+    ? Math.min(...heroService.variants.map((variant) => variant.priceMXN))
+    : null;
+
   return (
-    <>
+    <div className="home-page">
       <Navbar />
 
-      {/* ----------------------------- HERO ----------------------------- */}
-      <section className="relative overflow-hidden bg-hero-mesh">
-        <div className="absolute inset-0 -z-10 opacity-50" />
-        <Container size="wide" className="pt-16 pb-20 sm:pt-24 sm:pb-28">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <div className="animate-fade-up">
-              <Badge tone="brand" className="mb-5">
-                <span className="h-1.5 w-1.5 rounded-full bg-brand-accent inline-block mr-1" />
-                Servicios de marketing para tu negocio · México
-              </Badge>
-              <h1 className="display-1 text-ink">
-                Marketing que <span className="text-brand-gradient">se traduce</span> en ventas.
-              </h1>
-              <p className="mt-5 text-lg text-ink-soft max-w-xl">
-                Diseño web, campañas de Meta Ads y auditorías de negocio.
-                Trabajamos contigo directo: sin enredos, sin subcontratos, sin
-                costos sorpresas. Pagas por el resultado.
-              </p>
-              <div className="mt-8 flex flex-wrap gap-3">
-                <Button href="/servicios" size="lg">
-                  Ver servicios →
-                </Button>
-                <Button href="/eventos" variant="outline" size="lg">
-                  Próximos eventos
-                </Button>
-              </div>
+      <main>
+        <section className="home-hero relative overflow-hidden">
+          <div className="home-hero-grid" aria-hidden="true" />
+          <div className="home-hero-orb home-hero-orb--one" aria-hidden="true" />
+          <div className="home-hero-orb home-hero-orb--two" aria-hidden="true" />
 
-              <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-ink-muted">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-brand-500" />
-                  <span>{stats.services} servicios activos</span>
+          <Container size="wide" className="relative z-10 py-16 sm:py-20 lg:py-24">
+            <div className="grid items-center gap-14 lg:grid-cols-[0.92fr_1.08fr] lg:gap-16">
+              <div className="max-w-2xl animate-fade-up">
+                <div className="home-kicker">
+                  <span className="home-kicker-dot" aria-hidden="true" />
+                  Marketing integral para negocios que quieren avanzar
                 </div>
-                <div className="h-4 w-px bg-brand-200" />
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-brand-500" />
-                  <span>{stats.packages} paquetes disponibles</span>
-                </div>
-                <div className="h-4 w-px bg-brand-200" />
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-brand-500" />
-                  <span>Pago único, sin mensualidades</span>
-                </div>
-              </div>
-            </div>
 
-            {/* Card visual: preview de un servicio destacado */}
-            <div className="relative animate-fade-up [animation-delay:120ms]">
-              <div className="absolute -inset-4 bg-brand-gradient opacity-20 blur-3xl rounded-[3rem]" />
-              {featuredServices[0] ? (
-                <Card className="relative p-6 rotate-1 hover:rotate-0 transition-transform duration-500">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      <Logo lockup="icon" height={28} />
-                      <span className="font-bold text-ink">Qlick</span>
-                    </div>
-                    <Badge tone="brand">
-                      {featuredServices[0].variants.length} {featuredServices[0].variants.length === 1 ? "paquete" : "paquetes"}
-                    </Badge>
-                  </div>
-                  <h3 className="font-display text-xl font-bold text-ink">
-                    {featuredServices[0].displayName}
-                  </h3>
-                  {featuredServices[0].shortDescription && (
-                    <p className="mt-2 text-sm text-ink-soft line-clamp-3">
-                      {featuredServices[0].shortDescription}
-                    </p>
-                  )}
-                  <ul className="mt-4 space-y-1.5">
-                    {featuredServices[0].bullets.slice(0, 4).map((b, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm text-ink-soft">
-                        <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0 text-brand-500" />
-                        <span className="line-clamp-1">{b}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="mt-5 flex items-baseline gap-2">
-                    <span className="text-xs uppercase text-ink-muted">Desde</span>
-                    <span className="font-display text-2xl font-bold text-ink">
-                      {formatMXN(Math.min(...featuredServices[0].variants.map((v) => v.priceMXN)))}
-                    </span>
-                    <span className="text-xs text-ink-muted">MXN</span>
-                  </div>
-                  <Link
-                    href={`/servicios/${featuredServices[0].slug}`}
-                    className="mt-5 inline-flex w-full items-center justify-center rounded-full bg-brand-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-600 transition"
-                  >
-                    Ver paquetes →
+                <h1 className="home-hero-title mt-7">
+                  Marketing que
+                  <span className="block">
+                    <em>se traduce</em> en ventas.
+                  </span>
+                </h1>
+
+                <p className="mt-7 max-w-xl text-lg leading-8 text-white/70 sm:text-xl">
+                  Diseño web, campañas de Meta Ads y auditorías de negocio con
+                  una idea sencilla: que cada peso invertido deje algo útil para
+                  tu negocio.
+                </p>
+
+                <div className="mt-9 flex flex-wrap gap-3">
+                  <Link href="/servicios" className="home-button home-button--light">
+                    Explorar servicios
+                    <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
                   </Link>
-                </Card>
-              ) : null}
-            </div>
-          </div>
-        </Container>
-      </section>
+                  <Link href="/contacto" className="home-button home-button--ghost">
+                    Cuéntame de mi negocio
+                  </Link>
+                </div>
 
-      {/* --------------------------- HERRAMIENTAS --------------------------- */}
-      <section className="border-y border-brand-100 bg-white">
-        <Container size="wide" className="py-8">
-          <p className="text-center text-xs uppercase tracking-widest text-ink-muted mb-6">
-            Herramientas con las que trabajamos
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-4 text-ink-muted font-bold opacity-70">
-            {["Meta Ads", "Google Ads", "Google Business", "WhatsApp Business", "Canva", "CapCut", "GA4"].map(
-              (t) => (
-                <span key={t} className="text-sm sm:text-base">
-                  {t}
-                </span>
-              )
-            )}
-          </div>
-        </Container>
-      </section>
-
-      {/* --------------------------- POR QUÉ QLICK --------------------------- */}
-      <section className="py-20 section-soft">
-        <Container size="wide">
-          <SectionHeading
-            center
-            eyebrow="Por qué Qlick"
-            title="Estrategia aplicada, no plantillas"
-            description="Cada servicio se ajusta a tu negocio. No vendemos paquetes genéricos: empezamos con diagnóstico y terminamos con entregables listos para usar."
-          />
-          <div className="mt-12 grid gap-5 md:grid-cols-3">
-            {(
-              [
-                {
-                  icon: Compass,
-                  title: "Diagnóstico antes de ejecutar",
-                  body: "Empezamos con una auditoría honesta. Si tu negocio no necesita Meta Ads, te decimos que no — y te recomendamos algo que sí funcione."
-                },
-                {
-                  icon: Target,
-                  title: "Entregables, no promises",
-                  body: "Recibes sitios publicados, campañas lanzadas, reportes con datos. Lo que pagas es lo que te llevas. Sin markups, sin subcontratos."
-                },
-                {
-                  icon: MapPin,
-                  title: "Hecho para México",
-                  body: "Pagos en MXN, mercado mexicano, ejemplos locales, soporte en tu horario. No es marketing gringo traducido."
-                },
-                {
-                  icon: InfinityIcon,
-                  title: "Pago único, sin ataduras",
-                  body: "Sin licencias mensuales, sin renovaciones automáticas. Pagas por el trabajo una vez y es tuyo para siempre."
-                },
-                {
-                  icon: MessageCircle,
-                  title: "Hablas directo conmigo",
-                  body: "Un especialista responde tus mensajes. No es un call center, no es un bot, no es un vendedor. Una sola persona de inicio a fin."
-                },
-                {
-                  icon: Award,
-                  title: "Resultados medibles",
-                  body: "Cada servicio termina con un entregable concreto: sitio en línea, campaña activa, reporte con plan. Tú decides si continuamos."
-                }
-              ] satisfies Array<{ icon: ComponentType<SVGProps<SVGSVGElement>>; title: string; body: string }>
-            ).map((b, i) => (
-              <Reveal key={b.title} delay={i * 80}>
-                <Card hover variant="pro" className="p-6 h-full">
-                  <div className="mb-4 inline-flex h-12 w-12 items-center justify-center chip-brand">
-                    <LucideIcon icon={b.icon} size="lg" tone="inherit" strokeWidth={2} />
+                <div className="home-hero-stats mt-12" aria-label="Resumen de la oferta">
+                  <div>
+                    <strong>{String(stats.services).padStart(2, "0")}</strong>
+                    <span>servicios activos</span>
                   </div>
-                  <h3 className="font-bold text-lg text-ink">{b.title}</h3>
-                  <p className="mt-2 text-ink-muted">{b.body}</p>
-                </Card>
-              </Reveal>
-            ))}
-          </div>
-        </Container>
-      </section>
+                  <div>
+                    <strong>{String(stats.packages).padStart(2, "0")}</strong>
+                    <span>paquetes claros</span>
+                  </div>
+                  <div>
+                    <strong>01</strong>
+                    <span>equipo directo</span>
+                  </div>
+                </div>
+              </div>
 
-      {/* --------------------------- SERVICIOS DESTACADOS --------------------------- */}
-      <section className="py-20 bg-brand-50/50 border-y border-brand-100">
-        <Container size="wide">
-          <div className="flex flex-wrap items-end justify-between gap-4 mb-10">
-            <SectionHeading
-              eyebrow="Catálogo"
-              title="Servicios disponibles"
-              description="Elige por dónde empezar. Todos con precio claro, entregable concreto y pago único."
-            />
-            <Button href="/servicios" variant="outline">
-              Ver todos los servicios
-            </Button>
-          </div>
-          {featuredServices.length > 0 ? (
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {featuredServices.map((service, i) => (
-                <Reveal key={service.id} delay={i * 100}>
-                  <ServiceCard service={service} />
-                </Reveal>
-              ))}
+              <div className="home-hero-stage animate-fade-up [animation-delay:120ms]">
+                {heroService ? (
+                  <div className="home-hero-card">
+                    <div className="home-hero-card-top">
+                      <div className="flex items-center gap-2">
+                        <div className="home-mini-mark">
+                          <Logo lockup="icon" height={24} priority />
+                        </div>
+                        <span className="text-sm font-bold tracking-tight">Qlick</span>
+                      </div>
+                    </div>
+
+                    <div className="home-feature-rule" aria-hidden="true" />
+                    <h2 className="mt-8 font-display text-3xl font-bold tracking-tight text-ink sm:text-4xl">
+                      {heroService.displayName}
+                    </h2>
+                    <p className="mt-3 max-w-lg text-sm leading-6 text-ink-muted">
+                      {heroService.shortDescription ??
+                        "Una solución clara para que tu presencia digital empiece a trabajar."}
+                    </p>
+
+                    <ul className="home-feature-points mt-7">
+                      {heroService.bullets.slice(0, 3).map((bullet) => (
+                        <li key={bullet}>
+                          <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                          <span>{bullet}</span>
+                        </li>
+                      ))}
+                    </ul>
+
+                    <div className="mt-8 flex flex-wrap items-end justify-between gap-5 border-t border-black/10 pt-6">
+                      <div>
+                        <span className="home-price-label">Desde</span>
+                        <span className="font-display text-3xl font-bold tracking-tight text-ink">
+                          {heroPrice === null ? "A cotizar" : formatMXN(heroPrice)}
+                        </span>
+                        {heroPrice !== null && (
+                          <span className="ml-2 text-xs text-ink-muted">MXN</span>
+                        )}
+                      </div>
+                      <Link
+                        href={`/servicios/${heroService.slug}`}
+                        className="home-card-link"
+                      >
+                        Ver paquetes <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+                      </Link>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="home-hero-card home-hero-card--empty">
+                    <Sparkles className="h-8 w-8 text-brand-500" aria-hidden="true" />
+                    <h2 className="mt-5 font-display text-3xl font-bold text-ink">
+                      Estamos preparando algo especial.
+                    </h2>
+                    <p className="mt-3 text-ink-muted">
+                      Escríbenos y revisamos contigo el mejor punto de partida.
+                    </p>
+                    <Link href="/contacto" className="home-card-link mt-8">
+                      Hablemos <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+                    </Link>
+                  </div>
+                )}
+
+              </div>
             </div>
-          ) : (
-            <p className="text-center text-ink-muted py-8">
-              Pronto publicaremos los servicios. Mientras tanto, mándanos WhatsApp.
-            </p>
-          )}
-        </Container>
-      </section>
+          </Container>
+        </section>
 
-      {/* --------------------------- PRÓXIMOS EVENTOS --------------------------- */}
-      {upcomingEvents.length > 0 && (
-        <section className="py-20">
+        <section className="home-toolstrip">
+          <Container size="wide" className="py-8 sm:py-10">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="home-eyebrow">El ecosistema</p>
+                <p className="mt-1 text-sm text-ink-muted">
+                  Trabajamos con las herramientas donde ya están tus clientes.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {workingStack.map((tool) => (
+                  <span key={tool} className="home-tool-chip">
+                    {tool}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </Container>
+        </section>
+
+        <section className="home-approach py-20 sm:py-28">
           <Container size="wide">
-            <div className="flex flex-wrap items-end justify-between gap-4 mb-10">
-              <SectionHeading
-                eyebrow="Eventos"
-                title="Próximos eventos"
-                description="Talleres y masterclass presenciales y en línea. Cupo limitado."
-              />
-              <Button href="/eventos" variant="outline">
-                Ver todos los eventos
+            <div className="grid gap-14 lg:grid-cols-[0.78fr_1.22fr] lg:gap-20">
+              <div className="lg:pt-4">
+                <p className="home-eyebrow">La diferencia</p>
+                <h2 className="home-section-title mt-4">
+                  La claridad también es una ventaja competitiva.
+                </h2>
+                <p className="mt-5 max-w-md text-lg leading-8 text-ink-muted">
+                  Qlick combina estrategia y ejecución para que tu marketing no
+                  dependa de adivinar. Menos humo, más decisiones que puedas
+                  explicar y usar.
+                </p>
+                <Link href="/acerca" className="home-inline-link mt-8">
+                  Conoce nuestra filosofía
+                  <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+                </Link>
+                <div className="home-approach-mark mt-16 hidden sm:block" aria-hidden="true">
+                  <Isotipo size={76} className="opacity-20" />
+                  <span>Q / marketing integral</span>
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                {benefits.map((benefit, index) => (
+                  <Reveal key={benefit.index} delay={index * 70}>
+                    <article className="home-benefit-card h-full">
+                      <div className="flex items-start justify-between gap-4">
+                        <span className="home-benefit-icon">
+                          <LucideIcon icon={benefit.icon} size="md" tone="inherit" />
+                        </span>
+                        <span className="home-benefit-index">{benefit.index}</span>
+                      </div>
+                      <h3 className="mt-8 font-display text-xl font-bold tracking-tight text-ink">
+                        {benefit.title}
+                      </h3>
+                      <p className="mt-3 text-sm leading-6 text-ink-muted">{benefit.body}</p>
+                    </article>
+                  </Reveal>
+                ))}
+              </div>
+            </div>
+          </Container>
+        </section>
+
+        <section id="servicios" className="home-services border-y border-brand-100/80 py-20 sm:py-28">
+          <Container size="wide">
+            <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
+              <div className="max-w-2xl">
+                <p className="home-eyebrow">Catálogo Qlick</p>
+                <h2 className="home-section-title mt-4">Empieza por el cuello de botella.</h2>
+                <p className="mt-4 text-lg leading-8 text-ink-muted">
+                  Servicios con precio claro, alcance concreto y un entregable
+                  que puedes poner a trabajar.
+                </p>
+              </div>
+              <Button href="/servicios" variant="outline" className="shrink-0">
+                Ver todos los servicios
+                <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
               </Button>
             </div>
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {upcomingEvents.map((event, i) => (
-                <Reveal key={event.id} delay={i * 100}>
-                  <Link
-                    href={`/eventos/${event.slug}`}
-                    className="group block h-full"
-                  >
-                    <Card hover className="overflow-hidden h-full transition group-hover:shadow-md group-hover:border-brand-300 flex flex-col">
-                      <div className="relative w-full overflow-hidden bg-gradient-to-br from-brand-700 via-brand-500 to-brand-400 group-hover:scale-[1.02] transition-transform duration-300 flex flex-col gap-3 p-4">
-                        <div
-                          aria-hidden="true"
-                          className="absolute inset-0 opacity-20"
-                          style={{
-                            backgroundImage:
-                              "radial-gradient(circle at 20% 80%, white 0%, transparent 40%), radial-gradient(circle at 80% 20%, white 0%, transparent 35%)",
-                          }}
-                        />
-                        <div className="relative z-10 flex items-center justify-between gap-2">
-                          <Badge tone="success">Próximo</Badge>
-                          <span className="text-xs text-white/90 font-semibold drop-shadow-sm">Evento Qlick</span>
+
+            {featuredServices.length > 0 ? (
+              <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {featuredServices.map((service, index) => (
+                  <Reveal key={service.id} delay={index * 90}>
+                    <ServiceCard service={service} />
+                  </Reveal>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-12 rounded-3xl border border-dashed border-brand-200 bg-white/70 px-6 py-14 text-center">
+                <p className="text-ink-muted">
+                  Estamos terminando de publicar el catálogo. Mientras tanto,
+                  puedes contarnos qué necesitas.
+                </p>
+                <Button href="/contacto" className="mt-6">
+                  Hablemos
+                </Button>
+              </div>
+            )}
+          </Container>
+        </section>
+
+        {upcomingEvents.length > 0 && (
+          <section className="home-events py-20 sm:py-24">
+            <Container size="wide">
+              <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
+                <div className="max-w-2xl">
+                  <p className="home-eyebrow">Agenda abierta</p>
+                  <h2 className="home-section-title mt-4">Aprender también puede ser en vivo.</h2>
+                  <p className="mt-4 text-lg leading-8 text-ink-muted">
+                    Talleres y masterclass para poner ideas en movimiento con
+                    otras personas que también están construyendo.
+                  </p>
+                </div>
+                <Button href="/eventos" variant="outline" className="shrink-0">
+                  Ver eventos
+                  <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              </div>
+
+              <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {upcomingEvents.map((event, index) => (
+                  <Reveal key={event.id} delay={index * 90}>
+                    <Link href={`/eventos/${event.slug}`} className="group block h-full">
+                      <article className="home-event-card h-full">
+                        <div className="home-event-card-top">
+                          <span className="home-event-status"><i aria-hidden="true" /> Próximo</span>
+                          <h3>{cleanEventTitle(event.title)}</h3>
                         </div>
-                        <div className="relative z-10">
-                          <h3 className="text-white font-bold text-lg leading-tight drop-shadow-md line-clamp-3">
-                            {event.title}
-                          </h3>
-                        </div>
-                      </div>
-                      <div className="p-5 space-y-3 flex-1 flex flex-col justify-between">
-                        {event.description && (
-                          <p className="text-sm text-ink-soft line-clamp-2">
-                            {event.description}
-                          </p>
-                        )}
-                        <div className="space-y-1 pt-2 border-t border-brand-50 text-sm">
-                          <p className="text-ink-soft flex items-center gap-1">
-                            <LucideIcon icon={Calendar} size="sm" tone="muted" />
-                            {formatEventDate(event.startsAt)}
-                          </p>
-                          {event.location && (
-                            <p className="text-ink-muted flex items-center gap-1">
-                              <LucideIcon icon={MapPin} size="sm" tone="muted" />
-                              {event.location}
+                        <div className="flex flex-1 flex-col justify-between gap-6 p-6">
+                          {event.description && (
+                            <p className="line-clamp-3 text-sm leading-6 text-ink-muted">
+                              {event.description.replace(/\*\*/g, "")}
                             </p>
                           )}
-                        </div>
-                      </div>
-                      <div className="mt-auto px-5 pb-5 pt-3 border-t border-brand-50">
-                        {event.priceMXN == null || event.priceMXN <= 0 ? (
-                          <span className="text-lg font-bold text-emerald-600">Gratis</span>
-                        ) : (
-                          <div className="flex items-baseline gap-2">
-                            <span className="text-lg font-bold text-ink">
-                              {formatMXN(event.priceMXN)}
-                            </span>
-                            <span className="text-xs text-ink-muted">MXN</span>
+                          <div className="space-y-2 border-t border-brand-100 pt-4 text-sm text-ink-soft">
+                            <p className="flex items-start gap-2">
+                              <LucideIcon icon={Calendar} size="sm" tone="muted" />
+                              <span>{formatEventDate(event.startsAt)}</span>
+                            </p>
+                            {event.location && (
+                              <p className="flex items-start gap-2 text-ink-muted">
+                                <LucideIcon icon={MapPin} size="sm" tone="muted" />
+                                <span>{event.location}</span>
+                              </p>
+                            )}
                           </div>
-                        )}
-                      </div>
-                    </Card>
-                  </Link>
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="font-display text-xl font-bold text-ink">
+                              {event.priceMXN == null || event.priceMXN <= 0
+                                ? "Gratis"
+                                : `${formatMXN(event.priceMXN)} MXN`}
+                            </span>
+                            <span className="home-inline-link text-sm">
+                              Ver evento <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+                            </span>
+                          </div>
+                        </div>
+                      </article>
+                    </Link>
+                  </Reveal>
+                ))}
+              </div>
+            </Container>
+          </section>
+        )}
+
+        <section className="home-process py-20 sm:py-28">
+          <Container size="wide">
+            <div className="home-process-panel">
+              <div className="home-process-intro">
+                <p className="home-eyebrow home-eyebrow--light">La experiencia</p>
+                <h2 className="mt-4 font-display text-4xl font-bold tracking-tight text-white sm:text-5xl">
+                  Del primer click al entregable.
+                </h2>
+                <p className="mt-5 max-w-md text-lg leading-8 text-white/65">
+                  Una ruta breve, humana y sin pasos escondidos para convertir
+                  una idea suelta en algo que tu negocio puede usar.
+                </p>
+                <div className="home-process-stamp mt-12">
+                  <Sparkles className="h-4 w-4" aria-hidden="true" />
+                  <span>Qlick / 2026</span>
+                </div>
+              </div>
+
+              <ol className="home-process-list">
+                {processSteps.map((item) => (
+                  <li key={item.step} className="home-process-step">
+                    <span className="home-process-number">{item.step}</span>
+                    <div>
+                      <h3>{item.title}</h3>
+                      <p>{item.body}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </Container>
+        </section>
+
+        <section className="home-standard py-20 sm:py-28">
+          <Container size="wide">
+            <div className="grid gap-12 lg:grid-cols-[0.82fr_1.18fr] lg:items-end lg:gap-20">
+              <div>
+                <p className="home-eyebrow home-eyebrow--light">Nuestro estándar</p>
+                <h2 className="mt-4 font-display text-4xl font-bold tracking-tight text-white sm:text-5xl">
+                  Que cada click deje algo claro.
+                </h2>
+              </div>
+              <p className="max-w-2xl text-xl leading-9 text-white/65">
+                No necesitas otra presentación que suene bien. Necesitas una
+                presencia que puedas mostrar con orgullo, una campaña que
+                entiendas y un plan que te diga qué hacer primero.
+              </p>
+            </div>
+
+            <div className="mt-14 grid gap-4 md:grid-cols-3">
+              {[
+                {
+                  number: "01",
+                  title: "Se entiende",
+                  body: "Tu propuesta deja de perderse entre palabras bonitas y empieza a hablarle a la persona correcta."
+                },
+                {
+                  number: "02",
+                  title: "Se puede usar",
+                  body: "Recibes una solución lista para operar, compartir y mejorar con el tiempo."
+                },
+                {
+                  number: "03",
+                  title: "Se puede medir",
+                  body: "Sabes qué se entregó, qué sigue y qué decisión conviene tomar después."
+                }
+              ].map((item, index) => (
+                <Reveal key={item.number} delay={index * 90}>
+                  <article className="home-standard-card h-full">
+                    <span>{item.number}</span>
+                    <h3>{item.title}</h3>
+                    <p>{item.body}</p>
+                  </article>
                 </Reveal>
               ))}
             </div>
           </Container>
         </section>
-      )}
 
-      {/* --------------------------- CÓMO FUNCIONA --------------------------- */}
-      <section className="py-20 bg-brand-50/30 border-y border-brand-100">
-        <Container size="wide">
-          <SectionHeading
-            center
-            eyebrow="Cómo funciona"
-            title="Tres pasos para arrancar"
-          />
-          <div className="mt-12 grid gap-6 md:grid-cols-3">
-            {[
-              {
-                step: "01",
-                title: "Elige tu servicio",
-                body: "Revisa el catálogo y escoge el servicio que más se alinea con tu objetivo: diseño web, auditoría, campaña, etc."
-              },
-              {
-                step: "02",
-                title: "Te contactamos",
-                body: "Te escribimos por WhatsApp en menos de 24 horas. Confirmamos el brief, agendamos (si aplica) y cerramos el alcance."
-              },
-              {
-                step: "03",
-                title: "Entregamos",
-                body: "Recibes el entregable en el plazo acordado: sitio publicado, campaña activa o reporte con plan. Sin sorpresas."
-              }
-            ].map((s, i) => (
-              <Reveal key={s.step} delay={i * 120}>
-                <div className="relative">
-                  <span className="text-6xl font-bold text-brand-200 font-display">
-                    {s.step}
-                  </span>
-                  <h3 className="mt-2 font-bold text-xl text-ink">{s.title}</h3>
-                  <p className="mt-2 text-ink-muted">{s.body}</p>
+        <section className="home-final py-20 sm:py-28">
+          <Container>
+            <div className="home-final-panel">
+              <div className="home-final-orb" aria-hidden="true" />
+              <div className="relative z-10 mx-auto max-w-3xl text-center">
+                <Isotipo size={54} className="mx-auto mb-7" />
+                <p className="home-eyebrow home-eyebrow--light">Tu siguiente movimiento</p>
+                <h2 className="mt-4 font-display text-4xl font-bold tracking-tight text-white sm:text-6xl">
+                  Da el siguiente click a tu negocio.
+                </h2>
+                <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-white/75">
+                  Cuéntanos qué quieres destrabar y te ayudamos a encontrar el
+                  servicio correcto para este momento.
+                </p>
+                <div className="mt-9 flex flex-wrap justify-center gap-3">
+                  <Link href="/servicios" className="home-button home-button--accent">
+                    Ver servicios
+                    <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+                  </Link>
+                  <Link href="/contacto" className="home-button home-button--dark-ghost">
+                    <MessageCircle className="h-4 w-4" aria-hidden="true" />
+                    Hablemos
+                  </Link>
                 </div>
-              </Reveal>
-            ))}
-          </div>
-        </Container>
-      </section>
-
-      {/* --------------------------- TESTIMONIOS --------------------------- */}
-      <section className="py-20 bg-ink text-white">
-        <Container size="wide">
-          <SectionHeading
-            center
-            eyebrow="Lo que dicen"
-            title="Comentarios de quienes ya trabajaron con nosotros"
-            className="[&_h2]:text-white [&_p]:text-white/70"
-          />
-          <div className="mt-12 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {/* Testimonios reusados del data/content.ts (mock por ahora). */}
-            {[
-              {
-                name: "Andrea Solís",
-                role: "Dueña de boutique online · Solís Moda",
-                quote:
-                  "Necesitaba un sitio rápido y con buen diseño. Me lo entregaron en una semana, con todo lo que les pedí. Súper profesionales.",
-                rating: 5,
-              },
-              {
-                name: "Ricardo Mendoza",
-                role: "Freelance de automatización",
-                quote:
-                  "La auditoría me destrabó el marketing. Cambié dos cosas y a la semana ya tenía leads nuevos. Vale cada peso.",
-                rating: 5,
-              },
-              {
-                name: "Paula Garza",
-                role: "Community Manager",
-                quote:
-                  "Contraté el Kickstart de Meta Ads. Me explicaron todo sin tecnicismos y la campaña quedó lista. Ahora la escalo sola.",
-                rating: 5,
-              },
-            ].map((t, i) => (
-              <Reveal key={t.name} delay={i * 100}>
-                <div className="rounded-2xl bg-white/5 border border-white/10 p-6 backdrop-blur h-full">
-                  <div className="text-amber-400 text-sm mb-3">
-                    {"★".repeat(t.rating)}
-                  </div>
-                  <p className="text-sm text-white/90 leading-relaxed">"{t.quote}"</p>
-                  <div className="mt-4 pt-4 border-t border-white/10">
-                    <p className="font-semibold text-white">{t.name}</p>
-                    <p className="text-xs text-white/60">{t.role}</p>
-                  </div>
-                </div>
-              </Reveal>
-            ))}
-          </div>
-        </Container>
-      </section>
-
-      {/* --------------------------- CTA FINAL --------------------------- */}
-      <section className="py-20">
-        <Container>
-          <div className="relative overflow-hidden rounded-3xl bg-brand-gradient px-8 py-16 sm:px-16 sm:py-20 text-center text-white shadow-glow">
-            <div className="absolute inset-0 bg-brand-radial opacity-50" />
-            <div className="relative">
-              <Isotipo size={48} className="mx-auto mb-6" />
-              <h2 className="display-2 text-white">
-                Da el siguiente click a tu negocio.
-              </h2>
-              <p className="mt-4 text-lg text-white/90 max-w-xl mx-auto">
-                Mándanos WhatsApp y te contamos sin compromiso qué servicio
-                encaja con lo que tu negocio necesita hoy.
-              </p>
-              <div className="mt-8 flex flex-wrap justify-center gap-3">
-                <Button href="/servicios" variant="accent" size="lg">
-                  Ver servicios
-                </Button>
-                <WhatsAppButton
-                  intent="sales"
-                  size="lg"
-                  className="bg-white/10 text-white hover:bg-white/20 !shadow-none border-2 border-white/30"
-                />
+                <p className="mt-8 text-xs font-bold uppercase tracking-[0.2em] text-white/45">
+                  Respuesta directa · México · sin mensualidades
+                </p>
               </div>
             </div>
-          </div>
-        </Container>
-      </section>
+          </Container>
+        </section>
+      </main>
 
       <Footer />
-    </>
+    </div>
   );
 }

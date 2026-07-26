@@ -21,11 +21,11 @@ const siteUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "Qlick Marketing Digital · Servicios y eventos de marketing",
+    default: "Qlick · Marketing que se traduce en ventas",
     template: "%s · Qlick Marketing Digital"
   },
   description:
-    "Diseño web, campañas de Meta Ads, auditorías de negocio y Google Business Profile. Servicios profesionales de marketing para hacer crecer tu negocio en México.",
+    "Diseño web, campañas de Meta Ads, auditorías de negocio y Google Business Profile. Marketing aplicado para negocios que quieren avanzar en México.",
   keywords: [
     "servicios de marketing",
     "marketing digital",
@@ -45,7 +45,7 @@ export const metadata: Metadata = {
     locale: "es_MX",
     url: siteUrl,
     siteName: "Qlick Marketing Digital",
-    title: "Qlick Marketing Digital · Servicios y eventos de marketing",
+    title: "Qlick · Marketing que se traduce en ventas",
     description:
       "Diseño web, campañas de Meta Ads, auditorías de negocio y Google Business Profile. Pago único, entregable concreto, sin enredos.",
     images: [
@@ -61,7 +61,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Qlick Marketing Digital",
     description:
-      "Cursos de marketing aplicado para negocios en México."
+      "Marketing aplicado para negocios en México: diseño web, campañas y estrategia clara."
   },
   icons: {
     icon: "/brand/original/05_qlick_icon_q_mouse_square_transparent.png",
