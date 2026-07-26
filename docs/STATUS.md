@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-26 06:25 GMT-7 — PR #51 (reglas del bot) y PR #50 (CRM + autenticación preview) están mergeados en `main` (`0e9fe01`, `4c945fb`). Producción está desplegada en `dpl_4W8FK6azBhnKnUzmA8Ka7yTum946` con estado READY. Las reglas globales permanecen apagadas (fail-closed); no se activó ningún canary.
+> **Última actualización:** 2026-07-26 06:35 GMT-7 — El orb decorativo inferior de la home fue eliminado. Producción está desplegada en `dpl_wwbf6pQWHQuE3iVn1N4beTNE9Jov` con estado READY; las reglas globales del bot continúan apagadas (fail-closed).
 >
 > **Body del doc (líneas debajo):** es archivo histórico de sprints cerrados. Para estado actual, ver este snapshot.
 
