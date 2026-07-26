@@ -56,6 +56,7 @@ let mockGetActiveBotRulesShouldThrow = false;
 let mockGetActiveBotRulesThrowMessage = "getActiveBotRules simulated failure";
 // Captura del último error registrado por errorLog (para asserts).
 let mockLastErrorMessage = /** @type {string | null} */ (null);
+const previousShadowOnlyEnv = process.env.BOT_GLOBAL_RULES_SHADOW_ONLY;
 
 // Mock del módulo `ai-bot-rules-server` (provee `getActiveBotRules`).
 mock.module("../src/lib/ai/ai-bot-rules-server.ts", {
@@ -147,6 +148,7 @@ beforeEach(() => {
   mockGetActiveBotRulesShouldThrow = false;
   mockGetActiveBotRulesThrowMessage = "getActiveBotRules simulated failure";
   mockLastErrorMessage = null;
+  delete process.env.BOT_GLOBAL_RULES_SHADOW_ONLY;
 });
 
 /* ==================================================================
@@ -162,6 +164,38 @@ test("LOADER 1: feature flag apagado → []", async () => {
     eventId: "evt-abc"
   });
   assert.deepEqual(r, [], "sin flag no hay reglas, ni siquiera si la DB tiene");
+});
+
+/* ================================================================== */
+/* CASO 1B — Shadow-only del simulador                                 */
+/* ================================================================== */
+test("LOADER 1B: shadow-only habilita solo la llamada opt-in", async () => {
+  mockDbRules = [
+    makeDbRule({
+      id: "shadow-event",
+      scope: "event:evt-shadow",
+      priority: 90,
+      instruction: "Regla sintética del simulador"
+    })
+  ];
+  mockFlagEnabled = false;
+  process.env.BOT_GLOBAL_RULES_SHADOW_ONLY = "true";
+
+  const shadowResult = await loadInjectableGlobalRules({
+    eventId: "evt-shadow",
+    shadowOnly: true
+  });
+  assert.equal(shadowResult.length, 1);
+  assert.equal(shadowResult[0].id, "shadow-event");
+
+  const realPathResult = await loadInjectableGlobalRules({
+    eventId: "evt-shadow"
+  });
+  assert.deepEqual(
+    realPathResult,
+    [],
+    "sin shadowOnly, el flag global apagado debe seguir bloqueando el loader"
+  );
 });
 
 /* ==================================================================
@@ -420,6 +454,11 @@ test("LOADER 12: getActiveBotRules lanza excepción → [] + errorLog (FAIL-OPEN
 });
 
 afterEach(() => {
+  if (previousShadowOnlyEnv === undefined) {
+    delete process.env.BOT_GLOBAL_RULES_SHADOW_ONLY;
+  } else {
+    process.env.BOT_GLOBAL_RULES_SHADOW_ONLY = previousShadowOnlyEnv;
+  }
   // best-effort cleanup; los mocks quedan registrados para el siguiente
   // test dentro del mismo archivo (es el comportamiento esperado de
   // `mock.module`).
