@@ -186,6 +186,10 @@ async function cleanupTestLead(lead) {
       .from("event_confirmations")
       .delete()
       .eq("phone_normalized", phone);
+    await supabase
+      .from("event_qr_tokens")
+      .delete()
+      .eq("attendee_phone_normalized", phone);
   }
 
   // 2. lead_whatsapp_log + lead_whatsapp_conversations (tienen lead_id).
@@ -208,15 +212,15 @@ async function cleanupTestLead(lead) {
   await supabase.from("leads").delete().eq("id", leadId);
 }
 
-async function getConfirmationForPhone(phone, eventId) {
-  const { data, error } = await supabase
+async function getConfirmationForPhone(phone, eventId = null) {
+  let query = supabase
     .from("event_confirmations")
     .select("id, name, email, phone_normalized, source, payment_status, confirmed_at")
-    .eq("event_id", eventId)
     .eq("phone_normalized", phone)
     .order("confirmed_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
+  if (eventId) query = query.eq("event_id", eventId);
+  const { data, error } = await query.maybeSingle();
   if (error) throw new Error("getConfirmation: " + error.message);
   return data;
 }
@@ -247,6 +251,12 @@ async function getEmailLogForRecipient(email) {
 // ────────────────────────────────────────────────────────────
 const cleanupLeads = [];
 let activeEvent = null;
+let testPhoneSequence = 0;
+
+function makeTestPhone() {
+  const entropy = Date.now() + testPhoneSequence++;
+  return `+5255${String(entropy).slice(-8)}`;
+}
 
 before(async () => {
   await ensureHumanFirstMode();
@@ -288,7 +298,8 @@ after(async () => {
 // ────────────────────────────────────────────────────────────
 
 test("human_first E2E #1: flow 'Nombre + email' mismo mensaje -> confirmation + email con QR", async () => {
-  const phone = "+525599900001";
+  const phone = makeTestPhone();
+  const email = `test.hf1.${Date.now()}@example.com`;
   const lead = await createTestLead(phone);
   cleanupLeads.push(lead);
 
@@ -301,7 +312,7 @@ test("human_first E2E #1: flow 'Nombre + email' mismo mensaje -> confirmation + 
     messageId: `wamid_hf_e2e_1_${Date.now()}`,
     from: phone,
     contactName: "E2E HF",
-    text: "Test User test.hf1@example.com",
+    text: `Test User ${email}`,
     type: "text",
     timestamp: String(Math.floor(Date.now() / 1000)),
   });
@@ -313,26 +324,26 @@ test("human_first E2E #1: flow 'Nombre + email' mismo mensaje -> confirmation + 
   await new Promise((resolve) => setTimeout(resolve, 4000));
 
   // 1. event_confirmations tiene fila para este phone + evento.
-  const confirmation = await getConfirmationForPhone(phone, activeEvent.id);
+  const confirmation = await getConfirmationForPhone(phone);
   assert.ok(
     confirmation,
     "BUG: event_confirmations NO tiene fila para este phone (safety-net no disparo)"
   );
-  assert.equal(confirmation.email, "test.hf1@example.com");
+  assert.equal(confirmation.email, email);
   assert.match(confirmation.name, /Test User/);
 
   // 2. leads.email actualizado.
   const leadAfter = await getLead(lead.id);
   assert.equal(
     leadAfter.email,
-    "test.hf1@example.com",
+    email,
     "BUG: leads.email no se actualizo"
   );
   assert.match(leadAfter.name, /Test User/);
 
   // 3. event_email_log tiene entry qr_pass enviado.
   // BUG #2 actual: el safety-net solo crea confirmation, no manda email.
-  const emailLog = await getEmailLogForRecipient("test.hf1@example.com");
+  const emailLog = await getEmailLogForRecipient(email);
   const qrEmail = emailLog.find((e) => e.email_type === "qr_pass");
   assert.ok(
     qrEmail,
@@ -342,7 +353,7 @@ test("human_first E2E #1: flow 'Nombre + email' mismo mensaje -> confirmation + 
 
   // 4. Brevo sendEmail mockeado fue invocado.
   const emailToLead = capturedEmails.find(
-    (e) => e.to === "test.hf1@example.com"
+    (e) => e.to === email
   );
   assert.ok(
     emailToLead,
@@ -378,7 +389,8 @@ test("human_first E2E #2: flow 'email solo' -> intent = provide_email (case norm
   //   - LLM real (DeepSeek) que detecte el evento del contexto.
   //   - O setup explicito de args.registrationEvent.
   // Esos tests van en human-first-e2e-with-deepseek.test.mjs.
-  const phone = "+525599900002";
+  const phone = makeTestPhone();
+  const email = `test.hf2.${Date.now()}@example.com`;
   const lead = await createTestLead(phone, "Test User 2");
   cleanupLeads.push(lead);
 
@@ -390,7 +402,7 @@ test("human_first E2E #2: flow 'email solo' -> intent = provide_email (case norm
     messageId: `wamid_hf_e2e_2_${Date.now()}`,
     from: phone,
     contactName: "E2E HF 2",
-    text: "test.hf2@example.com",
+    text: email,
     type: "text",
     timestamp: String(Math.floor(Date.now() / 1000)),
   });
@@ -406,7 +418,7 @@ test("human_first E2E #2: flow 'email solo' -> intent = provide_email (case norm
   // El safety-net NO se llama (solo desde case "question").
   await new Promise((resolve) => setTimeout(resolve, 3000));
 
-  const emailLog = await getEmailLogForRecipient("test.hf2@example.com");
+  const emailLog = await getEmailLogForRecipient(email);
   const qrEmail = emailLog.find((e) => e.email_type === "qr_pass");
   assert.ok(
     qrEmail,
