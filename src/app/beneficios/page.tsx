@@ -1,72 +1,60 @@
 import type { Metadata } from "next";
 import type { ComponentType, SVGProps } from "react";
-import { Navbar, Footer } from "@/components/layout";
-import { Container, Card, SectionHeading, Button, Badge } from "@/components/ui";
+import { Navbar, Footer, PageHero, CTABanner } from "@/components/layout";
+import { Container, Card, Button } from "@/components/ui";
 import { LucideIcon } from "@/components/ui/Icon";
 import {
   Award,
-  FolderOpen,
   MapPin,
   MessageCircle,
   RefreshCw,
-  Smartphone,
+  ShieldCheck,
   Target,
-  Video,
   Zap
 } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Beneficios de la plataforma",
+  title: "Qué obtienes al trabajar con Qlick",
   description:
-    "Por qué estudiar en Qlick: aprendizaje aplicado, acceso indefinido, certificados, recursos descargables y soporte humano.",
+    "Diseño, estrategia y marketing aplicado para que tu negocio avance con claridad, entregables concretos y trato directo.",
   alternates: { canonical: "/beneficios" }
 };
 
 const benefits: Array<{ icon: ComponentType<SVGProps<SVGSVGElement>>; title: string; body: string }> = [
   {
     icon: Zap,
-    title: "Aplica desde el día 1",
-    body: "Cada lección termina con algo que puedes usar ya: una campaña, un bot, una pieza de contenido. No esperas al final para ver resultados."
+    title: "Claridad antes de invertir",
+    body: "Entendemos tu punto de partida y ordenamos las prioridades antes de proponerte una solución."
   },
   {
     icon: Target,
-    title: "Metodología orientada a resultados",
-    body: "Pensamos en embudos, no en likes. Cada curso conecta lo que aprendes con métricas de negocio: ROAS, costo de adquisición, conversión."
-  },
-  {
-    icon: Video,
-    title: "Video de calidad y a tu ritmo",
-    body: "Producción profesional, lecciones cortas y enfocadas. Avanza, pausa y repite cuando quieras, para siempre."
-  },
-  {
-    icon: FolderOpen,
-    title: "Recursos descargables",
-    body: "Plantillas, guías, checklists y calendarios listos para tu negocio. Ahorro de horas de trabajo."
+    title: "Un alcance que se puede revisar",
+    body: "Sabrás qué incluye el servicio, qué no y qué decisión estamos tomando en cada etapa."
   },
   {
     icon: Award,
-    title: "Certificado verificable",
-    body: "Al completar obtienes un certificado digital con código único, listo para LinkedIn y tu CV."
-  },
-  {
-    icon: Smartphone,
-    title: "Multiplataforma",
-    body: "Estudia desde celular, tablet o escritorio. La plataforma se adapta a ti, no al revés."
+    title: "Entregable listo para usar",
+    body: "No recibes solo recomendaciones: recibes una página, una campaña, un diagnóstico o una configuración que puede empezar a trabajar."
   },
   {
     icon: MapPin,
-    title: "Pagos pensados para México",
-    body: "Tarjeta, transferencia SPEI y efectivo en OXXO. Próximamente meses sin intereses."
+    title: "Pensado para México",
+    body: "Precios en MXN, contexto local y decisiones aterrizadas al mercado donde realmente vendes."
   },
   {
     icon: MessageCircle,
-    title: "Comunidad y soporte",
-    body: "No estás solo: resolvemos tus dudas y conectamos con otros alumnos que están en lo mismo que tú."
+    title: "Trato directo",
+    body: "Hablas con la persona que entiende el proyecto. Menos intermediarios y más velocidad para decidir."
   },
   {
     icon: RefreshCw,
-    title: "Actualizaciones incluidas",
-    body: "El marketing cambia rápido. Cuando un curso se actualiza, lo ves sin pagar de nuevo."
+    title: "Una siguiente acción clara",
+    body: "Cada servicio termina con una recomendación concreta para que sepas qué mover después."
+  },
+  {
+    icon: ShieldCheck,
+    title: "Sin ataduras innecesarias",
+    body: "Pago único, propiedad sobre tu trabajo y sin renovaciones automáticas que te sorprendan."
   }
 ];
 
@@ -75,22 +63,20 @@ export default function BeneficiosPage() {
     <>
       <Navbar />
 
-      <section className="bg-brand-50/40 border-b border-brand-100">
-        <Container className="py-16">
-          <Badge tone="brand" className="mb-4">
-            Beneficios
-          </Badge>
-          <h1 className="display-1 text-ink max-w-3xl">
-            Por qué aprender en Qlick cambia las reglas.
-          </h1>
-          <p className="mt-5 text-lg text-ink-soft max-w-2xl">
-            No es una plataforma más de cursos. Es un sistema para que apliques
-            marketing que mueve números reales.
-          </p>
-        </Container>
-      </section>
+      <PageHero
+        variant="dark"
+        centered={false}
+        badge="La diferencia Qlick"
+        title="Lo que cambia cuando el marketing deja de ser ruido."
+        subtitle="Una forma de trabajar pensada para que entiendas la decisión, recibas algo útil y sepas qué hacer después."
+        actions={
+          <Button href="/servicios" variant="accent" size="lg">
+            Ver servicios
+          </Button>
+        }
+      />
 
-      <section className="py-16">
+      <section className="site-page py-16 sm:py-24">
         <Container size="wide">
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {benefits.map((b) => (
@@ -106,19 +92,18 @@ export default function BeneficiosPage() {
         </Container>
       </section>
 
-      <section className="py-16 bg-brand-50/40 border-t border-brand-100">
-        <Container>
-          <Card className="p-10 text-center bg-brand-gradient text-white">
-            <h2 className="display-2 text-white">¿List@ para empezar?</h2>
-            <p className="mt-3 text-white/90 max-w-xl mx-auto">
-              Tu primer curso es gratis. Sin tarjeta, sin compromiso.
-            </p>
-            <Button href="/cursos" variant="accent" size="lg" className="mt-6">
-              Ver catálogo
-            </Button>
-          </Card>
-        </Container>
-      </section>
+      <CTABanner
+        variant="gradient"
+        badge="Tu siguiente paso"
+        title="Empieza por lo que hoy más te frena."
+        subtitle="Te ayudamos a convertir el problema correcto en un plan que puedas poner a trabajar."
+        actions={
+          <>
+            <a href="/servicios" className="home-button home-button--accent">Explorar servicios</a>
+            <a href="/contacto" className="home-button home-button--dark-ghost">Hablemos</a>
+          </>
+        }
+      />
 
       <Footer />
     </>
