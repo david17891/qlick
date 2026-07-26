@@ -73,6 +73,11 @@ export interface EventQrPassInput {
    */
   paymentUrl?: string;
   /**
+   * Monto opcional para apartar el lugar. Si es menor al precio total,
+   * el correo comunica la alternativa desde el bloque de pago.
+   */
+  reservationAmountMXN?: number;
+  /**
    * Estado de pago actual del confirmation (sprint pagos-en-puerta
    * 2026-07-15). Si viene, el email muestra un BADGE visual grande
    * arriba del QR con colores semaforo:
@@ -161,6 +166,15 @@ export function renderEventQrPassEmail(
   const eventTime = formatEventTime(input.eventStartsAt);
   const eventLocation = input.eventLocation ? esc(input.eventLocation) : null;
   const checkInUrl = esc(input.checkInUrl);
+  const reservationCopy =
+    input.priceMXN &&
+    input.reservationAmountMXN &&
+    input.reservationAmountMXN > 0 &&
+    input.reservationAmountMXN < input.priceMXN
+      ? '<p style="margin:0 0 16px;font-size:13px;line-height:1.5;color:#7c2d12;">También puedes apartar tu lugar con <strong>$' +
+        input.reservationAmountMXN.toLocaleString("es-MX") +
+        ' MXN</strong> y liquidar el resto el día del evento. Elige la opción que prefieras al continuar.</p>'
+      : "";
   // Format default = in_person para legacy compat. Si viene "hybrid" o
   // "virtual" y no hay gateUrl, caemos a in_person con warning silencioso
   // (no rompemos el render — el admin probablemente olvidó pasar el campo).
@@ -370,11 +384,12 @@ export function renderEventQrPassEmail(
                     <p style="margin:0 0 16px;font-size:13px;line-height:1.5;color:#7c2d12;">
                       Tu lugar queda <strong>reservado provisionalmente</strong> al confirmar asistencia. Para que el admin marque el pago como confirmado, completa el pago por tarjeta, OXXO, SPEI o transferencia.
                     </p>
+${reservationCopy}
                     <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto;">
                       <tr>
                         <td align="center" style="background:#c2410c;border-radius:8px;">
                           <a href="${esc(input.paymentUrl)}" target="_blank" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-                            Pagar entrada →
+                            Pagar entrada o apartar →
                           </a>
                         </td>
                       </tr>
