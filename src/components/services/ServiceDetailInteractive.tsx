@@ -91,7 +91,9 @@ export function ServiceDetailInteractive({
                 ? "max-w-xl mx-auto"
                 : service.variants.length === 2
                   ? "sm:grid-cols-2 max-w-3xl mx-auto"
-                  : "sm:grid-cols-2 lg:grid-cols-3")
+                  : service.variants.length === 4
+                    ? "sm:grid-cols-2 lg:grid-cols-4 max-w-7xl mx-auto"
+                    : "sm:grid-cols-2 lg:grid-cols-3")
             }
           >
             {service.variants.map((variant) => (
@@ -134,9 +136,11 @@ function VariantCard({
   serviceSlug: string;
   onSelect: () => void;
 }) {
-  // Variants con tier alta (label "Pro", "Profesional", "Personas" o
-  // "Completo") se marcan como featured para resaltar visualmente.
-  const isFeatured = /pro|profesional|personas|completo/i.test(variant.label);
+  // Variants con tier alta o recomendada se marcan como featured para resaltar visualmente.
+  const isFeatured =
+    /pro|profesional|personas|completo|recomendado|premium/i.test(
+      variant.label
+    ) || /recomendado/i.test(variant.slug);
   const deliveryLabel = formatDeliveryLabel(variant);
 
   return (
@@ -183,11 +187,18 @@ function VariantCard({
         </p>
       ) : null}
 
-      <div className="mt-6 flex items-baseline gap-2">
-        <span className="font-display text-3xl font-bold text-ink">
-          {formatMXN(variant.priceMXN)}
-        </span>
-        <span className="text-sm text-ink-muted">MXN</span>
+      <div className="mt-6 flex flex-col gap-1">
+        <div className="flex items-baseline gap-2">
+          <span className="font-display text-3xl font-bold text-ink">
+            {formatMXN(variant.priceMXN)}
+          </span>
+          <span className="text-sm text-ink-muted">MXN</span>
+        </div>
+        {variant.includes.length > 0 && variant.description && (
+          <p className="text-xs font-semibold text-brand-700 bg-brand-50/80 px-2 py-0.5 rounded w-fit border border-brand-200/60">
+            {variant.description}
+          </p>
+        )}
       </div>
 
       <button

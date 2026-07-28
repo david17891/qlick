@@ -76,6 +76,17 @@ export {
   type ExtractContactContext,
   type ExtractContactResult
 } from "./tool-executors/extract-contact";
+/* FIX 2026-07-25 (sprint "activar ai_bot_rules en el bot real"):
+ * Inyector de Reglas de Oro Globales al prompt del bot. Loader +
+ * formatter con FAIL-OPEN (DB caída o flag OFF → []).
+ */
+export {
+  loadInjectableGlobalRules,
+  formatRulesBlock,
+  MAX_INSTRUCTION_LENGTH,
+  type InjectableRule,
+  type LoadInjectableRulesOptions
+} from "./ai-bot-rules-injector";
 
 import type { AIAgentProvider, AIAgentProviderName } from "./agent-provider";
 import { mockAgentProvider } from "./mock-agent-provider";

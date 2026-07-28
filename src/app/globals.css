@@ -492,6 +492,7 @@ h1, h2, h3, h4, h5 {
 
 .public-event-card__price {
   margin-top: auto;
+  padding-top: 0.5rem;
   color: #0f0a1a;
   font-family: var(--font-display);
   font-size: 1.2rem;
