@@ -562,6 +562,68 @@ export function buildEventInfoCopy(event: ActiveEventContext): string {
 }
 
 /**
+ * Resumen de primera respuesta para WhatsApp.
+ *
+ * El detalle completo es útil cuando alguien lo pide explícitamente, pero
+ * como primer mensaje debe dejar claro qué es, cuándo es, cuánto cuesta y
+ * cuál es el siguiente paso. Mantenerlo por debajo del límite de un mensaje
+ * interactivo permite enviar el resumen y los botones en una sola entrega.
+ */
+export function buildCompactEventInfoCopy(event: ActiveEventContext): string {
+  const description = event.description?.trim() ?? "";
+  const topics: string[] = [];
+  if (/crear\s+videos|video/i.test(description)) {
+    topics.push("crear videos que comuniquen con claridad");
+  }
+  if (/creaci[oó]n.*publicidad|publicidad\s+pagada|facebook\s*ads|\bads\b/i.test(description)) {
+    topics.push("publicidad pagada y Facebook Ads");
+  }
+  if (/inteligencia artificial|\bIA\b/i.test(description)) {
+    topics.push("inteligencia artificial aplicada al negocio");
+  }
+  if (/seguimiento|prospectos|whatsapp/i.test(description)) {
+    topics.push("seguimiento de clientes por WhatsApp");
+  }
+
+  const isFourPawsEvent = /4\s+patas.*negocio.*vende/i.test(event.title);
+  const focusLine = topics.length > 0
+    ? `Incluye ${joinSpanishList(topics)}.`
+    : isFourPawsEvent
+      ? "Curso presencial sobre publicidad, Facebook Ads, IA y seguimiento de clientes."
+      : description
+        ? `Tema: ${description.replace(/\s+/g, " ").slice(0, 180)}${description.length > 180 ? "…" : ""}`
+        : "Evento presencial de Qlick Marketing Digital.";
+  const location = isFourPawsEvent && !/av\.|obreg[oó]n/i.test(event.location ?? "")
+    ? "CANACO, Av. Álvaro Obregón 14-15, San Luis Río Colorado, Sonora"
+    : event.location?.trim();
+  const exactAddressPending = /direcci[oó]n exacta/i.test(event.eventRules.rules.join(" ")) &&
+    /por confirmar/i.test(event.eventRules.rules.join(" "));
+  const lines = [`📌 *${event.title}*`, focusLine];
+  if (event.humanStartsAt) lines.push(`📅 ${event.humanStartsAt}`);
+  if (location) {
+    lines.push(
+      `📍 ${location}${exactAddressPending ? ". La dirección exacta está por confirmar." : ""}`,
+    );
+  }
+  if (event.humanDuration) lines.push(`⏱ ${event.humanDuration}`);
+
+  const reservation = getReservationTerms(event);
+  if (typeof event.priceMxn === "number" && event.priceMxn > 0) {
+    const total = event.priceMxn.toLocaleString("es-MX");
+    lines.push(
+      reservation.enabled
+        ? `💰 Total: $${total} MXN · aparta con $${reservation.amount.toLocaleString("es-MX")} MXN y liquida el resto ${reservation.note.toLowerCase()}.`
+        : `💰 Inversión: $${total} MXN.`,
+    );
+  }
+  if (/constancia|certificado/i.test(description) || isFourPawsEvent) {
+    lines.push("📄 Incluye constancia de participación.");
+  }
+  lines.push("", "¿Quieres apartar tu lugar?");
+  return lines.join("\n");
+}
+
+/**
  * Set de nombres que consideramos placeholders del sistema (no nombres
  * reales del lead). Cuando el lead tiene uno de estos en `name`, no lo
  * usamos para construir saludos (`¡Hola Por!`, `¡Excelente Test!`) ni
@@ -2360,57 +2422,25 @@ async function buildOpenerPlan(args: {
           ? `\n💰 Inversión: $${realActiveEvent.priceMxn.toLocaleString("es-MX")} MXN`
           : "")
       : "";
-  // FIX 2026-07-24 (sprint bot-welcome-copy): el admin del evento
-  // escribe `event.description` desde el panel (`/admin/eventos/[id]`).
-  // Esa descripcion ya viene formateada con emojis, dirección, etc.
-  // El welcome del bot debe reflejar EXACTAMENTE lo que el admin
-  // escribió, no un formato hardcoded que pueda divergir.
-  //
-  // Orden de prioridad:
-  //   1. `singleEventShortcut.description` (lo que escribio el admin).
-  //      Si existe y no está vacío, es el body. El admin controla
-  //      100% del copy: si cambia la dirección o el copy, el bot
-  //      se actualiza sin tocar código.
-  //   2. `buildEventInfoCopy(singleEventShortcut)` (fallback). Lo
-  //      usamos solo si el admin NO escribió descripción.
-  //   3. `eventLine` corto (último fallback).
+  // El panel conserva la descripción larga del evento para consultas
+  // detalladas, pero el primer contacto usa el resumen compacto factual.
+  // Así el evento sigue siendo editable desde el admin sin enviar un bloque
+  // de temario demasiado largo ni duplicar la llamada a la acción.
   function buildShortcutBody(event: NonNullable<typeof singleEventShortcut>): string {
-    const withReservationPrompt = (text: string): string =>
-      /¿Quieres apartar tu lugar\??\s*$/i.test(text.trim())
-        ? text.trim()
-        : `${text}\n\n¿Quieres apartar tu lugar?`;
-    const adminDesc = event.description?.trim();
-    if (adminDesc && adminDesc.length > 0) {
-      // El admin controla la descripción, pero los datos estructurados de
-      // fecha, ubicación y pago también son verdad factual del evento. El
-      // helper central los agrega solo cuando la descripción los omite.
-      try {
-        return withReservationPrompt(buildEventInfoCopy(event));
-      } catch {
-        return withReservationPrompt(adminDesc);
-      }
-    }
-    // Sin descripción: usamos el formato generado.
     try {
-      const generated = buildEventInfoCopy(event);
-      if (generated && generated.trim().length > 0) {
-        return withReservationPrompt(generated);
-      }
+      return buildCompactEventInfoCopy(event);
     } catch {
-      // Fall through.
+      return `📌 *${event.title}*\n\n¿Quieres apartar tu lugar?`;
     }
-    // Último fallback al formato corto.
-    return `${saludo} Soy Qlick, asistente de Qlick Marketing Digital. ¿Te interesa "${event.title}"?${eventLine}`;
   }
   const shortcutBody: string = singleEventShortcut
     ? buildShortcutBody(singleEventShortcut)
     : "";
   // El body de un mensaje interactivo de Meta tiene un límite de 1024
-  // caracteres. El detalle completo del curso es más largo, así que el
-  // menú lleva solo una invitación corta y el copy completo se manda antes
-  // como mensaje de texto normal.
+  // caracteres. El resumen compacto cabe junto con los botones, así que el
+  // primer contacto se entrega como un solo mensaje.
   const interactiveBody = singleEventShortcut
-    ? `¿Quieres apartar tu lugar en *${singleEventShortcut.title}*?`
+    ? shortcutBody
     : `${saludo} Soy Qlick, asistente de Qlick Marketing Digital. ¿Qué te interesa?${eventLine}`;
   const interactive = singleEventShortcut
     ? {
@@ -2459,40 +2489,14 @@ async function buildOpenerPlan(args: {
     kind: "interactive",
     body: bodyText,
     interactive,
-    send: async () => {
-      if (!singleEventShortcut) {
-        return provider.send({
-          to: phoneNormalized,
-          body: interactiveBody,
-          interactive,
-        });
-      }
-
-      // Primero entregamos el contenido completo como texto. Después
-      // enviamos el menú corto; si Meta lo rechaza, el detalle ya llegó y
-      // el lead puede responder escribiendo "Inscribirme".
-      const detailResult = await provider.send({
-        to: phoneNormalized,
-        body: shortcutBody,
-      });
-      if (!detailResult.ok) return detailResult;
-
-      const menuResult = await provider.send({
-        to: phoneNormalized,
-        body: interactiveBody,
-        interactive,
-      });
-      if (!menuResult.ok) {
-        return {
-          ...detailResult,
-          note: `${detailResult.note} Menú no enviado: ${menuResult.note}`
-        };
-      }
-      return {
-        ...detailResult,
-        note: `${detailResult.note} Menú de inscripción enviado.`
-      };
-    },
+    // El resumen ya cabe en el body del mensaje interactivo. Una sola
+    // entrega evita que Meta emita estados para un segundo mensaje cuyo
+    // `message_id` no se persistía en el CRM.
+    send: () => provider.send({
+      to: phoneNormalized,
+      body: bodyText,
+      interactive,
+    }),
   };
 }
 
@@ -5627,6 +5631,66 @@ export async function processInboundMessage(
         error: err instanceof Error ? err.message : String(err)
       });
     }
+  }
+
+  // Meta entrega las notas de voz como `audio` sin texto. No intentamos
+  // adivinar su contenido con el LLM: eso produce respuestas repetidas o
+  // inventadas basadas en el contexto anterior. Dejamos la entrada
+  // persistida como audio y pedimos texto de forma explícita.
+  if (message.type === "audio" && !body) {
+    const provider = getActiveWhatsAppProvider();
+    const audioLabel = message.audio?.voice ? "nota de voz" : "audio";
+    const audioReply =
+      `Recibí tu ${audioLabel}. Por ahora no puedo transcribir audios por aquí. ` +
+      "Escríbeme tu duda y con gusto te ayudo con el evento.";
+    let sendResult: { ok: boolean; externalId?: string; demo?: boolean; note?: string } = {
+      ok: false,
+    };
+    try {
+      const result = await provider.send({
+        to: phoneNormalized,
+        body: audioReply,
+      });
+      sendResult = {
+        ok: result.ok,
+        externalId: result.externalId,
+        demo: result.demo,
+        note: result.note,
+      };
+    } catch (err) {
+      errorLog("[whatsapp/bot] audio sin transcripcion: send falló", {
+        leadId: lead.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    if (supabase && sendResult.ok) {
+      await persistConversation(supabase, {
+        lead_id: lead.id,
+        phone_normalized: phoneNormalized,
+        direction: "outbound",
+        message_type: "text",
+        body: audioReply,
+        whatsapp_message_id: sendResult.externalId ?? null,
+        metadata: {
+          intent: "question",
+          templateName: null,
+          demo: sendResult.demo ?? false,
+          audio_without_transcription: true,
+        },
+      });
+    }
+    return {
+      ok: sendResult.ok,
+      intent: "question",
+      leadId: lead.id,
+      outboundMessageId: sendResult.externalId,
+      responseKind: "text",
+      responsePreview: audioReply,
+      demo: sendResult.demo,
+      note: sendResult.ok
+        ? "Audio recibido sin transcripción; se pidió continuar por texto."
+        : `No se pudo responder al audio: ${sendResult.note ?? "send falló"}`,
+    };
   }
 
   // Sprint v0.9.x PR #2: leer el modo UNA vez por mensaje (caché 30s en
