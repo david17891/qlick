@@ -458,3 +458,32 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 - Fix critico de invitados: el webhook de eventos ya no exige resolver un usuario de Auth antes de registrar un pago de invitado; la vinculacion usa `confirmation_id`/correo. Los cursos conservan el requisito de usuario autenticado.
 - Verificacion: `npm run type-check`, `npm run lint`, `npm run audit:voseo`, `npm run test:ci` (1535/1535), `npm run test:e2e:funnel` (1/1 con Stripe test firmado y acceso activo), y build de Vercel en verde. No hubo errores runtime en la ultima hora.
 - Sin cargo real en esta validacion; queda monitoreo operativo de conversaciones, `event_email_log`, webhooks y primeras inscripciones reales. Pendientes de negocio: direccion exacta y conciliacion del saldo.
+
+
+## 2026-07-27 — Actualización de precios y catálogo de paquetes en Kickstart Meta Ads
+
+- **Requerimiento:**
+  1. El paquete Básico de Kickstart Meta Ads (`slug: videoia`) pasa de $2,500 MXN a $3,500 MXN.
+  2. Se agregan 2 nuevos paquetes al servicio:
+     - **Recomendado** (`slug: recomendado`): $12,000 MXN + Ads ($5,000–$6,000) (8 bullets: Estrategia, 4 videos, 8 piezas gráficas, 3 campañas, Retargeting, Scripts WhatsApp, Optimización semanal, Reporte semanal).
+     - **Premium** (`slug: premium`): $18,000 MXN + Ads (7 bullets: Todo lo anterior, 8-10 videos, Sesión fotos profesional, Landing page, Capacitación personal, Auditoría interna, Reunión mensual).
+- **Acciones y Schema:**
+  - Migración SQL `supabase/migrations/20260727203700_kickstart_meta_ads_packages.sql` aplicada a Supabase vía Management API (HTTP 201 OK).
+  - Migración SQL `supabase/migrations/20260727204200_remove_initial_pro_variant.sql` aplicada: desactivó el paquete Pro inicial (`slug: video-personas`) y reordenó los 3 paquetes activos: 1. Básico ($3,500 MXN), 2. Recomendado ($12,000 MXN), 3. Premium ($18,000 MXN).
+  - Actualización de `default_price_mxn` a 3500 en `public.services`.
+  - Actualización de `price_mxn` a 3500 en `videoia` (`service_variants`).
+  - Upsert de variants `recomendado` y `premium` con sus bullets `includes`, precios y notas en `service_variants`.
+  - `src/components/services/ServiceDetailInteractive.tsx`: soporte responsive en grid para los paquetes activos, renderizado de notas como `+ Ads ($5,000–$6,000)` bajo el precio, y resaltado de featured en "Recomendado" y "Premium".
+- **Verificación:** `npm run type-check` (0 errores), `npm run lint` (0 errores), `npm test` (1579/1579 tests pasando). Flujo de pago Stripe y backend DB totalmente sincronizados.
+
+
+## 2026-07-27 — Fix de maquetación: precio $1,000 recortado en tarjetas de eventos
+
+- **Problema:** En `/eventos`, el elemento `.public-event-card__price` ($1,000 MXN) estaba ubicado fuera del contenedor flex `.public-event-card__body`, lo que provocaba que se posicionara pegado al borde inferior del contenedor con `overflow: hidden`, recortando la parte superior del texto `$1,000`.
+- **Solución:**
+  - `src/app/eventos/page.tsx`: Se movió la etiqueta `<div className="public-event-card__price">` dentro de `<div className="public-event-card__body">` para heredar los márgenes y rellenos internos (`padding: 1.5rem 1.7rem 1.7rem`).
+  - `src/app/globals.css`: Se añadió `padding-top: 0.5rem` a `.public-event-card__price` para asegurar separación visual limpia con los metadatos del evento.
+- **Verificación:** `npm run type-check` (0 errores), `npm run lint` (0 errores).
+
+
+

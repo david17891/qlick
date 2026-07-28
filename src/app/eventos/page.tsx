@@ -175,16 +175,16 @@ function EventCard({
               </p>
             )}
           </div>
-        </div>
           <div className="public-event-card__price">
-          {event.priceMXN == null || event.priceMXN <= 0 ? (
+            {event.priceMXN == null || event.priceMXN <= 0 ? (
               <span className="text-emerald-700">Gratis</span>
-          ) : (
+            ) : (
               <div className="flex items-baseline gap-2">
                 <span>{formatMXN(event.priceMXN)}</span>
-              <span className="text-xs text-ink-muted">MXN</span>
-            </div>
-          )}
+                <span className="text-xs text-ink-muted">MXN</span>
+              </div>
+            )}
+          </div>
         </div>
       </article>
     </Link>
