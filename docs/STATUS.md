@@ -8,13 +8,16 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-26 09:04 GMT-7 — El correo de pase ahora muestra explícitamente las opciones de pago completo o apartado cuando el evento las tiene configuradas. Producción está desplegada en dpl_8dDTeKDvLkb5fPfXMqV6uW3rMY8P con estado READY y alias https://www.qlick.digital; las reglas globales del bot continúan apagadas (fail-closed).
+> **Última actualización:** 2026-07-27 20:27 GMT-7 — Producción está desplegada en `dpl_3w5ZRFzpqWWARqDeEEkXa4ke3GUB` con estado `READY` y alias https://www.qlick.digital. El bot ahora entrega un resumen inicial compacto del evento en un solo mensaje y no intenta responder por contexto cuando recibe una nota de voz sin transcripción; las reglas globales del bot continúan apagadas (fail-closed).
 >
 > **Body del doc (líneas debajo):** es archivo histórico de sprints cerrados. Para estado actual, ver este snapshot.
 
 ---
 
-## Estado actual — 2026-07-25 · Producción activa
+## Estado actual — 2026-07-27 · Producción activa
+
+- **Fix crítico del bot (PR #59, merge `edd049f`):** el primer contacto de un evento activo usa un resumen factual compacto (título, fecha, sede, duración, precio/apartado y CTA) en un solo mensaje interactivo; el detalle largo queda para cuando se solicita explícitamente. Las notas de voz sin transcripción ya no pasan al LLM ni generan respuestas basadas en el contexto anterior: el bot pide continuar por texto. Tests dirigidos `8/8`, checks de CI verdes, type-check/lint/build verdes. No se envió un WhatsApp real durante la validación post-deploy.
+- **Deployment de producción:** `dpl_3w5ZRFzpqWWARqDeEEkXa4ke3GUB`, estado `READY`, alias `https://www.qlick.digital`; homepage pública `200` y webhook público responde `403` sin el token de verificación, como corresponde.
 
 - **Sprint "activar ai_bot_rules en el bot real" (Mavis, 11:12 + 12:30 GMT-7):** código listo en working tree, **aún NO commiteado a main** (segunda corrección post-revisión de David aplicada a las 12:30). Feature flag `system_settings.bot_global_rules_enabled` en `false` por default (FAIL-CLOSED). El código de inyección de Reglas de Oro Globales al prompt del LLM (Super Ejecutivo, Human First, Socrático) está deployable y probado, pero gateado por el flag. 24 tests nuevos (12 del loader + 12 del prompt) cubren el scope unificado `event:<id>`/`event:<slug>`, rechazo de scopes desconocidos (`course:`, `mode:`), piso de slots para evento en el top-N, y header placeholder duplicado eliminado. `npm run type-check`, `npm run lint` y `npm run build` en verde. Pendiente: commit del working tree + push + merge a main antes de activar el flag. Ver `docs/ACTIVATION_GRADUAL_BOT_GLOBAL_RULES.md` (4 fases) y `docs/PLAN_ROLLBACK_BOT_GLOBAL_RULES.md` (3 opciones: soft/hard/emergency).
 - Tarjeta destacada de la home actualizada a una superficie oscura integrada al hero; se conservan la jerarquía del servicio, beneficios, precio y CTA sin el bloque blanco anterior.
