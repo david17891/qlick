@@ -13,8 +13,8 @@
  *
  * Pasos:
  *   1. Buscar la confirmation por id (SELECT directo, no filtro JS).
- *   2. Re-enviar el email del QR via sendQrPassForConfirmation (con
- *      el badge visual de estado de pago correspondiente).
+ *   2. Entregar el email del QR si todavía no existe un envío exitoso.
+ *      Si el alta pública ya lo entregó, se evita el duplicado.
  *   3. Mandar WhatsApp al lead (si tiene phone).
  *
  * **NO actualiza payment_status** — eso lo hace el caller ANTES de
@@ -139,11 +139,17 @@ export async function notifyLeadPaymentConfirmed(
         const emailResult = await sendQrPassForConfirmation({
           confirmationId: conf.id,
           event: evt,
+          skipIfAlreadySent: true,
         });
         if (!emailResult.ok) {
           errorLog(`[${logSource}] email fallo`, {
             confirmationId: conf.id,
             error: emailResult.error,
+          });
+        } else if (emailResult.skipped) {
+          infoLog(`[${logSource}] email QR omitido: ya fue enviado`, {
+            confirmationId: conf.id,
+            email: leadEmail,
           });
         } else {
           infoLog(`[${logSource}] email enviado con badge ${ps}`, {

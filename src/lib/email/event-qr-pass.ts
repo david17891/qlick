@@ -127,11 +127,15 @@ export interface SendQrPassForConfirmationResult {
   messageId?: string;
   mode?: "dev" | "prod";
   error?: string;
+  /** true cuando se evitó un envío porque ya había un QR exitoso. */
+  skipped?: boolean;
 }
 
 export async function sendQrPassForConfirmation(args: {
   confirmationId: string;
   event: Event;
+  /** El flujo de pago no debe duplicar un QR ya entregado. */
+  skipIfAlreadySent?: boolean;
 }): Promise<SendQrPassForConfirmationResult> {
   // Guards basicos.
   if (!isServerOnly() || !checkSupabaseConfig().configured) {
@@ -172,6 +176,39 @@ export async function sendQrPassForConfirmation(args: {
     // Sin email, no podemos mandar. No es fatal — el admin puede usar
     // el reenvio por WhatsApp en su lugar.
     return { ok: false, error: "Confirmation sin email. Saltamos el email." };
+  }
+
+  // El alta pública envía el pase con instrucciones de pago. Cuando después
+  // llega el pago confirmado, el notifier comparte este helper, pero no debe
+  // volver a enviar el mismo QR. El botón administrativo de reenvío no pasa
+  // este flag y conserva su comportamiento explícito.
+  if (args.skipIfAlreadySent) {
+    const { data: previousQrEmail, error: previousQrEmailError } = await supabase
+      .from("event_email_log")
+      .select("id, provider_message_id, sent_at")
+      .eq("event_id", args.event.id)
+      .eq("recipient", conf.email)
+      .eq("email_type", "qr_pass")
+      .eq("ok", true)
+      .order("sent_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (previousQrEmailError) {
+      // Fail-open: si el log está temporalmente indisponible, intentamos
+      // entregar el pase para no dejar al asistente sin información.
+      infoLog("[email/event-qr-pass] no se pudo comprobar idempotencia", {
+        confirmationId: conf.id,
+        error: previousQrEmailError.message,
+      });
+    } else if (previousQrEmail) {
+      return {
+        ok: true,
+        mode: "prod",
+        messageId: (previousQrEmail as { provider_message_id?: string | null }).provider_message_id ?? undefined,
+        skipped: true,
+      };
+    }
   }
 
   // 2. Crear o reusar un QR token. Mismo patron que el endpoint admin
