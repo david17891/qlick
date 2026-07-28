@@ -130,6 +130,23 @@ function applySecurityHeaders(res: NextResponse): NextResponse {
   return res;
 }
 
+/**
+ * Elimina únicamente las cookies de sesión de Supabase cuando el refresh
+ * token ya no existe o fue revocado. Las cookies pueden venir fragmentadas
+ * (`.0`, `.1`, ...), por eso se eliminan todos los chunks del auth token.
+ */
+function clearSupabaseAuthCookies(req: NextRequest, res: NextResponse): void {
+  const authCookieNames = req.cookies
+    .getAll()
+    .map(({ name }) => name)
+    .filter((name) => /^sb-.+-auth-token(?:\.\d+)?$/.test(name));
+
+  authCookieNames.forEach((name) => {
+    req.cookies.delete(name);
+    res.cookies.delete(name);
+  });
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const isApi = pathname.startsWith("/api/admin/");
@@ -267,9 +284,28 @@ export async function middleware(req: NextRequest) {
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Un refresh token puede quedar inválido al cerrar sesión desde otro
+  // dispositivo, revocar sesiones o rotar credenciales. Supabase puede
+  // devolver el error o lanzarlo desde el adaptador SSR; ambos casos deben
+  // degradar a una sesión anónima y limpiar las cookies, no producir un 500.
+  let user: { email?: string | null } | null = null;
+  try {
+    const {
+      data: { user: resolvedUser },
+      error,
+    } = await supabase.auth.getUser();
+
+    if (error) throw error;
+    user = resolvedUser;
+  } catch (error: unknown) {
+    clearSupabaseAuthCookies(req, res);
+    // No registrar tokens ni cookies; solo una razón diagnóstica segura.
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[middleware] sesión Supabase inválida; se limpiaron sus cookies",
+      error instanceof Error ? error.message : "error de autenticación",
+    );
+  }
 
   const email = user?.email?.trim().toLowerCase() ?? "";
   const isAllowed = Boolean(email) && allowlist.has(email);

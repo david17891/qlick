@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-28 12:11 GMT-7 — Producción está desplegada en `dpl_DxT1vjhhNb5o3Jp6fv8mXUsx1vtP` con estado `READY` y alias https://www.qlick.digital. El notifier de pagos ya no reenvía un QR si existe un `qr_pass` exitoso previo para el mismo evento y correo; las reglas globales del bot continúan apagadas (fail-closed).
+> **Última actualización:** 2026-07-28 — Producción está desplegada en `dpl_2ZtRg5HfL3nXyahhPfnPsHYEnYUy` con estado `READY` y alias https://www.qlick.digital. El commit desplegado es `f7fe057`; coincide con `main` remoto. El notifier de pagos ya no reenvía un QR si existe un `qr_pass` exitoso previo para el mismo evento y correo; las reglas globales del bot continúan apagadas (fail-closed).
 >
 > **Body del doc (líneas debajo):** es archivo histórico de sprints cerrados. Para estado actual, ver este snapshot.
 
@@ -17,7 +17,8 @@
 ## Estado actual — 2026-07-28 · Producción activa
 
 - **Fix de duplicado de QR (PR #62, merge `b7aa90f`):** el registro público continúa enviando el primer pase con instrucciones de pago. Cuando Stripe confirma el pago, el notifier consulta `event_email_log` y solo entrega el QR si no existe un envío exitoso previo para ese evento y correo. El reenvío manual del administrador conserva su comportamiento. Pruebas de idempotencia `4/4`, checks de CI verdes, type-check/lint/build verdes.
-- **Deployment de producción:** `dpl_DxT1vjhhNb5o3Jp6fv8mXUsx1vtP`, estado `READY`, alias `https://www.qlick.digital`; homepage pública verificada con HTTP 200.
+- **Deployment de producción:** `dpl_2ZtRg5HfL3nXyahhPfnPsHYEnYUy`, estado `READY`, alias `https://www.qlick.digital`, commit `f7fe057`; homepage pública verificada con HTTP 200.
+- **Reconciliación:** el checkout local histórico estaba en `b31e467`, pero GitHub `main` y producción ya estaban en `f7fe057` (cuatro commits por delante). Esta rama conserva ese estado y agrega el manejo seguro de refresh tokens inválidos; la publicación del fix queda sujeta al merge y deploy de este PR.
 
 - **Fix crítico del bot (PR #59, merge `edd049f`):** el primer contacto de un evento activo usa un resumen factual compacto (título, fecha, sede, duración, precio/apartado y CTA) en un solo mensaje interactivo; el detalle largo queda para cuando se solicita explícitamente. Las notas de voz sin transcripción ya no pasan al LLM ni generan respuestas basadas en el contexto anterior: el bot pide continuar por texto. Tests dirigidos `8/8`, checks de CI verdes, type-check/lint/build verdes. No se envió un WhatsApp real durante la validación post-deploy.
 - **Deployment de producción:** `dpl_3w5ZRFzpqWWARqDeEEkXa4ke3GUB`, estado `READY`, alias `https://www.qlick.digital`; homepage pública `200` y webhook público responde `403` sin el token de verificación, como corresponde.
