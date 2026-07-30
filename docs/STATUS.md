@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-30 — Producción está desplegada en `dpl_53FtD2B64pEB6tk4pNAiYuuPCcb8` con estado `READY` y aliases `https://qlick.digital` / `https://www.qlick.digital`. El commit desplegado es `ba38c217`, alineado con `main`. El seguimiento automático de leads está activo en `system_settings.lead_followup_mode=live`; el scheduler horario corre desde GitHub Actions con secreto dedicado porque la cuenta Hobby no admite cron horario de Vercel. La verificación manual de producción respondió `mode=live`, `sent=0`, `failed=0`, `eligible=0`; no había candidatos elegibles al momento de activarlo. Las reglas globales del bot continúan apagadas (fail-closed).
+> **Última actualización:** 2026-07-30 — Producción está desplegada en `dpl_G72XruYz4oU5C2bhWUpE3Z2NFKB3` con estado `READY` y aliases `https://qlick.digital` / `https://www.qlick.digital`. El commit desplegado es `713a7338`, alineado con `main`. El seguimiento automático de leads está activo en `system_settings.lead_followup_mode=live`; el scheduler horario corre desde GitHub Actions con secreto dedicado porque la cuenta Hobby no admite cron horario de Vercel. La pasada controlada `30578750411` encontró el registro de inscripción incompleta y dejó un mensaje transaccional persistido con estado `delivered`; el consentimiento de marketing permaneció en `false`. Las reglas globales del bot continúan apagadas (fail-closed).
 >
 > **Body del doc (líneas debajo):** es archivo histórico de sprints cerrados. Para estado actual, ver este snapshot.
 
@@ -16,13 +16,15 @@
 
 ## Snapshot anterior — 2026-07-28 · Producción activa
 
-## Estado actual — 2026-07-30 · Recuperación automática de leads activa
+## Estado actual — 2026-07-30 · Continuidad de inscripciones incompletas desplegada
 
-- **Seguimiento CRM/WhatsApp (PR #67, merge `ba38c217`):** el CRM conserva etapa, consentimiento, pausa y próxima fecha de seguimiento. El job clasifica registros incompletos y pagos pendientes, exige consentimiento, respeta opt-out/pausa, solo envía dentro de la ventana de servicio de WhatsApp de 24 horas y limita la cadencia a dos seguimientos por ventana.
+- **Continuidad de inscripción (PR #69, merge `713a7338`):** el bot ya no abandona el flujo cuando una persona responde con un agradecimiento u otro mensaje corto después de recibir la pregunta de nombre/correo. Recupera el campo pendiente desde el historial, conserva la etapa `interested` y marca `registration:incomplete` para que el scheduler pueda continuar.
+- **Política de contacto:** una señal explícita de inscripción permite el seguimiento operativo dentro de la ventana de WhatsApp de 24 horas, aunque `consent_to_contact` siga en `false`. Esto no otorga consentimiento de marketing. La pausa del bot y los opt-out continúan bloqueando el envío.
+- **Seguimiento CRM/WhatsApp:** el CRM conserva etapa, consentimiento, pausa y próxima fecha de seguimiento. El job clasifica registros incompletos y pagos pendientes, respeta la ventana de 24 horas y limita la cadencia a dos seguimientos por ventana.
 - **Scheduler horario:** `.github/workflows/lead-followup.yml` ejecuta `GET /api/cron/lead-followup` cada hora y permite ejecución manual. La ruta usa `LEAD_FOLLOWUP_CRON_SECRET` estricto y rechaza peticiones sin Bearer con `401`; el secreto está configurado en Vercel Production/Preview y GitHub Actions, sin registrarse en el repositorio.
-- **Verificación controlada:** `shadow` produjo `0 candidatos elegibles; 0 mensajes enviados`; después, `live` produjo `0 mensajes enviados; 0 fallos`. La auditoría de producción encontró `0` leads en `interested`/`payment_pending`, `0` candidatos debidos y `0` candidatos elegibles, por lo que no hubo contacto retroactivo.
-- **Deployment:** `dpl_53FtD2B64pEB6tk4pNAiYuuPCcb8`, `READY`, commit `ba38c217`, aliases `https://qlick.digital` y `https://www.qlick.digital`. La ruta pública sin credencial devuelve `401 unauthorized`; el workflow autenticado de producción concluyó exitosamente.
-- **Validación de código:** `npm test` `1609/1609`, `npm run type-check`, `npm run lint` y `npm run build` verdes. El flag `system_settings.bot_global_rules_enabled` sigue apagado y fuera de este despliegue funcional.
+- **Verificación controlada:** la ejecución `30578750411` terminó en verde. El registro histórico del caso quedó en `status=interested`, `intent=enroll_course`, `registration:incomplete`, con `consent_to_contact=false`; se envió exactamente un recordatorio breve y se persistió como `delivered`, solicitando el nombre completo pendiente.
+- **Deployment:** `dpl_G72XruYz4oU5C2bhWUpE3Z2NFKB3`, `READY`, commit `713a7338`, aliases `https://qlick.digital` y `https://www.qlick.digital`. La vista autenticada de Conversaciones en producción muestra `Seguimiento: activo`, `Registro incompleto` y `CRM: Interesado` para el caso rescatado.
+- **Validación de código:** `npm test` `1613/1613`, `npm run type-check`, `npm run lint` y `npm run build` verdes. El check E2E de Supabase de GitHub Actions quedó omitido por ausencia de secretos del runner; no invalida los checks locales ni la verificación contra la base de producción. El flag `system_settings.bot_global_rules_enabled` sigue apagado y fuera de este despliegue funcional.
 
 - **Fix de duplicado de QR (PR #62, merge `b7aa90f`):** el registro público continúa enviando el primer pase con instrucciones de pago. Cuando Stripe confirma el pago, el notifier consulta `event_email_log` y solo entrega el QR si no existe un envío exitoso previo para ese evento y correo. El reenvío manual del administrador conserva su comportamiento. Pruebas de idempotencia `4/4`, checks de CI verdes, type-check/lint/build verdes.
 - **Deployment de producción:** `dpl_HKFQFrtxMh7yvSxe2arLwtyr6bzt`, estado `READY`, alias `https://www.qlick.digital`, commit `dad5f59`; homepage pública verificada con HTTP 200.
