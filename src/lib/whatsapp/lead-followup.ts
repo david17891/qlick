@@ -49,6 +49,56 @@ export interface LeadFollowupDecision {
   body: string | null;
 }
 
+/**
+ * Una inscripcion iniciada permite completar el tramite dentro de la ventana
+ * de servicio de WhatsApp, aunque el lead todavia no haya aceptado mensajes
+ * comerciales. Esto no cambia `consent_to_contact`: es solo una senal
+ * transaccional, y una baja explicita sigue bloqueando cualquier envio.
+ */
+export function hasTransactionalRegistrationSignal(
+  tags: string[] | null | undefined,
+): boolean {
+  return (tags ?? []).some(
+    (tag) =>
+      tag === "registration:incomplete" ||
+      tag === "registration:payment_pending" ||
+      /^event:.+:registration_started$/.test(tag),
+  );
+}
+
+/**
+ * Obtiene el ultimo campo de registro que el bot estaba solicitando.
+ *
+ * Algunos mensajes historicos (por ejemplo un acuse de "gracias") no
+ * incluyen `awaiting_field`; en ese caso conservamos el ultimo estado de la
+ * maquina que si lo declaro. Si existe un estado explicito con `null`, ese
+ * estado cancela cualquier solicitud anterior.
+ */
+export function getPendingRegistrationField(
+  messages: Array<{
+    direction: "inbound" | "outbound";
+    metadata?: unknown;
+  }>,
+): "name" | "email" | null {
+  const outboundWithState = [...messages]
+    .reverse()
+    .find(
+      (message) =>
+        message.direction === "outbound" &&
+        message.metadata &&
+        typeof message.metadata === "object" &&
+        Object.prototype.hasOwnProperty.call(message.metadata, "awaiting_field"),
+    );
+
+  if (outboundWithState) {
+    const value = (outboundWithState.metadata as { awaiting_field?: unknown })
+      .awaiting_field;
+    return value === "name" || value === "email" ? value : null;
+  }
+
+  return null;
+}
+
 function firstName(value: string | undefined): string {
   const cleaned = (value ?? "")
     .replace(/\[[^\]]+\]/g, "")
@@ -118,7 +168,7 @@ export function decideLeadFollowup(input: LeadFollowupInput): LeadFollowupDecisi
   if (!stage) {
     return { eligible: false, stage: null, reason: "not_a_followup_stage", followupNumber: null, body: null };
   }
-  if (!input.consentToContact) {
+  if (!input.consentToContact && !hasTransactionalRegistrationSignal(input.tags)) {
     return { eligible: false, stage, reason: "consent_missing", followupNumber: null, body: null };
   }
   if (input.botPaused) {

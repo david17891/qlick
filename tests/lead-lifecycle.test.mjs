@@ -74,6 +74,25 @@ test("lead lifecycle: un acuse no cierra un registro que espera datos", () => {
   assert.equal(result.intent, "enroll_course");
 });
 
+test("lead lifecycle: el handler de acuse conserva un registro pendiente", () => {
+  const result = decideLeadLifecycle({
+    ...base,
+    currentStatus: "new",
+    currentIntent: "course_information",
+    botIntent: "question",
+    body: "gracias",
+    awaitingField: "name",
+  });
+
+  assert.equal(result.status, "interested");
+  assert.equal(result.intent, "enroll_course");
+  assert.deepEqual(result.tagsToAdd, [
+    "event:las-4-patas:registration_started",
+    "registration:incomplete",
+  ]);
+  assert.ok(result.nextFollowUpAt);
+});
+
 test("lead lifecycle: correo capturado deja el lead en pago pendiente", () => {
   const result = decideLeadLifecycle({
     ...base,

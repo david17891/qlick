@@ -775,7 +775,7 @@ export function ConversationsTab() {
                         </Badge>
                       )}
                       {c.consentToContact === false && (
-                        <Badge tone="danger">Sin consentimiento</Badge>
+                        <Badge tone="danger">Sin consentimiento de marketing</Badge>
                       )}
                       {followupLabel(c) && (
                         <Badge tone={followupTone(c)}>{followupLabel(c)}</Badge>
@@ -817,7 +817,7 @@ export function ConversationsTab() {
                       </Badge>
                     )}
                     {selectedConv.consentToContact === false && (
-                      <Badge tone="danger">Sin consentimiento</Badge>
+                      <Badge tone="danger">Sin consentimiento de marketing</Badge>
                     )}
                     {followupLabel(selectedConv) && (
                       <Badge tone={followupTone(selectedConv)}>
