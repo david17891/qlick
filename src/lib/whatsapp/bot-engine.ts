@@ -82,6 +82,7 @@ const OUTBOUND_COUNT_CACHE_TTL_MS = 60_000;
 // para el prompt Súper Ejecutivo. Se calcula con prioridad price>descripción>unknown.
 import { classifyEventType, loadCoursesCatalogBlock } from "../ai/event-context-loader";
 import { stripGreetingIfHasHistory, isAckOnly } from "./safety-net";
+import { decideLeadLifecycle } from "./lead-lifecycle";
 import { extractEmailFromText } from "./email-extract";
 import { getAIAgentProfile } from "../crm/agent-utils";
 import {
@@ -5851,6 +5852,11 @@ export async function processInboundMessage(
       survey_questions?: SurveyQuestion[] | null;
     } | null) ?? null;
 
+  const pendingRegistrationField =
+    (lastOutboundGlobal?.metadata as {
+      awaiting_field?: "name" | "email" | null;
+    } | null)?.awaiting_field ?? null;
+
   debugLog("[whatsapp/bot] wizardStateGlobal loaded", {
     hasLastOutbound: !!lastOutboundGlobal,
     lastOutboundId: lastOutboundGlobal?.id,
@@ -5880,6 +5886,7 @@ export async function processInboundMessage(
   if (
     body &&
     !wizardStateGlobal?.awaiting_survey_step &&
+    !pendingRegistrationField &&
     isAckOnly(body)
   ) {
     const ackBody =
@@ -6548,6 +6555,57 @@ export async function processInboundMessage(
       bodyPreview: body.slice(0, 100)
     });
     intent = "question";
+  }
+
+  // 4.2: sincronizar la intención conversacional con el pipeline CRM.
+  // Antes solo cambiábamos `whatsapp_status`, por lo que casi todos los
+  // leads del bot permanecían en `new` aunque ya hubieran pedido información
+  // o iniciado un registro. La decisión es pura y la persistencia best-effort.
+  if (supabase && lead.id) {
+    const lifecycle = decideLeadLifecycle({
+      currentStatus: lead.status,
+      currentIntent: lead.intent,
+      botIntent: intent,
+      body,
+      awaitingField: pendingRegistrationField,
+      eventSlug: requestedEventSlug,
+    });
+    const existingTags = lead.tags ?? [];
+    const nextTags = Array.from(new Set([...existingTags, ...lifecycle.tagsToAdd]));
+    const shouldUpdate =
+      lifecycle.status !== lead.status ||
+      lifecycle.intent !== lead.intent ||
+      nextTags.length !== existingTags.length ||
+      lifecycle.nextFollowUpAt !== null;
+    if (shouldUpdate) {
+      const { error: lifecycleErr } = await supabase
+        .from("leads")
+        .update({
+          status: lifecycle.status,
+          intent: lifecycle.intent,
+          tags: nextTags,
+          ...(lifecycle.nextFollowUpAt
+            ? { next_follow_up_at: lifecycle.nextFollowUpAt }
+            : {}),
+        })
+        .eq("id", lead.id);
+      if (lifecycleErr) {
+        errorLog("[whatsapp/bot] lead lifecycle update failed", {
+          leadId: lead.id,
+          code: lifecycleErr.code,
+          requestedStatus: lifecycle.status,
+        });
+      } else {
+        lead.status = lifecycle.status;
+        lead.intent = lifecycle.intent;
+        lead.tags = nextTags;
+        debugLog("[whatsapp/bot] lead lifecycle updated", {
+          leadId: lead.id,
+          status: lifecycle.status,
+          reason: lifecycle.reason,
+        });
+      }
+    }
   }
 
   // 4.5 FIX 2026-07-02 (Commit A): si el intent es provide_name, persistir

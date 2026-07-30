@@ -263,8 +263,20 @@ export interface ConversationMessage {
   author?: string;
   /** Si el mensaje fue sugerido por el agente IA (no enviado por API real). */
   aiSuggested?: boolean;
+  /** Metadata operativa del mensaje (ej. awaiting_field del bot). */
+  metadata?: Record<string, unknown>;
   at: string;
 }
+
+export type ConversationAttention =
+  | "needs_reply"
+  | "registration_incomplete"
+  | "payment_pending"
+  | "waiting_lead"
+  | "cold"
+  | "resolved";
+
+export type ConversationWhatsAppWindow = "open" | "closed" | "unknown";
 
 export interface Conversation {
   id: string;
@@ -286,6 +298,15 @@ export interface Conversation {
   // lastReadAt. Sprint v16 PR #1 ya tiene la columna en DB
   // (leads.last_read_at); PR #1.5 (PATCH) y PR #2 (UI) la propagan.
   lastReadAt?: string | null;
+  /** Etapa comercial real del lead, separada del estado de la conversación. */
+  leadStatus?: LeadStatus;
+  leadIntent?: LeadIntent;
+  consentToContact?: boolean;
+  nextFollowUpAt?: string | null;
+  attention?: ConversationAttention;
+  lastInboundAt?: string | null;
+  whatsappWindow?: ConversationWhatsAppWindow;
+  whatsappWindowOpenUntil?: string | null;
 }
 
 /* ------------------------------------------------------------------ */

@@ -30,7 +30,8 @@ import {
   KEY_BOT_DAILY_OUTBOUND_LIMIT,
   KEY_BOT_PAUSED_GLOBAL,
   KEY_BOT_MAX_ACTIVE_RULES,
-  KEY_BOT_CONTEXT_BLOCKS_CONFIG
+  KEY_BOT_CONTEXT_BLOCKS_CONFIG,
+  KEY_LEAD_FOLLOWUP_MODE
 } from "@/lib/admin/system-settings-server";
 
 export const dynamic = "force-dynamic";
@@ -51,7 +52,8 @@ const WRITABLE_KEYS: ReadonlySet<string> = new Set<string>([
   KEY_BOT_DAILY_OUTBOUND_LIMIT, // number >= 0
   KEY_BOT_PAUSED_GLOBAL,         // boolean
   KEY_BOT_MAX_ACTIVE_RULES,      // number >= 0
-  KEY_BOT_CONTEXT_BLOCKS_CONFIG  // object (json)
+  KEY_BOT_CONTEXT_BLOCKS_CONFIG, // object (json)
+  KEY_LEAD_FOLLOWUP_MODE         // off | shadow | live
 ]);
 
 /**
@@ -80,6 +82,11 @@ function validateValueForKey(key: string, value: unknown): string | null {
     case KEY_BOT_CONTEXT_BLOCKS_CONFIG:
       if (value === null || typeof value !== "object" || Array.isArray(value)) {
         return `'${key}' debe ser un objeto JSON (no array, no null).`;
+      }
+      return null;
+    case KEY_LEAD_FOLLOWUP_MODE:
+      if (value !== "off" && value !== "shadow" && value !== "live") {
+        return `'${key}' solo acepta off, shadow o live.`;
       }
       return null;
     default:
