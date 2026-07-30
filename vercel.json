@@ -8,10 +8,6 @@
     {
       "path": "/api/cron/survey-reminders",
       "schedule": "0 5 * * *"
-    },
-    {
-      "path": "/api/cron/lead-followup",
-      "schedule": "0 * * * *"
     }
   ],
   "alias": [

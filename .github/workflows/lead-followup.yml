@@ -1,0 +1,28 @@
+name: Lead follow-up scheduler
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ejecutar seguimiento en producción
+        env:
+          LEAD_FOLLOWUP_CRON_SECRET: ${{ secrets.LEAD_FOLLOWUP_CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          status="$(curl --silent --show-error --output response.json --write-out '%{http_code}' \
+            --request GET \
+            --header "Authorization: Bearer ${LEAD_FOLLOWUP_CRON_SECRET}" \
+            https://www.qlick.digital/api/cron/lead-followup)"
+          cat response.json
+          case "$status" in
+            2??) ;;
+            *) echo "lead-followup returned HTTP $status" >&2; exit 1 ;;
+          esac

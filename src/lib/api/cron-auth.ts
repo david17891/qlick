@@ -31,6 +31,13 @@ export interface CronAuthFail {
 }
 export type CronAuthResult = CronAuthOk | CronAuthFail;
 
+export interface StrictCronAuthMissing {
+  ok: false;
+  status: 503;
+  error: "cron_secret_missing";
+}
+export type StrictCronAuthResult = CronAuthOk | CronAuthFail | StrictCronAuthMissing;
+
 /**
  * Lee el header `authorization` y compara con `Bearer <CRON_SECRET>`.
  *
@@ -46,6 +53,26 @@ export function checkCronAuth(req: Request): CronAuthResult {
   const auth = req.headers.get("authorization") ?? "";
   const expected = `Bearer ${cronSecret}`;
   if (auth !== expected) {
+    return { ok: false, status: 401, error: "unauthorized" };
+  }
+  return { ok: true };
+}
+
+/**
+ * Auth estricta para schedulers externos que deben fallar cerrado.
+ * No reutiliza el fallback dev-friendly de `checkCronAuth`, porque un
+ * workflow externo sin secreto podría disparar envíos proactivos.
+ */
+export function checkStrictCronAuth(
+  req: Request,
+  envKey: string,
+): StrictCronAuthResult {
+  const cronSecret = process.env[envKey];
+  if (!cronSecret) {
+    return { ok: false, status: 503, error: "cron_secret_missing" };
+  }
+  const auth = req.headers.get("authorization") ?? "";
+  if (auth !== `Bearer ${cronSecret}`) {
     return { ok: false, status: 401, error: "unauthorized" };
   }
   return { ok: true };

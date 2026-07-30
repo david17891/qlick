@@ -1,14 +1,14 @@
 /** Cron de recuperación de leads comerciales dentro de la ventana WhatsApp. */
 
 import { NextResponse } from "next/server";
-import { checkCronAuth } from "@/lib/api/cron-auth";
+import { checkStrictCronAuth } from "@/lib/api/cron-auth";
 import { runLeadFollowupJob } from "@/lib/cron/lead-followup";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
-  const authResult = checkCronAuth(req);
+  const authResult = checkStrictCronAuth(req, "LEAD_FOLLOWUP_CRON_SECRET");
   if (!authResult.ok) {
     return NextResponse.json(
       { ok: false, error: authResult.error },

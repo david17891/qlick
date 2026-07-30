@@ -17,7 +17,7 @@
 import { test, before, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
-import { checkCronAuth } from "../src/lib/api/cron-auth.ts";
+import { checkCronAuth, checkStrictCronAuth } from "../src/lib/api/cron-auth.ts";
 
 /* ─────────────────────────────────────────────────────────────
  * Helpers
@@ -56,6 +56,26 @@ test("CRON_SECRET no seteada → pasa (modo dev)", () => {
   const req = mockRequest(); // sin Authorization
   const result = checkCronAuth(req);
   assert.equal(result.ok, true);
+});
+
+test("scheduler dedicado sin secreto devuelve 503 fail-closed", () => {
+  delete process.env.LEAD_FOLLOWUP_CRON_SECRET;
+  const result = checkStrictCronAuth(mockRequest(), "LEAD_FOLLOWUP_CRON_SECRET");
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.status, 503);
+    assert.equal(result.error, "cron_secret_missing");
+  }
+});
+
+test("scheduler dedicado valida Bearer con su propio secreto", () => {
+  process.env.LEAD_FOLLOWUP_CRON_SECRET = "lead_followup_test_secret";
+  const result = checkStrictCronAuth(
+    mockRequest({ authorization: "Bearer lead_followup_test_secret" }),
+    "LEAD_FOLLOWUP_CRON_SECRET",
+  );
+  assert.equal(result.ok, true);
+  delete process.env.LEAD_FOLLOWUP_CRON_SECRET;
 });
 
 test("CRON_SECRET no seteada + Authorization random → pasa (modo dev)", () => {
