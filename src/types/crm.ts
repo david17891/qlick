@@ -301,6 +301,8 @@ export interface Conversation {
   /** Etapa comercial real del lead, separada del estado de la conversación. */
   leadStatus?: LeadStatus;
   leadIntent?: LeadIntent;
+  consentToContact?: boolean;
+  nextFollowUpAt?: string | null;
   attention?: ConversationAttention;
   lastInboundAt?: string | null;
   whatsappWindow?: ConversationWhatsAppWindow;

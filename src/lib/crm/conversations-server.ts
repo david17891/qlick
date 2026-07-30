@@ -102,6 +102,7 @@ interface LeadLiteRow {
   intent?: LeadIntent;
   tags?: string[] | null;
   next_follow_up_at?: string | null;
+  consent_to_contact?: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -198,6 +199,8 @@ function applyConversationSignals(
   const session = getWhatsAppSessionWindow(lastInbound?.at ?? null);
   conv.leadStatus = lead?.status;
   conv.leadIntent = lead?.intent;
+  conv.consentToContact = lead?.consent_to_contact;
+  conv.nextFollowUpAt = lead?.next_follow_up_at ?? null;
   conv.lastInboundAt = lastInbound?.at ?? null;
   conv.whatsappWindow = session.state;
   conv.whatsappWindowOpenUntil = session.openUntil;
@@ -237,7 +240,7 @@ export async function listRealConversations(): Promise<Conversation[]> {
   const { data: leadsLite, error: leadsErr } = await supabase
     .from("leads")
     .select(
-      "id, name, phone, status, intent, tags, next_follow_up_at, archived_conversations_at, last_read_at",
+      "id, name, phone, status, intent, tags, consent_to_contact, next_follow_up_at, archived_conversations_at, last_read_at",
     )
     .not("phone", "is", null);
 

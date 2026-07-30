@@ -8,6 +8,7 @@ export interface LeadLifecycleInput {
   body: string;
   awaitingField?: "name" | "email" | null;
   eventSlug?: string | null;
+  now?: Date;
 }
 
 export interface LeadLifecycleDecision {
@@ -46,6 +47,9 @@ export function decideLeadLifecycle(input: LeadLifecycleInput): LeadLifecycleDec
   const body = input.body.trim();
   const eventTag = input.eventSlug ? `event:${input.eventSlug}:registration_started` : null;
   const registrationPending = Boolean(input.awaitingField) || input.botIntent === "provide_name";
+  const now = input.now ?? new Date();
+  const registrationFollowUpAt = new Date(now.getTime() + 60 * 60 * 1000).toISOString();
+  const paymentFollowUpAt = new Date(now.getTime() + 4 * 60 * 60 * 1000).toISOString();
 
   if (input.botIntent === "opt_out") {
     return {
@@ -82,7 +86,7 @@ export function decideLeadLifecycle(input: LeadLifecycleInput): LeadLifecycleDec
       status: "payment_pending",
       intent: "payment_help",
       tagsToAdd: eventTag ? [eventTag, "registration:payment_pending"] : ["registration:payment_pending"],
-      nextFollowUpAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      nextFollowUpAt: paymentFollowUpAt,
       reason: "El lead avanzó hasta el paso de pago.",
     };
   }
@@ -93,7 +97,7 @@ export function decideLeadLifecycle(input: LeadLifecycleInput): LeadLifecycleDec
       status: "interested",
       intent: "enroll_course",
       tagsToAdd: tag,
-      nextFollowUpAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      nextFollowUpAt: registrationFollowUpAt,
       reason: registrationPending
         ? "El lead inició el registro y todavía falta un dato."
         : "El lead expresó intención de inscribirse.",
@@ -107,6 +111,26 @@ export function decideLeadLifecycle(input: LeadLifecycleInput): LeadLifecycleDec
       tagsToAdd: addTag([], "conversation:info_requested"),
       nextFollowUpAt: null,
       reason: "Pidió información, pero no inició una inscripción.",
+    };
+  }
+
+  if (input.currentStatus === "payment_pending") {
+    return {
+      status: "payment_pending",
+      intent: input.currentIntent === "unknown" ? "payment_help" : input.currentIntent,
+      tagsToAdd: [],
+      nextFollowUpAt: paymentFollowUpAt,
+      reason: "El lead sigue en pago pendiente y se reprograma la ayuda dentro de la ventana.",
+    };
+  }
+
+  if (input.currentStatus === "interested") {
+    return {
+      status: "interested",
+      intent: input.currentIntent === "unknown" ? "enroll_course" : input.currentIntent,
+      tagsToAdd: [],
+      nextFollowUpAt: registrationFollowUpAt,
+      reason: "El lead sigue interesado y se reprograma la ayuda de registro.",
     };
   }
 

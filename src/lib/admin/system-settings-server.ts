@@ -66,6 +66,9 @@ export const KEY_BOT_PAUSED_GLOBAL = "bot_paused_global" as const;
 // Default 50 envíos/día en pruebas. Si se supera, el bot-engine
 // bloquea plantillas fuera de ventana y alerta en la UI.
 export const KEY_BOT_DAILY_OUTBOUND_LIMIT = "bot_daily_outbound_limit" as const;
+// Seguimiento comercial de leads dentro de la ventana de servicio de WhatsApp.
+// Valores admitidos: off (default), shadow (solo medir), live (enviar).
+export const KEY_LEAD_FOLLOWUP_MODE = "lead_followup_mode" as const;
 
 /**
  * Sprint v16 Hotfix #3: SSOT del tipo del modo global del bot.

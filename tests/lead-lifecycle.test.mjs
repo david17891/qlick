@@ -28,11 +28,13 @@ test("lead lifecycle: separa información concreta de un saludo aislado", () => 
 });
 
 test("lead lifecycle: inscripción inicia una oportunidad y seguimiento", () => {
+  const now = new Date("2026-07-30T12:00:00.000Z");
   const result = decideLeadLifecycle({
     ...base,
     currentStatus: "info_requested",
     botIntent: "interactive_event_inscribir",
     body: "Quiero apartar mi lugar",
+    now,
   });
 
   assert.equal(result.status, "interested");
@@ -41,7 +43,21 @@ test("lead lifecycle: inscripción inicia una oportunidad y seguimiento", () => 
     "event:las-4-patas:registration_started",
     "registration:incomplete",
   ]);
-  assert.ok(result.nextFollowUpAt);
+  assert.equal(result.nextFollowUpAt, "2026-07-30T13:00:00.000Z");
+});
+
+test("lead lifecycle: pago pendiente reprograma ayuda a cuatro horas", () => {
+  const result = decideLeadLifecycle({
+    ...base,
+    currentStatus: "payment_pending",
+    currentIntent: "payment_help",
+    botIntent: "question",
+    body: "Gracias, lo reviso",
+    now: new Date("2026-07-30T12:00:00.000Z"),
+  });
+
+  assert.equal(result.status, "payment_pending");
+  assert.equal(result.nextFollowUpAt, "2026-07-30T16:00:00.000Z");
 });
 
 test("lead lifecycle: un acuse no cierra un registro que espera datos", () => {

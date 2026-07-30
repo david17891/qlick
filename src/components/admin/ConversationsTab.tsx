@@ -77,6 +77,8 @@ interface GlobalPauseStatus {
   bot_paused_global: boolean;
 }
 
+type LeadFollowupMode = "off" | "shadow" | "live";
+
 const POLL_INTERVAL_MS = 4000;
 const SCROLL_BOTTOM_THRESHOLD_PX = 100;
 
@@ -120,6 +122,29 @@ function windowLabel(value: Conversation["whatsappWindow"]): string {
   return "WhatsApp: sin ventana";
 }
 
+function followupLabel(conv: Conversation): string | null {
+  if (!conv.nextFollowUpAt) return null;
+  const followupAt = Date.parse(conv.nextFollowUpAt);
+  if (!Number.isFinite(followupAt)) return null;
+  if (followupAt <= Date.now()) return "Seguimiento automático pendiente";
+  return `Seguimiento ${new Date(followupAt).toLocaleString("es-MX", {
+    dateStyle: "short",
+    timeStyle: "short",
+  })}`;
+}
+
+function followupTone(conv: Conversation): "info" | "warning" {
+  if (!conv.nextFollowUpAt) return "info";
+  return Date.parse(conv.nextFollowUpAt) <= Date.now() ? "warning" : "info";
+}
+
+function followupModeLabel(mode: LeadFollowupMode | "unknown"): string {
+  if (mode === "shadow") return "shadow (solo medir)";
+  if (mode === "live") return "activo";
+  if (mode === "off") return "apagado";
+  return "no disponible";
+}
+
 /* ------------------------------------------------------------------ */
 /*  Componente                                                          */
 /* ------------------------------------------------------------------ */
@@ -153,6 +178,7 @@ export function ConversationsTab() {
   // ===== Pausa global (M4) =====
   const [botPausedGlobal, setBotPausedGlobal] = useState(false);
   const [togglingGlobal, setTogglingGlobal] = useState(false);
+  const [leadFollowupMode, setLeadFollowupMode] = useState<LeadFollowupMode | "unknown">("unknown");
 
   // ===== Realtime / polling (X4, M1) =====
   // FIX 2026-07-12 (auditoría v16 #R1): un solo AbortController compartido
@@ -545,6 +571,26 @@ export function ConversationsTab() {
     void fetchGlobalPause();
   }, [fetchGlobalPause]);
 
+  const fetchLeadFollowupMode = useCallback(async () => {
+    try {
+      const res = await safeFetch("/api/admin/system-setting?key=lead_followup_mode");
+      const json = (await res.json()) as { ok?: boolean; value?: unknown };
+      if (!json.ok) return;
+      const value = json.value;
+      if (value === "off" || value === "shadow" || value === "live") {
+        setLeadFollowupMode(value);
+      } else {
+        setLeadFollowupMode("off");
+      }
+    } catch {
+      // La etiqueta conserva "no disponible" si el endpoint no responde.
+    }
+  }, [safeFetch]);
+
+  useEffect(() => {
+    void fetchLeadFollowupMode();
+  }, [fetchLeadFollowupMode]);
+
   const handleToggleGlobal = useCallback(async () => {
     setTogglingGlobal(true);
     try {
@@ -615,22 +661,30 @@ export function ConversationsTab() {
       {/* ========== Panel izquierdo: lista de leads ========== */}
       <Card className="flex flex-col overflow-hidden">
         <CardHeader className="flex items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-ink">Conversaciones</h3>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-semibold text-ink">Conversaciones</h3>
+            <Badge
+              tone={leadFollowupMode === "live" ? "success" : leadFollowupMode === "shadow" ? "info" : "neutral"}
+              title="Seguimiento automático: solo envía dentro de la ventana de WhatsApp y con consentimiento."
+            >
+              Seguimiento: {followupModeLabel(leadFollowupMode)}
+            </Badge>
+          </div>
           <Button
-            type="button"
-            size="sm"
-            variant={botPausedGlobal ? "danger" : "outline"}
-            onClick={() => void handleToggleGlobal()}
-            disabled={togglingGlobal}
-            aria-pressed={botPausedGlobal}
-            title={
-              botPausedGlobal
-                ? "Bot pausado para todos los leads (manual_global)"
-                : "Bot respondiendo a todos los leads"
-            }
-          >
-            {botPausedGlobal ? "⚠️ Reanudar Bot IA Global" : "🤖 Pausar Bot (Todos los Leads)"}
-          </Button>
+              type="button"
+              size="sm"
+              variant={botPausedGlobal ? "danger" : "outline"}
+              onClick={() => void handleToggleGlobal()}
+              disabled={togglingGlobal}
+              aria-pressed={botPausedGlobal}
+              title={
+                botPausedGlobal
+                  ? "Bot pausado para todos los leads (manual_global)"
+                  : "Bot respondiendo a todos los leads"
+              }
+            >
+              {botPausedGlobal ? "⚠️ Reanudar Bot IA Global" : "🤖 Pausar Bot (Todos los Leads)"}
+            </Button>
         </CardHeader>
         <CardBody className="flex-1 overflow-y-auto p-0">
           {loadingList && conversations.length === 0 ? (
@@ -720,6 +774,12 @@ export function ConversationsTab() {
                           CRM: {leadStatusLabel[c.leadStatus]}
                         </Badge>
                       )}
+                      {c.consentToContact === false && (
+                        <Badge tone="danger">Sin consentimiento</Badge>
+                      )}
+                      {followupLabel(c) && (
+                        <Badge tone={followupTone(c)}>{followupLabel(c)}</Badge>
+                      )}
                     </div>
                     <p className="text-[10px] text-ink-muted mt-1">
                       {c.updatedAt ? new Date(c.updatedAt).toLocaleString("es-MX") : "—"}
@@ -754,6 +814,14 @@ export function ConversationsTab() {
                     {selectedConv.leadStatus && (
                       <Badge tone={statusTone[selectedConv.leadStatus]}>
                         CRM: {leadStatusLabel[selectedConv.leadStatus]}
+                      </Badge>
+                    )}
+                    {selectedConv.consentToContact === false && (
+                      <Badge tone="danger">Sin consentimiento</Badge>
+                    )}
+                    {followupLabel(selectedConv) && (
+                      <Badge tone={followupTone(selectedConv)}>
+                        {followupLabel(selectedConv)}
                       </Badge>
                     )}
                     <span
