@@ -23,8 +23,12 @@ import { checkSupabaseConfig } from "@/lib/supabase/health";
 import type {
   Conversation,
   ConversationMessage,
+  ConversationAttention,
   ConversationStatus,
+  LeadIntent,
+  LeadStatus,
 } from "@/types/crm";
+import { getWhatsAppSessionWindow } from "@/lib/whatsapp/session-window";
 
 /* ------------------------------------------------------------------ */
 /* Tipos de filas crudas (DB schema, snake_case)                       */
@@ -94,6 +98,10 @@ interface LeadLiteRow {
   archived_conversations_at?: string | null;
   last_read_at?: string | null;
   phone: string | null;
+  status?: LeadStatus;
+  intent?: LeadIntent;
+  tags?: string[] | null;
+  next_follow_up_at?: string | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -140,6 +148,10 @@ function whatsappRowToMessage(row: WhatsAppConvRow): ConversationMessage {
     body,
     author: row.direction === "inbound" ? "Lead" : "Qlick",
     messageType: row.message_type,
+    metadata:
+      row.metadata && typeof row.metadata === "object"
+        ? (row.metadata as Record<string, unknown>)
+        : undefined,
     aiSuggested: false,
     at: row.created_at,
   };
@@ -156,6 +168,44 @@ function interactionRowToMessage(row: LeadInteractionRow): ConversationMessage {
     aiSuggested: false,
     at: row.created_at,
   };
+}
+
+function inferAttention(
+  conversationStatus: ConversationStatus,
+  leadStatus: LeadStatus | undefined,
+  lastMessage: ConversationMessage | undefined,
+): ConversationAttention {
+  if (leadStatus === "payment_pending") return "payment_pending";
+  if (
+    lastMessage?.direction === "outbound" &&
+    (lastMessage.metadata?.awaiting_field === "name" ||
+      lastMessage.metadata?.awaiting_field === "email")
+  ) {
+    return "registration_incomplete";
+  }
+  if (conversationStatus === "waiting_reply") return "needs_reply";
+  if (conversationStatus === "resolved") return "cold";
+  return "waiting_lead";
+}
+
+function applyConversationSignals(
+  conv: Conversation,
+  lead: LeadLiteRow | undefined,
+): void {
+  const lastInbound = [...conv.messages]
+    .reverse()
+    .find((message) => message.direction === "inbound");
+  const session = getWhatsAppSessionWindow(lastInbound?.at ?? null);
+  conv.leadStatus = lead?.status;
+  conv.leadIntent = lead?.intent;
+  conv.lastInboundAt = lastInbound?.at ?? null;
+  conv.whatsappWindow = session.state;
+  conv.whatsappWindowOpenUntil = session.openUntil;
+  conv.attention = inferAttention(
+    conv.status,
+    lead?.status,
+    conv.messages[conv.messages.length - 1],
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -186,7 +236,9 @@ export async function listRealConversations(): Promise<Conversation[]> {
   //    (b) alimentar el indicador 🟢 "no leído" en la UI.
   const { data: leadsLite, error: leadsErr } = await supabase
     .from("leads")
-    .select("id, name, phone, archived_conversations_at, last_read_at")
+    .select(
+      "id, name, phone, status, intent, tags, next_follow_up_at, archived_conversations_at, last_read_at",
+    )
     .not("phone", "is", null);
 
   if (leadsErr) {
@@ -288,6 +340,8 @@ export async function listRealConversations(): Promise<Conversation[]> {
         leadName: matchedLead?.name ?? matchedLead?.phone ?? row.phone_normalized,
         leadPhone: matchedLead?.phone ?? row.phone_normalized,
         lastReadAt: matchedLead?.last_read_at ?? null,
+        leadStatus: matchedLead?.status,
+        leadIntent: matchedLead?.intent,
         channel: "whatsapp",
         status: "open",
         updatedAt: row.created_at,
@@ -317,6 +371,8 @@ export async function listRealConversations(): Promise<Conversation[]> {
         status: "open",
         updatedAt: row.created_at,
         messages: [],
+        leadStatus: leadsById.get(row.lead_id)?.status,
+        leadIntent: leadsById.get(row.lead_id)?.intent,
       } as Conversation);
     conv.messages.push(interactionRowToMessage(row));
     if (new Date(row.created_at).getTime() > new Date(conv.updatedAt).getTime()) {
@@ -343,6 +399,7 @@ export async function listRealConversations(): Promise<Conversation[]> {
     );
     const lastMsg = conv.messages[conv.messages.length - 1];
     conv.status = inferStatus(lastMsg?.direction ?? null, lastMsg?.at ?? null);
+    applyConversationSignals(conv, leadsById.get(conv.leadId));
     // Si la conversación no tiene leadId (caso phone fallback), no la
     // devolvemos — no podemos mostrarla en el CRM sin un lead.
     if (conv.leadId) {

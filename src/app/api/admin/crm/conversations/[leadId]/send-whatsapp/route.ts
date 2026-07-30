@@ -37,6 +37,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { logAdminAction } from "@/lib/crm/audit-server";
 import { getActiveWhatsAppProvider } from "@/lib/whatsapp";
 import { normalizePhone } from "@/lib/crm/phone-utils";
+import { getWhatsAppSessionWindow } from "@/lib/whatsapp/session-window";
 
 interface RouteParams {
   params: { leadId: string };
@@ -44,6 +45,9 @@ interface RouteParams {
 
 interface RequestBody {
   body?: string;
+  /** Solo para plantillas aprobadas de Meta cuando la ventana está cerrada. */
+  templateName?: string;
+  templateLanguage?: string;
 }
 
 const UUID_LIKE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -82,6 +86,14 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   }
 
   const messageBody = typeof body.body === "string" ? body.body.trim() : "";
+  const templateName =
+    typeof body.templateName === "string" && body.templateName.trim().length > 0
+      ? body.templateName.trim()
+      : undefined;
+  const templateLanguage =
+    typeof body.templateLanguage === "string" && body.templateLanguage.trim().length > 0
+      ? body.templateLanguage.trim()
+      : undefined;
   if (messageBody.length === 0) {
     return NextResponse.json(
       { ok: false, error: "body vacío." },
@@ -131,6 +143,42 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     );
   }
 
+  // Meta solo permite texto libre dentro de las 24 horas posteriores al
+  // último mensaje entrante del usuario. No intentamos enviar a ciegas:
+  // fuera de ventana el admin debe usar una plantilla aprobada.
+  const { data: lastInboundRow, error: lastInboundErr } = await supabase
+    .from("lead_whatsapp_conversations" as never)
+    .select("created_at" as never)
+    .eq("lead_id" as never, params.leadId)
+    .eq("direction" as never, "inbound")
+    .is("deleted_at" as never, null)
+    .order("created_at" as never, { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (lastInboundErr) {
+    return NextResponse.json(
+      { ok: false, error: `No se pudo verificar la ventana de WhatsApp: ${lastInboundErr.message}` },
+      { status: 500 },
+    );
+  }
+  const session = getWhatsAppSessionWindow(
+    (lastInboundRow as { created_at?: string } | null)?.created_at ?? null,
+  );
+  if (session.state !== "open" && !templateName) {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "WHATSAPP_24H_WINDOW_CLOSED",
+        error:
+          session.state === "closed"
+            ? "La ventana de WhatsApp de 24 horas ya cerró. Usa una plantilla aprobada de Meta para reabrir el contacto."
+            : "No hay un mensaje entrante reciente para abrir la ventana de WhatsApp. Usa una plantilla aprobada de Meta.",
+        whatsappWindow: session,
+      },
+      { status: 409 },
+    );
+  }
+
   // 2. Enviar por WhatsApp vía provider activo.
   const provider = getActiveWhatsAppProvider();
   let sendResult: {
@@ -141,7 +189,12 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     note: string;
   };
   try {
-    sendResult = await provider.send({ to: phone, body: messageBody });
+    sendResult = await provider.send({
+      to: phone,
+      body: messageBody,
+      templateName,
+      templateLanguage,
+    });
   } catch (err) {
     sendResult = {
       ok: false,
@@ -168,6 +221,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
           actor_email: admin.email ?? "unknown",
           provider: sendResult.provider,
           demo: sendResult.demo ?? false,
+          templateName: templateName ?? null,
+          templateLanguage: templateLanguage ?? null,
         },
       } as never)
       .select("id")
@@ -217,6 +272,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       demo: sendResult.demo ?? false,
       externalId: sendResult.externalId ?? null,
       messageId: persistedMessageId,
+      whatsappWindow: session,
       error: sendResult.ok ? undefined : sendResult.note,
     },
     { status: sendResult.ok ? 200 : 502 },

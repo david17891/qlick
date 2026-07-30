@@ -40,6 +40,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { Card, CardBody, CardHeader, Badge, Button, Input } from "@/components/ui";
 import { MessageCircle } from "lucide-react";
 import { buildDirectWhatsAppLink, buildLeadOutreachMessage } from "@/lib/contact/whatsapp";
+import { leadStatusLabel, statusTone } from "@/lib/crm/lead-utils";
 import type { Conversation, ConversationMessage } from "@/types/crm";
 
 /* ------------------------------------------------------------------ */
@@ -78,6 +79,46 @@ interface GlobalPauseStatus {
 
 const POLL_INTERVAL_MS = 4000;
 const SCROLL_BOTTOM_THRESHOLD_PX = 100;
+
+function attentionLabel(value: Conversation["attention"]): string {
+  switch (value) {
+    case "needs_reply":
+      return "Responder ahora";
+    case "registration_incomplete":
+      return "Registro incompleto";
+    case "payment_pending":
+      return "Pago pendiente";
+    case "cold":
+      return "Sin respuesta";
+    case "resolved":
+      return "Resuelta";
+    default:
+      return "Esperando al lead";
+  }
+}
+
+function attentionTone(
+  value: Conversation["attention"],
+): "neutral" | "info" | "success" | "warning" | "danger" {
+  switch (value) {
+    case "needs_reply":
+      return "danger";
+    case "registration_incomplete":
+      return "warning";
+    case "payment_pending":
+      return "warning";
+    case "cold":
+      return "neutral";
+    default:
+      return "info";
+  }
+}
+
+function windowLabel(value: Conversation["whatsappWindow"]): string {
+  if (value === "open") return "WhatsApp abierta 24 h";
+  if (value === "closed") return "WhatsApp cerrada";
+  return "WhatsApp: sin ventana";
+}
 
 /* ------------------------------------------------------------------ */
 /*  Componente                                                          */
@@ -670,6 +711,16 @@ export function ConversationsTab() {
                         {lastMsg.body.slice(0, 60)}
                       </p>
                     )}
+                    <div className="flex flex-wrap items-center gap-1 mt-2">
+                      <Badge tone={attentionTone(c.attention)}>
+                        {attentionLabel(c.attention)}
+                      </Badge>
+                      {c.leadStatus && (
+                        <Badge tone={statusTone[c.leadStatus]}>
+                          CRM: {leadStatusLabel[c.leadStatus]}
+                        </Badge>
+                      )}
+                    </div>
                     <p className="text-[10px] text-ink-muted mt-1">
                       {c.updatedAt ? new Date(c.updatedAt).toLocaleString("es-MX") : "—"}
                     </p>
@@ -695,6 +746,33 @@ export function ConversationsTab() {
                 <p className="text-sm font-semibold text-ink">
                   Chat con: {selectedConv?.leadName || selectedConv?.leadPhone || `Lead ${selectedLeadId.slice(0, 8)}`}
                 </p>
+                {selectedConv && (
+                  <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                    <Badge tone={attentionTone(selectedConv.attention)}>
+                      {attentionLabel(selectedConv.attention)}
+                    </Badge>
+                    {selectedConv.leadStatus && (
+                      <Badge tone={statusTone[selectedConv.leadStatus]}>
+                        CRM: {leadStatusLabel[selectedConv.leadStatus]}
+                      </Badge>
+                    )}
+                    <span
+                      className={
+                        "text-[11px] " +
+                        (selectedConv.whatsappWindow === "open"
+                          ? "text-emerald-700"
+                          : "text-amber-700")
+                      }
+                      title={
+                        selectedConv.whatsappWindowOpenUntil
+                          ? `Válida hasta ${new Date(selectedConv.whatsappWindowOpenUntil).toLocaleString("es-MX")}`
+                          : undefined
+                      }
+                    >
+                      {windowLabel(selectedConv.whatsappWindow)}
+                    </span>
+                  </div>
+                )}
                 {selectedLeadId && botPauseByLead[selectedLeadId]?.bot_paused && (
                   <Badge tone="warning" className="mt-1">
                     ⏸️ Bot pausado
