@@ -33,6 +33,7 @@ import {
   LEAD_FOLLOWUP_MAX_PER_RUN,
   LEAD_FOLLOWUP_RETRY_DELAY_MS,
   normalizeLeadFollowupMode,
+  getPendingRegistrationField,
   type LeadFollowupMode,
   type LeadFollowupDecision,
 } from "../whatsapp/lead-followup";
@@ -135,11 +136,6 @@ function isManualOutbound(row: ConversationRow | null): boolean {
   return metadata.manual === true || metadata.ui_source === "conversations_panel";
 }
 
-function awaitingField(row: ConversationRow | null): "name" | "email" | null {
-  const value = metadataOf(row?.metadata).awaiting_field;
-  return value === "name" || value === "email" ? value : null;
-}
-
 async function claimLead(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
   lead: LeadFollowupRow,
@@ -175,10 +171,18 @@ function decisionForLead(
   lead: LeadFollowupRow,
   rows: ConversationRow[],
   now: Date,
-): { decision: LeadFollowupDecision; last: ConversationRow | null; lastInbound: ConversationRow | null; lastOutbound: ConversationRow | null; count: number } {
+): {
+  decision: LeadFollowupDecision;
+  last: ConversationRow | null;
+  lastInbound: ConversationRow | null;
+  lastOutbound: ConversationRow | null;
+  count: number;
+  awaitingField: "name" | "email" | null;
+} {
   const sinceMs = now.getTime() - 24 * 60 * 60 * 1000;
   const latest = latestRows(rows);
   const count = rows.filter((row) => isFollowupMessage(row, sinceMs)).length;
+  const pendingRegistrationField = getPendingRegistrationField(rows);
   const decision = decideLeadFollowup({
     name: lead.name,
     status: lead.status as LeadStatus,
@@ -190,11 +194,11 @@ function decisionForLead(
     lastInboundAt: latest.lastInbound?.created_at ?? null,
     lastMessageDirection: latest.last?.direction ?? null,
     lastOutboundManual: isManualOutbound(latest.lastOutbound),
-    awaitingField: awaitingField(latest.lastOutbound),
+    awaitingField: pendingRegistrationField,
     sentCountInWindow: count,
     now,
   });
-  return { decision, ...latest, count };
+  return { decision, ...latest, count, awaitingField: pendingRegistrationField };
 }
 
 function shouldClearDueFollowup(reason: string): boolean {
@@ -246,7 +250,9 @@ export async function runLeadFollowupJob(now = new Date()): Promise<LeadFollowup
     .from("leads")
     .select("id, name, phone, phone_normalized, status, intent, tags, consent_to_contact, bot_paused, next_follow_up_at")
     .in("status", ["interested", "payment_pending"])
-    .eq("consent_to_contact", true)
+    // Una inscripcion iniciada es un seguimiento transaccional dentro de la
+    // ventana de servicio; la politica pura descarta los leads sin señal de
+    // registro y conserva el bloqueo de bajas explicitas.
     .eq("bot_paused", false)
     .not("next_follow_up_at", "is", null)
     .lte("next_follow_up_at", now.toISOString())
@@ -290,7 +296,14 @@ export async function runLeadFollowupJob(now = new Date()): Promise<LeadFollowup
       incrementReason(result, "phone_missing");
       continue;
     }
-    const { decision, last, lastInbound, lastOutbound, count } = decisionForLead(
+    const {
+      decision,
+      last,
+      lastInbound,
+      lastOutbound,
+      count,
+      awaitingField: pendingRegistrationField,
+    } = decisionForLead(
       lead,
       rowsByLead.get(lead.id) ?? [],
       now,
@@ -362,7 +375,7 @@ export async function runLeadFollowupJob(now = new Date()): Promise<LeadFollowup
           auto_sent_source: "lead_followup",
           followup_stage: decision.stage,
           followup_number: decision.followupNumber,
-          awaiting_field: awaitingField(lastOutbound),
+          awaiting_field: pendingRegistrationField,
         },
       } as never);
     if (persistError) result.failed++;

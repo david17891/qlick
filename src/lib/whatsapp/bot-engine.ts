@@ -82,7 +82,15 @@ const OUTBOUND_COUNT_CACHE_TTL_MS = 60_000;
 // para el prompt Súper Ejecutivo. Se calcula con prioridad price>descripción>unknown.
 import { classifyEventType, loadCoursesCatalogBlock } from "../ai/event-context-loader";
 import { stripGreetingIfHasHistory, isAckOnly } from "./safety-net";
-import { decideLeadLifecycle } from "./lead-lifecycle";
+import {
+  decideLeadLifecycle,
+  type LeadLifecycleDecision,
+  type LeadLifecycleInput,
+} from "./lead-lifecycle";
+import {
+  getPendingRegistrationField,
+  hasTransactionalRegistrationSignal,
+} from "./lead-followup";
 import { extractEmailFromText } from "./email-extract";
 import { getAIAgentProfile } from "../crm/agent-utils";
 import {
@@ -1617,6 +1625,70 @@ async function persistConversation(
     return null;
   }
   return (data as { id?: string } | null)?.id ?? null;
+}
+
+/** Sincroniza la etapa CRM para todos los caminos que reciben un inbound. */
+async function syncLeadLifecycle(
+  supabase: SupabaseAdmin,
+  lead: Lead,
+  input: Pick<LeadLifecycleInput, "botIntent" | "body" | "awaitingField" | "eventSlug">,
+): Promise<LeadLifecycleDecision> {
+  const lifecycle = decideLeadLifecycle({
+    currentStatus: lead.status,
+    currentIntent: lead.intent,
+    ...input,
+  });
+  const existingTags = lead.tags ?? [];
+  const nextTags = Array.from(new Set([...existingTags, ...lifecycle.tagsToAdd]));
+  const currentNextFollowUpAt = lead.nextFollowUpAt ?? null;
+  const shouldUpdate =
+    lifecycle.status !== lead.status ||
+    lifecycle.intent !== lead.intent ||
+    nextTags.length !== existingTags.length ||
+    currentNextFollowUpAt !== lifecycle.nextFollowUpAt;
+
+  if (!shouldUpdate || !lead.id) return lifecycle;
+
+  const { error: lifecycleErr } = await supabase
+    .from("leads")
+    .update({
+      status: lifecycle.status,
+      intent: lifecycle.intent,
+      tags: nextTags,
+      next_follow_up_at: lifecycle.nextFollowUpAt,
+    })
+    .eq("id", lead.id);
+  if (lifecycleErr) {
+    errorLog("[whatsapp/bot] lead lifecycle update failed", {
+      leadId: lead.id,
+      code: lifecycleErr.code,
+      requestedStatus: lifecycle.status,
+    });
+  } else {
+    lead.status = lifecycle.status;
+    lead.intent = lifecycle.intent;
+    lead.tags = nextTags;
+    lead.nextFollowUpAt = lifecycle.nextFollowUpAt ?? undefined;
+    debugLog("[whatsapp/bot] lead lifecycle updated", {
+      leadId: lead.id,
+      status: lifecycle.status,
+      reason: lifecycle.reason,
+    });
+  }
+  return lifecycle;
+}
+
+function eventSlugFromConversation(
+  messages: Array<{ direction: "inbound" | "outbound"; metadata: Record<string, unknown> | null }>,
+): string | null {
+  for (const message of [...messages].reverse()) {
+    if (message.direction !== "inbound") continue;
+    const buttonId = message.metadata?.buttonId;
+    if (typeof buttonId !== "string") continue;
+    const match = buttonId.match(/^evt_(?:info|inscribir)_(.+)$/);
+    if (match?.[1]) return match[1];
+  }
+  return null;
 }
 
 /**
@@ -5833,7 +5905,7 @@ export async function processInboundMessage(
   // tanto la rama `if (message.buttonId)` como el override 3.0 (fuera
   // del if/else) tengan acceso. No leemos del await de completion (lo
   // hace cada handler con `args.surveyState`).
-  const earlyWindowGlobal = await loadConversationWindow(phoneNormalized, 4).catch(
+  const earlyWindowGlobal = await loadConversationWindow(phoneNormalized, 8).catch(
     () => undefined
   );
   const lastOutboundGlobal = earlyWindowGlobal?.messages
@@ -5852,10 +5924,12 @@ export async function processInboundMessage(
       survey_questions?: SurveyQuestion[] | null;
     } | null) ?? null;
 
-  const pendingRegistrationField =
-    (lastOutboundGlobal?.metadata as {
-      awaiting_field?: "name" | "email" | null;
-    } | null)?.awaiting_field ?? null;
+  const pendingRegistrationField = getPendingRegistrationField(
+    earlyWindowGlobal?.messages ?? [],
+  );
+  const registrationEventSlugFromHistory = eventSlugFromConversation(
+    earlyWindowGlobal?.messages ?? [],
+  );
 
   debugLog("[whatsapp/bot] wizardStateGlobal loaded", {
     hasLastOutbound: !!lastOutboundGlobal,
@@ -5886,12 +5960,33 @@ export async function processInboundMessage(
   if (
     body &&
     !wizardStateGlobal?.awaiting_survey_step &&
-    !pendingRegistrationField &&
     isAckOnly(body)
   ) {
-    const ackBody =
-      "¡Con gusto! Aquí sigo pendiente por si te surge cualquier otra duda sobre el taller. " +
-      "Si en algún momento quieres inscribirte, dime el nombre y correo y te aparto tu lugar.";
+    const registrationInProgress =
+      Boolean(pendingRegistrationField) ||
+      lead.status === "interested" ||
+      lead.status === "payment_pending" ||
+      hasTransactionalRegistrationSignal(lead.tags);
+    const registrationField =
+      pendingRegistrationField ??
+      (registrationInProgress && lead.status !== "payment_pending" ? "name" : null);
+
+    if (registrationInProgress && supabase && lead.id) {
+      await syncLeadLifecycle(supabase, lead, {
+        botIntent: "question",
+        body,
+        awaitingField: registrationField,
+        eventSlug: registrationEventSlugFromHistory,
+      });
+    }
+
+    const ackBody = registrationInProgress
+      ? lead.status === "payment_pending"
+        ? "¡Claro! Tu lugar sigue reservado. Si quieres, te reenvío el enlace de pago para completar tu inscripción."
+        : registrationField === "email"
+          ? "¡Claro! Para completar tu registro, solo me falta tu correo. Mándamelo cuando quieras y seguimos."
+          : "¡Claro! Para apartar tu lugar, solo me falta tu nombre completo. Mándamelo cuando quieras y seguimos."
+      : "¡Con gusto! Aquí sigo pendiente por si te surge cualquier otra duda sobre el taller. Si quieres inscribirte, dime y te ayudo.";
 
     const provider = getActiveWhatsAppProvider();
     let ackSend: { ok: boolean; externalId?: string; demo?: boolean } = {
@@ -5918,7 +6013,8 @@ export async function processInboundMessage(
         whatsapp_message_id: ackSend.externalId ?? null,
         metadata: {
           trigger: "ack_only_handler",
-          source_input: body
+          source_input: body,
+          ...(registrationField ? { awaiting_field: registrationField } : {}),
         }
       }).catch((err) => {
         errorLog("[whatsapp/bot] ack-handler persistConversation threw", {
@@ -6562,50 +6658,12 @@ export async function processInboundMessage(
   // leads del bot permanecían en `new` aunque ya hubieran pedido información
   // o iniciado un registro. La decisión es pura y la persistencia best-effort.
   if (supabase && lead.id) {
-    const lifecycle = decideLeadLifecycle({
-      currentStatus: lead.status,
-      currentIntent: lead.intent,
+    await syncLeadLifecycle(supabase, lead, {
       botIntent: intent,
       body,
       awaitingField: pendingRegistrationField,
       eventSlug: requestedEventSlug,
     });
-    const existingTags = lead.tags ?? [];
-    const nextTags = Array.from(new Set([...existingTags, ...lifecycle.tagsToAdd]));
-    const shouldUpdate =
-      lifecycle.status !== lead.status ||
-      lifecycle.intent !== lead.intent ||
-      nextTags.length !== existingTags.length ||
-      lifecycle.nextFollowUpAt !== null;
-    if (shouldUpdate) {
-      const { error: lifecycleErr } = await supabase
-        .from("leads")
-        .update({
-          status: lifecycle.status,
-          intent: lifecycle.intent,
-          tags: nextTags,
-          ...(lifecycle.nextFollowUpAt
-            ? { next_follow_up_at: lifecycle.nextFollowUpAt }
-            : {}),
-        })
-        .eq("id", lead.id);
-      if (lifecycleErr) {
-        errorLog("[whatsapp/bot] lead lifecycle update failed", {
-          leadId: lead.id,
-          code: lifecycleErr.code,
-          requestedStatus: lifecycle.status,
-        });
-      } else {
-        lead.status = lifecycle.status;
-        lead.intent = lifecycle.intent;
-        lead.tags = nextTags;
-        debugLog("[whatsapp/bot] lead lifecycle updated", {
-          leadId: lead.id,
-          status: lifecycle.status,
-          reason: lifecycle.reason,
-        });
-      }
-    }
   }
 
   // 4.5 FIX 2026-07-02 (Commit A): si el intent es provide_name, persistir

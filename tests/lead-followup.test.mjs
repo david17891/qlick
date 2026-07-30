@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildLeadFollowupBody,
   decideLeadFollowup,
+  getPendingRegistrationField,
   getNextLeadFollowupAt,
   normalizeLeadFollowupMode,
 } from "../src/lib/whatsapp/lead-followup.ts";
@@ -57,10 +58,35 @@ test("followup: saludo o información no se convierte en seguimiento comercial",
   assert.equal(result.reason, "not_a_followup_stage");
 });
 
-test("followup: no envía sin consentimiento explícito", () => {
+test("followup: permite completar una inscripción sin consentimiento de marketing", () => {
   const result = decideLeadFollowup(base({ consentToContact: false }));
+  assert.equal(result.eligible, true);
+  assert.equal(result.reason, "eligible");
+});
+
+test("followup: no envía sin consentimiento ni señal de registro", () => {
+  const result = decideLeadFollowup(
+    base({ consentToContact: false, tags: ["conversation:info_requested"] }),
+  );
   assert.equal(result.eligible, false);
   assert.equal(result.reason, "consent_missing");
+});
+
+test("followup: recupera el campo pendiente aunque el último acuse no lo repita", () => {
+  const field = getPendingRegistrationField([
+    { direction: "outbound", metadata: { awaiting_field: "name" } },
+    { direction: "inbound", metadata: null },
+    { direction: "outbound", metadata: { trigger: "ack_only_handler" } },
+  ]);
+  assert.equal(field, "name");
+});
+
+test("followup: un estado explícito nulo cierra el campo anterior", () => {
+  const field = getPendingRegistrationField([
+    { direction: "outbound", metadata: { awaiting_field: "name" } },
+    { direction: "outbound", metadata: { awaiting_field: null } },
+  ]);
+  assert.equal(field, null);
 });
 
 test("followup: no envía cuando la ventana de 24 horas está cerrada", () => {
