@@ -100,7 +100,10 @@ export function AdminView(
       t === "alumnos" ||
       t === "inscripciones" ||
       t === "pagos" ||
+      t === "pedidos" ||
+      t === "servicios" ||
       t === "crm" ||
+      t === "conversations" ||
       t === "bot" ||
       t === "futuro"
     ) {
@@ -113,6 +116,24 @@ export function AdminView(
   const [user, setUser] = useState<User | null>(null);
   const [ready, setReady] = useState(false);
   const [tab, setTab] = useState<Tab>(initialTab);
+  const [pendingServicesCount, setPendingServicesCount] = useState<number>(0);
+
+  useEffect(() => {
+    async function checkPendingServices() {
+      try {
+        const res = await fetch("/api/admin/orders?status=pending_contact");
+        const data = await res.json();
+        if (data.ok && typeof data.total === "number") {
+          setPendingServicesCount(data.total);
+        }
+      } catch {
+        // silent fallback
+      }
+    }
+    void checkPendingServices();
+    const interval = setInterval(() => void checkPendingServices(), 12000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const realMode = isSupabaseConfigured();
@@ -236,39 +257,85 @@ export function AdminView(
             Hola, {adminEmail ? adminEmail.split("@")[0] : user?.name?.split(" ")[0] ?? "admin"}
           </h1>
         </div>
-        <Badge tone={user?.role === "admin" ? "brand" : "info"}>
-          {(user?.role ?? "admin").toUpperCase()}
-        </Badge>
+        <div className="flex items-center gap-2">
+          {pendingServicesCount > 0 && (
+            <button
+              onClick={() => setTab("servicios")}
+              className="inline-flex items-center gap-1.5 rounded-full border-2 border-red-400 bg-red-600 px-3.5 py-1 text-xs font-black text-white animate-pulse shadow-md transition hover:bg-red-700 active:scale-95"
+            >
+              <span>🚨 {pendingServicesCount} Cita(s) / Atención Pendiente</span>
+            </button>
+          )}
+          <Badge tone={user?.role === "admin" ? "brand" : "info"}>
+            {(user?.role ?? "admin").toUpperCase()}
+          </Badge>
+        </div>
       </div>
 
       {/* Tabs */}
       <div className="flex flex-wrap items-center gap-2 mb-8 border-b border-brand-100 pb-3 overflow-x-auto">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={
-              "px-4 py-2 rounded-full text-sm font-semibold transition whitespace-nowrap " +
-              (tab === t.id
-                ? "bg-brand-500 text-white"
-                : "text-ink-soft hover:bg-brand-50")
-            }
-          >
-            <LucideIcon icon={t.icon} size="sm" tone="inherit" className="mr-1.5" />
-            {t.label}
-          </button>
-        ))}
+        {tabs.map((t) => {
+          const isServices = t.id === "servicios" || t.id === "pedidos";
+          const isActive = tab === t.id || (isServices && tab === "servicios");
+          return (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={
+                "px-4 py-2 rounded-full text-sm font-semibold transition whitespace-nowrap flex items-center gap-1.5 " +
+                (isActive
+                  ? "bg-brand-500 text-white shadow-sm"
+                  : "text-ink-soft hover:bg-brand-50")
+              }
+            >
+              <LucideIcon icon={t.icon} size="sm" tone="inherit" />
+              <span>{t.label}</span>
+              {isServices && pendingServicesCount > 0 && (
+                <span className="ml-1 inline-flex items-center justify-center rounded-full bg-red-600 px-2 py-0.5 text-xs font-black text-white animate-pulse shadow-md">
+                  🚨 {pendingServicesCount}
+                </span>
+              )}
+            </button>
+          );
+        })}
         <Link
           href="/admin/eventos"
           className="ml-auto px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap text-ink-soft hover:bg-brand-50 border border-brand-200"
         >
           <LucideIcon icon={Ticket} size="sm" tone="inherit" className="inline mr-1.5" /> Eventos →
         </Link>
-        {/* FIX 2026-07-11 (Sprint v15 PR #1): el botón legacy "🧠 Bot v2 →"
-            se eliminó. Ahora el toggle del bot vive dentro de la pestaña
-            "🤖 Configuración Bot" (tab id "bot") que renderiza <BotConfigTab />.
-            El badge ON/OFF se muestra en el header del BotConfigTab. */}
       </div>
+
+      {/* Banner de Urgencia Global para Citas / Servicios Pendientes */}
+      {pendingServicesCount > 0 && tab !== "servicios" && (
+        <button
+          onClick={() => setTab("servicios")}
+          className="w-full mb-8 text-left flex flex-wrap items-center justify-between gap-4 rounded-2xl border-2 border-red-400 bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 p-4.5 text-white shadow-xl transition hover:scale-[1.005] active:scale-[0.99] group"
+        >
+          <div className="flex items-center gap-3.5">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/20 text-2xl font-black animate-bounce shadow-inner">
+              🚨
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-white/25 px-2.5 py-0.5 text-[11px] font-black tracking-wider uppercase">
+                  Atención Requerida
+                </span>
+                <span className="text-xs font-semibold text-red-100">
+                  {pendingServicesCount} {pendingServicesCount === 1 ? "cita o solicitud urgente" : "citas o solicitudes urgentes"}
+                </span>
+              </div>
+              <h3 className="font-display text-base font-extrabold mt-0.5">
+                Tienes {pendingServicesCount} {pendingServicesCount === 1 ? "cita o contacto de servicio pendiente de atender" : "citas o contactos de servicio pendientes de atender"}
+              </h3>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-extrabold text-red-700 shadow-md group-hover:bg-red-50 transition">
+            <span>Entrar a Servicios ahora</span>
+            <span>→</span>
+          </div>
+        </button>
+      )}
 
       {/* ----------------------- RESUMEN ----------------------- */}
       {tab === "resumen" && (
