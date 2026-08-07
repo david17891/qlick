@@ -350,18 +350,28 @@ function InfoTab({
     <div className="space-y-6">
       {/* Alarma de Urgencia para citas y solicitudes pendientes */}
       {isUrgent && (
-        <div className="flex items-start gap-3 rounded-2xl border-2 border-amber-400 bg-amber-50/90 p-4 text-amber-950 shadow-md">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white font-bold text-lg animate-pulse">
-            🚨
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-amber-400 bg-amber-50/90 p-4 text-amber-950 shadow-md">
+          <div className="flex items-start gap-3 flex-1 min-w-[240px]">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white font-bold text-lg animate-pulse">
+              🚨
+            </div>
+            <div>
+              <h4 className="font-display text-sm font-extrabold uppercase tracking-wider text-amber-900">
+                Alarma de Urgencia — Cita / Contacto Pendiente
+              </h4>
+              <p className="mt-1 text-xs leading-relaxed text-amber-800">
+                El prospecto solicitó agendar o ser contactado. Da seguimiento por WhatsApp lo antes posible.
+              </p>
+            </div>
           </div>
-          <div className="flex-1">
-            <h4 className="font-display text-sm font-extrabold uppercase tracking-wider text-amber-900">
-              Alarma de Urgencia — Cita / Contacto Pendiente
-            </h4>
-            <p className="mt-1 text-xs leading-relaxed text-amber-800">
-              El prospecto solicitó agendar o ser contactado. Da seguimiento por WhatsApp lo antes posible para no perder la conversión.
-            </p>
-          </div>
+          <Button
+            size="sm"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+            onClick={() => onChangeStatus("contacted")}
+            disabled={saving}
+          >
+            ✓ Marcar Contactado (Desactivar Alarma)
+          </Button>
         </div>
       )}
 

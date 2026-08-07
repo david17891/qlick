@@ -10,7 +10,7 @@ import {
   type OrderStatus,
 } from "@/types/services";
 import type { ServiceOrderListItem } from "@/lib/services";
-import { Search, MessageCircle } from "lucide-react";
+import { Search, MessageCircle, Trash2, Check } from "lucide-react";
 
 /**
  * Tab "Pedidos" del admin.
@@ -95,6 +95,37 @@ export function OrdersTab() {
   function closeDrawer() {
     setDrawerOpen(false);
     setDrawerOrderId(null);
+  }
+
+  async function handleQuickStatus(id: string, newStatus: OrderStatus) {
+    try {
+      const res = await fetch(`/api/admin/orders/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        void fetchOrders();
+      }
+    } catch {
+      // quiet
+    }
+  }
+
+  async function handleDeleteOrder(id: string, orderNumber: string) {
+    if (!window.confirm(`¿Borrar el pedido ${orderNumber} de prueba definitivamente?`)) return;
+    try {
+      const res = await fetch(`/api/admin/orders/${id}?hard=true`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (data.ok) {
+        void fetchOrders();
+      }
+    } catch {
+      // quiet
+    }
   }
 
   return (
@@ -189,6 +220,7 @@ export function OrdersTab() {
                   <th className="px-4 py-3">Estado</th>
                   <th className="px-4 py-3">Pago</th>
                   <th className="px-4 py-3">Creado</th>
+                  <th className="px-4 py-3 text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-brand-50">
@@ -251,6 +283,30 @@ export function OrdersTab() {
                     </td>
                     <td className="px-4 py-3 text-xs text-ink-muted">
                       {formatDate(o.createdAt)}
+                    </td>
+                    <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                        {o.status === "pending_contact" && (
+                          <button
+                            type="button"
+                            onClick={() => void handleQuickStatus(o.id, "contacted")}
+                            className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-700 active:scale-95"
+                            title="Desactivar alarma y marcar como contactado"
+                          >
+                            <Check className="h-3 w-3" />
+                            <span>Contactado</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteOrder(o.id, o.orderNumber)}
+                          className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-100 active:scale-95"
+                          title="Eliminar pedido de prueba definitivamente"
+                        >
+                          <Trash2 className="h-3 w-3 text-red-600" />
+                          <span>Borrar</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

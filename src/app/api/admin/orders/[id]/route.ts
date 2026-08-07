@@ -98,7 +98,7 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { id: string } },
 ) {
   if (!checkSupabaseConfig().configured) {
@@ -113,6 +113,26 @@ export async function DELETE(
       { ok: false, error: "No autenticado como admin." },
       { status: 401 },
     );
+  }
+
+  const url = new URL(req.url);
+  const isHard = url.searchParams.get("hard") === "true" || url.searchParams.get("hard") === "1";
+
+  if (isHard) {
+    const supabase = createSupabaseAdminClient();
+    // Limpieza en cascada de notas, eventos y documentos si existen
+    await supabase.from("service_order_notes").delete().eq("order_id", params.id);
+    await supabase.from("service_order_events").delete().eq("order_id", params.id);
+    await supabase.from("service_order_documents").delete().eq("order_id", params.id);
+    const { error: deleteError } = await supabase.from("service_orders").delete().eq("id", params.id);
+
+    if (deleteError) {
+      return NextResponse.json(
+        { ok: false, error: deleteError.message },
+        { status: 500 },
+      );
+    }
+    return NextResponse.json({ ok: true, note: "Pedido eliminado definitivamente." });
   }
 
   // Soft delete: marcar como cancelled con razón "Pedido eliminado por admin".
