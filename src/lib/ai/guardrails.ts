@@ -177,27 +177,33 @@ export function sanitizeLLMOutput(rawText: string): string {
   // 2. Prefijos o etiquetas en corchetes
   text = text.replace(/^\[(?:Pensamiento|Análisis|Analysis|Thinking|Reasoning|Nota interna)[^\]]*\]\s*/gi, "");
 
-  // 3. Remoción robusta en ciclo de cualquier preámbulo meta-analítico ("El lead escribió...", "El usuario dijo...", "El cliente...")
-  const metaStartPattern = /^(?:El\s+(?:lead|usuario|prospecto|cliente)\s+(?:escribió|escribio|dijo|preguntó|pregunto|respondió|respondio|mandó|mando|envió|envio|hizo|mencionó|mencion|pidió|pidio|se\s+comunicó|ingresó|ingreso))/i;
-
-  while (metaStartPattern.test(text)) {
-    const newlineIndex = text.indexOf("\n");
-    if (newlineIndex !== -1) {
-      text = text.slice(newlineIndex + 1).trim();
-    } else {
-      // Si la línea no tiene salto de línea pero tiene un saludo posterior (ej. "El lead dijo ol. ¡Hola! ¿Te quedaste...?")
-      const greetingMatch = text.match(/(¡?Hola|Buenas?|Qué tal|Excelente|Genial)/i);
-      if (greetingMatch && greetingMatch.index && greetingMatch.index > 0) {
-        text = text.slice(greetingMatch.index).trim();
-      } else {
-        break;
-      }
+  // 3. Remoción robusta por párrafos de todo meta-razonamiento / auto-instrucción inicial
+  const isMetaParagraph = (p: string): boolean => {
+    const l = p.trim();
+    if (!l) return false;
+    // Párrafos que arrancan con análisis de intención ("El lead pregunta...", "El usuario dice...", "Respondo directo...")
+    if (/^(?:El\s+(?:lead|usuario|prospecto|cliente)|Respondo|Respuesta:|Análisis:|Razonamiento:|Diagnóstico:|Estrategia:|Pensamiento:)/i.test(l)) {
+      return true;
     }
+    // Párrafos donde el LLM resume internamente lo que dirá sin ser el mensaje final directo al usuario
+    if (/^El curso (?:es|trabaja|ofrece|consta)/i.test(l) && !/(?:¡?Hola|¿|Te invito|Aparta|Reserva|Confirma|Escríbeme)/i.test(l)) {
+      return true;
+    }
+    return false;
+  };
+
+  const paragraphs = text.split(/\n+/);
+  let startIdx = 0;
+  while (startIdx < paragraphs.length && isMetaParagraph(paragraphs[startIdx])) {
+    startIdx++;
   }
 
-  // 4. Prefijos directos de sección ("Análisis:", "Razonamiento:", "Respuesta:")
-  text = text.replace(/^(?:Análisis|Razonamiento|Pensamiento|Diagnóstico|Estrategia):\s*[^\n]*\n*/gi, "");
-  text = text.replace(/^Respuesta:\s*/gi, "");
+  if (startIdx < paragraphs.length) {
+    text = paragraphs.slice(startIdx).join("\n\n");
+  }
+
+  // 4. Limpieza secundaria de prefijos de sección
+  text = text.replace(/^(?:Análisis|Razonamiento|Pensamiento|Diagnóstico|Estrategia|Respuesta):\s*/gi, "");
 
   return text.trim();
 }

@@ -1402,7 +1402,7 @@ const REGISTER_PHRASE_RE = /\b(quiero\s+inscribirme|me\s+interesa\s+(inscribirme
  * Detección de consultas sobre Servicios B2B / Agencia Qlick (diseño web, anuncios, servicios, etc.).
  * Si matchea, redirige a `intent="question"` para que el LLM responda con el catálogo de servicios de agencia.
  */
-const SERVICE_INQUIRY_RE = /\b(servicios?|agencia|dise[nñ]o\s+web|sitio\s+web|publicidad(?:\s+pagada)?|meta\s+ads|facebook\s+ads|google\s+(?:ads|business)|consultor[ií]a|desarrollo\s+web|embudos?)\b/i;
+const SERVICE_INQUIRY_RE = /\b(servicios?|agencia|dise[nñ]o\s+web|sitio\s+web|p[aá]ginas?\s+web|publicidad(?:\s+pagada)?|meta\s+ads|facebook\s+ads|google\s+(?:ads|business)|consultor[ií]a|desarrollo\s+web|embudos?|cotiza(?:ci[oó]n|r)?)\b/i;
 
 /**
  * FIX 2026-07-02 (sesion David, "Si tras pregunta cerrada"): heurística
@@ -4685,12 +4685,16 @@ case "interactive_event_inscribir": {
       // estén disponibles en todo el case (también post-AgentResult para
       // `validateAgentReply` con `isFreeEvent`).
       const eventRules = activeEvent?.eventRules?.rules ?? [];
-      const eventOfferType: import("../ai/agent-provider").EventOfferType = activeEvent
+      let eventOfferType: import("../ai/agent-provider").EventOfferType = activeEvent
         ? classifyEventType({
             description: activeEvent.description,
             format: activeEvent.format
           })
         : "unknown";
+
+      if (SERVICE_INQUIRY_RE.test(body)) {
+        eventOfferType = "b2b_service";
+      }
       const isFreeEvent = eventOfferType === "free_masterclass";
       // FIX 2026-07-25 (sprint "activar ai_bot_rules en el bot real"):
       // cargar las Reglas de Oro Globales AHORA (después de conocer el

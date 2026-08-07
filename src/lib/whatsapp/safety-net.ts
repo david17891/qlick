@@ -49,25 +49,23 @@
  * residuo "a Qlick." que quedaba antes.
  */
 const GREETING_PATTERNS: readonly RegExp[] = [
-  // 1. "Hola, ..." / "Buenas tardes, ..." / "Qué tal, ..." / "Hi, ..." / "Hello, ..."
-  /^\s*(hola|buen[oa]s\s+(d[ií]as|tardes|noches)|qué tal|hi|hello)[,.\s]*/i,
+  // 1. "¡Hola Por!" (con admiración y nombre explícito de 2-20 letras)
+  /^\s*¡?\s*hola[¡!.,\s]+[A-ZÁÉÍÓÚa-záéíóú]{2,20}!\s*/i,
 
-  // 2. "Hola Por, ..." / "Hola David, ..." (presentación con nombre)
-  /^\s*hola[,\s]+[^,.\n]{1,30}[,.\s]*/i,
+  // 2. "¡Hola! ..." / "Hola, ..." / "Buenas tardes, ..." (saludo sin nombre)
+  /^\s*¡?\s*(hola|buen[oa]s\s+(d[ií]as|tardes|noches)|qué tal|hi|hello)[!?,.\s]*/i,
 
-  // 3. "Por, gracias por escribir a Qlick..." (sin Hola, con nombre).
-  // FIX 2026-07-04: aceptar opcionalmente " a Qlick" / " al equipo" después del verbo.
+  // 3. "Hola Por, ..." / "Hola David, ..." (presentación con nombre y coma/espacio)
+  /^\s*¡?\s*hola[,\s]+[A-ZÁÉÍÓÚa-záéíóú]{2,20}[,.\s]*/i,
+
+  // 4. "Por, gracias por escribir a Qlick..." (sin Hola, con nombre)
   /^\s*[A-Z][a-záéíóú]+,\s*gracias por (escribir|contactarnos|comunicarte)(?:\s+(?:a|al)\s+\w+)?[,.\s]*/i,
 
-  // 4. "gracias por escribir a Qlick..." (sin nombre).
-  // FIX 2026-07-04: aceptar opcionalmente " a Qlick" / " al equipo" después del verbo.
+  // 5. "gracias por escribir a Qlick..." (sin nombre)
   /^\s*gracias por (escribir|contactarnos|comunicarte)(?:\s+(?:a|al)\s+\w+)?[,.\s]*/i,
 
-  // 5. "Soy Qlick, asistente..." (presentación del bot sin saludo)
+  // 6. "Soy Qlick, asistente..." (presentación del bot sin saludo)
   /^\s*soy\s+qlick[,\s]+asistente.*?[.\n]/i,
-
-  // 6. "¡Hola Por!" (con admiración al inicio, sin coma)
-  /^\s*¡?\s*hola[¡!.,\s]+[^¡!.,\n]{1,30}!?\s*/i
 ];
 
 /**
