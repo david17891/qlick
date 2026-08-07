@@ -101,9 +101,9 @@ export function OrdersTab() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="font-display text-2xl font-bold text-ink">Pedidos</h2>
+          <h2 className="font-display text-2xl font-bold text-ink">Servicios</h2>
           <p className="mt-1 text-sm text-ink-muted">
-            {total} {total === 1 ? "pedido" : "pedidos"} en total
+            {total} {total === 1 ? "solicitud / pedido" : "solicitudes / pedidos"} en total
           </p>
         </div>
         <button

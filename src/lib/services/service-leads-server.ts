@@ -57,7 +57,7 @@ export async function captureServiceInterest(
     // 2. Buscar lead por teléfono normalizado
     const { data: existingLead } = await supabase
       .from("leads")
-      .select("id, status, tags, name")
+      .select("id, status, tags, name, email")
       .or(`phone_normalized.eq.${input.phoneNormalized},phone.eq.${input.phoneNormalized}`)
       .limit(1)
       .maybeSingle();
@@ -198,6 +198,28 @@ export async function captureServiceInterest(
     );
 
     const taskId = taskResult.ok && taskResult.task ? taskResult.task.id : null;
+
+    // 5.5 Crear registro en service_orders para seguimiento unificado en la pestaña Servicios
+    if (serviceId) {
+      try {
+        const { createOrder } = await import("./orders-server.ts");
+        await createOrder(
+          {
+            serviceSlug: input.serviceSlug,
+            variantSlug: input.variantSlug || "",
+            customerName: input.leadName?.trim() || existingLead?.name || "Por confirmar",
+            customerEmail: existingLead?.email || "",
+            customerPhone: input.phoneNormalized,
+            customerNotes: `Solicitado por WhatsApp. Necesidad: ${input.needSummary}. Horario: ${input.preferredContactTime || "No especificado"}`,
+            leadId,
+            paymentMode: "pending",
+          },
+          "system@qlick"
+        );
+      } catch {
+        // best effort
+      }
+    }
 
     // 6. Notificación por correo al admin (best effort)
     let notificationSent = false;

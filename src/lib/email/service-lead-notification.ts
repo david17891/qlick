@@ -40,7 +40,8 @@ export async function sendServiceLeadNotificationToAdmin(
     const variant = input.variantSlug ? input.variantSlug : "No especificado";
     const contactTime = input.preferredContactTime ? input.preferredContactTime : "Sin preferencia expresada";
     const campaign = input.campaignKey ? input.campaignKey : "Orgánico / WhatsApp directo";
-    const crmLink = input.crmUrl ? input.crmUrl : "https://qlick.app/admin/crm";
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://qlick.app";
+    const crmLink = input.crmUrl ? input.crmUrl : `${siteUrl}/admin/dashboard?tab=servicios`;
 
     const isConfirmed = input.isAppointmentConfirmed === true;
     const subject = isConfirmed
@@ -81,7 +82,7 @@ export async function sendServiceLeadNotificationToAdmin(
           <tr><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">Campaña:</td><td style="padding: 8px; border-bottom: 1px solid #eee;">${escapeHtml(campaign)}</td></tr>
         </table>
         <p style="margin-top: 20px;">
-          <a href="${escapeHtml(crmLink)}" style="background: #4F46E5; color: #fff; padding: 10px 16px; text-decoration: none; border-radius: 6px; display: inline-block;">Abrir Lead en Panel CRM</a>
+          <a href="${escapeHtml(crmLink)}" style="background: #4F46E5; color: #fff; padding: 10px 16px; text-decoration: none; border-radius: 6px; display: inline-block;">Abrir Solicitud en Panel de Servicios</a>
         </p>
       </div>
     `;
