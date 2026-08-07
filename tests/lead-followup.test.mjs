@@ -5,6 +5,7 @@ import {
   decideLeadFollowup,
   getPendingRegistrationField,
   getNextLeadFollowupAt,
+  hasCompletedRegistrationSignal,
   normalizeLeadFollowupMode,
 } from "../src/lib/whatsapp/lead-followup.ts";
 
@@ -62,6 +63,19 @@ test("followup: permite completar una inscripción sin consentimiento de marketi
   const result = decideLeadFollowup(base({ consentToContact: false }));
   assert.equal(result.eligible, true);
   assert.equal(result.reason, "eligible");
+});
+
+test("followup: pago pendiente no continúa después de entregar el registro y QR", () => {
+  const result = decideLeadFollowup(
+    base({
+      status: "payment_pending",
+      intent: "payment_help",
+      tags: ["registration:payment_pending", "registration:complete"],
+    }),
+  );
+  assert.equal(result.eligible, false);
+  assert.equal(result.reason, "not_a_followup_stage");
+  assert.equal(hasCompletedRegistrationSignal(["registration:complete"]), true);
 });
 
 test("followup: no envía sin consentimiento ni señal de registro", () => {

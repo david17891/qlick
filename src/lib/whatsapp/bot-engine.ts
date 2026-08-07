@@ -60,7 +60,7 @@ import {
   recordAndCheckRateLimit
 } from "../ai";
 import { sendHumanHandoff } from "./human-handoff";
-import { mustEscalateToHuman, stripEscalateFlag } from "../ai/guardrails";
+import { mustEscalateToHuman, stripEscalateFlag, sanitizeLLMOutput } from "../ai/guardrails";
 // FIX 2026-07-12 (Sprint v16 PR #2.4, M4): helpers puros de matriz de
 // pausa y helpers de system_settings para leer los switches clave
 // (bot_paused_global, bot_daily_outbound_limit).
@@ -81,6 +81,7 @@ const OUTBOUND_COUNT_CACHE_TTL_MS = 60_000;
 // FIX 2026-07-11 (Sprint v15 PR #2.5b): clasificador del tipo de oferta
 // para el prompt Súper Ejecutivo. Se calcula con prioridad price>descripción>unknown.
 import { classifyEventType, loadCoursesCatalogBlock } from "../ai/event-context-loader";
+import { getServicesPromptBlock } from "../services/services-prompt-builder.ts";
 import { stripGreetingIfHasHistory, isAckOnly } from "./safety-net";
 import {
   decideLeadLifecycle,
@@ -1398,6 +1399,12 @@ const REGISTER_RE = /^(s[ií]|confirmo|inscribirme|registrarme|quiero|me interes
 const REGISTER_PHRASE_RE = /\b(quiero\s+inscribirme|me\s+interesa\s+(inscribirme|el\s+curso|el\s+evento|saber\s+m[aá]s)|inscribirme\s+al?\s+evento|c[oó]mo\s+me\s+inscribo)\b/i;
 
 /**
+ * Detección de consultas sobre Servicios B2B / Agencia Qlick (diseño web, anuncios, servicios, etc.).
+ * Si matchea, redirige a `intent="question"` para que el LLM responda con el catálogo de servicios de agencia.
+ */
+const SERVICE_INQUIRY_RE = /\b(servicios?|agencia|dise[nñ]o\s+web|sitio\s+web|publicidad(?:\s+pagada)?|meta\s+ads|facebook\s+ads|google\s+(?:ads|business)|consultor[ií]a|desarrollo\s+web|embudos?)\b/i;
+
+/**
  * FIX 2026-07-02 (sesion David, "Si tras pregunta cerrada"): heurística
  * para detectar si el bot acaba de hacer una pregunta CERRADA de
  * inscripción (sí/no). Si matchea, marcamos el outbound con metadata
@@ -1509,6 +1516,9 @@ export function detectIntent(
   if (lower === "no, gracias" || lower === "no gracias") return "opt_out";
   // Señales fuertes: siempre ganan, incluso en primer mensaje.
   if (OPT_OUT_RE.test(text)) return "opt_out";
+  // Servicios B2B: si el mensaje consulta sobre servicios, agencia, diseño web, etc.,
+  // redirigir directo a "question" (LLM) en vez del welcome de evento en vivo.
+  if (SERVICE_INQUIRY_RE.test(text)) return "question";
   // FIX 2026-07-02: respuestas afirmativas cortas (Si, Ok, Adelante, Va) en
   // medio de conversacion NO son register. Van al LLM para que mantenga
   // contexto. La excepcion (Si, quiero inscribirme) sigue siendo register
@@ -4730,6 +4740,7 @@ case "interactive_event_inscribir": {
           // prompt para que el Súper Ejecutivo tenga un producto real
           // cuando no hay eventos en vivo. Cache 5 min en memoria.
           coursesCatalogBlock: await loadCoursesCatalogBlock().catch(() => ""),
+          servicesCatalogBlock: await getServicesPromptBlock().catch(() => ""),
           conversationWindow,
           // Memoria larga persistente entre sesiones (lead_profile.summary).
           leadProfile: args.leadProfile ?? undefined,
@@ -4835,9 +4846,10 @@ case "interactive_event_inscribir": {
       // para nosotros — el lead NO debe verlo. Lo extrajimos arriba
       // (línea `intentFromLlm`) y loggeamos si difiere de welcome.
       // Aquí limpiamos el contenido que SÍ va al lead.
-      let content = stripEscalateFlag(result.content ?? "")
-        .replace(/^INTENT:\s*\w+.*$/m, "")
-        .trim();
+      let content = sanitizeLLMOutput(
+        stripEscalateFlag(result.content ?? "")
+          .replace(/^INTENT:\s*\w+.*$/m, "")
+      ).trim();
       if (!content) {
         content =
           "Disculpa, no pude procesar tu mensaje. ¿Me lo puedes reformular? Si necesitas atención personalizada escríbenos a hola@qlick.marketing.";

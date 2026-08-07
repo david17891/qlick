@@ -5,6 +5,7 @@ export const LEAD_FOLLOWUP_MAX_PER_WINDOW = 2;
 export const LEAD_FOLLOWUP_MAX_PER_RUN = 5;
 export const LEAD_FOLLOWUP_RETRY_DELAY_MS = 30 * 60 * 1000;
 export const LEAD_FOLLOWUP_CLAIM_DELAY_MS = 24 * 60 * 60 * 1000;
+export const LEAD_REGISTRATION_COMPLETE_TAG = "registration:complete";
 
 export const LEAD_FOLLOWUP_DELAYS_MS = {
   registration_incomplete: [60 * 60 * 1000, 6 * 60 * 60 * 1000],
@@ -13,6 +14,12 @@ export const LEAD_FOLLOWUP_DELAYS_MS = {
 
 export type LeadFollowupMode = "off" | "shadow" | "live";
 export type LeadFollowupStage = "registration_incomplete" | "payment_pending";
+
+export function hasCompletedRegistrationSignal(
+  tags: string[] | null | undefined,
+): boolean {
+  return (tags ?? []).includes(LEAD_REGISTRATION_COMPLETE_TAG);
+}
 
 export interface LeadFollowupInput {
   name?: string;
@@ -44,6 +51,7 @@ export interface LeadFollowupDecision {
     | "window_closed"
     | "lead_needs_bot_reply"
     | "manual_reply_pending"
+    | "registration_complete"
     | "max_attempts_reached";
   followupNumber: number | null;
   body: string | null;
@@ -109,6 +117,7 @@ function firstName(value: string | undefined): string {
 }
 
 function stageForInput(input: Pick<LeadFollowupInput, "status" | "intent" | "tags">): LeadFollowupStage | null {
+  if (hasCompletedRegistrationSignal(input.tags)) return null;
   if (input.status === "payment_pending") return "payment_pending";
   if (
     input.status === "interested" &&

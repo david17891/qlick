@@ -93,6 +93,20 @@ test("lead lifecycle: el handler de acuse conserva un registro pendiente", () =>
   assert.ok(result.nextFollowUpAt);
 });
 
+test("lead lifecycle: registro completo conserva pago pendiente pero cancela follow-up", () => {
+  const result = decideLeadLifecycle({
+    ...base,
+    currentStatus: "payment_pending",
+    currentIntent: "payment_help",
+    botIntent: "question",
+    body: "gracias",
+    registrationComplete: true,
+  });
+
+  assert.equal(result.status, "payment_pending");
+  assert.equal(result.nextFollowUpAt, null);
+});
+
 test("lead lifecycle: correo capturado deja el lead en pago pendiente", () => {
   const result = decideLeadLifecycle({
     ...base,

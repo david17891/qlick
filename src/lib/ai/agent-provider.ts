@@ -83,6 +83,13 @@ export interface AgentContext {
    * falsas. Generado por `loadCoursesCatalogBlock()` con cache de 5 min.
    */
   coursesCatalogBlock?: string;
+  /**
+   * Bloque del catálogo de servicios de agencia y consultoría B2B Qlick.
+   * Contiene los servicios activos, variantes, precios y protocolo de
+   * atención consultiva con agendamiento dual (al día siguiente 11 AM - 6 PM
+   * o escalación a especialista humano).
+   */
+  servicesCatalogBlock?: string;
   /** Ventana de últimos N mensajes del lead (memoria corta del bot). */
   conversationWindow?: import("./conversation-window").ConversationWindow;
   /** Perfil persistente del lead (memoria larga entre sesiones). */

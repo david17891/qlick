@@ -364,3 +364,39 @@ test("isAckOnly: null → false", () => {
 test("isAckOnly: undefined → false", () => {
   assert.equal(isAckOnly(undefined), false);
 });
+
+/* ─────────────────────────────────────────────────────────────
+ * sanitizeLLMOutput: previene fugas de razonamiento / meta-análisis
+ * ───────────────────────────────────────────────────────────── */
+
+test("sanitizeLLMOutput: remueve meta-análisis 'El lead escribió...' del inicio", async () => {
+  const { sanitizeLLMOutput } = await import("../src/lib/ai/guardrails.ts");
+  const leakedText = `El lead escribió "hol" (saludo incompleto/ambiguo). Es un saludo sin pregunta concreta, ya con historial. Respondo directo con opciones breves.
+
+¡Hola! ¿Te quedó alguna duda del curso o ya te animas a apartar tu lugar? Te recuerdo que puedes reservar con $500 y liquidar el resto el día del evento 🎯`;
+
+  const clean = sanitizeLLMOutput(leakedText);
+  assert.equal(
+    clean,
+    "¡Hola! ¿Te quedó alguna duda del curso o ya te animas a apartar tu lugar? Te recuerdo que puedes reservar con $500 y liquidar el resto el día del evento 🎯"
+  );
+});
+
+test("sanitizeLLMOutput: remueve bloques <think>...</think> de razonamiento", async () => {
+  const { sanitizeLLMOutput } = await import("../src/lib/ai/guardrails.ts");
+  const thinkText = `<think>El usuario pregunta sobre el curso de marketing. Debo ofrecer la masterclass.</think>¡Hola! Con gusto te paso la información de la masterclass.`;
+
+  const clean = sanitizeLLMOutput(thinkText);
+  assert.equal(
+    clean,
+    "¡Hola! Con gusto te paso la información de la masterclass."
+  );
+});
+
+test("sanitizeLLMOutput: remueve etiquetas de corchetes como [Pensamiento: ...]", async () => {
+  const { sanitizeLLMOutput } = await import("../src/lib/ai/guardrails.ts");
+  const bracketText = `[Pensamiento: El usuario quiere ayuda]\n\n¡Hola! ¿Cómo te puedo ayudar hoy?`;
+
+  const clean = sanitizeLLMOutput(bracketText);
+  assert.equal(clean, "¡Hola! ¿Cómo te puedo ayudar hoy?");
+});

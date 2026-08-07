@@ -53,3 +53,9 @@ export {
   type AddEventInput,
   type ServiceOrderListItem,
 } from "./orders-server";
+
+export {
+  formatServicesPromptBlock,
+  getServicesPromptBlock,
+} from "./services-prompt-builder";
+

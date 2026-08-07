@@ -15,6 +15,7 @@
  */
 
 import { sendEmail } from "./brevo-client";
+import { getAdminNotificationRecipients } from "./admin-recipients.ts";
 import { ORDER_STATUS_LABELS } from "@/types/services";
 import type { ServiceOrder } from "@/types/services";
 import { formatMXN } from "@/lib/utils";
@@ -23,15 +24,6 @@ export interface NotifyArgs {
   order: ServiceOrder;
   /** Email del admin que recibe la notificación. Default: ADMIN_NOTIFICATION_EMAILS. */
   to?: string | string[];
-}
-
-/** Lee ADMIN_NOTIFICATION_EMAILS de .env (CSV). Filtra vacíos. */
-function readAdminRecipients(): string[] {
-  const raw = process.env.ADMIN_NOTIFICATION_EMAILS ?? "";
-  return raw
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter((e) => e && e.includes("@"));
 }
 
 function escape(s: string): string {
@@ -52,7 +44,7 @@ export async function sendOrderNotificationToAdmin(
     ? Array.isArray(args.to)
       ? args.to
       : [args.to]
-    : readAdminRecipients();
+    : getAdminNotificationRecipients();
 
   if (recipients.length === 0) {
     // Sin admin recipients: skip silencioso (memory: notifications son

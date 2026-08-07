@@ -159,6 +159,50 @@ export function stripEscalateFlag(text: string): string {
 }
 
 /**
+ * Limpia cualquier meta-razonamiento, pensamiento de modelo (<think>),
+ * o párrafos introductorios de análisis interno que el LLM pudiera haber emitido
+ * antes del mensaje real para el lead.
+ *
+ * Previene fugas graves tipo:
+ *   'El lead escribió "hol" (saludo incompleto). Respondo directo...'
+ *   '<think>El usuario pregunta sobre el curso</think> ¡Hola!...'
+ */
+export function sanitizeLLMOutput(rawText: string): string {
+  if (!rawText) return "";
+  let text = rawText.trim();
+
+  // 1. Tag de razonamiento de DeepSeek / OpenAI (<think>...</think>)
+  text = text.replace(/<think>[\s\S]*?<\/think>/gi, "");
+
+  // 2. Prefijos o etiquetas en corchetes
+  text = text.replace(/^\[(?:Pensamiento|Análisis|Analysis|Thinking|Reasoning|Nota interna)[^\]]*\]\s*/gi, "");
+
+  // 3. Remoción robusta en ciclo de cualquier preámbulo meta-analítico ("El lead escribió...", "El usuario dijo...", "El cliente...")
+  const metaStartPattern = /^(?:El\s+(?:lead|usuario|prospecto|cliente)\s+(?:escribió|escribio|dijo|preguntó|pregunto|respondió|respondio|mandó|mando|envió|envio|hizo|mencionó|mencion|pidió|pidio|se\s+comunicó|ingresó|ingreso))/i;
+
+  while (metaStartPattern.test(text)) {
+    const newlineIndex = text.indexOf("\n");
+    if (newlineIndex !== -1) {
+      text = text.slice(newlineIndex + 1).trim();
+    } else {
+      // Si la línea no tiene salto de línea pero tiene un saludo posterior (ej. "El lead dijo ol. ¡Hola! ¿Te quedaste...?")
+      const greetingMatch = text.match(/(¡?Hola|Buenas?|Qué tal|Excelente|Genial)/i);
+      if (greetingMatch && greetingMatch.index && greetingMatch.index > 0) {
+        text = text.slice(greetingMatch.index).trim();
+      } else {
+        break;
+      }
+    }
+  }
+
+  // 4. Prefijos directos de sección ("Análisis:", "Razonamiento:", "Respuesta:")
+  text = text.replace(/^(?:Análisis|Razonamiento|Pensamiento|Diagnóstico|Estrategia):\s*[^\n]*\n*/gi, "");
+  text = text.replace(/^Respuesta:\s*/gi, "");
+
+  return text.trim();
+}
+
+/**
  * Sprint v15 PR #2 (N-NEW-1 / I-FINAL-11): contexto opcional de
  * `validateAgentReply` para afinar el filtro por tipo de oferta.
  *

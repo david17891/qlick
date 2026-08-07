@@ -1,4 +1,5 @@
 import type { LeadIntent, LeadStatus } from "@/types/crm";
+import { LEAD_REGISTRATION_COMPLETE_TAG } from "./lead-followup";
 
 /** Señal mínima que el bot puede convertir en una etapa comercial. */
 export interface LeadLifecycleInput {
@@ -8,6 +9,7 @@ export interface LeadLifecycleInput {
   body: string;
   awaitingField?: "name" | "email" | null;
   eventSlug?: string | null;
+  registrationComplete?: boolean;
   now?: Date;
 }
 
@@ -68,6 +70,16 @@ export function decideLeadLifecycle(input: LeadLifecycleInput): LeadLifecycleDec
       tagsToAdd: [],
       nextFollowUpAt: null,
       reason: "Se preserva una etapa terminal o de alumno.",
+    };
+  }
+
+  if (input.registrationComplete) {
+    return {
+      status: input.currentStatus,
+      intent: input.currentIntent,
+      tagsToAdd: [],
+      nextFollowUpAt: null,
+      reason: `El registro ya está completo (${LEAD_REGISTRATION_COMPLETE_TAG}).`,
     };
   }
 

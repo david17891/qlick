@@ -421,6 +421,8 @@ export interface CreateLeadServerInput {
   /** Se asume 'new' para inserts del formulario; el mapper lo impone. */
   intent?: Lead["intent"];
   source?: Lead["source"];
+  /** Tema seleccionado en el formulario público, visible como resumen en CRM. */
+  topic?: string;
   message?: string;
   /** Requerido: la política de RLS lo exige. */
   consentToContact: boolean;
@@ -489,6 +491,7 @@ export async function createLead(
     source: input.source ?? "website",
     intent: input.intent ?? "course_information",
     consent_to_contact: true,
+    summary: input.topic?.trim() || null,
     message: input.message?.trim() || null,
   };
 

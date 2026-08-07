@@ -14,6 +14,11 @@
  */
 
 import { createLead, type CreateLeadServerInput } from "@/lib/crm/leads-server";
+import { sendContactLeadNotificationToAdmin } from "@/lib/email/contact-lead-notification";
+
+export type SubmitLeadInput = CreateLeadServerInput & {
+  topic: string;
+};
 
 export type SubmitLeadState = {
   ok: boolean;
@@ -22,10 +27,11 @@ export type SubmitLeadState = {
   /** Compatibilidad con la UI existente (demo:true en modo mock). */
   demo: boolean;
   note: string;
+  notificationSent: boolean;
 };
 
 export async function submitLead(
-  input: CreateLeadServerInput,
+  input: SubmitLeadInput,
 ): Promise<SubmitLeadState> {
   // Defensa en profundidad: el checkbox del formulario ya impide llegar aquí
   // sin consentimiento, pero validamos de nuevo server-side.
@@ -35,14 +41,36 @@ export async function submitLead(
       persisted: false,
       demo: true,
       note: "Debes aceptar ser contactado para enviar el formulario.",
+      notificationSent: false,
     };
   }
 
   const result = await createLead(input);
+  if (!result.ok || !result.persisted) {
+    return {
+      ok: result.ok,
+      persisted: result.persisted,
+      demo: result.demo,
+      note: result.note,
+      notificationSent: false,
+    };
+  }
+
+  const notification = await sendContactLeadNotificationToAdmin({
+    leadId: result.leadId,
+    name: input.name,
+    email: input.email,
+    phone: input.phone,
+    topic: input.topic,
+    courseOfInterest: input.courseOfInterest,
+    message: input.message ?? "",
+  });
+
   return {
     ok: result.ok,
     persisted: result.persisted,
     demo: result.demo,
     note: result.note,
+    notificationSent: notification.ok,
   };
 }

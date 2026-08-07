@@ -88,10 +88,6 @@ export function ContactForm() {
 
     try {
       // Carga perezosa del provider (cliente).
-      const { getContactProvider } = await import("@/lib/contact");
-      const provider = getContactProvider();
-      const result = await provider.send(form);
-
       // Crea el lead: persiste en Supabase si está configurado, o cae a demo.
       // Server Action: el fallback demo/real lo decide el backend.
       const course = courses.find((c) => c.slug === form.courseSlug);
@@ -104,7 +100,8 @@ export function ContactForm() {
         intent: "course_information",
         source: "website",
         message: form.message,
-        consentToContact: true
+        consentToContact: true,
+        topic: form.topic
       });
 
       // Defensa en profundidad: si el server action reporta fallo del
@@ -122,7 +119,7 @@ export function ContactForm() {
           ? "Lead guardado en Supabase y disponible en el CRM."
           : leadResult.demo
             ? "Lead registrado en modo demo. En producción se guardará en el CRM y se asignará a ventas."
-            : result.note
+            : leadResult.note
       );
       setForm(initialForm);
     } catch (err) {

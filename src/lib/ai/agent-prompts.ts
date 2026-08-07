@@ -603,6 +603,23 @@ export function buildSuperExecutivePrompt(context: AgentContext): string {
     ...(context.coursesCatalogBlock
       ? [context.coursesCatalogBlock, ""]
       : []),
+    ...(context.servicesCatalogBlock
+      ? [
+          context.servicesCatalogBlock,
+          "",
+          [
+            "=== DIRECTIVAS DE DIFERENCIACIÓN (SERVICIOS B2B vs EVENTO ACTIVO) ===",
+            "⚠️ REGLA DURA (PRIORIDAD DE INTENCIÓN DE SERVICIOS B2B): Si el mensaje del lead menciona 'servicios', 'servicios de agencia', 'diseño web', 'sitio web', 'publicidad pagada', 'manejo de redes', 'consultoría', 'agencia' O PREGUNTA LITERALMENTE 'servicios?' O SIMILAR:",
+            "- NO asumas que se refiere a los temas o contenido del evento/curso activo.",
+            "- PIVOTA DE INMEDIATO al catálogo de Servicios de Agencia B2B Qlick (Google Business desde $1.5k, Diseño Web $2.5k-$5.5k, Auditoría 1a1 $1k-$2k, Meta Ads $3.5k-$18k).",
+            "- Aplica el PROTOCOLO DE ATENCIÓN A LEADS DE SERVICIOS B2B:",
+            "  1. Explica amablemente los servicios de agencia y precios del catálogo.",
+            "  2. Pregunta amablemente por su negocio o giro.",
+            "  3. Ofrece las 2 opciones de cierre (Opción A: agendar llamada de diagnóstico al día siguiente entre 11:00 a. m. y 6:00 p. m. | Opción B: ser contactado directamente por un especialista con [[ESCALATE_HUMAN]])."
+          ].join("\n"),
+          ""
+        ]
+      : []),
     jerarquiaClause,
     ``,
     copyByOffer[offer],
@@ -615,6 +632,7 @@ export function buildSuperExecutivePrompt(context: AgentContext): string {
     // la brevedad/calidez sobre directivas específicas de oferta.
     [
       "=== REGLAS DE FORMATO Y ESTILO WHATSAPP (NO NEGOCIABLE) ===",
+      "- CERO META-RAZONAMIENTO O PENSAMIENTO EN EL MENSAJE: Tu respuesta debe ser ÚNICAMENTE el mensaje final que leerá el usuario en WhatsApp. NUNCA escribas notas de análisis interno como 'El lead escribió...', 'El usuario dijo...', 'Respondo directo...' ni explicaciones sobre lo que vas a responder.",
       "- BREVEDAD ABSOLUTA: Estás chateando por WhatsApp, no redactando correos formales. Responde en 1 o máximo 2 oraciones cortas y claras al punto.",
       "- CERO VERBOSIDAD NI REPETICIÓN: Si el lead pregunta 'costo?', responde en una sola línea clara y cálida (ej. 'Es 100% gratuita 🎁 Solo confírmame tu nombre y correo para mandarte el acceso').",
       "- NO REPITAS EL TÍTULO DEL EVENTO EN CADA MENSAJE: Si en la conversación ya se sabe de qué evento hablan, no repitas el nombre completo ni la fecha una y otra vez.",
