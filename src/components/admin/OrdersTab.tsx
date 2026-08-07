@@ -10,7 +10,7 @@ import {
   type OrderStatus,
 } from "@/types/services";
 import type { ServiceOrderListItem } from "@/lib/services";
-import { Search } from "lucide-react";
+import { Search, MessageCircle } from "lucide-react";
 
 /**
  * Tab "Pedidos" del admin.
@@ -27,7 +27,7 @@ import { Search } from "lucide-react";
 
 const STATUS_FILTERS: { value: "" | OrderStatus; label: string }[] = [
   { value: "", label: "Todos" },
-  { value: "pending_contact", label: "Pendiente contacto" },
+  { value: "pending_contact", label: "🚨 Citas & Urgentes" },
   { value: "contacted", label: "Contactado" },
   { value: "confirmed", label: "Confirmado" },
   { value: "in_progress", label: "En curso" },
@@ -202,11 +202,25 @@ export function OrdersTab() {
                       {o.orderNumber}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="font-medium text-ink">
-                        {o.customerName}
+                      <div className="font-medium text-ink flex items-center gap-1.5 flex-wrap">
+                        <span>{o.customerName}</span>
+                        {o.customerPhone && (
+                          <a
+                            href={`https://wa.me/${o.customerPhone.replace(/\D/g, "")}?text=${encodeURIComponent(`Hola ${o.customerName || ""}, te escribo de Qlick Marketing respecto a tu solicitud de ${o.serviceName}.`)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-extrabold text-emerald-800 transition hover:bg-emerald-200 shadow-2xs"
+                            title="Abrir chat en WhatsApp"
+                          >
+                            <MessageCircle className="h-3 w-3 text-emerald-700" />
+                            <span>WhatsApp</span>
+                          </a>
+                        )}
                       </div>
-                      <div className="text-xs text-ink-muted">
-                        {o.customerEmail}
+                      <div className="text-xs text-ink-muted flex flex-col gap-0.5 mt-0.5">
+                        {o.customerPhone && <span className="font-mono text-[11px]">📞 {o.customerPhone}</span>}
+                        {o.customerEmail && <span>✉️ {o.customerEmail}</span>}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-ink-soft">
@@ -221,9 +235,16 @@ export function OrdersTab() {
                       {formatMXN(o.amountMXN)}
                     </td>
                     <td className="px-4 py-3">
-                      <Badge tone={ORDER_STATUS_TONE[o.status]}>
-                        {ORDER_STATUS_LABELS[o.status]}
-                      </Badge>
+                      <div className="flex flex-col items-start gap-1">
+                        {o.status === "pending_contact" && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-extrabold text-amber-900 animate-pulse">
+                            🚨 URGENTE: CITA / CONTACTO
+                          </span>
+                        )}
+                        <Badge tone={ORDER_STATUS_TONE[o.status]}>
+                          {ORDER_STATUS_LABELS[o.status]}
+                        </Badge>
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-xs text-ink-muted">
                       {ORDER_PAYMENT_MODE_LABELS[o.paymentMode]}

@@ -344,8 +344,82 @@ function InfoTab({
     order.status !== "closed" &&
     order.status !== "cancelled";
 
+  const isUrgent = order.status === "pending_contact" || (order.customerNotes && /cita|llamada|horario|mañana|hoy|contact|urgente/i.test(order.customerNotes));
+
   return (
     <div className="space-y-6">
+      {/* Alarma de Urgencia para citas y solicitudes pendientes */}
+      {isUrgent && (
+        <div className="flex items-start gap-3 rounded-2xl border-2 border-amber-400 bg-amber-50/90 p-4 text-amber-950 shadow-md">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white font-bold text-lg animate-pulse">
+            🚨
+          </div>
+          <div className="flex-1">
+            <h4 className="font-display text-sm font-extrabold uppercase tracking-wider text-amber-900">
+              Alarma de Urgencia — Cita / Contacto Pendiente
+            </h4>
+            <p className="mt-1 text-xs leading-relaxed text-amber-800">
+              El prospecto solicitó agendar o ser contactado. Da seguimiento por WhatsApp lo antes posible para no perder la conversión.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Botón 1-Click WhatsApp Directo */}
+      <div className="rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 p-4 text-white shadow-lg">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h4 className="font-display text-base font-extrabold">Contactar al Cliente por WhatsApp</h4>
+            <p className="text-xs text-emerald-100 mt-0.5">
+              {order.customerPhone ? `WhatsApp: ${order.customerPhone}` : "Sin número de WhatsApp registrado"}
+            </p>
+          </div>
+          {order.customerPhone && (
+            <a
+              href={`https://wa.me/${order.customerPhone.replace(/\D/g, "")}?text=${encodeURIComponent(`Hola ${order.customerName || ""}, te escribo de Qlick Marketing respecto a tu solicitud de ${order.service.displayName}.`)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-extrabold text-emerald-700 shadow-md transition hover:bg-emerald-50 active:scale-[0.98]"
+            >
+              <MessageCircle className="h-4 w-4" />
+              <span>Abrir Chat WhatsApp</span>
+            </a>
+          )}
+        </div>
+      </div>
+
+      {/* Contexto Rápido del Lead */}
+      <Card className="p-5 border-brand-200 bg-brand-50/40 shadow-sm">
+        <div className="flex items-center gap-2 font-display text-sm font-bold text-brand-900">
+          <FileText className="h-4 w-4 text-brand-600" />
+          <span>Contexto Rápido del Lead</span>
+        </div>
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+          <div>
+            <span className="text-ink-muted block text-[11px] uppercase tracking-wider font-medium">Cliente:</span>
+            <p className="font-bold text-ink mt-0.5 text-sm">{order.customerName || "Por confirmar"}</p>
+          </div>
+          <div>
+            <span className="text-ink-muted block text-[11px] uppercase tracking-wider font-medium">Teléfono / WhatsApp:</span>
+            <p className="font-bold text-ink mt-0.5 text-sm">{order.customerPhone || "No especificado"}</p>
+          </div>
+          <div>
+            <span className="text-ink-muted block text-[11px] uppercase tracking-wider font-medium">Servicio / Paquete:</span>
+            <p className="font-bold text-ink mt-0.5">{order.service.displayName} ({order.variant.label})</p>
+          </div>
+          <div>
+            <span className="text-ink-muted block text-[11px] uppercase tracking-wider font-medium">Monto / Tarifa:</span>
+            <p className="font-bold text-ink mt-0.5">{formatMXN(order.amountMXN)} {order.currency}</p>
+          </div>
+        </div>
+        {order.customerNotes && (
+          <div className="mt-3 rounded-xl border border-brand-200/80 bg-white p-3 text-xs leading-relaxed text-ink shadow-2xs">
+            <span className="font-bold text-brand-900 block mb-1">Notas de Solicitud / Horario Cita:</span>
+            {order.customerNotes}
+          </div>
+        )}
+      </Card>
+
       {/* Cobrar al cliente (1-click payment link) */}
       {canGeneratePaymentLink && (
         <PaymentLinkCard
