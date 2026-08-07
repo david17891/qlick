@@ -1,3 +1,81 @@
+## 2026-08-07 11:25 Antigravity — Botón 'Ver Servicios' en Tarjetas de WhatsApp e Inyección de Teléfono en Contexto IA
+
+- **Mejoras Implementadas:**
+  1. **Tarjeta Interactiva de Servicios:** Agregado el botón interactivo `Ver Servicios` en las tarjetas de bienvenida y de detalle de eventos en WhatsApp Cloud API. Cualquier usuario que interactúe con una tarjeta de eventos ahora tiene la opción directa de tocar `Ver Servicios` para desplegar el catálogo de agencia B2B sin necesidad de escribir texto.
+  2. **Inyección de Teléfono en `AgentContext`:** Inyectado `phoneNormalized` en `AgentContext` y reforzada la regla `NÚMERO DE TELÉFONO IMPLÍCITO EN WHATSAPP` en todos los prompts del sistema (`buildSystemPrompt`, `buildSuperExecutivePrompt`, `buildSuperExecutiveV2Prompt`, `buildHumanFirstPrompt`). El bot ahora recibe explícitamente el número de WhatsApp del usuario en su prompt y tiene prohibición estricta de pedir "número completo" o "confirmar número" cuando el cliente dice *"david y por este número"*.
+- **Archivos Modificados:** [`src/lib/ai/agent-provider.ts`](file:///c:/Users/User/Documents/Click/src/lib/ai/agent-provider.ts), [`src/lib/ai/agent-prompts.ts`](file:///c:/Users/User/Documents/Click/src/lib/ai/agent-prompts.ts), [`src/lib/whatsapp/bot-engine.ts`](file:///c:/Users/User/Documents/Click/src/lib/whatsapp/bot-engine.ts).
+- **Verificación:** 121 tests pasados exitosamente y `npm run type-check` completado en código 0.
+
+## 2026-08-07 09:43 Antigravity — Fix Falso Positivo Regex: 'sin correo' Activaba Registro de Eventos
+
+- **Causa Raíz Real Identificada:** No fue una alucinación del LLM. Las expresiones regulares `REGISTER_RE` y `AFFIRMATIVE_EXTENDED_RE` en `bot-engine.ts` contenían la subcadena `s[ií]` sin el delimitador de palabra `\b` (`/^(s[ií]|confirmo|inscribirme...)/i`). Como resultado, cualquier mensaje que comenzara por las letras **"sin"** (como *"sin correo"*, *"sin teléfono"*, *"sin embargo"*) coincidía con la regex de *"sí"*, clasificando el intent determinísticamente como `register` y enviando la lista interactiva de eventos (*"Tenemos este evento próximo. Elígelo para más info:"*).
+- **Solución Aplicada:**
+  1. `bot-engine.ts`: agregados delimitadores de límite de palabra `\b` a `REGISTER_RE` (`/^(s[ií]\b|confirmo\b...)/i`) y a `AFFIRMATIVE_EXTENDED_RE` (`/^(s[ií]\b|...)/i`), evitando que palabras que empiezan con "sin" coincidan con "sí".
+  2. `whatsapp-bot-services.test.mjs`: agregado test unitario para confirmar que `"sin correo"` devuelve `intent = "question"` y se mantiene en el flujo de servicios.
+- **Verificación:** Tests unitarios y `npm run type-check` completados con éxito (código 0).
+
+## 2026-08-07 09:41 Antigravity — Aislamiento Total: Eliminación de Cierre/Botones de Eventos en Chats de Servicios B2B
+
+- **Problema Reportado:** Cuando el cliente decía *"sin correo"* al solicitar contacto para servicios de agencia/veterinaria, el bot terminaba respondiendo enviando los botones de selección del evento activo (*"Tenemos este evento próximo. Elígelo para más info:"*).
+- **Causa Raíz:**
+  1. `applyHumanFirstSaleGuard` en `deepseek-provider.ts` inyectaba automáticamente la línea de cierre de inscripción a eventos (*"Si quieres tu lugar, mándame tu nombre y correo y te lo aparto."*) al detectar palabras de interés (como "quiero" o "contacten"), sin verificar si el chat era una consulta comercial de servicios.
+  2. Al añadirse esa frase, el transformador del bot interpretaba que se debía ofrecer la lista interactiva de eventos próximos.
+- **Solución Aplicada:**
+  1. `deepseek-provider.ts`: actualizado `applyHumanFirstSaleGuard` para abortar inmediatamente (`return result;`) si `servicesCatalogBlock` está activo en el contexto, evitando que se inyecten cierres de eventos en consultas comerciales.
+  2. `agent-prompts.ts`: aclarado en `buildHumanFirstPrompt` que la regla de venta directa de eventos es exclusiva para talleres/masterclass en vivo y está **estrictamente prohibida** en servicios de agencia B2B.
+- **Verificación:** Pruebas unitarias de prompts/deepseek y `npm run type-check` completados con éxito (código 0).
+
+## 2026-08-07 09:34 Antigravity — Reglas de Teléfono Implícito en WhatsApp e Email Opcional en Servicios B2B
+
+- **Problema Reportado:** En WhatsApp, el bot preguntaba *"¿Me compartes tu nombre y un número o correo para que te localicen?"* y cuando el cliente respondía *"david y con este número está bien"*, el bot decía *"Quedo pendiente con tu número... ¿me compartes tu correo para tener tus datos completos?"*.
+- **Causa Raíz:** Los prompts no aclaraban que al chatear en WhatsApp el número de teléfono YA se conoce (es el chat actual), ni que en servicios B2B el email es 100% opcional y no debe exigirse como paso bloqueante.
+- **Solución Aplicada:**
+  1. `services-prompt-builder.ts`: agregada la regla 3 (Número de WhatsApp implícito, NUNCA pedir teléfono ni 'un número para que te localicen') y la regla 4 (Email opcional en servicios, NUNCA insistir por el correo ni volver a pedirlo si el cliente da su nombre o acepta el contacto).
+  2. `agent-prompts.ts`: agregadas las directivas de formato `TELÉFONO IMPLÍCITO EN WHATSAPP` y `EMAIL OPCIONAL EN SERVICIOS`.
+- **Verificación:** Pruebas unitarias de prompts y `npm run type-check` completados con éxito (código 0).
+
+## 2026-08-07 09:23 Antigravity — Eliminación Estricta de Fugas de Pensamiento/Razonamiento en WhatsApp
+
+- **Problema Reportado:** En capturas de pantalla de WhatsApp, el bot dejaba filtrar párrafos de razonamiento interno como: *"Aquí tengo dos opciones: el lead puede referirse a los servicios de agencia (por la palabra 'servicios') o al contenido del evento. Dado que preguntó 'servicios?' literalmente, aplico el protocolo B2B."* antes de enviar la respuesta real.
+- **Causa Raíz:** `sanitizeLLMOutput` en `guardrails.ts` no detectaba variaciones donde el LLM arrancaba justificando su elección de opciones con frases como `Aquí tengo...`, `Dado que preguntó...` o `aplico el protocolo...`.
+- **Solución Aplicada:**
+  1. `guardrails.ts`: ampliada la función `sanitizeLLMOutput` e `isMetaParagraph` para detectar y filtrar cualquier párrafo inicial que contenga meta-análisis o justificaciones de opciones (`Aquí tengo...`, `Dado que...`, `Como...`, `Analizando...`, `aplico el protocolo...`, etc.).
+  2. `agent-prompts.ts`: reforzada la directiva `CERO META-RAZONAMIENTO` exigiendo empezar directamente con la respuesta al cliente.
+  3. `services-prompt-builder.ts`: agregada la regla 5 de Cero Meta-Razonamiento al protocolo B2B.
+  4. `whatsapp-safety-net.test.mjs`: agregado test específico para verificar la sanitización del texto reportado.
+- **Verificación:** `npm test` y `npm run type-check` pasados exitosamente.
+
+## 2026-08-07 09:15 Antigravity — Notificación de Citas Agendadas por Correo al Administrador
+
+- **Funcionalidad:** En cuanto un prospecto acuerda un horario para su llamada de diagnóstico y proporciona sus datos en WhatsApp, se dispara automáticamente una notificación por correo electrónico de alta prioridad hacia `ADMIN_NOTIFICATION_EMAILS` (ej. `david17891@gmail.com`).
+- **Detalles del Correo:** Asunto `📅 CITA AGENDADA: Llamada de Diagnóstico — [Nombre] ([Servicio])`, incluyendo el nombre completo, WhatsApp, correo del prospecto, servicio de interés, horario agendado (ej. *Mañana a las 2:00 PM*) y un botón de acceso directo al lead en el panel CRM.
+- **Implementación:** Actualizados [`src/lib/email/service-lead-notification.ts`](file:///c:/Users/User/Documents/Click/src/lib/email/service-lead-notification.ts) y [`src/lib/services/service-leads-server.ts`](file:///c:/Users/User/Documents/Click/src/lib/services/service-leads-server.ts).
+- **Verificación:** `npm test` y `npm run type-check` pasados exitosamente.
+
+## 2026-08-07 09:13 Antigravity — Fix Aislamiento Flujo Servicios vs Registro de Eventos
+
+- **Problema Detectado:** Cuando un usuario solicitaba servicios y agendaba una llamada de diagnóstico, al enviar su correo y nombre al final (`david17891@gmail.com david martinez`), el bot capturaba el email vía la regex `EMAIL_RE` y enrutaba determinísticamente al intent `provide_email` / `registrationSafetyNet`, registrando erróneamente al usuario en el Evento Activo y enviándole un pase con código QR de evento.
+- **Causa Raíz:** `provide_email` y `registrationSafetyNet` asumían que CUALQUIER email ingresado en el chat pertenecía a la inscripción de un evento presencial/virtual activo, sin validar si el lead estaba en un flujo de interés de servicios activo (`lead_service_interests`).
+- **Solución Implementada:**
+  1. `service-leads-server.ts`: agregada la consulta helper `hasActiveServiceInterest(leadId)` para verificar si el lead tiene un interés de servicios en las últimas 24 horas.
+  2. `bot-engine.ts`:
+     - Agregada la regex `EMAIL_AND_NAME_RE` para soportar formatos donde el email se ingresa antes del nombre (`email@domain.com Nombre Apellido`).
+     - En `registrationSafetyNet`: si el lead tiene un flujo de servicios activo, se skipea la creación de confirmaciones de eventos y pases QR.
+     - En `buildResponsePlan`: si `hasActiveServiceInterest` es verdadero, se extraen automáticamente el nombre y email del lead, se actualizan las tablas `leads` y `lead_service_interests`, y se fuerza `intent = "question"` para que el LLM (con el `servicesCatalogBlock`) confirme la llamada de diagnóstico del servicio sin llamar a `createConfirmation` ni enviar QR de evento.
+  3. Agregado test específico en `tests/whatsapp-bot-services.test.mjs`.
+- **Verificación:** `npm test` (1634 tests en verde), `npm run type-check` (0 errores), `npm run lint` (0 errores), `npm run build` (compilación limpia exitosa).
+
+## 2026-08-07 09:07 Antigravity — Integración del Bot de Eventos y Servicios (Kickstart Meta Ads)
+
+- **Solicitud:** David pidió implementar la captación y seguimiento de leads de servicios de `Kickstart de Meta Ads` sin alterar el funnel de eventos en producción, aplicando las migraciones DDL a Supabase de forma aditiva y activando el kill switch de servicios.
+
+- **Migraciones Aplicadas (Supabase Management API status 201):**
+  1. `supabase/migrations/20260806120000_service_lead_interests.sql`: creación de la tabla `public.lead_service_interests`, RLS habilitado (servidor-only), `public.leads.email` nullable para captación directa desde WhatsApp, e índice FK `service_interest_id` en `public.crm_tasks`.
+  2. `supabase/migrations/20260806121000_kickstart_meta_ads_catalog_v3.sql`: catálogo factual v3 de Meta Ads con 3 variantes activas (Básico $3,500, Recomendado $12,000, Premium $18,000), días de entrega e incluidores JSONB.
+
+- **Activación:** Seteado `bot_services_enabled = true` en `public.system_settings`.
+
+- **Verificación:** `npm test` (67/67 suites, 1633 subtests pasados), `npm run type-check` (0 errores), `npm run lint` (0 advertencias/errores), `npm run build` (compilación limpia).
 
 ## 2026-07-25 12:30 Mavis — Segunda corrección post-revisión David (3 bloqueadores + tests reales del loader)
 

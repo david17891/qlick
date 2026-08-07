@@ -65,7 +65,13 @@ import { mustEscalateToHuman, stripEscalateFlag, sanitizeLLMOutput } from "../ai
 // pausa y helpers de system_settings para leer los switches clave
 // (bot_paused_global, bot_daily_outbound_limit).
 import { resolveEffectivePause } from "../ai/deepseek-cost";
-import { readSystemSetting, KEY_BOT_PAUSED_GLOBAL, KEY_BOT_DAILY_OUTBOUND_LIMIT, KEY_BOT_GLOBAL_MODE } from "../admin/system-settings-server";
+import { readSystemSetting, KEY_BOT_PAUSED_GLOBAL, KEY_BOT_DAILY_OUTBOUND_LIMIT, KEY_BOT_GLOBAL_MODE, readBotServicesEnabled } from "../admin/system-settings-server";
+import { detectServiceIntent } from "./service-intent";
+import {
+  captureServiceInterest,
+  hasActiveServiceInterest,
+  updateServiceInterestDetails
+} from "../services/service-leads-server";
 
 // FIX 2026-07-12 (auditoría v16 A6): caché módulo-level de 60s para
 // el conteo rolling 24h de outbound auto_enviados. El conteo se
@@ -1389,8 +1395,8 @@ export const OPENER_RE =
 // NO incluye "no" porque ese es opt_out (el regex OPT_OUT_RE ya lo maneja).
 const AFFIRMATIVE_RE = /^(s[ií]|ok|dale|va)$/i;
 // Registro corto (anclado al inicio) — palabras muy específicas del
-// usuario confirmando inscripción.
-const REGISTER_RE = /^(s[ií]|confirmo|inscribirme|registrarme|quiero|me interesa)/i;
+// usuario confirmando inscripción. Se usa \b en s[ií] para evitar falsos positivos con 'sin', 'silla', 'siguiente'.
+const REGISTER_RE = /^(s[ií]\b|confirmo\b|inscribirme\b|registrarme\b|quiero\b|me\s+interesa\b)/i;
 // Registro por frase completa (en cualquier posición del cuerpo) — para
 // casos tipo "Hola, quiero inscribirme" o "Me interesa, cómo me inscribo".
 // Sin ancla para detectar la intención aún si el mensaje arranca con un
@@ -2525,6 +2531,11 @@ async function buildOpenerPlan(args: {
   const interactiveBody = singleEventShortcut
     ? shortcutBody
     : `${saludo} Soy Qlick, asistente de Qlick Marketing Digital. ¿Qué te interesa?${eventLine}`;
+  const servicesEnabled = await readBotServicesEnabled().catch(() => false);
+  const servicesBtn = servicesEnabled
+    ? [{ type: "reply" as const, reply: { id: "btn_show_services", title: "Ver Servicios" } }]
+    : [];
+
   const interactive = singleEventShortcut
     ? {
         type: "button" as const,
@@ -2544,9 +2555,10 @@ async function buildOpenerPlan(args: {
               type: "reply" as const,
               reply: { id: "show_events", title: "Próximos eventos" },
             },
-          ],
+            ...servicesBtn,
+          ].slice(0, 3),
         },
-        footer: { text: "Toca Inscribirme o escribe tu pregunta" },
+        footer: { text: "Toca un botón o escribe tu pregunta" },
       }
     : {
         type: "button" as const,
@@ -2563,7 +2575,8 @@ async function buildOpenerPlan(args: {
               type: "reply" as const,
               reply: { id: "show_events", title: "Próximos eventos" },
             },
-          ],
+            ...servicesBtn,
+          ].slice(0, 3),
         },
         footer: { text: "Responde con un botón o escribe tu pregunta" },
       };
@@ -2900,10 +2913,14 @@ async function buildResponsePlan(args: {
       const eventInfoText = evt?.source === "db"
         ? buildEventInfoCopy(evt)
         : `📅 ${evtName}${codePart}\n🗓 ${evtDate} · 📍 ${evtLoc} · ⏱ ${evtDur}`;
+      const servicesEnabled = await readBotServicesEnabled().catch(() => false);
+      const servicesBtn = servicesEnabled
+        ? [{ type: "reply" as const, reply: { id: "btn_show_services", title: "Ver Servicios" } }]
+        : [];
       const interactive = {
         type: "button" as const,
         body: {
-          text: `${eventInfoText}\n\n¿Listo para inscribirte?`
+          text: `${eventInfoText}\n\n¿Listo para inscribirte o te interesa ver servicios?`
         },
         action: {
           buttons: [
@@ -2913,11 +2930,12 @@ async function buildResponsePlan(args: {
                 id: `evt_inscribir_${evtSlug}`,
                 title: "Inscribirme"
               }
-            }
-          ]
+            },
+            ...servicesBtn,
+          ].slice(0, 3)
         },
         footer: {
-          text: "Inscribirme te pide tu email por aquí"
+          text: "Toca un botón para elegir"
         }
       };
       const bodyText = interactive.body.text;
@@ -4755,6 +4773,7 @@ case "interactive_event_inscribir": {
           // historial de conversación). Más confiable que `conversationWindow`
           // porque el loader puede fallar silenciosamente.
           isFirstMessage: args.isFirstMessage,
+          phoneNormalized: phoneNormalized,
           // Sprint v15 PR #2.5b: pasar tipo de oferta + reglas locales +
           // isFreeEvent al provider. El prompt Súper Ejecutivo los usa para
           // elegir la rama de copy veraz (gratis / pago / b2b / unknown).
@@ -5044,6 +5063,8 @@ const NAME_AND_EMAIL_RE =
 
 // Path B: solo email (lead.name ya capturado en historial).
 const EMAIL_ONLY_RE = /^([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})$/i;
+const EMAIL_AND_NAME_RE =
+  /^([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})[\s,]+([A-ZÁÉÍÓÚÑa-záéíóúñ][A-ZÁÉÍÓÚÑa-záéíóúñ'.-]+(?:\s+[A-ZÁÉÍÓÚÑa-záéíóúñ'.-]+){0,4})$/i;
 
 interface RegistrationSafetyNetArgs {
   supabase: SupabaseClient<Database> | null;
@@ -5057,6 +5078,13 @@ async function registrationSafetyNet(args: RegistrationSafetyNetArgs): Promise<v
     if (!args.supabase) {
       infoLog("[bot/safety-net] skip: supabase null", { leadId: args.lead?.id });
       return;
+    }
+    if (args.lead?.id && (await readBotServicesEnabled())) {
+      const isServiceFlow = await hasActiveServiceInterest(args.lead.id);
+      if (isServiceFlow) {
+        infoLog("[bot/safety-net] skip: lead en flujo activo de servicios", { leadId: args.lead.id });
+        return;
+      }
     }
     if (!args.activeEvent || !args.activeEvent.id) {
       infoLog("[bot/safety-net] skip: activeEvent null", { leadId: args.lead?.id });
@@ -6286,7 +6314,7 @@ export async function processInboundMessage(
     // "claro que sí", etc. El match es al INICIO del body. Si tiene
     // contenido significativo después (ej. "si pero el otro evento"),
     // NO matchea — eso lo maneja detectIntent.
-    const AFFIRMATIVE_EXTENDED_RE = /^(s[ií]|ok|dale|va|claro|desde luego|por supuesto|porfa(?:vor)?)/i;
+    const AFFIRMATIVE_EXTENDED_RE = /^(s[ií]\b|ok\b|dale\b|va\b|claro\b|desde\s+luego\b|por\s+supuesto\b|porfa(?:vor)?\b)/i;
     const isAffirmative =
       AFFIRMATIVE_RE.test(body) || AFFIRMATIVE_EXTENDED_RE.test(body);
     // FIX 2026-07-06 (debug David "david martinez" ignorado): si el
@@ -6669,6 +6697,55 @@ export async function processInboundMessage(
     intent = "question";
   }
 
+  // FIX 2026-08-07 (Servicios B2B vs Eventos): Si el bot de servicios está activo
+  // y el lead está en un flujo de interés de servicios (o recién consultó servicios),
+  // extraemos email/nombre del body si están presentes, actualizamos la tabla de leads
+  // e intereses, y FORZAMOS intent = "question" para que el LLM procese la respuesta
+  // de servicios sin desviarlo al flujo de inscripción de eventos ni generar QR.
+  if (await readBotServicesEnabled()) {
+    const isServiceFlow = await hasActiveServiceInterest(lead.id);
+    if (isServiceFlow) {
+      const trimmed = body.trim();
+      const mNameEmail = trimmed.match(NAME_AND_EMAIL_RE);
+      const mEmailName = trimmed.match(EMAIL_AND_NAME_RE);
+      const mEmailOnly = trimmed.match(EMAIL_ONLY_RE);
+
+      let extName: string | undefined;
+      let extEmail: string | undefined;
+
+      if (mNameEmail) {
+        extName = mNameEmail[1].trim();
+        extEmail = mNameEmail[2].trim().toLowerCase();
+      } else if (mEmailName) {
+        extEmail = mEmailName[1].trim().toLowerCase();
+        extName = mEmailName[2].trim();
+      } else if (mEmailOnly) {
+        extEmail = mEmailOnly[1].trim().toLowerCase();
+      }
+
+      if (extName || extEmail) {
+        await updateServiceInterestDetails({
+          leadId: lead.id,
+          ...(extName ? { leadName: extName } : {}),
+        });
+        if (supabase) {
+          const updateObj: Database["public"]["Tables"]["leads"]["Update"] = {};
+          if (extName && extName !== "Por confirmar") updateObj.name = extName;
+          if (extEmail) updateObj.email = extEmail;
+          if (Object.keys(updateObj).length > 0) {
+            await supabase.from("leads").update(updateObj).eq("id", lead.id);
+            if (extName && extName !== "Por confirmar") lead.name = extName;
+            if (extEmail) lead.email = extEmail;
+          }
+        }
+      }
+
+      if (intent === "provide_email" || intent === "provide_name") {
+        intent = "question";
+      }
+    }
+  }
+
   // 4.2: sincronizar la intención conversacional con el pipeline CRM.
   // Antes solo cambiábamos `whatsapp_status`, por lo que casi todos los
   // leads del bot permanecían en `new` aunque ya hubieran pedido información
@@ -7049,7 +7126,7 @@ export async function processInboundMessage(
               await sendEventQrPassEmail(
                 {
                   attendeeName: lead.name?.trim() || "Asistente",
-                  attendeeEmail: lead.email,
+                  attendeeEmail: lead.email ?? "",
                   eventTitle: evtName,
                   eventStartsAt: evt?.startsAt
                     ? evt.startsAt.toISOString()
@@ -7947,6 +8024,23 @@ export async function processInboundMessage(
         }
       })();
     }
+    }
+  }
+
+  // 5.5 Registrar interés de servicios si la intención del mensaje es de servicios
+  if (await readBotServicesEnabled()) {
+    const serviceIntent = detectServiceIntent(body);
+    if (serviceIntent.kind !== "none") {
+      void captureServiceInterest({
+        phoneNormalized,
+        serviceSlug: serviceIntent.serviceSlug || "kickstart-meta-ads",
+        category: "Meta Ads & Video IA",
+        needSummary: body,
+        sourceMessageId: message.messageId,
+        leadName: lead.name,
+        source: "whatsapp",
+        consentBasis: "inbound_service_request",
+      });
     }
   }
 

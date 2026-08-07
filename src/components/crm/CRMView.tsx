@@ -852,6 +852,7 @@ function mockTaskToRow(t: import("@/types").CRMTask): CrmTaskRow {
     created_by_email: "demo@qlick.mx",
     created_at: t.createdAt,
     priority: null,
+    service_interest_id: null,
   };
 }
 

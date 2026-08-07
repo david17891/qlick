@@ -69,6 +69,13 @@ export const KEY_BOT_DAILY_OUTBOUND_LIMIT = "bot_daily_outbound_limit" as const;
 // Seguimiento comercial de leads dentro de la ventana de servicio de WhatsApp.
 // Valores admitidos: off (default), shadow (solo medir), live (enviar).
 export const KEY_LEAD_FOLLOWUP_MODE = "lead_followup_mode" as const;
+// Feature flag kill switch para la captación de servicios B2B (Meta Ads, etc.).
+export const KEY_BOT_SERVICES_ENABLED = "bot_services_enabled" as const;
+
+export async function readBotServicesEnabled(): Promise<boolean> {
+  const value = await readSystemSetting(KEY_BOT_SERVICES_ENABLED);
+  return value === true || value === "true";
+}
 
 /**
  * Sprint v16 Hotfix #3: SSOT del tipo del modo global del bot.

@@ -320,6 +320,7 @@ export type Database = {
           id: string
           lead_id: string
           priority: string | null
+          service_interest_id: string | null
           status: Database["public"]["Enums"]["crm_task_status"]
           title: string
         }
@@ -332,6 +333,7 @@ export type Database = {
           id?: string
           lead_id: string
           priority?: string | null
+          service_interest_id?: string | null
           status?: Database["public"]["Enums"]["crm_task_status"]
           title: string
         }
@@ -344,6 +346,7 @@ export type Database = {
           id?: string
           lead_id?: string
           priority?: string | null
+          service_interest_id?: string | null
           status?: Database["public"]["Enums"]["crm_task_status"]
           title?: string
         }
@@ -353,6 +356,13 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crm_tasks_service_interest_id_fkey"
+            columns: ["service_interest_id"]
+            isOneToOne: false
+            referencedRelation: "lead_service_interests"
             referencedColumns: ["id"]
           },
         ]
@@ -1418,6 +1428,85 @@ export type Database = {
           },
         ]
       }
+      lead_service_interests: {
+        Row: {
+          campaign_key: string | null
+          category: string
+          consent_basis: string
+          created_at: string
+          id: string
+          lead_id: string
+          need_summary: string
+          preferred_contact_time: string | null
+          service_id: string | null
+          service_slug: string
+          source: string
+          source_message_id: string | null
+          status: Database["public"]["Enums"]["service_interest_status"]
+          updated_at: string
+          variant_id: string | null
+          variant_slug: string | null
+        }
+        Insert: {
+          campaign_key?: string | null
+          category: string
+          consent_basis?: string
+          created_at?: string
+          id?: string
+          lead_id: string
+          need_summary?: string
+          preferred_contact_time?: string | null
+          service_id?: string | null
+          service_slug: string
+          source?: string
+          source_message_id?: string | null
+          status?: Database["public"]["Enums"]["service_interest_status"]
+          updated_at?: string
+          variant_id?: string | null
+          variant_slug?: string | null
+        }
+        Update: {
+          campaign_key?: string | null
+          category?: string
+          consent_basis?: string
+          created_at?: string
+          id?: string
+          lead_id?: string
+          need_summary?: string
+          preferred_contact_time?: string | null
+          service_id?: string | null
+          service_slug?: string
+          source?: string
+          source_message_id?: string | null
+          status?: Database["public"]["Enums"]["service_interest_status"]
+          updated_at?: string
+          variant_id?: string | null
+          variant_slug?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_service_interests_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_service_interests_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_service_interests_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "service_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_profile: {
         Row: {
           created_at: string
@@ -1654,7 +1743,7 @@ export type Database = {
           consent_to_contact: boolean
           course_of_interest: string | null
           created_at: string
-          email: string
+          email: string | null
           estimated_value_mxn: number | null
           id: string
           intent: Database["public"]["Enums"]["lead_intent"]
@@ -1689,7 +1778,7 @@ export type Database = {
           consent_to_contact?: boolean
           course_of_interest?: string | null
           created_at?: string
-          email: string
+          email?: string | null
           estimated_value_mxn?: number | null
           id?: string
           intent?: Database["public"]["Enums"]["lead_intent"]
@@ -2563,6 +2652,12 @@ export type Database = {
       interaction_channel: "whatsapp" | "email" | "phone" | "form" | "system"
       interaction_direction: "inbound" | "outbound" | "system"
       lead_event_link_type: "confirmation" | "attendee" | "survey"
+      service_interest_status:
+        | "detected"
+        | "contacted"
+        | "qualified"
+        | "won"
+        | "lost"
       lead_intent:
         | "course_information"
         | "enroll_course"
@@ -2769,6 +2864,13 @@ export const Constants = {
       interaction_channel: ["whatsapp", "email", "phone", "form", "system"],
       interaction_direction: ["inbound", "outbound", "system"],
       lead_event_link_type: ["confirmation", "attendee", "survey"],
+      service_interest_status: [
+        "detected",
+        "contacted",
+        "qualified",
+        "won",
+        "lost",
+      ],
       lead_intent: [
         "course_information",
         "enroll_course",

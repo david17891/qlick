@@ -37,6 +37,7 @@ import {
   KEY_BOT_GLOBAL_MODE,
   KEY_BOT_MAX_ACTIVE_RULES,
   KEY_BOT_PAUSED_GLOBAL,
+  KEY_BOT_SERVICES_ENABLED,
   KEY_BOT_DAILY_OUTBOUND_LIMIT
 } from "@/lib/admin/system-settings-server";
 import {
@@ -70,6 +71,7 @@ interface BotStatsResponse {
     whatsapp_free_quota_total: number;
     whatsapp_free_quota_note: string;
     bot_paused_global: boolean;
+    bot_services_enabled: boolean;
     bot_daily_outbound_limit: number;
     bot_daily_outbound_count: number;
     generated_at: string;
@@ -182,6 +184,7 @@ export async function GET(): Promise<NextResponse<BotStatsResponse>> {
   const mode = await readSystemSetting(KEY_BOT_GLOBAL_MODE);
   const maxRules = await readSystemSetting(KEY_BOT_MAX_ACTIVE_RULES);
   const globalPaused = await readSystemSetting(KEY_BOT_PAUSED_GLOBAL);
+  const servicesEnabled = await readSystemSetting(KEY_BOT_SERVICES_ENABLED);
   const dailyLimit = await readSystemSetting(KEY_BOT_DAILY_OUTBOUND_LIMIT);
 
   // 3. Sumar uso de hoy (puede haber 0, 1 o 2 filas: chat + reasoner).
@@ -230,6 +233,7 @@ export async function GET(): Promise<NextResponse<BotStatsResponse>> {
         "≈ Proyección rolling 30d (Meta no expone el saldo exacto de las 1,000 conversaciones gratuitas de servicio). El conteo es local.",
       // M4: switch maestro de pausa global.
       bot_paused_global: globalPaused === true,
+      bot_services_enabled: servicesEnabled === true || servicesEnabled === "true",
       // Kill-Switch rolling 24h: default 50 envíos/día en pruebas.
       // FIX 2026-07-12 (R4): el conteo es rolling, no día calendario UTC.
       bot_daily_outbound_limit: typeof dailyLimit === "number" ? dailyLimit : 50,

@@ -43,6 +43,7 @@ import {
   isBotGlobalMode
 } from "@/lib/admin/system-settings-server";
 import { classifyIntentHeuristic } from "./guardrails";
+import { getServicesPromptBlock } from "@/lib/services/services-prompt-builder";
 import { buildSystemPrompt, buildSuperExecutivePrompt } from "./agent-prompts";
 import { deepseekAgentProvider } from "./deepseek-provider";
 import { getActiveBotRules } from "./ai-bot-rules-server";
@@ -390,11 +391,13 @@ export async function simulateConversationTurn(
   // que el catálogo de eventos. Si falla, se inyecta string vacío
   // y el sistema sigue funcionando (el prompt no se rompe).
   const coursesCatalogBlock = await loadCoursesCatalogBlock().catch(() => "");
+  const servicesCatalogBlock = await getServicesPromptBlock().catch(() => "");
   const context: AgentContext = {
     profile: aiAgentProfile,
     lastIncomingMessage: req.message,
     conversationWindow,
     coursesCatalogBlock,
+    servicesCatalogBlock,
     ...(leadProfile ? { leadProfile } : {}),
     // FIX 2026-07-14 (safety net human_first): el simulador debe pasar
     // el activeEvent al context del provider (no solo embebido en el

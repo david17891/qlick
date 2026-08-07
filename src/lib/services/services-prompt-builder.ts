@@ -21,13 +21,12 @@ export function formatServicesPromptBlock(services: ServiceWithVariants[]): stri
   ];
 
   if (!services || services.length === 0) {
-    // Fallback seguro si la DB no tiene servicios activos o está en modo demo
+    // Fallback honesto cuando la base de datos no tiene servicios activos o no está disponible
     lines.push(
-      "Servicios principales disponibles:",
-      "1. Presencia Local / Google Business Profile (desde $1,500 MXN): Optimización completa de perfil en Google Maps, fotos y capacitación.",
-      "2. Diseño Web Adaptable / Landing Pages ($2,500 MXN Básico / $5,500 MXN Pro): Páginas web de alta conversión con botón de WhatsApp y SEO.",
-      "3. Auditoría y Diagnóstico de Negocio 1a1 ($1,000 MXN Zoom / $2,000 MXN Presencial): Sesión de 60 min con estratega senior y reporte de acción.",
-      "4. Kickstart de Meta Ads ($3,500 MXN Inicial / $12,000 MXN Recomendado + Ads / $18,000 MXN Premium 360°): Producción de anuncios con IA, segmentación y lanzamiento de campañas."
+      "INFORMACIÓN TEMPORAL DE CATÁLOGO:",
+      "El catálogo detallado de servicios en tiempo real no pudo ser confirmado por el sistema en este momento.",
+      "Para consultar paquetes actualizados y precios oficiales, puedes referir al usuario a la página pública:",
+      "https://qlick.digital/servicios o indicar honestamente que un especialista de Qlick se pondrá en contacto para brindarle los detalles exactos."
     );
   } else {
     lines.push("Servicios activos disponibles:");
@@ -35,12 +34,21 @@ export function formatServicesPromptBlock(services: ServiceWithVariants[]): stri
       lines.push(`\n[${idx + 1}] ${s.displayName} (slug: ${s.slug})`);
       if (s.shortDescription) lines.push(`    Descripción: ${s.shortDescription}`);
       if (s.bullets && s.bullets.length > 0) {
-        lines.push(`    Incluye: ${s.bullets.slice(0, 4).join(" • ")}`);
+        lines.push(`    Puntos clave: ${s.bullets.join(" • ")}`);
       }
       if (s.variants && s.variants.length > 0) {
         lines.push("    Paquetes / Precios:");
         s.variants.forEach((v) => {
           lines.push(`      - ${v.label}: $${v.priceMXN.toLocaleString("es-MX")} MXN`);
+          if (v.description) {
+            lines.push(`        Detalle: ${v.description}`);
+          }
+          if (v.includes && v.includes.length > 0) {
+            lines.push(`        Incluye: ${v.includes.join(", ")}`);
+          }
+          if (v.deliveryDaysMin && v.deliveryDaysMax) {
+            lines.push(`        Entrega: ${v.deliveryDaysMin}-${v.deliveryDaysMax} días`);
+          }
         });
       } else if (s.defaultPriceMXN) {
         lines.push(`    Precio: $${s.defaultPriceMXN.toLocaleString("es-MX")} MXN`);
@@ -50,30 +58,41 @@ export function formatServicesPromptBlock(services: ServiceWithVariants[]): stri
 
   lines.push(
     "",
-    "=== PROTOCOLO DE ATENCIÓN A LEADS DE SERVICIOS B2B ===",
-    "Cuando un usuario pregunte por servicios de marketing, agencia, diseño web, anuncios o consultoría:",
-    "1. ATENCIÓN CONSULTIVA: Sé profesional, cercano y honesto. Responde con los precios reales del catálogo sin ocultar costos.",
-    "2. CUALIFICACIÓN BREVE: Pregunta amablemente por su negocio/giro y qué objetivo principal busca lograr (ej. generar más clientes, lanzar su sitio web, mejorar sus anuncios).",
-    "3. FLUJO DE CIERRE DUAL (OBLIGATORIO): Ofrécele 2 alternativas para avanzar:",
-    "   - Opción A (Agendar llamada de diagnóstico): Sugiere agendar una sesión/llamada de diagnóstico de 20 min preferentemente para EL DÍA SIGUIENTE en un horario entre 11:00 a. m. y 6:00 p. m.",
-    "   - Opción B (Ser contactado por un especialista): Indícale que un especialista de Qlick puede ponerse en contacto directamente con él a su WhatsApp o por llamada.",
-    "4. ESCALACIÓN A HUMANO: Si el usuario elije que un especialista lo busque, pide propuesta/cotización personalizada o requiere atención a medida, responde amablemente confirmando que el equipo lo buscará y EMITE `[[ESCALATE_HUMAN]]` al final de tu mensaje.",
+    "=== PROTOCOLO Y REGLAS COMERCIALES DE ATENCIÓN B2B ===",
+    "1. INVERSIÓN PUBLICITARIA SEPARADA: La inversión publicitaria en Meta Ads (Facebook/Instagram) es abonada directamente por el cliente a Meta y es independiente de la tarifa de servicio de Qlick.",
+    "2. INFORMACIÓN FACTUAL: Presenta únicamente los paquetes, precios e incluidores reales del catálogo. No inventes garantizados de ventas, leads exactos ni citas en calendario.",
+    "3. NÚMERO DE WHATSAPP IMPLÍCITO (NUNCA PEDIR TELÉFONO): Estás chateando por WhatsApp con el cliente, por lo que YA TIENES su número. NUNCA pidas 'un número', 'tu teléfono', 'un número o correo para que te localicen' ni digas 'quedo pendiente con tu número'. Asume siempre que el contacto por WhatsApp o llamada es a este mismo número.",
+    "4. EMAIL OPCIONAL EN SERVICIOS (NUNCA INSISTIR): En servicios B2B (agencia, diseño web, Meta Ads, llamada de diagnóstico), el correo electrónico es 100% OPCIONAL. Si el cliente dice 'con este número está bien', da su nombre o pide ser contactado, CONFIRMA DE INMEDIATO (ej: '¡Perfecto David! Ya quedó registrada tu solicitud, un especialista de Qlick te contactará directo a este WhatsApp'). NUNCA insistas por el correo ni vuelvas a preguntar '¿me compartes tu mejor correo para tener tus datos completos?'.",
+    "5. ATENCIÓN CONSULTIVA Y CONFIRMACIÓN RÁPIDA: Explica brevemente el alcance del servicio y confirma de inmediato la solicitud de contacto.",
+    "6. ESCALACIÓN A HUMANO: Si el usuario requiere propuesta a medida, presupuesto especial o atención personalizada, responde amablemente y emite `[[ESCALATE_HUMAN]]` al final de tu mensaje.",
+    "7. CERO META-RAZONAMIENTO: NUNCA incluyas análisis interno como 'Aquí tengo dos opciones...', 'El lead puede referirse a...', 'Dado que preguntó...' o 'aplico el protocolo'. Empieza DIRECTAMENTE con la respuesta al cliente.",
     "================================================================"
   );
 
   return lines.join("\n");
 }
 
+let cachedPromptBlock: { block: string; expiresAt: number } | null = null;
+
 /**
- * Carga los servicios activos de Supabase y devuelve el bloque de prompt listo.
+ * Carga los servicios activos de Supabase y devuelve el bloque de prompt listo (con caché de 5 minutos).
  */
-export async function getServicesPromptBlock(): Promise<string> {
+export async function getServicesPromptBlock(forceRefresh = false): Promise<string> {
+  const now = Date.now();
+  if (!forceRefresh && cachedPromptBlock && cachedPromptBlock.expiresAt > now) {
+    return cachedPromptBlock.block;
+  }
+
   try {
     const services = await getActiveServices();
-    return formatServicesPromptBlock(services);
+    const block = formatServicesPromptBlock(services);
+    cachedPromptBlock = { block, expiresAt: now + 5 * 60 * 1000 };
+    return block;
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("[services-prompt-builder] Error cargando servicios:", err);
-    return formatServicesPromptBlock([]);
+    const fallbackBlock = formatServicesPromptBlock([]);
+    cachedPromptBlock = { block: fallbackBlock, expiresAt: now + 5 * 60 * 1000 };
+    return fallbackBlock;
   }
 }

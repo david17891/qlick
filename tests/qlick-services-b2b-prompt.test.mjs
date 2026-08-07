@@ -7,7 +7,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 describe("Servicios B2B — Prompt Builder & Protocolo de Cierre Dual", () => {
-  it("formatServicesPromptBlock genera el catálogo formateado cuando se pasa una lista de servicios", async () => {
+  it("formatServicesPromptBlock genera el catálogo formateado detallando variantes, entregables y días de entrega", async () => {
     const { formatServicesPromptBlock } = await import(
       "../src/lib/services/services-prompt-builder.ts"
     );
@@ -38,30 +38,30 @@ describe("Servicios B2B — Prompt Builder & Protocolo de Cierre Dual", () => {
             serviceId: "srv-1",
             slug: "basico",
             label: "Básico",
-            description: null,
+            description: "+ Ads (presupuesto del cliente)",
             priceMXN: 3500,
-            deliveryDaysMin: 3,
-            deliveryDaysMax: 5,
+            deliveryDaysMin: 5,
+            deliveryDaysMax: 7,
             isActive: true,
             displayOrder: 1,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            includes: ["Configuración Meta", "1 Video IA"],
+            includes: ["Configuración Meta", "2 Videos IA de 10-20s", "Hasta 3 imágenes"],
           },
           {
             id: "var-2",
             serviceId: "srv-1",
             slug: "recomendado",
             label: "Recomendado",
-            description: null,
+            description: "+ Ads (presupuesto del cliente)",
             priceMXN: 12000,
             deliveryDaysMin: 7,
-            deliveryDaysMax: 10,
+            deliveryDaysMax: 14,
             isActive: true,
             displayOrder: 2,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            includes: ["4 Videos", "8 Gráficos", "3 Campañas"],
+            includes: ["4 videos comerciales", "8 piezas gráficas", "30 días optimización"],
           },
         ],
       },
@@ -73,24 +73,24 @@ describe("Servicios B2B — Prompt Builder & Protocolo de Cierre Dual", () => {
     assert.ok(block.includes("Kickstart de Meta Ads"));
     assert.ok(block.includes("$3,500 MXN"));
     assert.ok(block.includes("$12,000 MXN"));
-    assert.ok(block.includes("FLUJO DE CIERRE DUAL"));
-    assert.ok(block.includes("11:00 a. m. y 6:00 p. m."));
-    assert.ok(block.toLowerCase().includes("día siguiente"));
+    assert.ok(block.includes("+ Ads (presupuesto del cliente)"));
+    assert.ok(block.includes("4 videos comerciales"));
+    assert.ok(block.includes("8 piezas gráficas"));
+    assert.ok(block.includes("5-7 días") || block.includes("5–7 días") || block.includes("5 a 7 días"));
+    assert.ok(block.includes("7-14 días") || block.includes("7–14 días") || block.includes("7 a 14 días"));
+    assert.ok(block.includes("inversión publicitaria") || block.includes("Ads"));
     assert.ok(block.includes("[[ESCALATE_HUMAN]]"));
   });
 
-  it("formatServicesPromptBlock usa el fallback seguro si la lista está vacía", async () => {
+  it("formatServicesPromptBlock usa un fallback honesto cuando la lista está vacía sin mostrar precios stale", async () => {
     const { formatServicesPromptBlock } = await import(
       "../src/lib/services/services-prompt-builder.ts"
     );
 
     const block = formatServicesPromptBlock([]);
 
-    assert.ok(block.includes("Presencia Local / Google Business Profile"));
-    assert.ok(block.includes("Diseño Web Adaptable"));
-    assert.ok(block.includes("Auditoría y Diagnóstico de Negocio 1a1"));
-    assert.ok(block.includes("Kickstart de Meta Ads"));
-    assert.ok(block.includes("11:00 a. m. y 6:00 p. m."));
+    assert.ok(block.includes("no pudo ser confirmado") || block.includes("no disponible"));
+    assert.ok(block.includes("qlick.digital/servicios") || block.includes("especialista"));
   });
 
   it("detectIntent clasifica 'servicios?', 'diseño web', 'anuncios' como 'question' para ir al LLM", async () => {

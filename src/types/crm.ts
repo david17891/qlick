@@ -130,8 +130,8 @@ export interface Lead {
   firstName?: string;
   /** Apellido(s) parseado(s) de `name`. Ver `firstName` para reglas. */
   lastName?: string;
-  /** Email de contacto. */
-  email: string;
+  /** Email de contacto (opcional para leads de servicios de WhatsApp). */
+  email: string | null;
   /**
    * Teléfono en formato internacional. En datos demo se usan placeholders
    * como +52XXXXXXXXXX. Nunca se inventan números reales.

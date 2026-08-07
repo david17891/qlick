@@ -543,7 +543,7 @@ export function LeadDetailDrawer({
     if (!realMode) return; // Solo en modo real (en demo no hay endpoint)
     setEditingFields({
       name: currentLead.name,
-      email: currentLead.email,
+      email: currentLead.email ?? "",
       phone: currentLead.phone ?? "",
     });
     setEditFieldsMsg(null);

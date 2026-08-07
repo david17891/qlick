@@ -8,7 +8,7 @@
 > crítico, o descubrimiento que invalida lo escrito. NO es append-only —
 > se sobreescribe con el nuevo snapshot.
 >
-> **Última actualización:** 2026-07-30 — Producción está desplegada en `dpl_G72XruYz4oU5C2bhWUpE3Z2NFKB3` con estado `READY` y aliases `https://qlick.digital` / `https://www.qlick.digital`. El commit desplegado es `713a7338`, alineado con `main`. El seguimiento automático de leads está activo en `system_settings.lead_followup_mode=live`; el scheduler horario corre desde GitHub Actions con secreto dedicado porque la cuenta Hobby no admite cron horario de Vercel. La pasada controlada `30578750411` encontró el registro de inscripción incompleta y dejó un mensaje transaccional persistido con estado `delivered`; el consentimiento de marketing permaneció en `false`. Las reglas globales del bot continúan apagadas (fail-closed).
+> **Última actualización:** 2026-08-07 — Bot de Eventos y Servicios Meta Ads integrado. Aplicadas exitosamente las migraciones aditivas DDL `20260806120000_service_lead_interests.sql` y `20260806121000_kickstart_meta_ads_catalog_v3.sql` en Supabase con status HTTP 201 via Management API. Creada la tabla `lead_service_interests`, `leads.email` nullable para captación directa en WhatsApp y `service_interest_id` en `crm_tasks`. Activado el kill-switch `system_settings.bot_services_enabled=true`. Inyección de catálogo factual B2B en los 5 modos del bot y en el simulador. Pruebas completas `1633/1633` pasadas, type-check, lint y build en verde.
 >
 > **Body del doc (líneas debajo):** es archivo histórico de sprints cerrados. Para estado actual, ver este snapshot.
 

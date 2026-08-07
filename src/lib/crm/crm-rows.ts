@@ -45,3 +45,11 @@ export type LeadInteractionInsert = TablesInsert<"lead_interactions">;
 export type AdminAuditLogRow = Tables<"admin_audit_log">;
 /** Payload de inserción de audit log. */
 export type AdminAuditLogInsert = TablesInsert<"admin_audit_log">;
+
+/** Fila de public.lead_service_interests. */
+export type ServiceInterestRow = Tables<"lead_service_interests">;
+/** Payload de inserción de interés de servicio. */
+export type ServiceInterestInsert = TablesInsert<"lead_service_interests">;
+/** Actualización parcial de interés de servicio. */
+export type ServiceInterestUpdate = TablesUpdate<"lead_service_interests">;
+

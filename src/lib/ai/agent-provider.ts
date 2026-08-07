@@ -60,6 +60,8 @@ export interface AgentContext {
   profile: AIAgentProfile;
   /** Nombre del lead, si se conoce. */
   leadName?: string;
+  /** Teléfono WhatsApp normalizado del lead. */
+  phoneNormalized?: string;
   /** Curso de interés del lead. */
   courseOfInterest?: string;
   /** Texto del último mensaje entrante del lead. */

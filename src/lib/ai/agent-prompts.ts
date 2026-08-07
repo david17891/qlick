@@ -35,6 +35,8 @@ export interface ExtendedAgentContext extends AgentContext {
   eventsListBlock?: string;
   /** Ventana de últimos mensajes del lead. */
   conversationWindow?: ConversationWindow;
+  /** Catalogo de servicios generales de la empresa. */
+  servicesCatalogBlock?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -47,7 +49,8 @@ export function buildSystemPrompt(
   activeEvent?: ActiveEventContext,
   isFirstMessage: boolean = true,
   eventsListBlock?: string,
-  globalRules?: InjectableRule[]
+  globalRules?: InjectableRule[],
+  servicesCatalogBlock?: string
 ): string {
   const lines: string[] = [
     `Eres ${profile.name}, asistente conversacional de ${profile.businessName}.`,
@@ -65,6 +68,13 @@ export function buildSystemPrompt(
     `- Nunca discutes; si el usuario está molesto, lo escuchas y ofreces solución.`,
     `- Usas "tú" (no "usted"). Usas expresiones naturales de México.`,
     ``,
+  ];
+
+  if (servicesCatalogBlock && servicesCatalogBlock.trim().length > 0) {
+    lines.push(servicesCatalogBlock, "");
+  }
+
+  lines.push(
     // FIX 2026-07-10 (Sprint 2 sub-sprint 2B): Método Socrático
     // Comercial Qlick inyectado al system prompt (mejora #3 de David).
     // Aplica OBLIGATORIAMENTE durante suggest_reply. Los templates
@@ -98,7 +108,7 @@ export function buildSystemPrompt(
     ``,
     `Si no estás seguro o falta información, responde:`,
     `"${profile.fallbackMessage}"`
-  ];
+  );
 
   // FIX 2026-07-25 (sprint "activar ai_bot_rules en el bot real"):
   // bloque de Reglas de Oro Globales para el modo socrático. Es la
@@ -632,7 +642,9 @@ export function buildSuperExecutivePrompt(context: AgentContext): string {
     // la brevedad/calidez sobre directivas específicas de oferta.
     [
       "=== REGLAS DE FORMATO Y ESTILO WHATSAPP (NO NEGOCIABLE) ===",
-      "- CERO META-RAZONAMIENTO O PENSAMIENTO EN EL MENSAJE: Tu respuesta debe ser ÚNICAMENTE el mensaje final que leerá el usuario en WhatsApp. NUNCA escribas notas de análisis interno como 'El lead escribió...', 'El usuario dijo...', 'Respondo directo...' ni explicaciones sobre lo que vas a responder.",
+      "- CERO META-RAZONAMIENTO O PENSAMIENTO EN EL MENSAJE: Tu respuesta debe ser ÚNICAMENTE el mensaje final que leerá el usuario en WhatsApp. NUNCA escribas notas de análisis interno como 'El lead escribió...', 'Aquí tengo dos opciones...', 'Dado que preguntó...', 'aplico el protocolo...', 'Respondo directo...' ni explicaciones sobre cómo razonas. Empieza DIRECTO con tu mensaje al cliente.",
+      `- NÚMERO DE TELÉFONO IMPLÍCITO EN WHATSAPP: Estás conversando en WhatsApp con el usuario, por lo que YA TIENES su número (${context.phoneNormalized || "el chat actual"}). NUNCA le pidas 'tu teléfono', 'un número o correo', 'tu número completo', ni digas 'quedo pendiente con tu número' o '¿me confirmas tu número completo para que te encuentren bien?'. Si el usuario dice 'david y por este numero', 'con este número' o pide ser contactado, responde INMEDIATAMENTE sin volver a pedir número o correo: '¡Perfecto David! Ya quedó registrada tu solicitud. Un especialista de Qlick te contactará directo a este WhatsApp.'`,
+      "- EMAIL OPCIONAL EN SERVICIOS: En consultas de servicios B2B o llamadas de diagnóstico, el correo electrónico es 100% OPCIONAL. Si el usuario da su nombre o dice 'con este número está bien', confirma de inmediato la solicitud sin volver a insistir por el correo.",
       "- BREVEDAD ABSOLUTA: Estás chateando por WhatsApp, no redactando correos formales. Responde en 1 o máximo 2 oraciones cortas y claras al punto.",
       "- CERO VERBOSIDAD NI REPETICIÓN: Si el lead pregunta 'costo?', responde en una sola línea clara y cálida (ej. 'Es 100% gratuita 🎁 Solo confírmame tu nombre y correo para mandarte el acceso').",
       "- NO REPITAS EL TÍTULO DEL EVENTO EN CADA MENSAJE: Si en la conversación ya se sabe de qué evento hablan, no repitas el nombre completo ni la fecha una y otra vez.",
@@ -701,6 +713,10 @@ export function buildSuperExecutivePrompt(context: AgentContext): string {
     `Si no estás seguro o falta información:`,
     `Responde: "${profile.fallbackMessage}"`
   ];
+
+  if (context.servicesCatalogBlock && context.servicesCatalogBlock.trim().length > 0) {
+    lines.push("", context.servicesCatalogBlock);
+  }
 
   return lines.join("\n");
 }
@@ -992,7 +1008,7 @@ export function buildHumanFirstPrompt(context: AgentContext): string {
     `=== REGLAS DE FORMATO Y ESTILO WHATSAPP (NO NEGOCIABLE) ===`,
     `- BREVEDAD: máximo 2-3 oraciones cortas. WhatsApp no es correo formal.`,
     `- Empieza DIRECTO con la respuesta. NUNCA con 'Hola, gracias por escribir' si ya hay historial.`,
-    `- VENTA DIRECTA (PRIMERA PRIORIDAD): si hay evento activo (ver "CONTEXTO DEL EVENTO" abajo) y el lead muestra CUALQUIER interés (pregunta sobre el evento, dice "me interesa", pide info práctica, o lo que sea), tu respuesta SIEMPRE cierra ofreciendo inscripción: "Si quieres tu lugar, mándame tu nombre y correo y te lo aparto." Esta regla va POR ENCIMA de "tú decides el flow" — la conversión es tu trabajo, no opcional.`,
+    `- VENTA DIRECTA DE EVENTOS: si hay un evento activo y el lead pregunta específicamente sobre el evento o muestra interés en asistir, tu respuesta cierra ofreciendo inscripción ("Si quieres tu lugar, mándame tu nombre y correo y te lo aparto."). ESTA REGLA ES EXCLUSIVA DE EVENTOS EN VIVO. Si el lead pregunta por SERVICIOS DE AGENCIA B2B (diseño web, Meta Ads, diagnóstico, etc.) o pide ser contactado, ESTÁ ESTRICTAMENTE PROHIBIDO ofrecer eventos.`,
     `- Si el lead dice 'inscríbeme' o 'quiero entrar', acógelo con calidez y pide su nombre y correo sin párrafos de descargo de responsabilidad.`,
     `- CERO VERBOSIDAD: una pregunta clara a la vez, no cuatro juntas.`,
     `- CADENCIA SUAVE DE CIERRE: si ya pediste nombre y correo en el turno anterior y el prospecto te hizo otra pregunta, responde su duda SIN repetir la pregunta de datos en turnos consecutivos.`,
@@ -1032,6 +1048,10 @@ export function buildHumanFirstPrompt(context: AgentContext): string {
     `Si no estás seguro o falta información:`,
     `Responde: "${profile.fallbackMessage}"`
   ];
+
+  if (context.servicesCatalogBlock && context.servicesCatalogBlock.trim().length > 0) {
+    lines.push("", context.servicesCatalogBlock);
+  }
 
   return lines.join("\n");
 }

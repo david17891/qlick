@@ -891,6 +891,11 @@ async function applyHumanFirstSaleGuard(
     const event = context.activeEvent;
     if (!event || event.source === "no_events") return result;
 
+    // 2.5 Desactivar en flujos de servicios B2B (evita inyectar cierre de eventos en chats de servicios)
+    if (context.servicesCatalogBlock && context.servicesCatalogBlock.trim().length > 0) {
+      return result;
+    }
+
     // 3. Solo si el resultado es OK y tiene contenido.
     if (!result.ok || !result.content || result.content.length === 0) {
       return result;
@@ -1070,7 +1075,8 @@ export async function pickSystemPromptForMode(
     // flag está OFF o no hay reglas, la lista viene `[]` y el
     // `buildSystemPrompt` skipea el bloque completo (sin header
     // fantasma). Si está poblado, renderea la lista numerada.
-    context.globalRules
+    context.globalRules,
+    context.servicesCatalogBlock
   );
 }
 

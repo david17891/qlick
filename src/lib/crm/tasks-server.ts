@@ -81,6 +81,7 @@ export async function createCRMTask(
     title: string;
     description?: string;
     dueAt?: string;
+    serviceInterestId?: string | null;
   },
   actorEmail: string,
 ): Promise<{ ok: boolean; task?: CrmTaskRow; error?: string }> {
@@ -98,6 +99,7 @@ export async function createCRMTask(
     title,
     description: input.description?.trim().slice(0, 2000) || null,
     due_at: input.dueAt || null,
+    service_interest_id: input.serviceInterestId || null,
     created_by_email: actorEmail.trim().toLowerCase(),
   };
 

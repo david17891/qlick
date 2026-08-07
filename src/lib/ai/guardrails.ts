@@ -181,12 +181,30 @@ export function sanitizeLLMOutput(rawText: string): string {
   const isMetaParagraph = (p: string): boolean => {
     const l = p.trim();
     if (!l) return false;
-    // Párrafos que arrancan con análisis de intención ("El lead pregunta...", "El usuario dice...", "Respondo directo...")
-    if (/^(?:El\s+(?:lead|usuario|prospecto|cliente)|Respondo|Respuesta:|Análisis:|Razonamiento:|Diagnóstico:|Estrategia:|Pensamiento:)/i.test(l)) {
+    // Si el párrafo empieza con saludo o afirmación directa al cliente, NUNCA es meta-párrafo.
+    if (/^(?:¡?Hola|¡?Claro|¡?Excelente|¡?Perfecto|¡?Buen|Buenas|Estimado)/i.test(l)) {
+      return false;
+    }
+    // Párrafos que arrancan con análisis de intención o meta-razonamiento
+    // Ejemplos: "Aquí tengo dos opciones...", "El lead puede referirse...", "Dado que preguntó...", "aplico el protocolo...", "Respondo directo..."
+    if (
+      /^(?:El\s+(?:lead|usuario|prospecto|cliente)|Respondo|Respuesta:|Análisis:|Razonamiento:|Diagnóstico:|Estrategia:|Pensamiento:|Aquí\s+(?:tengo|hay|el|opción)|Dado\s+que|Como\s+(?:el|la|preguntó|mencionó)|Analizando|Aplicando|Aplico|Procedo|Voy\s+a|En\s+este\s+caso|Para\s+esta\s+consulta)/i.test(
+        l
+      )
+    ) {
+      return true;
+    }
+    if (/aplico\s+el\s+protocolo/i.test(l) || /aplico\s+la\s+regla/i.test(l)) {
+      return true;
+    }
+    if (/el\s+lead\s+puede\s+referirse/i.test(l) || /el\s+usuario\s+pregunta/i.test(l)) {
       return true;
     }
     // Párrafos donde el LLM resume internamente lo que dirá sin ser el mensaje final directo al usuario
-    if (/^El curso (?:es|trabaja|ofrece|consta)/i.test(l) && !/(?:¡?Hola|¿|Te invito|Aparta|Reserva|Confirma|Escríbeme)/i.test(l)) {
+    if (
+      /^El curso (?:es|trabaja|ofrece|consta)/i.test(l) &&
+      !/(?:¡?Hola|¿|Te invito|Aparta|Reserva|Confirma|Escríbeme)/i.test(l)
+    ) {
       return true;
     }
     return false;

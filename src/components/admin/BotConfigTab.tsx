@@ -121,6 +121,7 @@ interface BotStats {
   whatsapp_free_quota_total: number;
   whatsapp_free_quota_note: string;
   bot_paused_global: boolean;
+  bot_services_enabled?: boolean;
   bot_daily_outbound_limit: number;
   bot_daily_outbound_count: number;
   generated_at: string;
@@ -140,6 +141,7 @@ export function BotConfigTab() {
   const [showNewRuleModal, setShowNewRuleModal] = useState(false);
   // Sprint v16 PR #2.3: state de los controles de pausa global + kill-switch.
   const [togglingGlobalPause, setTogglingGlobalPause] = useState(false);
+  const [togglingServices, setTogglingServices] = useState(false);
   // Sprint v16 Hotfix #3: mientras se persiste `onSelectMode` en
   // system_settings vía /api/admin/bot/mode, deshabilitamos los botones
   // para evitar doble click + rollback fantasma.
@@ -202,6 +204,28 @@ export function BotConfigTab() {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setTogglingGlobalPause(false);
+    }
+  }, [stats]);
+
+  const handleToggleServices = useCallback(async () => {
+    setTogglingServices(true);
+    try {
+      const res = await fetch("/api/admin/system-setting", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "bot_services_enabled", value: !(stats?.bot_services_enabled === true) })
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(j.error ?? `HTTP ${res.status}`);
+      }
+      const r2 = await fetch("/api/admin/bot/stats", { cache: "no-store" });
+      const j2 = (await r2.json()) as { ok: boolean; data?: BotStats; error?: string };
+      if (j2.ok && j2.data) setStats(j2.data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setTogglingServices(false);
     }
   }, [stats]);
 
@@ -893,6 +917,26 @@ export function BotConfigTab() {
                       {stats.bot_paused_global
                         ? "▶️ Reanudar para Todos"
                         : "⏸️ Pausar para Todos"}
+                    </Button>
+                  </div>
+                  {/* Kill-Switch: captación de servicios B2B */}
+                  <div className="rounded border border-slate-200 p-3 space-y-1">
+                    <p className="text-xs font-semibold text-ink">💼 Captación de Servicios B2B</p>
+                    <p className="text-[10px] text-ink-muted">
+                      Activa la captación de servicios Meta Ads. No altera la automatización de eventos.
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={stats.bot_services_enabled ? "primary" : "outline"}
+                      disabled={togglingServices}
+                      onClick={() => void handleToggleServices()}
+                      aria-pressed={stats.bot_services_enabled}
+                      className="mt-1 w-full"
+                    >
+                      {stats.bot_services_enabled
+                        ? "✅ Servicios Activos (Desactivar)"
+                        : "🚀 Activar Servicios B2B"}
                     </Button>
                   </div>
                   {/* Kill-Switch: límite diario de outbound. */}
