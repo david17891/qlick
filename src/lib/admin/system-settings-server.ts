@@ -69,6 +69,10 @@ export const KEY_BOT_DAILY_OUTBOUND_LIMIT = "bot_daily_outbound_limit" as const;
 // Seguimiento comercial de leads dentro de la ventana de servicio de WhatsApp.
 // Valores admitidos: off (default), shadow (solo medir), live (enviar).
 export const KEY_LEAD_FOLLOWUP_MODE = "lead_followup_mode" as const;
+// Rescate puntual para leads que pidieron información y quedaron en silencio.
+// Es independiente del seguimiento de inscripción/pago y queda apagado por
+// defecto para no cambiar el comportamiento de producción al desplegar.
+export const KEY_LEAD_INFO_FOLLOWUP_MODE = "lead_info_followup_mode" as const;
 // Feature flag kill switch para la captación de servicios B2B (Meta Ads, etc.).
 export const KEY_BOT_SERVICES_ENABLED = "bot_services_enabled" as const;
 

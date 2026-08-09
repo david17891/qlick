@@ -5,6 +5,7 @@ import {
   updateLeadStatus,
   archiveLead,
   updateLeadFields,
+  updateLeadOwner,
   type LeadFieldUpdate,
 } from "@/lib/crm/leads-admin-server";
 
@@ -51,7 +52,7 @@ export async function PATCH(
     );
   }
 
-  let body: { status?: unknown; name?: unknown; email?: unknown; phone?: unknown };
+  let body: { status?: unknown; name?: unknown; email?: unknown; phone?: unknown; ownerId?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -69,6 +70,20 @@ export async function PATCH(
         { ok: false, error: result.note ?? "No se pudo actualizar el status." },
         { status: 400 },
       );
+    }
+  }
+
+  if (body.ownerId !== undefined) {
+    if (body.ownerId !== null && typeof body.ownerId !== "string") {
+      return NextResponse.json({ ok: false, error: "Responsable inválido." }, { status: 400 });
+    }
+    const result = await updateLeadOwner(
+      params.id,
+      body.ownerId === null || body.ownerId.trim() === "" ? null : body.ownerId.trim().toLowerCase(),
+      admin.email,
+    );
+    if (!result.ok) {
+      return NextResponse.json({ ok: false, error: result.note ?? "No se pudo asignar el responsable." }, { status: 400 });
     }
   }
 

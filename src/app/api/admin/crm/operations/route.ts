@@ -13,4 +13,3 @@ export async function GET() {
   if (!admin) return NextResponse.json({ ok: false, error: "No autenticado como admin." }, { status: 401 });
   return NextResponse.json({ ok: true, demo: false, operations: await getCRMOperationsSummary() });
 }
-

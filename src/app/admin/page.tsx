@@ -4,6 +4,7 @@ import { AdminView } from "@/components/admin/AdminView";
 import { HotLeadsPanel } from "@/components/crm/HotLeadsPanel";
 import { ImmediateRedirect } from "@/components/auth/ImmediateRedirect";
 import { requireAdmin } from "@/lib/auth/session";
+import { getAdminDashboardSnapshot } from "@/lib/admin/admin-dashboard-server";
 import {
   readSystemSetting,
   KEY_DEEPSEEK_TOOLS_ENABLED
@@ -54,6 +55,8 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
     botV2Enabled = null;
   }
 
+  const dashboardData = await getAdminDashboardSnapshot();
+
   return (
     <>
       <Navbar />
@@ -62,7 +65,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
           <HotLeadsPanel />
         </div>
       )}
-      <AdminView adminEmail={admin.email ?? "admin"} botV2Enabled={botV2Enabled} />
+      <AdminView adminEmail={admin.email ?? "admin"} botV2Enabled={botV2Enabled} dashboardData={dashboardData} />
       <Footer />
     </>
   );
