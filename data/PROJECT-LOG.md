@@ -716,3 +716,4 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 - `bot-engine` ahora usa el resolver centralizado para persistir el evento de los nuevos turnos sin cambiar la respuesta actual del bot.
 - Auditoría de producción: 228 conversaciones siguen sin evento; 64 no tienen lead y 226 no tienen evidencia suficiente para separar CN26 de AA4E. Las dos filas con señal de QR pertenecen al evento anterior. No se hizo backfill por suposición.
 - Pruebas: resolver + bot + simulaciones de conversación `89/89`; type-check y lint OK.
+- Producción: deploy `dpl_7zD4AEKq1QCj5Kq2YSTewnRqfZi2` en `READY`; smoke público `/`, `/eventos`, `/admin` `200` y webhook sin firma `403`.
