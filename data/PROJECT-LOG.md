@@ -749,3 +749,5 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 - Un lead nuevo solo entra desde el corte `lead_new_info_followup_since` y queda excluido si tiene `recovery:info_historical`; el outbound registra `followup_scope` para distinguir `new_lead_info`, `historical_info` y `operational`.
 - Se agregó una ventana proactiva 09:00–19:00 hora `America/Phoenix`; fuera de ella el cron no envía mensajes. Las respuestas entrantes del bot continúan operando.
 - Pruebas de alcance/horario/cron `6/6`, type-check OK, lint OK y build OK. El modo nuevo queda listo para activarse después del deploy fijando el corte en producción; el rescate histórico permanece `off`.
+- Producción: tras el deploy `dpl_CqBJpq5UitiQrqEYtjXjmYgn31fJ`, se fijó `lead_new_info_followup_since=2026-08-09T09:01:22Z` y `lead_new_info_followup_mode=live`; el corte encontró 0 leads existentes en alcance, 0 `info_requested` y 0 programados. `lead_info_followup_mode` permanece `off`.
+- Smoke público: `/`, `/eventos`, `/admin` `200` y webhook sin firma `403`.
