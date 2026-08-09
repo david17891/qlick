@@ -1710,6 +1710,38 @@ function eventSlugFromConversation(
 }
 
 /**
+ * Resuelve el evento que debe acompañar a una fila de conversación.
+ *
+ * La columna `related_event_id` existía, pero el webhook/bot no la llenaba.
+ * Mantenemos la inferencia conservadora: primero usamos un botón o un texto
+ * que identifique explícitamente el evento; si solo hay un evento publicado,
+ * lo usamos para la conversación comercial de WhatsApp, excepto cuando el
+ * mensaje es claramente una solicitud de servicios.
+ */
+async function resolveConversationEventId(input: {
+  body: string;
+  buttonId?: string | null;
+}): Promise<string | null> {
+  const events = await loadAllActiveEvents().catch(() => [] as ActiveEventContext[]);
+  if (events.length === 0) return null;
+
+  const buttonMatch = input.buttonId?.match(/^evt_(?:info|inscribir|yes|register)_(.+)$/);
+  if (buttonMatch?.[1]) {
+    const buttonEvent = events.find((event) => event.slug === buttonMatch[1]);
+    if (buttonEvent) return buttonEvent.id;
+  }
+
+  const textMatch = matchTextToEvent(input.body, events);
+  if (textMatch) return textMatch.event.id;
+
+  if (events.length === 1 && detectServiceIntent(input.body).kind === "none") {
+    return events[0].id;
+  }
+
+  return null;
+}
+
+/**
  * Inserta una fila en `lead_consent_log`. Devuelve ok.
  */
 async function persistConsent(
@@ -5488,6 +5520,13 @@ export async function processInboundMessage(
   }
   const { lead, created } = upsert;
   const isFirstMessage = created;
+  // Se mantiene durante todo este turno para que inbound y outbound queden
+  // en el mismo evento. Si el webhook ya creó el inbound con lead_id null,
+  // el upsert posterior por whatsapp_message_id también lo corrige.
+  let conversationEventId = await resolveConversationEventId({
+    body,
+    buttonId,
+  });
 
   // FIX 2026-07-08 (sesión madrugada David "poder apagar y encender el bot
   // por momentos, por conversación"): si el admin (David) tiene pausado el
@@ -5513,6 +5552,7 @@ export async function processInboundMessage(
           message_type: message.type === "interactive" ? "interactive" : "text",
           body,
           whatsapp_message_id: message.messageId ?? null,
+          related_event_id: conversationEventId,
           metadata: {
             bot_paused_skip: true,
             ...(message.buttonId ? { buttonId: message.buttonId } : {}),
@@ -5564,6 +5604,7 @@ export async function processInboundMessage(
         : "interactive",
       body,
       whatsapp_message_id: message.messageId,
+      related_event_id: conversationEventId,
       // FIX P1-2 (auditoria 2026-07-02): incluir buttonId en metadata.
       // El body (buttonTitle) puede estar truncado a 24 chars (limite
       // de Meta para list rows). El slug completo está en buttonId.
@@ -8141,6 +8182,32 @@ export async function processInboundMessage(
     supabase
   });
 
+  // El primer mensaje puede ser genérico (por ejemplo, "quiero
+  // información") y no traer el slug. El copy final del bot sí puede
+  // identificar el evento; aprovechamos esa respuesta para completar el
+  // inbound antes de persistir el outbound.
+  if (!conversationEventId && plan.body) {
+    conversationEventId = await resolveConversationEventId({
+      body: plan.body,
+      buttonId: message.buttonId ?? buttonId,
+    });
+  }
+  if (supabase && lead.id && message.messageId) {
+    const { error: eventLinkError } = await supabase
+      .from("lead_whatsapp_conversations")
+      .update({
+        lead_id: lead.id,
+        ...(conversationEventId ? { related_event_id: conversationEventId } : {}),
+      })
+      .eq("whatsapp_message_id", message.messageId);
+    if (eventLinkError) {
+      errorLog("[whatsapp/bot] no se pudo asociar inbound al evento", {
+        leadId: lead.id,
+        code: eventLinkError.code,
+      });
+    }
+  }
+
   let sendResult: { ok: boolean; externalId?: string; demo?: boolean; note?: string } = {
     ok: false
   };
@@ -8408,6 +8475,7 @@ export async function processInboundMessage(
       message_type: plan.kind,
       body: plan.body,
       whatsapp_message_id: sendResult.externalId ?? null,
+      related_event_id: conversationEventId,
       // FIX 2026-07-02 (Commit A): incluir metadata del plan
       // (ej. awaiting_field del flow secuencial nombre → email).
       // Spread DESPUES de los defaults para que el plan pueda
