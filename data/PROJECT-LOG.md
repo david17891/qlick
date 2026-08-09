@@ -741,3 +741,4 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 - La cola histórica conserva 8 `sent`, 11 `duplicate_review`, 43 `blocked_template_required`, 16 `replied` y 27 `excluded`; no hay candidatos `eligible` para envío automático.
 - Los tres seguimientos pendientes asociados a leads con pago pendiente no se modificaron porque pertenecen al flujo operativo de pago, no al rescate histórico.
 - La UI de Conversaciones ahora muestra explícitamente “Ronda manual activa” cuando el rescate está detenido y recomienda revisar cada caso en Revisión humana antes de reactivar automatizaciones.
+- Producción: deploy `dpl_3cLcFR4gm37ekG3Sidfhx8oFZbgs` en `READY`; smoke público `/`, `/eventos`, `/admin` `200` y webhook sin firma `403`. Supabase confirmó nuevamente `lead_info_followup_mode=off`.
