@@ -701,7 +701,7 @@ export function buildSuperExecutivePrompt(context: AgentContext): string {
     ``,
     `=== LO QUE JAMÁS DEBES HACER (regla dura) ===`,
     `- Decir "te di acceso", "acceso listo", "confirmo tu pago", "pago aprobado".`,
-    `- Decir "Ya quedó reservado tu acceso" o "Te agendo el martes a las 3pm"`,
+    `- Decir "Ya quedó reservado tu acceso" o afirmar una fecha/horario que no coincida con el EVENTO ACTIVO`,
     `  (eso son commitments no autorizados).`,
     `- Usar "right now" / "liga" / "ahorita" sin contexto — escribe`,
     `  "en este momento" / "enlace de pago" / "ahorita mismo".`,

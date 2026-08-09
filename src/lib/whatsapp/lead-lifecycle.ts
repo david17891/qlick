@@ -48,10 +48,14 @@ function addTag(tags: string[], tag: string): string[] {
 export function decideLeadLifecycle(input: LeadLifecycleInput): LeadLifecycleDecision {
   const body = input.body.trim();
   const eventTag = input.eventSlug ? `event:${input.eventSlug}:registration_started` : null;
-  const registrationPending = Boolean(input.awaitingField) || input.botIntent === "provide_name";
+  const registrationPending =
+    Boolean(input.awaitingField) ||
+    input.botIntent === "provide_name" ||
+    (input.currentStatus === "info_requested" && input.botIntent === "provide_email");
   const now = input.now ?? new Date();
   const registrationFollowUpAt = new Date(now.getTime() + 60 * 60 * 1000).toISOString();
   const paymentFollowUpAt = new Date(now.getTime() + 4 * 60 * 60 * 1000).toISOString();
+  const infoFollowUpAt = new Date(now.getTime() + 3 * 60 * 60 * 1000).toISOString();
 
   if (input.botIntent === "opt_out") {
     return {
@@ -121,7 +125,7 @@ export function decideLeadLifecycle(input: LeadLifecycleInput): LeadLifecycleDec
       status: "info_requested",
       intent: "course_information",
       tagsToAdd: addTag([], "conversation:info_requested"),
-      nextFollowUpAt: null,
+      nextFollowUpAt: infoFollowUpAt,
       reason: "Pidió información, pero no inició una inscripción.",
     };
   }

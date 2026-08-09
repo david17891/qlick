@@ -14,7 +14,10 @@ import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/types/supabase";
-import { formatEventDateTimeWithZone } from "../datetime";
+import {
+  formatEventDateTimeWithZone,
+  formatEventWeekday,
+} from "../datetime";
 
 /* ------------------------------------------------------------------ */
 /*  Tipos                                                              */
@@ -152,7 +155,8 @@ function fallbackNoEvents(): ActiveEventContext {
       location: "—",
       description: null,
       eventRules: { personality: "", rules: [] },
-      priceMxn: null
+      priceMxn: null,
+      eventStartsAt: new Date(0),
     }),
     source: "no_events",
     // FIX 2026-07-06: el placeholder DEBE pedir nombre. David decidio
@@ -261,11 +265,13 @@ function formatPromptBlock(args: {
    * precisa (antes dependía solo de regex sobre la description).
    */
   priceMxn: number | null;
+  eventStartsAt: string | Date;
 }): string {
   const lines: string[] = [
     "=== EVENTO ACTIVO ===",
     `Nombre: ${args.title}`,
     `Fecha y hora: ${args.humanStartsAt}`,
+    `Día de la semana (calculado desde la fecha oficial): ${formatEventWeekday(args.eventStartsAt)}`,
     `Duración: ${args.humanDuration}`,
     `Lugar: ${args.location}`
   ];
@@ -324,6 +330,7 @@ function formatPromptBlock(args: {
     "",
     "=== INSTRUCCIONES PARA EL BOT (OBLIGATORIAS) ===",
     "- Puedes responder CUALQUIER duda sobre el evento: fecha, hora, día, duración, lugar, temas, requisitos, si hay constancia, qué incluye, cómo llegar, etc. Usa SOLO la información del bloque EVENTO ACTIVO y REGLAS DEL BOT.",
+    "- VERIFICACIÓN DE FECHA: el día de la semana calculado arriba es la fuente oficial. Si el lead menciona otro día, corrígelo con amabilidad; nunca lo confirmes ni lo repitas como correcto.",
     "- Si la respuesta no está en el contexto o en las reglas, NO INVENTES. Responde: 'No tengo esa información, te derivo con el equipo.'",
     "- Para preguntas de PAGO: si el evento es de pago, puedes decir el precio y mencionar que hay 2 opciones (pago en línea y pago en puerta el día del evento). NO confirmes pagos. NO digas 'pago confirmado' ni nada similar.",
     "- Para CONSTANCIAS / CERTIFICADOS: si la description o las reglas lo mencionan, dilo. Si NO, di que no tienes esa info y derivo.",
@@ -527,7 +534,8 @@ export async function loadActiveEventContext(
       location,
       description: evt.description,
       eventRules,
-      priceMxn
+      priceMxn,
+      eventStartsAt: evt.starts_at,
     });
 
     return {
@@ -656,7 +664,8 @@ export async function loadAllActiveEvents(): Promise<ActiveEventContext[]> {
         location,
         description: evt.description,
         eventRules,
-        priceMxn
+        priceMxn,
+        eventStartsAt: evt.starts_at,
       });
       return {
         id: evt.id,

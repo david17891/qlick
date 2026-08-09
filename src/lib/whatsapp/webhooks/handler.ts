@@ -85,6 +85,13 @@ export function handleWebhookPayload(payload: unknown): WebhookHandleResult {
                 sha256?: string;
                 animated?: boolean;
               };
+              referral?: {
+                source_url?: string;
+                source_type?: string;
+                source_id?: string;
+                headline?: string;
+                body?: string;
+              };
             }>;
             contacts?: Array<{
               wa_id?: string;
@@ -151,6 +158,15 @@ export function handleWebhookPayload(payload: unknown): WebhookHandleResult {
                 voice: msg.audio.voice,
               }
             : undefined;
+          const referral = msg.referral
+            ? {
+                sourceUrl: msg.referral.source_url,
+                sourceType: msg.referral.source_type,
+                sourceId: msg.referral.source_id,
+                headline: msg.referral.headline,
+                body: msg.referral.body,
+              }
+            : undefined;
 
           // FIX 2026-07-04 (auditoria nocturna, outbound idempotency):
           // Si Meta omite el wamid (msg.id), NO sintetizamos "unknown".
@@ -174,6 +190,7 @@ export function handleWebhookPayload(payload: unknown): WebhookHandleResult {
             image,
             document,
             audio,
+            referral,
           });
         }
       }

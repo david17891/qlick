@@ -64,6 +64,15 @@ export interface IncomingWhatsAppAudio {
   voice?: boolean;
 }
 
+/** Referencia de entrada desde Click-to-WhatsApp o CTA de Facebook. */
+export interface IncomingWhatsAppReferral {
+  sourceUrl?: string;
+  sourceType?: string;
+  sourceId?: string;
+  headline?: string;
+  body?: string;
+}
+
 /** Un mensaje entrante parseado desde el payload del webhook. */
 export interface IncomingWhatsAppMessage {
   /** WhatsApp Message ID (wamid). */
@@ -101,6 +110,8 @@ export interface IncomingWhatsAppMessage {
   document?: IncomingWhatsAppDocument;
   /** Sub-shape para mensajes tipo `audio`. */
   audio?: IncomingWhatsAppAudio;
+  /** Referencia de campana que Meta adjunta en entradas elegibles. */
+  referral?: IncomingWhatsAppReferral;
 }
 
 /** Resultado de procesar un POST del webhook. */

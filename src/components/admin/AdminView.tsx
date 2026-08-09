@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { ComponentType, SVGProps } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import type { User, PaymentStatus } from "@/types";
+import type { User } from "@/types";
 import { getCurrentUser } from "@/lib/auth/mock-auth";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { Container, Card, Button, Badge, EmptyState, ProgressBar, Skeleton } from "@/components/ui";
@@ -11,8 +11,8 @@ import { LucideIcon } from "@/components/ui/Icon";
 import {
   BarChart3,
   Bot,
-  Check,
   CreditCard,
+  Database,
   Lock,
   Magnet,
   MessageCircle,
@@ -23,33 +23,29 @@ import {
   TrendingUp,
   UserCog,
   Users,
-  Wallet
+  Wallet,
+  AlertTriangle
 } from "lucide-react";
 import { StatCard } from "@/components/dashboard";
-import {
-  getAllCourses,
-  getCourseStats
-} from "@/lib/data/courses";
-import {
-  getAllEnrollments,
-  countEnrollmentsByCourse
-} from "@/lib/data/enrollments";
-import { getAllUsers } from "@/lib/data/users";
-import { getAllPayments, sumRevenue } from "@/lib/data/payments";
-import { listPaymentProviders } from "@/lib/payments";
-import { formatMXN, formatDate, initials, formatDuration } from "@/lib/utils";
+import type { AdminDashboardSnapshot } from "@/lib/admin/admin-dashboard-server";
+import { formatMXN, formatDate, initials } from "@/lib/utils";
 import { CRMView } from "@/components/crm";
 import { BotConfigTab } from "@/components/admin/BotConfigTab";
 import { ConversationsTab } from "@/components/admin/ConversationsTab";
 import { OrdersTab } from "@/components/admin/OrdersTab";
+import { DataMaintenanceTab } from "@/components/admin/DataMaintenanceTab";
 import Link from "next/link";
 
-type Tab = "resumen" | "cursos" | "alumnos" | "inscripciones" | "pagos" | "pedidos" | "servicios" | "crm" | "conversations" | "bot" | "futuro";
+type Tab = "resumen" | "cursos" | "alumnos" | "inscripciones" | "pagos" | "pedidos" | "servicios" | "crm" | "conversations" | "bot" | "futuro" | "mantenimiento";
 
-const statusTone: Record<PaymentStatus, "success" | "warning" | "danger" | "neutral" | "info"> = {
+const statusTone: Record<string, "success" | "warning" | "danger" | "neutral" | "info"> = {
   approved: "success",
+  paid: "success",
+  paid_manual: "success",
   pending: "warning",
+  processing: "warning",
   rejected: "danger",
+  cancelled: "neutral",
   expired: "neutral",
   refunded: "info",
   failed: "danger",
@@ -57,7 +53,7 @@ const statusTone: Record<PaymentStatus, "success" | "warning" | "danger" | "neut
   suspicious_amount_discrepancy: "danger"
 };
 
-const statusLabel: Record<PaymentStatus, string> = {
+const statusLabel: Record<string, string> = {
   approved: "Aprobado",
   pending: "Pendiente",
   rejected: "Rechazado",
@@ -65,13 +61,18 @@ const statusLabel: Record<PaymentStatus, string> = {
   refunded: "Reembolsado",
   failed: "Falló",
   disputed: "En disputa",
-  suspicious_amount_discrepancy: "Importe sospechoso"
+  suspicious_amount_discrepancy: "Importe sospechoso",
+  paid: "Pagado",
+  paid_manual: "Pagado manual",
+  processing: "Procesando",
+  cancelled: "Cancelado"
 };
 
 export function AdminView(
   {
     adminEmail,
-    botV2Enabled
+    botV2Enabled,
+    dashboardData
   }: {
     adminEmail?: string;
     /**
@@ -84,9 +85,10 @@ export function AdminView(
      *   true  → 🟢 ACTIVO
      *   false → OFF
      *   null  → sin badge (DB no respondió o flag no seteado)
-     */
+    */
     botV2Enabled?: boolean | null;
-  } = {}
+    dashboardData: AdminDashboardSnapshot;
+  }
 ) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -96,16 +98,13 @@ export function AdminView(
     const t = searchParams.get("tab");
     if (
       t === "resumen" ||
-      t === "cursos" ||
-      t === "alumnos" ||
-      t === "inscripciones" ||
-      t === "pagos" ||
       t === "pedidos" ||
       t === "servicios" ||
       t === "crm" ||
       t === "conversations" ||
       t === "bot" ||
-      t === "futuro"
+      t === "futuro" ||
+      t === "mantenimiento"
     ) {
       return t;
     }
@@ -193,33 +192,26 @@ export function AdminView(
     );
   }
 
-  const courses = getAllCourses();
-  const users = getAllUsers();
-  const students = users.filter((u) => u.role === "student");
-  const enrollments = getAllEnrollments();
-  const payments = getAllPayments();
-  const revenue = sumRevenue();
-  const providers = listPaymentProviders();
-
-  const avgProgress = enrollments.length
-    ? Math.round(
-        enrollments.reduce((a, e) => a + e.progressPercent, 0) / enrollments.length
-      )
-    : 0;
+  const realSnapshot = dashboardData.mode === "real" ? dashboardData : null;
+  const courses = realSnapshot?.lms.courses ?? [];
+  const students = realSnapshot?.lms.students ?? [];
+  const enrollments = realSnapshot?.lms.enrollments ?? [];
+  const payments = realSnapshot?.payments.rows ?? [];
+  const avgProgress = realSnapshot?.lms.averageProgress ?? 0;
+  const approvedRevenue = realSnapshot?.payments.approvedMXN ?? 0;
+  const pendingRevenue = realSnapshot?.payments.pendingMXN ?? 0;
+  const pendingPayments = realSnapshot?.payments.pendingCount ?? 0;
 
   const tabs: { id: Tab; label: string; icon: ComponentType<SVGProps<SVGSVGElement>> }[] = [
     { id: "resumen", label: "Resumen", icon: BarChart3 },
-    { id: "cursos", label: "Cursos", icon: School },
-    { id: "alumnos", label: "Alumnos", icon: Users },
-    { id: "inscripciones", label: "Inscripciones", icon: UserCog },
-    { id: "pagos", label: "Pagos", icon: CreditCard },
     // FASE 8E / Servicios: gestión integral de leads y pedidos de servicios B2B.
     { id: "servicios", label: "Servicios", icon: ShoppingBag },
     { id: "crm", label: "CRM", icon: Magnet },
     // Sprint v16 (PR #1.7): pestaña de Nivel 1 para el buzón de conversaciones.
     { id: "conversations", label: "Conversaciones", icon: MessageCircle },
     { id: "bot", label: "Configuración Bot", icon: Bot },
-    { id: "futuro", label: "Próximas integraciones", icon: Rocket }
+    { id: "futuro", label: "Próximas integraciones", icon: Rocket },
+    { id: "mantenimiento", label: "Auditoría y limpieza", icon: Database }
   ];
 
   // FIX 2026-07-03 (sesion David, agujero de seguridad): si Supabase
@@ -340,68 +332,69 @@ export function AdminView(
       {/* ----------------------- RESUMEN ----------------------- */}
       {tab === "resumen" && (
         <div className="space-y-8">
+          {dashboardData.warning && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <strong>Lectura parcial:</strong> {dashboardData.warning}
+            </div>
+          )}
+          {dashboardData.mode !== "real" && (
+            <EmptyState
+              icon="🗄️"
+              title="Datos administrativos no disponibles"
+              description="El panel no muestra datos demo. Configura la conexión real de Supabase para consultar esta vista."
+            />
+          )}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
-              label="Alumnos"
-              value={students.length}
-              hint={`${users.length} usuarios totales`}
+              label="Leads CRM"
+              value={realSnapshot?.crm.totalLeads ?? 0}
+              hint="registros reales"
               icon={<Users className="h-5 w-5" />}
             />
             <StatCard
-              label="Cursos activos"
-              value={courses.filter((c) => c.status !== "proximamente").length}
-              hint={`${courses.length} en catálogo`}
+              label="Eventos publicados"
+              value={realSnapshot?.events.published ?? 0}
+              hint={`${realSnapshot?.events.upcoming ?? 0} próximos`}
               icon={<School className="h-5 w-5" />}
               tone="accent"
             />
             <StatCard
-              label="Ingresos (aprobado)"
-              value={formatMXN(revenue.approvedMXN)}
-              hint={`${formatMXN(revenue.pendingMXN)} pendiente`}
+              label="Pagos aprobados"
+              value={formatMXN(approvedRevenue)}
+              hint={`${formatMXN(pendingRevenue)} pendiente`}
               icon={<Wallet className="h-5 w-5" />}
               tone="neutral"
             />
             <StatCard
-              label="Progreso promedio"
-              value={`${avgProgress}%`}
-              hint={`${enrollments.length} inscripciones`}
-              icon={<TrendingUp className="h-5 w-5" />}
+              label="Pagos por revisar"
+              value={pendingPayments}
+              hint={`${realSnapshot?.events.confirmationsPendingPayment ?? 0} confirmaciones de evento`}
+              icon={<AlertTriangle className="h-5 w-5" />}
+              tone="neutral"
+            />
+            <StatCard
+              label="Leads con pago pendiente"
+              value={realSnapshot?.crm.paymentPending ?? 0}
+              hint="etapa actual del CRM"
+              icon={<CreditCard className="h-5 w-5" />}
             />
           </div>
 
           <div className="grid lg:grid-cols-2 gap-6">
-            <Card className="p-6">
-              <h3 className="font-bold text-ink mb-4">Top cursos por alumnos</h3>
+            <Card className="p-6 lg:col-span-2">
+              <h3 className="font-bold text-ink mb-1">Estado de pagos reales</h3>
+              <p className="text-xs text-ink-muted mb-4">Eventos y servicios · fuente: Supabase.</p>
               <ul className="space-y-3">
-                {courses
-                  .map((c) => ({
-                    course: c,
-                    count: countEnrollmentsByCourse(c.id)
-                  }))
-                  .sort((a, b) => b.count - a.count)
-                  .slice(0, 4)
-                  .map(({ course, count }) => (
-                    <li key={course.id} className="flex items-center justify-between text-sm">
-                      <span className="text-ink-soft">{course.title}</span>
-                      <Badge tone="brand">{count} alumnos</Badge>
-                    </li>
-                  ))}
-              </ul>
-            </Card>
-            <Card className="p-6">
-              <h3 className="font-bold text-ink mb-4">Estado de pagos (simulado)</h3>
-              <ul className="space-y-3">
-                {(["approved", "pending", "rejected"] as PaymentStatus[]).map((s) => {
-                  const count = payments.filter((p) => p.status === s).length;
-                  return (
-                    <li key={s} className="flex items-center justify-between text-sm">
-                      <span className="flex items-center gap-2 text-ink-soft">
-                        <Badge tone={statusTone[s]}>{statusLabel[s]}</Badge>
-                      </span>
-                      <span className="font-semibold text-ink">{count}</span>
-                    </li>
-                  );
-                })}
+                {Object.entries(payments.reduce<Record<string, number>>((counts, payment) => {
+                  counts[payment.status] = (counts[payment.status] ?? 0) + 1;
+                  return counts;
+                }, {})).map(([status, count]) => (
+                  <li key={status} className="flex items-center justify-between text-sm">
+                    <Badge tone={statusTone[status] ?? "neutral"}>{statusLabel[status] ?? status}</Badge>
+                    <span className="font-semibold text-ink">{count}</span>
+                  </li>
+                ))}
+                {payments.length === 0 && <li className="text-sm text-ink-muted">Sin pagos registrados.</li>}
               </ul>
             </Card>
           </div>
@@ -411,48 +404,40 @@ export function AdminView(
       {/* ----------------------- CURSOS ----------------------- */}
       {tab === "cursos" && (
         <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h2 className="text-xl font-bold text-ink">Gestión de cursos</h2>
-            <Button size="sm" variant="outline" disabled title="Función demo — no disponible en MVP">+ Nuevo curso (demo)</Button>
+          <div className="flex flex-wrap justify-between items-center gap-3">
+            <div>
+              <h2 className="text-xl font-bold text-ink">Cursos del LMS</h2>
+              <p className="text-sm text-ink-muted">Catálogo real de Supabase. Aquí no se muestran cursos demo.</p>
+            </div>
+            <Badge tone="info">{courses.filter((c) => c.status === "published").length} publicados · {courses.filter((c) => c.status === "proximamente").length} próximamente</Badge>
           </div>
-          {courses.map((c) => {
-            const stats = getCourseStats(c.id);
-            const studentsCount = countEnrollmentsByCourse(c.id);
+          {courses.length === 0 ? (
+            <EmptyState
+              icon="🎓"
+              title="No hay cursos registrados"
+              description="El catálogo LMS está vacío. Los eventos y servicios se administran en sus propias pestañas."
+            />
+          ) : courses.map((c) => {
             return (
               <Card key={c.id} className="p-5">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <Badge tone="brand">{c.level}</Badge>
-                      <Badge tone={c.status === "gratis" ? "success" : c.status === "proximamente" ? "info" : "neutral"}>
-                        {c.status}
+                      <Badge tone={c.status === "published" ? "success" : c.status === "proximamente" ? "info" : "neutral"}>
+                        {c.status === "published" ? "Publicado" : c.status === "proximamente" ? "Próximamente" : c.status}
                       </Badge>
                       <span className="text-xs text-ink-muted">
-                        {formatMXN(c.priceMXN)}
+                        {c.priceMXN === null ? "Precio no definido" : formatMXN(c.priceMXN)}
                       </span>
                     </div>
                     <h3 className="font-bold text-ink">{c.title}</h3>
-                    <p className="text-sm text-ink-muted mt-1 line-clamp-2">{c.shortDescription}</p>
                     <p className="text-xs text-ink-muted mt-2">
-                      {stats.totalModules} módulos · {stats.totalLessons} lecciones · {formatDuration(stats.totalMinutes)} · {studentsCount} alumnos
+                      {c.moduleCount} módulos · {c.lessonCount} lecciones · {c.enrollmentCount} inscripciones
                     </p>
                   </div>
                   <div className="flex flex-col gap-2 shrink-0">
                     <Button href={`/cursos/${c.slug}`} size="sm" variant="outline">Ver</Button>
-                    <Button size="sm" variant="ghost" disabled title="Función demo — no disponible en MVP">Editar (demo)</Button>
                   </div>
-                </div>
-                {/* Módulos y lecciones */}
-                <div className="mt-4 pt-4 border-t border-brand-50">
-                  <p className="text-xs font-bold uppercase text-brand-600 mb-2">Estructura</p>
-                  <ul className="space-y-1 text-sm">
-                    {c.modules.map((m, mi) => (
-                      <li key={m.id} className="flex items-center justify-between text-ink-soft">
-                        <span>M{mi + 1}. {m.title.replace(/^Módulo \d+ · /, "")}</span>
-                        <span className="text-xs text-ink-muted">{m.lessons.length} lecciones</span>
-                      </li>
-                    ))}
-                  </ul>
                 </div>
               </Card>
             );
@@ -464,10 +449,15 @@ export function AdminView(
       {tab === "alumnos" && (
         <Card className="overflow-hidden">
           <div className="p-5 border-b border-brand-50 flex justify-between items-center">
-            <h2 className="text-xl font-bold text-ink">Alumnos</h2>
-            <Button size="sm" variant="outline" disabled title="Función demo — no disponible en MVP">+ Invitar (demo)</Button>
+            <div>
+              <h2 className="text-xl font-bold text-ink">Alumnos con acceso LMS</h2>
+              <p className="text-sm text-ink-muted">Usuarios reales con al menos una inscripción en Supabase.</p>
+            </div>
+            <Badge tone="info">{students.length} alumnos</Badge>
           </div>
-          <div className="overflow-x-auto">
+          {students.length === 0 ? (
+            <EmptyState title="Sin alumnos con inscripción" description="Todavía no hay accesos LMS reales para mostrar." />
+          ) : <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-brand-50/50 text-ink-muted text-xs uppercase">
                 <tr>
@@ -479,11 +469,7 @@ export function AdminView(
                 </tr>
               </thead>
               <tbody className="divide-y divide-brand-50">
-                {users.map((u) => {
-                  const userEnrollments = getAllEnrollments().filter((e) => e.userId === u.id);
-                  const avg = userEnrollments.length
-                    ? Math.round(userEnrollments.reduce((a, e) => a + e.progressPercent, 0) / userEnrollments.length)
-                    : 0;
+                {students.map((u) => {
                   return (
                     <tr key={u.id} className="hover:bg-brand-50/30">
                       <td className="px-5 py-3">
@@ -495,11 +481,11 @@ export function AdminView(
                         </div>
                       </td>
                       <td className="px-5 py-3 text-ink-muted">{u.email}</td>
-                      <td className="px-5 py-3 text-ink-muted">{userEnrollments.length} cursos</td>
+                      <td className="px-5 py-3 text-ink-muted">{u.enrollmentCount} cursos</td>
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-2">
-                          <ProgressBar value={avg} className="w-20" />
-                          <span className="text-xs text-ink-muted">{avg}%</span>
+                          <ProgressBar value={u.progressPercent} className="w-20" />
+                          <span className="text-xs text-ink-muted">{u.progressPercent}%</span>
                         </div>
                       </td>
                       <td className="px-5 py-3">
@@ -512,7 +498,7 @@ export function AdminView(
                 })}
               </tbody>
             </table>
-          </div>
+          </div>}
         </Card>
       )}
 
@@ -520,30 +506,31 @@ export function AdminView(
       {tab === "inscripciones" && (
         <Card className="overflow-hidden">
           <div className="p-5 border-b border-brand-50">
-            <h2 className="text-xl font-bold text-ink">Inscripciones</h2>
+            <h2 className="text-xl font-bold text-ink">Inscripciones LMS reales</h2>
+            <p className="text-sm text-ink-muted mt-1">Fuente: tabla `enrollments` de Supabase.</p>
           </div>
-          <div className="overflow-x-auto">
+          {enrollments.length === 0 ? (
+            <EmptyState title="Sin inscripciones" description="Todavía no hay inscripciones LMS reales." />
+          ) : <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-brand-50/50 text-ink-muted text-xs uppercase">
                 <tr>
                   <th className="text-left px-5 py-3 font-semibold">Alumno</th>
                   <th className="text-left px-5 py-3 font-semibold">Curso</th>
-                  <th className="text-left px-5 py-3 font-semibold">Origen</th>
+                  <th className="text-left px-5 py-3 font-semibold">Estado</th>
                   <th className="text-left px-5 py-3 font-semibold">Progreso</th>
                   <th className="text-left px-5 py-3 font-semibold">Fecha</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-brand-50">
                 {enrollments.map((e) => {
-                  const u = users.find((x) => x.id === e.userId);
-                  const c = courses.find((x) => x.id === e.courseId);
                   return (
                     <tr key={e.id} className="hover:bg-brand-50/30">
-                      <td className="px-5 py-3 font-medium text-ink">{u?.name ?? e.userId}</td>
-                      <td className="px-5 py-3 text-ink-soft">{c?.title ?? e.courseId}</td>
+                      <td className="px-5 py-3 font-medium text-ink">{e.userName}</td>
+                      <td className="px-5 py-3 text-ink-soft">{e.courseTitle}</td>
                       <td className="px-5 py-3">
-                        <Badge tone={e.source === "purchase" ? "brand" : e.source === "coupon" ? "accent" : e.source === "free" ? "success" : "neutral"}>
-                          {e.source}
+                        <Badge tone={e.status === "completed" ? "success" : e.status === "active" ? "brand" : "neutral"}>
+                          {e.status}
                         </Badge>
                       </td>
                       <td className="px-5 py-3">
@@ -558,7 +545,7 @@ export function AdminView(
                 })}
               </tbody>
             </table>
-          </div>
+          </div>}
         </Card>
       )}
 
@@ -567,21 +554,24 @@ export function AdminView(
         <Card className="overflow-hidden">
           <div className="p-5 border-b border-brand-50 flex justify-between items-center">
             <div>
-              <h2 className="text-xl font-bold text-ink">Pagos (simulados)</h2>
+              <h2 className="text-xl font-bold text-ink">Pagos reales</h2>
               <p className="text-sm text-ink-muted">
-                Total aprobado: <strong>{formatMXN(revenue.approvedMXN)}</strong> ·
-                Pendiente: <strong>{formatMXN(revenue.pendingMXN)}</strong>
+                Eventos y servicios · aprobado: <strong>{formatMXN(approvedRevenue)}</strong> ·
+                pendiente: <strong>{formatMXN(pendingRevenue)}</strong>
               </p>
             </div>
-            <Badge tone="warning">Provider: mock</Badge>
+            <Badge tone="success">Fuente: Supabase</Badge>
           </div>
-          <div className="overflow-x-auto">
+          {payments.length === 0 ? (
+            <EmptyState title="Sin pagos registrados" description="Los pagos de eventos y servicios aparecerán aquí cuando exista un registro real." />
+          ) : <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-brand-50/50 text-ink-muted text-xs uppercase">
                 <tr>
-                  <th className="text-left px-5 py-3 font-semibold">Pago</th>
-                  <th className="text-left px-5 py-3 font-semibold">Alumno</th>
-                  <th className="text-left px-5 py-3 font-semibold">Curso</th>
+                  <th className="text-left px-5 py-3 font-semibold">Origen</th>
+                  <th className="text-left px-5 py-3 font-semibold">Referencia</th>
+                  <th className="text-left px-5 py-3 font-semibold">Cliente</th>
+                  <th className="text-left px-5 py-3 font-semibold">Producto</th>
                   <th className="text-left px-5 py-3 font-semibold">Método</th>
                   <th className="text-left px-5 py-3 font-semibold">Monto</th>
                   <th className="text-left px-5 py-3 font-semibold">Estado</th>
@@ -590,23 +580,17 @@ export function AdminView(
               </thead>
               <tbody className="divide-y divide-brand-50">
                 {payments.map((p) => {
-                  const u = users.find((x) => x.id === p.userId);
-                  const c = courses.find((x) => x.id === p.courseId);
                   return (
                     <tr key={p.id} className="hover:bg-brand-50/30">
-                      <td className="px-5 py-3 font-mono text-xs text-ink-muted">{p.externalReference}</td>
-                      <td className="px-5 py-3 font-medium text-ink">{u?.name ?? p.userId}</td>
-                      <td className="px-5 py-3 text-ink-soft">{c?.title ?? p.courseId}</td>
+                      <td className="px-5 py-3"><Badge tone={p.origin === "event" ? "brand" : "info"}>{p.origin === "event" ? "Evento" : "Servicio"}</Badge></td>
+                      <td className="px-5 py-3 font-mono text-xs text-ink-muted">{p.reference}</td>
+                      <td className="px-5 py-3 font-medium text-ink">{p.customerName}</td>
+                      <td className="px-5 py-3 text-ink-soft">{p.product}</td>
                       <td className="px-5 py-3">
                         <Badge tone="neutral">{p.method}</Badge>
                       </td>
                       <td className="px-5 py-3 font-semibold text-ink">
-                        {formatMXN(p.amountMXN - p.discountMXN)}
-                        {p.discountMXN > 0 && (
-                          <span className="text-xs text-ink-muted block">
-                            desc: -{formatMXN(p.discountMXN)}
-                          </span>
-                        )}
+                        {formatMXN(p.amountMXN)}
                       </td>
                       <td className="px-5 py-3">
                         <Badge tone={statusTone[p.status]}>{statusLabel[p.status]}</Badge>
@@ -617,7 +601,7 @@ export function AdminView(
                 })}
               </tbody>
             </table>
-          </div>
+          </div>}
         </Card>
       )}
 
@@ -635,71 +619,44 @@ export function AdminView(
       {/* ----------------------- CONFIGURACIÓN BOT (sprint v15) ----------------------- */}
       {tab === "bot" && <BotConfigTab />}
 
+      {/* ----------------------- AUDITORÍA Y LIMPIEZA ----------------------- */}
+      {tab === "mantenimiento" && <DataMaintenanceTab />}
+
       {/* ----------------------- PRÓXIMAS INTEGRACIONES ----------------------- */}
       {tab === "futuro" && (
         <div className="space-y-6">
           <Card className="p-6">
-            <h2 className="text-xl font-bold text-ink mb-1">Próximas integraciones</h2>
+            <h2 className="text-xl font-bold text-ink mb-1">Estado real de la plataforma</h2>
             <p className="text-ink-muted mb-5">
-              Lo que está preparado arquitectónicamente y se activa en las siguientes fases.
+              Esta vista distingue lo que ya está operativo de lo que todavía no existe. No representa stubs como si fueran integraciones activas.
             </p>
             <div className="grid gap-4 md:grid-cols-2">
               {[
-                {
-                  phase: "Fase 1",
-                  title: "Auth & DB real con Supabase",
-                  body: "Reemplazar mock-auth por Supabase Auth y persistir cursos, inscripciones y progreso en Postgres.",
-                  done: ["Tipos de dominio", "Capa de auth con misma firma", "Estructura de datos"]
-                },
-                {
-                  phase: "Fase 2",
-                  title: "Pagos reales en México",
-                  body: "Activar Mercado Pago, Stripe o Conekta con webhooks y acceso automático por compra.",
-                  done: ["Contrato PaymentProvider", "Stubs de los 3 proveedores", "Mock provider funcional"]
-                },
-                {
-                  phase: "Fase 3",
-                  title: "Video hosting profesional",
-                  body: "Migrar de YouTube no listado a Cloudflare Stream o Mux con signed URLs y analíticas.",
-                  done: ["Abstracción VideoProvider", "Stubs para 5 proveedores"]
-                },
-                {
-                  phase: "Fase 4",
-                  title: "Certificados, CRM y comunidad",
-                  body: "Certificados PDF verificables, CRM con WhatsApp y email marketing. La base del CRM ya está disponible en la pestaña CRM.",
-                  done: ["Modelo Certificate", "CRM + WhatsApp + Agente IA (demo)", "Foundation lista"]
-                }
-              ].map((f) => (
-                <div key={f.title} className="rounded-xl border border-brand-100 p-5">
-                  <Badge tone="brand" className="mb-2">{f.phase}</Badge>
-                  <h3 className="font-bold text-ink">{f.title}</h3>
-                  <p className="text-sm text-ink-muted mt-1">{f.body}</p>
-                  <ul className="mt-3 space-y-1 text-xs text-emerald-700">
-                    {f.done.map((d) => (
-                      <li key={d} className="flex items-start gap-1"><Check className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" /> {d}</li>
-                    ))}
-                  </ul>
+                { title: "Supabase", body: "Base de datos, autenticación administrativa y CRM operativo.", status: dashboardData.integrations.supabase === "active" ? "Activo" : "No disponible", tone: dashboardData.integrations.supabase === "active" ? "success" : "warning" },
+                { title: "CRM + WhatsApp", body: "Leads reales, conversaciones, pausas, seguimiento y rescate automático.", status: dashboardData.integrations.whatsapp === "active" ? "Activo" : "Revisar configuración", tone: dashboardData.integrations.whatsapp === "active" ? "success" : "warning" },
+                { title: "Pagos de eventos", body: "Stripe y pagos manuales viven en el flujo de eventos; no dependen del proveedor mock del LMS.", status: "Operativo", tone: "success" },
+                { title: "Pagos de servicios", body: "Pedidos reales en `service_orders`; el checkout Stripe se vincula al pedido cuando corresponde.", status: "Operativo", tone: "success" },
+                { title: "Correo transaccional", body: "Confirmaciones y notificaciones dependen de la configuración de Brevo.", status: dashboardData.integrations.brevo === "configured" ? "Configurado" : "No configurado", tone: dashboardData.integrations.brevo === "configured" ? "success" : "warning" },
+                { title: "Stripe", body: "Disponible para los flujos que lo solicitan; el modo live/test depende del producto y sus reglas.", status: dashboardData.integrations.stripe === "configured" ? "Configurado" : "No configurado", tone: dashboardData.integrations.stripe === "configured" ? "success" : "warning" }
+              ].map((item) => (
+                <div key={item.title} className="rounded-xl border border-brand-100 p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <h3 className="font-bold text-ink">{item.title}</h3>
+                    <Badge tone={item.tone as "success" | "warning"}>{item.status}</Badge>
+                  </div>
+                  <p className="text-sm text-ink-muted mt-2">{item.body}</p>
                 </div>
               ))}
             </div>
           </Card>
 
           <Card className="p-6">
-            <h3 className="font-bold text-ink mb-3">Proveedores de pago disponibles</h3>
-            <ul className="grid sm:grid-cols-2 gap-3">
-              {providers.map((p) => (
-                <li key={p.name} className="flex items-center justify-between rounded-lg border border-brand-50 px-4 py-3">
-                  <div>
-                    <p className="font-semibold text-ink">{p.displayName}</p>
-                    <p className="text-xs text-ink-muted">
-                      Métodos: {p.supportedMethods.join(", ")}
-                    </p>
-                  </div>
-                  <Badge tone={p.name === "mock" ? "success" : "neutral"}>
-                    {p.name === "mock" ? "Activo" : "Stub"}
-                  </Badge>
-                </li>
-              ))}
+            <h3 className="font-bold text-ink mb-3">Pendientes reales</h3>
+            <ul className="space-y-2 text-sm text-ink-soft">
+              <li>• No hay integración de Google Calendar operativa; las citas demo no se muestran en modo real.</li>
+              <li>• El LMS está desactivado por ahora: no hay cursos, alumnos, inscripciones ni pagos LMS operativos.</li>
+              <li>• Mercado Pago y Conekta permanecen como adaptadores no activos hasta configurar y probar sus webhooks.</li>
+              <li>• El proveedor mock queda reservado para simuladores y pruebas, fuera de esta vista operativa.</li>
             </ul>
           </Card>
         </div>

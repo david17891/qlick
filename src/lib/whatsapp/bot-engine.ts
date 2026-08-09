@@ -34,11 +34,12 @@
  * @server
  */
 
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { debugLog, errorLog, infoLog } from "../log";
 import { stripInvisibleChars } from "../utils";
+import { formatEventWeekday } from "../datetime";
 
 import type { Lead } from "@/types";
 import type { Database, Json } from "@/types/supabase";
@@ -96,6 +97,7 @@ import {
 } from "./lead-lifecycle";
 import {
   getPendingRegistrationField,
+  isInfoRescuePending,
   hasTransactionalRegistrationSignal,
 } from "./lead-followup";
 import { extractEmailFromText } from "./email-extract";
@@ -2242,10 +2244,8 @@ function findEventInConversation(
  * Crea un lead desde un mensaje de WhatsApp entrante. NO requiere consent
  * (consent se loggea aparte cuando el lead lo dé). Devuelve el lead creado.
  *
- * email es obligatorio a nivel de columna (NOT NULL con CHECK de regex).
- * Como el lead de WhatsApp puede no tener email al inicio, generamos uno
- * sintético basado en el phone_normalized — el admin lo limpia después si
- * hace falta. Esto sigue el patrón de `createLeadFromEvent`.
+ * El email es opcional para un lead de WhatsApp. Se captura únicamente cuando
+ * la persona lo proporciona; no se inventan correos sintéticos.
  */
 async function createLeadFromWhatsApp(
   supabase: SupabaseAdmin,
@@ -2266,16 +2266,11 @@ async function createLeadFromWhatsApp(
   // path en el futuro (refactor, test directo, admin tool), no debería
   // persistir ZWSP/ZWNJ/ZWJ/BOM/word-joiner en `leads.name`.
   const safeName = stripInvisibleChars(contactName).trim() || "WhatsApp Lead";
-  const syntheticEmail = `wa.${createHash("sha256")
-    .update(phoneNormalized)
-    .digest("hex")
-    .slice(0, 12)}@placeholder.local`;
-
   const { data, error } = await supabase
     .from("leads")
     .insert({
       name: safeName,
-      email: syntheticEmail,
+      email: null,
       phone: phoneNormalized,
       phone_normalized: phoneNormalized,
       status: "new",
@@ -2351,7 +2346,7 @@ async function findOrCreateLead(
         id: `lead_demo_${phoneNormalized.slice(-6)}`,
         // FIX 2026-07-14 (Sprint v0.10 Bloque 1): defense in depth.
         name: stripInvisibleChars(contactName).trim() || "",
-        email: "demo@placeholder.local",
+        email: null,
         phone: phoneNormalized,
         status: "new",
         source: "whatsapp",
@@ -4895,14 +4890,24 @@ case "interactive_event_inscribir": {
       // bloquee la palabra "gratis" en copy veraz de masterclass gratuita.
       // El cálculo se hizo ANTES de invocar al provider (más arriba) y se
       // reusa aquí. Si el context no lo trae (modo demo), default false.
-      const validation = validateAgentReply(content, { isFreeEvent });
+      const validation = validateAgentReply(content, {
+        isFreeEvent,
+        eventStartsAt:
+          activeEvent?.source === "db" ? activeEvent.startsAt : undefined,
+      });
       if (!validation.ok) {
         // eslint-disable-next-line no-console
         console.warn("[whatsapp/bot] guardrail bloqueó respuesta LLM", {
           leadId: lead.id,
           reasons: validation.reasons
         });
-        content = profile.fallbackMessage;
+        const hasIncorrectWeekday = validation.reasons.some((reason) =>
+          reason.startsWith("Día de la semana incorrecto:"),
+        );
+        content =
+          hasIncorrectWeekday && activeEvent?.source === "db"
+            ? `La fecha correcta del evento es el ${formatEventWeekday(activeEvent.startsAt)}, ${activeEvent.humanStartsAt}.`
+            : profile.fallbackMessage;
       }
       // FIX 2026-07-02 (sesion David, "Si tras pregunta cerrada"): si el
       // LLM (o el fallback) terminó con una pregunta cerrada de inscripción
@@ -5469,7 +5474,7 @@ export async function processInboundMessage(
         // del flujo verifica `supabase` antes de usar `lead.id`.
         id: null as unknown as string,
         name: message.contactName?.trim() || "",
-        email: `${phoneNormalized.slice(-6)}@placeholder.local`,
+        email: null,
         phone: phoneNormalized,
         status: "new",
         source: "whatsapp",
@@ -5562,11 +5567,12 @@ export async function processInboundMessage(
       // FIX P1-2 (auditoria 2026-07-02): incluir buttonId en metadata.
       // El body (buttonTitle) puede estar truncado a 24 chars (limite
       // de Meta para list rows). El slug completo está en buttonId.
-      metadata: {
-        timestamp: message.timestamp,
-        contactName: message.contactName,
-        buttonId
-      }
+        metadata: {
+          timestamp: message.timestamp,
+          contactName: message.contactName,
+          buttonId,
+          ...(message.referral ? { referral: message.referral } : {}),
+        }
     });
   }
 
@@ -5955,6 +5961,7 @@ export async function processInboundMessage(
   const lastOutboundGlobal = earlyWindowGlobal?.messages
     .filter((m) => m.direction === "outbound")
     .slice(-1)[0];
+  const infoRescuePending = isInfoRescuePending(earlyWindowGlobal?.messages ?? []);
   const wizardStateGlobal =
     (lastOutboundGlobal?.metadata as {
       awaiting_survey_step?: number | null;
@@ -6004,6 +6011,7 @@ export async function processInboundMessage(
   if (
     body &&
     !wizardStateGlobal?.awaiting_survey_step &&
+    !infoRescuePending &&
     isAckOnly(body)
   ) {
     const registrationInProgress =
@@ -6317,6 +6325,11 @@ export async function processInboundMessage(
     const AFFIRMATIVE_EXTENDED_RE = /^(s[ií]\b|ok\b|dale\b|va\b|claro\b|desde\s+luego\b|por\s+supuesto\b|porfa(?:vor)?\b)/i;
     const isAffirmative =
       AFFIRMATIVE_RE.test(body) || AFFIRMATIVE_EXTENDED_RE.test(body);
+    const infoRescueEmail = Boolean(extractEmailFromText(body));
+    const infoRescueName =
+      !infoRescueEmail &&
+      isValidHumanName(body) &&
+      !hasIntentVerb(body);
     // FIX 2026-07-06 (debug David "david martinez" ignorado): si el
     // metadata.awaiting_field no se persistio correctamente (race con
     // Meta retry, upsert skip, o body=null), caemos al fallback de
@@ -6330,7 +6343,19 @@ export async function processInboundMessage(
       /tu\s+nombre\s+completo/i.test(lastOutboundBody) ||
       /dime\s+tu\s+nombre/i.test(lastOutboundBody) ||
       /indica\s+tu\s+nombre/i.test(lastOutboundBody);
-    if (awaitingField === "name" && body && !looksLikeEmail) {
+    if (infoRescuePending && !wizardStep && nameEmailTogether) {
+      // El rescate pide un cierre, no vuelve a presentar la campana. La ruta
+      // provide_name ya captura tambien el email embebido y completa ambos
+      // side-effects en un solo turno.
+      intent = "provide_name";
+    } else if (infoRescuePending && !wizardStep && infoRescueEmail) {
+      intent = "provide_email";
+    } else if (infoRescuePending && !wizardStep && infoRescueName) {
+      intent = "provide_name";
+    } else if (infoRescuePending && !wizardStep && matchInscriptionIntent(body)) {
+      intent = "interactive_event_inscribir";
+      requestedEventSlug = registrationEventSlugFromHistory;
+    } else if (awaitingField === "name" && body && !looksLikeEmail) {
       intent = "provide_name";
     } else if (
       // FALLBACK: el bot pidio nombre en su ultimo outbound pero el
@@ -7229,9 +7254,8 @@ export async function processInboundMessage(
 
     // 4.8 FIX sprint 2026-07-15d (sesion David, "no le pidio nombre
     // ni correo"): el flow del bot para eventos de pago creaba la
-    // confirmation con placeholders ('WhatsApp Lead' /
-    // 'wa.XXX@placeholder.local') si el lead no tenia nombre o
-    // email. El bot asumia que el lead ya existia con datos
+    // confirmation con nombre o correo placeholder si el lead no tenia
+    // esos datos. El bot asumia que el lead ya existia con datos
     // reales, pero un reset reciente (o un nuevo webhook sin
     // push name) dejaba el lead con placeholders. Resultado: la
     // confirmation tenia datos falsos y el email del QR rebotaba.

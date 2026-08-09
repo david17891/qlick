@@ -56,7 +56,7 @@ test("el copy visible mantiene tuteo mexicano", async () => {
 test("las plantillas de WhatsApp no contienen voseo", async () => {
   const source = await readFile(resolve(ROOT, "src/lib/whatsapp/bot-engine.ts"), "utf8");
 
-  assert.match(source, /Toca Inscribirme o escribe tu pregunta/);
+  assert.match(source, /Toca un botón o escribe tu pregunta/);
   assert.match(source, /Responde con un botón o escribe tu pregunta/);
   assert.match(source, /¿Me confirmas cuál\? Responde con el número/);
   assert.doesNotMatch(source, /Toca Inscribirme o escribí tu pregunta/);

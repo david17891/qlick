@@ -25,6 +25,8 @@ import {
   formatEventDateOnly,
   formatEventTimeOnly,
   formatEventDateTimeWithZone,
+  formatEventWeekday,
+  findIncorrectEventWeekdayMentions,
 } from "../src/lib/datetime.ts";
 
 // ─────────────────────────────────────────────────────────────────
@@ -57,6 +59,33 @@ test("formatEventDateOnly: input vacío devuelve '—'", () => {
 
 test("formatEventDateOnly: input inválido devuelve el string original como fallback", () => {
   assert.equal(formatEventDateOnly("not-a-date"), "not-a-date");
+});
+
+test("formatEventWeekday: 20 de agosto de 2026 es jueves en hora Pacífico", () => {
+  assert.equal(
+    formatEventWeekday("2026-08-20T23:00:00.000Z"),
+    "jueves",
+  );
+});
+
+test("findIncorrectEventWeekdayMentions: detecta martes contra jueves", () => {
+  assert.deepEqual(
+    findIncorrectEventWeekdayMentions(
+      "Nos vemos el martes 20 de agosto.",
+      "2026-08-20T23:00:00.000Z",
+    ),
+    ["martes"],
+  );
+});
+
+test("findIncorrectEventWeekdayMentions: acepta jueves", () => {
+  assert.deepEqual(
+    findIncorrectEventWeekdayMentions(
+      "Nos vemos el jueves 20 de agosto.",
+      "2026-08-20T23:00:00.000Z",
+    ),
+    [],
+  );
 });
 
 // ─────────────────────────────────────────────────────────────────

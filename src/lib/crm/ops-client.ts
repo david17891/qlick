@@ -193,6 +193,33 @@ export async function fetchPendingCRMTasks(): Promise<PendingTasksSplitClient> {
   return { overdue: data.overdue, upcoming: data.upcoming };
 }
 
+/** PATCH /api/admin/leads/[id] → asigna o libera el responsable. */
+export async function patchLeadOwner(leadId: string, ownerId: string | null): Promise<Lead> {
+  const res = await fetch(`/api/admin/leads/${leadId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ownerId }),
+  });
+  const data = await parseEnvelope<{ ok: true; lead: Lead }>(res);
+  return data.lead;
+}
+
+/** Cambia estado o reprograma tareas pendientes desde la cola operativa. */
+export async function patchCRMTasks(input: {
+  taskIds: string[];
+  action: "completed" | "cancelled" | "reschedule";
+  dueAt?: string;
+  reason?: string;
+}): Promise<{ updated: number }> {
+  const res = await fetch("/api/admin/crm/tasks", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const data = await parseEnvelope<{ ok: true; updated: number }>(res);
+  return { updated: data.updated };
+}
+
 /* ------------------------------------------------------------------ */
 /* Interacciones del lead (Bloque 2E — Fase 4)                        */
 /* ------------------------------------------------------------------ */

@@ -26,6 +26,7 @@ import { getWhatsAppConfigStatus } from "@/lib/contact/whatsapp";
 import {
   patchLeadStatus,
   patchLeadFields,
+  patchLeadOwner,
   archiveLeadClient,
   fetchLeadNotes,
   createLeadNote,
@@ -101,6 +102,7 @@ export function LeadDetailDrawer({
   const [archiveState, setArchiveState] = useState<OpStatus>("idle");
   const [archiveMsg, setArchiveMsg] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [ownerState, setOwnerState] = useState<OpStatus>("idle");
   const [noteText, setNoteText] = useState("");
   const [noteState, setNoteState] = useState<OpStatus>("idle");
   const [noteMsg, setNoteMsg] = useState<string | null>(null);
@@ -257,6 +259,21 @@ export function LeadDetailDrawer({
       setCurrentLead((c) => ({ ...c, status: prevStatus }));
       setStatusState("error");
       setStatusMsg(err instanceof Error ? err.message : "No se pudo actualizar.");
+    }
+  }
+
+  async function handleOwnerChange(ownerId: string) {
+    if (!realMode || ownerState === "loading") return;
+    setOwnerState("loading");
+    try {
+      const updated = await patchLeadOwner(currentLead.id, ownerId || null);
+      setCurrentLead(updated);
+      onLeadChanged?.(updated);
+      setOwnerState("success");
+      setTimeout(() => setOwnerState("idle"), 1500);
+    } catch (error) {
+      setOwnerState("error");
+      alert(error instanceof Error ? error.message : "No se pudo asignar el responsable.");
     }
   }
 
@@ -864,10 +881,25 @@ export function LeadDetailDrawer({
                 <Info label="Teléfono" value={currentLead.phone ?? "—"} />
                 <Info label="Fuente" value={leadSourceLabel[currentLead.source]} />
                 <Info label="Intención" value={leadIntentLabel[currentLead.intent]} />
-                <Info
-                  label="Responsable"
-                  value={owner ? `${owner.name}` : "Sin asignar"}
-                />
+                {realMode ? (
+                  <label className="block text-sm">
+                    <span className="text-xs text-ink-muted">Responsable</span>
+                    <select
+                      value={currentLead.ownerId ?? ""}
+                      disabled={ownerState === "loading" || owners.length === 0}
+                      onChange={(event) => void handleOwnerChange(event.target.value)}
+                      className="mt-1 block w-full rounded-md border border-brand-200 bg-white px-2 py-1.5 text-sm text-ink"
+                    >
+                      <option value="">Sin asignar</option>
+                      {owners.map((candidate) => (
+                        <option key={candidate.id} value={candidate.id}>{candidate.name}</option>
+                      ))}
+                    </select>
+                    {owners.length === 0 && <span className="mt-1 block text-xs text-amber-700">Configura ADMIN_EMAIL_ALLOWLIST para habilitar responsables.</span>}
+                  </label>
+                ) : (
+                  <Info label="Responsable" value={owner ? `${owner.name}` : "Sin asignar"} />
+                )}
                 <Info
                   label="Próximo seguimiento"
                   value={currentLead.nextFollowUpAt ? formatDate(currentLead.nextFollowUpAt) : "—"}

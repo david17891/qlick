@@ -38,6 +38,56 @@ export const EVENT_TIMEZONE = "America/Phoenix";
 export const EVENT_TIMEZONE_LABEL = "hora Pacífico";
 
 /**
+ * Devuelve el día de la semana oficial de un evento en la zona del proyecto.
+ * La fecha se calcula desde el timestamptz real, nunca desde texto libre.
+ */
+export function formatEventWeekday(
+  iso: string | Date | null | undefined,
+): string {
+  if (!iso) return "—";
+  const date = typeof iso === "string" ? new Date(iso) : iso;
+  if (Number.isNaN(date.getTime())) return "—";
+
+  try {
+    const weekday = new Intl.DateTimeFormat("es-MX", {
+      weekday: "long",
+      timeZone: EVENT_TIMEZONE,
+    }).format(date);
+    return weekday.toLocaleLowerCase("es-MX");
+  } catch {
+    return "—";
+  }
+}
+
+/**
+ * Encuentra días de la semana que contradicen la fecha oficial del evento.
+ * Se usa como última barrera antes de enviar una respuesta del LLM.
+ */
+export function findIncorrectEventWeekdayMentions(
+  reply: string,
+  eventStartsAt: string | Date | null | undefined,
+): string[] {
+  const expected = formatEventWeekday(eventStartsAt);
+  if (expected === "—") return [];
+
+  const found = new Set<string>();
+  const weekdayPattern = /\b(lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)\b/giu;
+  for (const match of reply.matchAll(weekdayPattern)) {
+    const normalized = match[1]
+      .toLocaleLowerCase("es-MX")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+    const expectedNormalized = expected
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+    if (normalized !== expectedNormalized) {
+      found.add(match[1].toLocaleLowerCase("es-MX"));
+    }
+  }
+  return [...found];
+}
+
+/**
  * Formatea la fecha de un evento (sin hora) en la zona del proyecto.
  * Ej: "11 de julio de 2026".
  */

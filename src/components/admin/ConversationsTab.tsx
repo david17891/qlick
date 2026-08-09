@@ -77,6 +77,13 @@ interface GlobalPauseStatus {
   bot_paused_global: boolean;
 }
 
+interface RecoveryStats {
+  total: number;
+  counts: Record<string, number>;
+  windows: Record<string, number>;
+  lastUpdatedAt: string | null;
+}
+
 type LeadFollowupMode = "off" | "shadow" | "live";
 
 const POLL_INTERVAL_MS = 4000;
@@ -179,6 +186,10 @@ export function ConversationsTab() {
   const [botPausedGlobal, setBotPausedGlobal] = useState(false);
   const [togglingGlobal, setTogglingGlobal] = useState(false);
   const [leadFollowupMode, setLeadFollowupMode] = useState<LeadFollowupMode | "unknown">("unknown");
+  const [leadInfoFollowupMode, setLeadInfoFollowupMode] = useState<LeadFollowupMode | "unknown">("unknown");
+  const [togglingInfoFollowup, setTogglingInfoFollowup] = useState(false);
+  const [recoveryStats, setRecoveryStats] = useState<RecoveryStats | null>(null);
+  const [discoveringRecovery, setDiscoveringRecovery] = useState(false);
 
   // ===== Realtime / polling (X4, M1) =====
   // FIX 2026-07-12 (auditoría v16 #R1): un solo AbortController compartido
@@ -591,6 +602,65 @@ export function ConversationsTab() {
     void fetchLeadFollowupMode();
   }, [fetchLeadFollowupMode]);
 
+  const fetchLeadInfoFollowupMode = useCallback(async () => {
+    try {
+      const res = await safeFetch("/api/admin/system-setting?key=lead_info_followup_mode");
+      const json = (await res.json()) as { ok?: boolean; value?: unknown };
+      if (!json.ok) return;
+      const value = json.value;
+      if (value === "off" || value === "shadow" || value === "live") {
+        setLeadInfoFollowupMode(value);
+      } else {
+        setLeadInfoFollowupMode("off");
+      }
+    } catch {
+      // La etiqueta conserva "no disponible" si el endpoint no responde.
+    }
+  }, [safeFetch]);
+
+  useEffect(() => {
+    void fetchLeadInfoFollowupMode();
+  }, [fetchLeadInfoFollowupMode]);
+
+  const fetchRecoveryStats = useCallback(async () => {
+    try {
+      const res = await safeFetch("/api/admin/crm/lead-recovery");
+      const json = (await res.json()) as { ok?: boolean } & Partial<RecoveryStats>;
+      if (json.ok) {
+        setRecoveryStats({
+          total: json.total ?? 0,
+          counts: json.counts ?? {},
+          windows: json.windows ?? {},
+          lastUpdatedAt: json.lastUpdatedAt ?? null,
+        });
+      }
+    } catch {
+      // Best-effort: la conversación sigue disponible aunque la cola no responda.
+    }
+  }, [safeFetch]);
+
+  useEffect(() => {
+    void fetchRecoveryStats();
+  }, [fetchRecoveryStats]);
+
+  const handleDiscoverRecovery = useCallback(async () => {
+    setDiscoveringRecovery(true);
+    try {
+      await safeFetch("/api/admin/crm/lead-recovery", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "discover" }),
+      });
+      await fetchRecoveryStats();
+    } catch (err) {
+      if (isMountedRef.current) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    } finally {
+      if (isMountedRef.current) setDiscoveringRecovery(false);
+    }
+  }, [fetchRecoveryStats, safeFetch]);
+
   const handleToggleGlobal = useCallback(async () => {
     setTogglingGlobal(true);
     try {
@@ -610,6 +680,25 @@ export function ConversationsTab() {
       if (isMountedRef.current) setTogglingGlobal(false);
     }
   }, [botPausedGlobal, safeFetch]);
+
+  const handleToggleInfoFollowup = useCallback(async () => {
+    setTogglingInfoFollowup(true);
+    try {
+      const next = leadInfoFollowupMode !== "live";
+      await safeFetch("/api/admin/system-setting", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "lead_info_followup_mode", value: next ? "live" : "off" }),
+      });
+      if (isMountedRef.current) setLeadInfoFollowupMode(next ? "live" : "off");
+    } catch (err) {
+      if (isMountedRef.current) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    } finally {
+      if (isMountedRef.current) setTogglingInfoFollowup(false);
+    }
+  }, [leadInfoFollowupMode, safeFetch]);
 
   /* ---------------------------------------------------------------- */
   /*  Envío de mensaje                                                */
@@ -669,8 +758,26 @@ export function ConversationsTab() {
             >
               Seguimiento: {followupModeLabel(leadFollowupMode)}
             </Badge>
+            <Badge
+              tone={leadInfoFollowupMode === "live" ? "success" : leadInfoFollowupMode === "shadow" ? "info" : "neutral"}
+              title="Un solo mensaje para leads que pidieron información y no respondieron. Se detiene después de ese intento."
+            >
+              Rescate info: {followupModeLabel(leadInfoFollowupMode)}
+            </Badge>
           </div>
-          <Button
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={leadInfoFollowupMode === "live" ? "accent" : "outline"}
+              onClick={() => void handleToggleInfoFollowup()}
+              disabled={togglingInfoFollowup || leadInfoFollowupMode === "unknown"}
+              aria-pressed={leadInfoFollowupMode === "live"}
+              title="Activa o desactiva el único mensaje de rescate para quienes pidieron información y quedaron en silencio."
+            >
+              {leadInfoFollowupMode === "live" ? "Desactivar rescate info" : "Activar rescate info"}
+            </Button>
+            <Button
               type="button"
               size="sm"
               variant={botPausedGlobal ? "danger" : "outline"}
@@ -685,8 +792,37 @@ export function ConversationsTab() {
             >
               {botPausedGlobal ? "⚠️ Reanudar Bot IA Global" : "🤖 Pausar Bot (Todos los Leads)"}
             </Button>
+          </div>
         </CardHeader>
         <CardBody className="flex-1 overflow-y-auto p-0">
+          <div className="m-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-ink-muted">
+            <div className="flex items-center justify-between gap-2">
+              <p className="font-semibold text-ink">Rescate histórico</p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => void handleDiscoverRecovery()}
+                disabled={discoveringRecovery}
+                title="Clasifica históricos sin enviar mensajes. Los elegibles quedan en la cola del cron."
+              >
+                {discoveringRecovery ? "Analizando…" : "Actualizar cola"}
+              </Button>
+            </div>
+            <p className="mt-1">
+              Clasifica solicitudes antiguas, separa ventana abierta, plantilla requerida y duplicados. No envía por sí solo.
+            </p>
+            {recoveryStats && (
+              <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1">
+                <span>Total: {recoveryStats.total}</span>
+                <span>Elegibles: {recoveryStats.counts.eligible ?? 0}</span>
+                <span>Plantilla: {recoveryStats.counts.blocked_template_required ?? 0}</span>
+                <span>Duplicados: {recoveryStats.counts.duplicate_review ?? 0}</span>
+                <span>Respondieron: {recoveryStats.counts.replied ?? 0}</span>
+                <span>Enviados: {recoveryStats.counts.sent ?? 0}</span>
+              </div>
+            )}
+          </div>
           {loadingList && conversations.length === 0 ? (
             <p className="p-4 text-sm text-ink-muted">Cargando conversaciones…</p>
           ) : conversations.length === 0 ? (
@@ -775,7 +911,7 @@ export function ConversationsTab() {
                         </Badge>
                       )}
                       {c.consentToContact === false && (
-                        <Badge tone="danger">Sin consentimiento de marketing</Badge>
+                        <Badge tone="neutral" title="Etiqueta interna; no indica rechazo de contacto">Marketing pendiente (etiqueta interna)</Badge>
                       )}
                       {followupLabel(c) && (
                         <Badge tone={followupTone(c)}>{followupLabel(c)}</Badge>
@@ -817,7 +953,7 @@ export function ConversationsTab() {
                       </Badge>
                     )}
                     {selectedConv.consentToContact === false && (
-                      <Badge tone="danger">Sin consentimiento de marketing</Badge>
+                      <Badge tone="neutral" title="Etiqueta interna; no indica rechazo de contacto">Marketing pendiente (etiqueta interna)</Badge>
                     )}
                     {followupLabel(selectedConv) && (
                       <Badge tone={followupTone(selectedConv)}>

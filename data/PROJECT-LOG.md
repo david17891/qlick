@@ -1,3 +1,78 @@
+## 2026-08-08 — Revisión humana: WhatsApp, eventos y borrado CRM
+
+- La cola de Revisión humana muestra un enlace `wa.me` por lead con teléfono válido; abrirlo no envía mensajes por sí solo.
+- Cada caso se clasifica contra el evento publicado más reciente y el evento anterior, usando vínculos CRM, asistentes y coincidencias de teléfono/correo con confirmaciones.
+- Se agregó `admin_delete_lead_cascade`, restringido a `service_role`, para eliminar atómicamente el lead y sus datos CRM asociados desde la vista de revisión.
+- El borrado exige confirmación, deja `lead_hard_deleted` en `admin_audit_log` y conserva pagos, confirmaciones, accesos, asistencias, certificados y pedidos de servicio.
+- Validación: migración aplicada en producción; función ejecutable por `service_role` y no por `anon`; type-check, lint y build en verde.
+
+## 2026-08-08 — Organización operativa del CRM
+
+- Se agregó el Centro de operación real en `/admin?tab=crm`, con métricas agregadas de responsables, segmentos Evento/Comercial, tareas, consentimiento, conversaciones WhatsApp, actividad interna y handoffs.
+- Los responsables se derivan de `ADMIN_EMAIL_ALLOWLIST`; el detalle del lead permite asignar/liberar `owner_id` con auditoría.
+- La cola de `crm_tasks` ahora soporta resolver, cancelar o reprogramar en lote (hasta 500) sin borrar historial; la cola vencida ofrece reprogramación a mañana con confirmación.
+- Se documentó el modelo en `docs/CRM_OPERATING_MODEL.md` y se actualizó `docs/CRM_AUDIT.md`/`docs/STATUS.md`.
+- Producción: deployment final `dpl_G4QcoZB4kU9QQ9oehFRWazZEMLLm` (`READY`) con alias `https://www.qlick.digital`; verificación visual y APIs protegidas completadas.
+- Pendiente de operación humana: decidir el reparto de los 921 leads y ejecutar la cola; el código no asigna masivamente a una sola persona por defecto.
+
+## 2026-08-09 — Retención por evidencia real de evento o teléfono
+
+- Se recalculó el alcance real del CRM con una regla explícita: conservar leads con teléfono real normalizado o con correo/teléfono coincidente con una confirmación de los dos eventos válidos.
+- Se conservaron 222 leads: 221 tienen teléfono real normalizado y 43 tienen coincidencia con confirmaciones de evento; la unión evita contar dos veces el mismo lead. Los 180 `@placeholder.local` se conservaron porque todos tienen teléfono real; el placeholder no se considera evidencia por sí solo.
+- Se eliminaron 7 leads de prueba sin teléfono real ni coincidencia con confirmaciones. La revisión de relaciones confirmó que no tenían tareas, conversaciones WhatsApp, pedidos, handoffs ni recordatorios.
+- Se asignaron los 222 leads conservados a un responsable autorizado. Las 3 tareas pendientes de prueba se marcaron como `cancelled` para preservar historial sin mantener una cola ficticia.
+- Se cerraron 28 handoffs huérfanos; permanecen 12 handoffs válidos pendientes de atención.
+- Verificación final: 0 leads sin responsable, 0 tareas abiertas, 0 tareas vencidas, 0 leads estancados sin tarea, 0 duplicados exactos por email/teléfono y 0 handoffs huérfanos pendientes. Los eventos y pagos reales quedaron sin modificación.
+
+## 2026-08-09 — Corrección factual del día de eventos en WhatsApp
+
+- Se confirmó que el evento `Las 4 Patas de un Negocio que Vende` está guardado para el 20 de agosto de 2026 a las 16:00, hora Pacífico; esa fecha cae en jueves.
+- Se corrigió el contexto del agente para incluir el día de la semana calculado desde `events.starts_at` y se agregó la instrucción de corregir con amabilidad cualquier día distinto mencionado por el lead.
+- Se agregó una barrera final que bloquea respuestas LLM con un día de semana incompatible y envía una corrección factual derivada del evento real. También se eliminó del prompt un ejemplo fijo que mencionaba “martes”.
+- Verificación: pruebas dirigidas de fecha y guardrails `38/38`, type-check, lint y build en verde. Producción desplegada en `dpl_3WsYHMY22oPaF3X2BM657dqdnJVY` (`READY`); `https://www.qlick.digital` y `/eventos` respondieron HTTP 200.
+- No se envió ningún mensaje automático de corrección al lead; queda pendiente autorización explícita para una corrección manual por WhatsApp.
+
+## 2026-08-08 — Hardening CRM/WhatsApp y promoción controlada
+
+- El CRM en modo real ya no reemplaza una consulta fallida de Supabase con leads mock; propaga el error para evitar decisiones sobre datos ficticios.
+- El envío manual de WhatsApp registra `contactPurpose`, `clientRequestId` y el tipo real (`text`/`template`); cualquier envío `marketing` exige `consent_to_contact=true` y valida el nombre/idioma de la plantilla.
+- Se corrigió el catálogo de servicios para tolerar respuestas de variantes mal formadas sin lanzar `variants is not iterable`.
+- Se aplicó la migración `20260808143000_allow_whatsapp_status_update_messages.sql` vía Management API; permite conservar estados de Meta que lleguen antes del mensaje original mediante `message_type=status_update`.
+- Verificación local: type-check, lint, build y suite completa `1641/1641` en verde.
+- Vercel Preview `dpl_DUJeKqN7wKXTaHwf8mR8S9oVJ5Yn` quedó `READY`; ese mismo artefacto fue promovido a producción como `dpl_CM6vkEb13tnFQCkqWsUZV1bnHZZJ`.
+- Smoke público posterior: `https://www.qlick.digital/`, `/eventos` y `/servicios` respondieron `200`; `/admin` `200`; `/api/admin/crm/overview` sin sesión `401`; `/api/whatsapp/webhook` sin firma `403`.
+
+## 2026-08-09 — Asignación de leads reales de eventos
+
+- Se identificaron 665 leads con `source=event` y sin `simulation_source`; son los leads reales de eventos y no se mezclaron con los 256 leads comerciales.
+- Los 665 leads fueron asignados al único responsable autorizado visible en producción, conservando intactos sus estados, consentimiento, conversaciones, tareas y datos de contacto.
+- La operación fue idempotente: solo actualizó leads que estaban sin responsable y registró una entrada agregada en `admin_audit_log` con el alcance y conteo de la operación.
+- Verificación posterior: 665/665 leads de evento asignados; 0 leads de evento sin responsable. Los leads comerciales permanecen sin asignar para una segunda regla de reparto.
+
+## 2026-08-09 — Limpieza de datos de prueba del CRM
+
+- Se identificaron y eliminaron 692 leads cuyo correo terminaba en `@example.com`, dominio reservado para pruebas; no tenían vínculos reales de evento, asistentes, inscripciones, pagos ni pedidos.
+- La eliminación fue controlada por una única transacción y retiró también 8 handoffs de prueba; por las relaciones `CASCADE` se limpiaron 503 conversaciones WhatsApp y 266 tareas asociadas de laboratorio.
+- Se conservaron 180 leads con `@placeholder.local`, porque son leads de WhatsApp potencialmente reales que todavía no entregaron correo; no se consideran prueba solo por usar un placeholder interno.
+- Verificación posterior: 229 leads restantes, 0 correos `@example.com`, 0 duplicados, 1 registro agregado en `admin_audit_log` y pagos/eventos reales sin cambios.
+
+## 2026-08-08 — Desactivación LMS, limpieza de pruebas y auditoría CRM
+
+- **LMS retirado:** se eliminaron 6 cursos, 15 módulos, 45 lecciones, 7 inscripciones, 5 accesos y 12 pagos LMS de prueba. No se eliminaron usuarios globales de Supabase Auth.
+- **Pagos preservados:** de 9 pagos de eventos se conservaron 8: 6 referencias Stripe live y 2 pagos manuales. Se eliminó únicamente 1 pago asociado a un evento identificado como prueba. El pedido de servicio existente se conservó.
+- **Herramientas:** `/admin?tab=mantenimiento` y `/api/admin/data-cleanup` ofrecen auditoría y limpieza confirmada por alcance; la acción exige frase exacta y registra `data_cleanup` en `admin_audit_log`. `scripts/audit-admin-state.mjs` y `scripts/cleanup-admin-data.mjs` dejan evidencia reproducible sin imprimir PII.
+- **Auditoría CRM:** 921 leads; 0 responsables asignados; 269 tareas abiertas/266 vencidas; 192 leads estancados sin tarea; 2,048 conversaciones WhatsApp; 0 interacciones internas; 0 notas; 28 handoffs huérfanos; sin duplicados exactos por email/teléfono. Plan documentado en `docs/CRM_AUDIT.md`.
+- **Verificación:** simulación previa y auditoría posterior confirmaron el alcance; LMS quedó en cero y el CRM/eventos/servicios conservaron los registros previstos. Deploy `dpl_F8iBMwAKwbMfGiP6Vk9Js7YYQHR4` (`READY`) en `https://www.qlick.digital`; `/cursos` muestra el catálogo cerrado y `/api/admin/data-cleanup` rechaza solicitudes sin sesión.
+
+## 2026-08-08 — Panel administrativo: eliminación de mocks y fuentes reales
+
+- **Problema:** Resumen, Cursos, Alumnos, Inscripciones y Pagos mostraban catálogos, usuarios, inscripciones y cobros ficticios; CRM mezclaba métricas reales con tarjetas demo; Próximas integraciones describía fases ya superadas.
+- **Implementación:** nuevo snapshot server-side en `src/lib/admin/admin-dashboard-server.ts` con datos de Supabase para LMS, usuarios con acceso, eventos, confirmaciones, pagos de eventos, servicios, órdenes y agregados CRM. Las vistas ya no importan mocks en modo real; cuando una integración no existe se muestra como pendiente o no conectado.
+- **Reglas operativas:** “publicado” no equivale a “vendido”; pagos de eventos y servicios se muestran como fuentes separadas; el proveedor mock queda limitado a simuladores/pruebas; calendario demo y propietarios ficticios no aparecen junto a leads reales.
+- **Documentación:** `docs/ADMIN_PANEL_DATA_AUDIT.md` registra fuentes, estado real, pendientes y snapshot de producción.
+- **Producción:** `dpl_7JENxZQfhdo24sLnaxKs6St6ZFgD`, `READY`, aliases `https://qlick.digital` y `https://www.qlick.digital`.
+- **Verificación:** `npm run type-check`, `npm run lint` y `npm run build` verdes; agent-browser local y producción sin página en blanco ni overlay; home pública HTTP 200 y `/admin` muestra acceso restringido sin sesión. Suite completa: 1639/1641, con 2 fallos preexistentes fuera del alcance.
+
 ## 2026-08-07 11:25 Antigravity — Botón 'Ver Servicios' en Tarjetas de WhatsApp e Inyección de Teléfono en Contexto IA
 
 - **Mejoras Implementadas:**
@@ -563,5 +638,42 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
   - `src/app/globals.css`: Se añadió `padding-top: 0.5rem` a `.public-event-card__price` para asegurar separación visual limpia con los metadatos del evento.
 - **Verificación:** `npm run type-check` (0 errores), `npm run lint` (0 errores).
 
+## 2026-08-08 — Rescate puntual de solicitudes de información por WhatsApp
+
+- Se agregó el modo independiente `lead_info_followup_mode` (`off | shadow | live`) para leads en `info_requested` que recibieron información y no respondieron.
+- En modo live envía como máximo un mensaje amable después de 3 horas, solo dentro de la ventana de servicio de 24 horas; respeta pausa por lead, pausa global, opt-out y respuesta manual. Si el lead responde, el bot continúa su flujo normal.
+- El modo se puede activar/desactivar desde la pestaña Conversaciones y queda apagado por defecto para no alterar el comportamiento actual al desplegar.
+- Verificación: pruebas dirigidas `27/27`, type-check, lint y build en verde; producción `dpl_C3FoayimHWyUJbGLiYDhQSPShi5e` `READY`; home `200`; cron sin autorización `401`.
+
+## 2026-08-08 — Activación del cierre automático del rescate de información
+
+- Se corrigió el selector del cron para incluir explícitamente leads `info_requested` y contar sus intentos por etapa; queda limitado a un único rescate.
+- El mensaje de rescate ahora propone inscribirse por WhatsApp y pedir solo nombre y correo. Una respuesta `sí`, un nombre, un correo o ambos evita el ack genérico y entra al flujo de cierre; el correo directo desde este rescate también avanza a `payment_pending`.
+- Producción desplegada en `dpl_GVBrtEfvCzwiyFvmgu9LX9L5iBRp` (`READY`) y `system_settings.lead_info_followup_mode` activado en `live`. Se conserva `lead_followup_mode=live` separado para los flujos existentes.
+- Verificación: `29/29` pruebas dirigidas, type-check, lint y build verdes; suite completa `1637/1639` con los mismos 2 fallos preexistentes ajenos a este cambio; home HTTP `200`; cron sin autorización HTTP `401`.
+
+## 2026-08-08 — Backfill histórico y cola auditable de recuperación
+
+- Se agregó la migración `20260808120000_lead_recovery_campaigns.sql`, aplicada vía Management API, con unicidad `(lead_id, campaign_key)`, estados auditables, ventana `service_24h`/`free_entry_72h`/`template_required` y RLS sin acceso público.
+- El webhook ahora conserva `referral` de Meta para reconocer la ventana ampliada de 72 horas únicamente cuando existe una entrada de campaña compatible y el negocio respondió dentro de las primeras 24 horas. Los históricos sin esa señal no se consideran automáticamente de 72 horas.
+- El backfill `info_recovery_2026_08_v1` se ejecutó de forma idempotente contra producción: 65 clasificados, 8 elegibles para el mensaje de cierre, 37 detenidos por requerir plantilla, 10 duplicados para revisión y 10 excluidos. La clasificación no envió mensajes.
+- `Conversaciones` ahora muestra la cola de rescate y su última clasificación. Los duplicados quedan bloqueados aunque la persona haya contestado después, y las respuestas posteriores a un rescate enviado pasan a `replied`.
+- Producción final: `dpl_MqwKQ8zw1yhX2H6B7jx7W3gVbmox` (`READY`), aliases públicos activos. Verificación: home `200`, cron protegido `401`, ruta administrativa sin sesión `401`; type-check, lint, build y pruebas dirigidas verdes.
 
 
+
+## 2026-08-08 — Organización operativa del CRM
+
+- Se agregó el Centro de operación real en `/admin?tab=crm`, con métricas agregadas de responsables, segmentos Evento/Comercial, tareas, consentimiento, conversaciones WhatsApp, actividad interna y handoffs.
+- Los responsables se derivan de `ADMIN_EMAIL_ALLOWLIST`; el detalle del lead permite asignar/liberar `owner_id` con auditoría.
+- La cola de `crm_tasks` ahora soporta resolver, cancelar o reprogramar en lote (hasta 500) sin borrar historial; la cola vencida ofrece reprogramación a mañana con confirmación.
+- Se documentó el modelo en `docs/CRM_OPERATING_MODEL.md` y se actualizó `docs/CRM_AUDIT.md`/`docs/STATUS.md`.
+- Pendiente de operación humana: decidir el reparto de los 921 leads y ejecutar la cola; el código no asigna masivamente a una sola persona por defecto.
+## 2026-08-08 — Correos pendientes y revisión humana CRM
+
+- Se eliminó la generación de correos sintéticos `@placeholder.local` en el alta de WhatsApp, creación de leads de evento y confirmación administrativa; los correos no proporcionados quedan como `NULL`.
+- En producción se limpiaron 180 correos sintéticos con un `admin_audit_log` agregado; se conservaron los 222 leads, sus conversaciones y relaciones.
+- Se añadió `/admin?tab=crm` → `Revisión humana`, con cola priorizada, contexto de hasta seis mensajes, causa probable de no respuesta, resultado y mejora concreta para el bot.
+- Cada revisión guardada persiste una nota interna, una interacción de sistema y una entrada `crm_human_review_recorded` en `admin_audit_log`.
+- Se aclaró en la UI y documentación que `Marketing pendiente (etiqueta interna)` no equivale a rechazo de consentimiento. No se enviaron mensajes automáticos.
+- Documentación: `docs/CRM_HUMAN_REVIEW.md`, `docs/CRM_OPERATING_MODEL.md`, `docs/CRM_AUDIT.md` y `docs/STATUS.md`.

@@ -116,16 +116,6 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     : null;
   const sendEmail = body.sendEmail !== false;
 
-  // Patrón `placeholder.local` (mismo que usa el bot-engine.ts cuando
-  // alguien se registra sin email): email sintético no-enviable para
-  // satisfacer el constraint NOT NULL en leads.email. Marcamos
-  // internamente con @placeholder.local para no mandarle nada.
-  const emailForDb =
-    emailRaw ??
-    (phoneNormalized
-      ? `${phoneNormalized.replace(/\D/g, "").slice(-10)}@placeholder.local`
-      : `unknown-${Date.now()}@placeholder.local`);
-
   if (!name) {
     return NextResponse.json(
       { ok: false, error: "Falta `name`." },
@@ -189,7 +179,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         .from("leads")
         .insert({
           name,
-          email: emailForDb,
+          email: emailRaw,
           phone_normalized: phoneNormalized ?? undefined,
           consent_to_contact: true,
           whatsapp_status: "no_contactado",

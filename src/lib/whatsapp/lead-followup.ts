@@ -1,6 +1,8 @@
 import type { LeadIntent, LeadStatus } from "@/types/crm";
 import { getWhatsAppSessionWindow } from "./session-window";
 
+export const WHATSAPP_FREE_ENTRY_POINT_MS = 72 * 60 * 60 * 1000;
+export const WHATSAPP_STANDARD_SESSION_MS = 24 * 60 * 60 * 1000;
 export const LEAD_FOLLOWUP_MAX_PER_WINDOW = 2;
 export const LEAD_FOLLOWUP_MAX_PER_RUN = 5;
 export const LEAD_FOLLOWUP_RETRY_DELAY_MS = 30 * 60 * 1000;
@@ -10,10 +12,22 @@ export const LEAD_REGISTRATION_COMPLETE_TAG = "registration:complete";
 export const LEAD_FOLLOWUP_DELAYS_MS = {
   registration_incomplete: [60 * 60 * 1000, 6 * 60 * 60 * 1000],
   payment_pending: [4 * 60 * 60 * 1000, 8 * 60 * 60 * 1000],
+  info_requested: [3 * 60 * 60 * 1000],
 } as const;
 
 export type LeadFollowupMode = "off" | "shadow" | "live";
-export type LeadFollowupStage = "registration_incomplete" | "payment_pending";
+export type LeadFollowupStage =
+  | "registration_incomplete"
+  | "payment_pending"
+  | "info_requested";
+
+export const LEAD_INFO_FOLLOWUP_MAX_PER_WINDOW = 1;
+
+export function getMaxFollowupsForStage(stage: LeadFollowupStage): number {
+  return stage === "info_requested"
+    ? LEAD_INFO_FOLLOWUP_MAX_PER_WINDOW
+    : LEAD_FOLLOWUP_MAX_PER_WINDOW;
+}
 
 export function hasCompletedRegistrationSignal(
   tags: string[] | null | undefined,
@@ -34,6 +48,7 @@ export interface LeadFollowupInput {
   lastOutboundManual: boolean;
   awaitingField: "name" | "email" | null;
   sentCountInWindow: number;
+  freeEntryPointUntil?: string | null;
   now?: Date;
 }
 
@@ -75,6 +90,17 @@ export function hasTransactionalRegistrationSignal(
 }
 
 /**
+ * Pedir información por WhatsApp abre una conversación de servicio sobre
+ * esa solicitud. Esto permite un único rescate contextual dentro de 24 h sin
+ * convertir `consent_to_contact` en consentimiento general de marketing.
+ */
+export function hasRequestedInfoSignal(
+  tags: string[] | null | undefined,
+): boolean {
+  return (tags ?? []).includes("conversation:info_requested");
+}
+
+/**
  * Obtiene el ultimo campo de registro que el bot estaba solicitando.
  *
  * Algunos mensajes historicos (por ejemplo un acuse de "gracias") no
@@ -107,6 +133,90 @@ export function getPendingRegistrationField(
   return null;
 }
 
+/**
+ * Indica si el ultimo outbound del bot fue el rescate de informacion y aun
+ * no existe una respuesta del bot posterior. Se usa para que un "si" corto
+ * entre al cierre de inscripcion, en vez de caer en el ack generico.
+ */
+export function isInfoRescuePending(
+  messages: Array<{
+    direction: "inbound" | "outbound";
+    metadata?: unknown;
+  }>,
+): boolean {
+  const lastOutbound = [...messages]
+    .reverse()
+    .find((message) => message.direction === "outbound");
+  if (!lastOutbound || !lastOutbound.metadata || typeof lastOutbound.metadata !== "object") {
+    return false;
+  }
+  const metadata = lastOutbound.metadata as {
+    auto_sent_source?: unknown;
+    followup_stage?: unknown;
+  };
+  return metadata.auto_sent_source === "lead_followup" && metadata.followup_stage === "info_requested";
+}
+
+type FollowupConversationMessage = {
+  direction: "inbound" | "outbound";
+  created_at: string;
+  metadata?: unknown;
+};
+
+function referralFromMetadata(value: unknown): { sourceType?: string } | null {
+  if (!value || typeof value !== "object") return null;
+  const referral = (value as { referral?: unknown }).referral;
+  if (!referral || typeof referral !== "object") return null;
+  return referral as { sourceType?: string; source_type?: string };
+}
+
+/**
+ * Calcula la ventana especial de entrada de campaña únicamente cuando el
+ * webhook conservó una referencia de Meta y el bot respondió dentro de 24h.
+ * Los históricos sin referral no pueden asumir esta excepción.
+ */
+export function getFreeEntryPointUntil(
+  messages: FollowupConversationMessage[],
+  now = new Date(),
+): string | null {
+  const inboundWithReferral = [...messages]
+    .filter((message) => message.direction === "inbound")
+    .reverse()
+    .find((message) => {
+      const referral = referralFromMetadata(message.metadata);
+      const sourceType = referral?.sourceType ?? (referral as { source_type?: string } | null)?.source_type;
+      return sourceType === "ad" || sourceType === "page_cta" || sourceType === "facebook_page";
+    });
+  if (!inboundWithReferral) return null;
+
+  const inboundMs = Date.parse(inboundWithReferral.created_at);
+  if (!Number.isFinite(inboundMs)) return null;
+  const responseDeadline = inboundMs + WHATSAPP_STANDARD_SESSION_MS;
+  const hasBusinessResponse = messages.some((message) => {
+    const createdMs = Date.parse(message.created_at);
+    return message.direction === "outbound" &&
+      Number.isFinite(createdMs) &&
+      createdMs >= inboundMs &&
+      createdMs <= responseDeadline;
+  });
+  if (!hasBusinessResponse) return null;
+
+  const until = new Date(inboundMs + WHATSAPP_FREE_ENTRY_POINT_MS).toISOString();
+  return Date.parse(until) > now.getTime() ? until : null;
+}
+
+/** Devuelve el límite efectivo de envío para una conversación. */
+export function getEffectiveFollowupOpenUntil(
+  lastInboundAt: string | null,
+  freeEntryPointUntil: string | null,
+  now = new Date(),
+): string | null {
+  if (freeEntryPointUntil && Date.parse(freeEntryPointUntil) > now.getTime()) {
+    return freeEntryPointUntil;
+  }
+  return getWhatsAppSessionWindow(lastInboundAt, now).openUntil;
+}
+
 function firstName(value: string | undefined): string {
   const cleaned = (value ?? "")
     .replace(/\[[^\]]+\]/g, "")
@@ -119,6 +229,12 @@ function firstName(value: string | undefined): string {
 function stageForInput(input: Pick<LeadFollowupInput, "status" | "intent" | "tags">): LeadFollowupStage | null {
   if (hasCompletedRegistrationSignal(input.tags)) return null;
   if (input.status === "payment_pending") return "payment_pending";
+  if (
+    input.status === "info_requested" &&
+    hasRequestedInfoSignal(input.tags)
+  ) {
+    return "info_requested";
+  }
   if (
     input.status === "interested" &&
     (input.intent === "enroll_course" ||
@@ -139,7 +255,7 @@ export function getNextLeadFollowupAt(
   now: Date,
   openUntil: string | null,
 ): string | null {
-  if (sentCountAfterSend >= LEAD_FOLLOWUP_MAX_PER_WINDOW) return null;
+  if (sentCountAfterSend >= getMaxFollowupsForStage(stage)) return null;
   const delay = LEAD_FOLLOWUP_DELAYS_MS[stage][sentCountAfterSend];
   if (delay === undefined) return null;
   const next = now.getTime() + delay;
@@ -165,6 +281,10 @@ export function buildLeadFollowupBody(
     return `${prefix}\n\nSigo pendiente para ayudarte con tu inscripción. Cuando quieras continuar, mándame ${field}.`;
   }
 
+  if (stage === "info_requested") {
+    return `${prefix}\n\nSi ya quieres avanzar, puedo ayudarte a inscribirte por aquí. Respóndeme “sí” y te pido solo tu nombre y correo para dejar tu registro listo.`;
+  }
+
   if (followupNumber === 1) {
     return `${prefix}\n\n¿Quieres que te ayude a completar tu pago? Puedo reenviarte los datos y explicarte cómo apartar tu lugar.`;
   }
@@ -177,7 +297,11 @@ export function decideLeadFollowup(input: LeadFollowupInput): LeadFollowupDecisi
   if (!stage) {
     return { eligible: false, stage: null, reason: "not_a_followup_stage", followupNumber: null, body: null };
   }
-  if (!input.consentToContact && !hasTransactionalRegistrationSignal(input.tags)) {
+  if (
+    !input.consentToContact &&
+    !hasTransactionalRegistrationSignal(input.tags) &&
+    !hasRequestedInfoSignal(input.tags)
+  ) {
     return { eligible: false, stage, reason: "consent_missing", followupNumber: null, body: null };
   }
   if (input.botPaused) {
@@ -190,11 +314,14 @@ export function decideLeadFollowup(input: LeadFollowupInput): LeadFollowupDecisi
     return { eligible: false, stage, reason: "not_due", followupNumber: null, body: null };
   }
 
+  const freeEntryPointActive = Boolean(
+    input.freeEntryPointUntil && Date.parse(input.freeEntryPointUntil) > now.getTime(),
+  );
   const session = getWhatsAppSessionWindow(input.lastInboundAt, now);
-  if (session.state === "unknown") {
+  if (session.state === "unknown" && !freeEntryPointActive) {
     return { eligible: false, stage, reason: "window_unknown", followupNumber: null, body: null };
   }
-  if (session.state === "closed") {
+  if (session.state === "closed" && !freeEntryPointActive) {
     return { eligible: false, stage, reason: "window_closed", followupNumber: null, body: null };
   }
   if (input.lastMessageDirection !== "outbound") {
@@ -203,7 +330,7 @@ export function decideLeadFollowup(input: LeadFollowupInput): LeadFollowupDecisi
   if (input.lastOutboundManual) {
     return { eligible: false, stage, reason: "manual_reply_pending", followupNumber: null, body: null };
   }
-  if (input.sentCountInWindow >= LEAD_FOLLOWUP_MAX_PER_WINDOW) {
+  if (input.sentCountInWindow >= getMaxFollowupsForStage(stage)) {
     return { eligible: false, stage, reason: "max_attempts_reached", followupNumber: null, body: null };
   }
 

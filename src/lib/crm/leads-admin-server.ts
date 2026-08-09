@@ -19,6 +19,7 @@ import { mapLeadRowToLead, type LeadRow } from "./leads-mapper";
 import { logAdminAction } from "./audit-server";
 import { normalizePhone } from "./phone-utils";
 import { extractEmailFromText } from "../whatsapp/email-extract";
+import { isAdminEmail } from "@/lib/auth/admin-auth";
 import type { Lead, LeadStatus } from "@/types";
 import type { Json } from "@/types/supabase";
 
@@ -46,6 +47,49 @@ export interface LeadFieldUpdate {
   name?: string;
   email?: string;
   phone?: string;
+}
+
+/** Asignación de un lead a un responsable autorizado del panel. */
+export async function updateLeadOwner(
+  leadId: string,
+  ownerId: string | null,
+  actorEmail: string,
+): Promise<AdminLeadOpResult> {
+  if (!checkSupabaseConfig().configured) return { ok: false, note: "Supabase no configurado." };
+  if (!leadId || !actorEmail) return { ok: false, note: "Faltan datos (leadId/actor)." };
+  if (ownerId && !isAdminEmail(ownerId)) {
+    return { ok: false, note: "El responsable no está autorizado para el CRM." };
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data: before, error: readError } = await supabase
+    .from("leads")
+    .select("*")
+    .eq("id", leadId)
+    .maybeSingle();
+  if (readError || !before) return { ok: false, note: "El lead no existe o no se pudo leer." };
+
+  const previousOwner = before.owner_id ?? null;
+  if (previousOwner === ownerId) {
+    return { ok: true, lead: mapLeadRowToLead(before as LeadRow), note: "El responsable no cambió." };
+  }
+
+  const { data, error } = await supabase
+    .from("leads")
+    .update({ owner_id: ownerId })
+    .eq("id", leadId)
+    .select("*")
+    .maybeSingle();
+  if (error || !data) return { ok: false, note: "No se pudo asignar el responsable." };
+
+  await logAdminAction({
+    actor_email: actorEmail,
+    action: "lead_owner_change",
+    entity_type: "lead",
+    entity_id: leadId,
+    metadata: { from: previousOwner, to: ownerId },
+  });
+  return { ok: true, lead: mapLeadRowToLead(data as LeadRow) };
 }
 
 /** Resultado de una operación admin sobre un lead. */
@@ -601,6 +645,12 @@ export async function bulkUpdateLeads(
     return {
       ...empty,
       note: `Status inválido: ${value}`,
+    };
+  }
+  if (action === "owner" && (!value || !isAdminEmail(value))) {
+    return {
+      ...empty,
+      note: "Responsable inválido o no autorizado.",
     };
   }
   // action='archive' ignora value. action='owner' lo acepta como string

@@ -120,6 +120,17 @@ export async function getActiveServices(): Promise<ServiceWithVariants[]> {
     return [];
   }
 
+  // El cliente de Supabase normalmente devuelve un array. Defendemos el
+  // contrato porque un mock/adaptador mal formado no debe tumbar el catálogo
+  // completo con "variants is not iterable".
+  if (!Array.isArray(variants)) {
+    console.error("[orders-server] getActiveServices variants no es un array");
+    return (services as ServiceRow[]).map((s) => ({
+      ...mapServiceRow(s),
+      variants: [],
+    }));
+  }
+
   const variantsByService = new Map<string, ServiceVariant[]>();
   for (const v of variants as ServiceVariantRow[]) {
     const list = variantsByService.get(v.service_id) ?? [];

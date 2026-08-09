@@ -48,10 +48,16 @@ interface RequestBody {
   /** Solo para plantillas aprobadas de Meta cuando la ventana está cerrada. */
   templateName?: string;
   templateLanguage?: string;
+  /** Motivo operativo; marketing exige consentimiento explícito. */
+  contactPurpose?: "service" | "transactional" | "marketing";
+  /** Identificador del intento generado por el cliente para trazabilidad. */
+  clientRequestId?: string;
 }
 
 const UUID_LIKE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_BODY_LENGTH = 4000;
+const TEMPLATE_NAME_RE = /^[a-z0-9_]{1,120}$/;
+const TEMPLATE_LANGUAGE_RE = /^[a-z]{2,3}_[A-Z]{2}$/;
 
 export async function POST(req: NextRequest, { params }: RouteParams) {
   if (!checkSupabaseConfig().configured) {
@@ -94,6 +100,17 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     typeof body.templateLanguage === "string" && body.templateLanguage.trim().length > 0
       ? body.templateLanguage.trim()
       : undefined;
+  const contactPurpose = body.contactPurpose ?? "service";
+  const clientRequestId =
+    typeof body.clientRequestId === "string"
+      ? body.clientRequestId.trim().slice(0, 120)
+      : undefined;
+  if (!["service", "transactional", "marketing"].includes(contactPurpose)) {
+    return NextResponse.json(
+      { ok: false, error: "contactPurpose inválido." },
+      { status: 400 },
+    );
+  }
   if (messageBody.length === 0) {
     return NextResponse.json(
       { ok: false, error: "body vacío." },
@@ -109,12 +126,24 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       { status: 400 },
     );
   }
+  if (templateName && !TEMPLATE_NAME_RE.test(templateName)) {
+    return NextResponse.json(
+      { ok: false, error: "templateName inválido." },
+      { status: 400 },
+    );
+  }
+  if (templateLanguage && !TEMPLATE_LANGUAGE_RE.test(templateLanguage)) {
+    return NextResponse.json(
+      { ok: false, error: "templateLanguage inválido." },
+      { status: 400 },
+    );
+  }
 
   // 1. Resolver lead → phone.
   const supabase = createSupabaseAdminClient();
   const { data: leadRow, error: leadErr } = await supabase
     .from("leads")
-    .select("id, name, phone, phone_normalized, email")
+    .select("id, name, phone, phone_normalized, email, consent_to_contact")
     .eq("id", params.leadId)
     .maybeSingle();
   if (leadErr) {
@@ -127,6 +156,23 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json(
       { ok: false, error: "Lead no existe." },
       { status: 404 },
+    );
+  }
+
+  // Una respuesta manual de servicio no equivale a permiso de marketing.
+  // Este gate evita que el rescate o una plantilla comercial contacte a
+  // personas sin consentimiento explícito.
+  if (
+    contactPurpose === "marketing" &&
+    (leadRow as { consent_to_contact?: boolean | null }).consent_to_contact !== true
+  ) {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "MARKETING_CONSENT_REQUIRED",
+        error: "El lead no tiene consentimiento explícito para contacto comercial.",
+      },
+      { status: 409 },
     );
   }
 
@@ -213,7 +259,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         lead_id: params.leadId,
         phone_normalized: phone,
         direction: "outbound",
-        message_type: "text",
+        message_type: templateName ? "template" : "text",
         body: messageBody,
         whatsapp_message_id: sendResult.externalId ?? null,
         metadata: {
@@ -223,6 +269,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
           demo: sendResult.demo ?? false,
           templateName: templateName ?? null,
           templateLanguage: templateLanguage ?? null,
+          contactPurpose,
+          clientRequestId: clientRequestId ?? null,
         },
       } as never)
       .select("id")
@@ -259,6 +307,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         demo: sendResult.demo ?? false,
         ok: sendResult.ok,
         externalId: sendResult.externalId ?? null,
+        contactPurpose,
+        clientRequestId: clientRequestId ?? null,
       },
     });
   } catch {
