@@ -22,6 +22,8 @@ import {
   KEY_BOT_PAUSED_GLOBAL,
   KEY_LEAD_INFO_FOLLOWUP_MODE,
   KEY_LEAD_FOLLOWUP_MODE,
+  KEY_LEAD_NEW_INFO_FOLLOWUP_MODE,
+  KEY_LEAD_NEW_INFO_FOLLOWUP_SINCE,
   readSystemSetting,
 } from "../admin/system-settings-server";
 import { getActiveWhatsAppProvider } from "../whatsapp";
@@ -45,6 +47,8 @@ import {
   HISTORICAL_INFO_RECOVERY_CAMPAIGN,
   HISTORICAL_INFO_RECOVERY_TAG,
 } from "./lead-recovery";
+import { isNewLeadInfoFollowupScope } from "../whatsapp/followup-scope";
+import { isWithinProactiveContactWindow } from "../whatsapp/followup-quiet-hours";
 
 const DEFAULT_GLOBAL_OUTBOUND_LIMIT = 50;
 const FOLLOWUP_TOTAL_LIMIT_24H = 20;
@@ -61,6 +65,7 @@ interface LeadFollowupRow {
   consent_to_contact: boolean;
   bot_paused: boolean;
   next_follow_up_at: string | null;
+  created_at: string;
 }
 
 interface ConversationRow {
@@ -78,6 +83,7 @@ interface FollowupMetadata {
   ui_source?: string;
   awaiting_field?: "name" | "email" | null;
   followup_stage?: "registration_incomplete" | "payment_pending" | "info_requested";
+  followup_scope?: "new_lead_info" | "historical_info" | "operational";
 }
 
 export interface LeadFollowupRunResult {
@@ -236,9 +242,20 @@ export async function runLeadFollowupJob(now = new Date()): Promise<LeadFollowup
   const rawMode = await readSystemSetting(KEY_LEAD_FOLLOWUP_MODE);
   const mode = normalizeLeadFollowupMode(rawMode);
   const rawInfoMode = await readSystemSetting(KEY_LEAD_INFO_FOLLOWUP_MODE);
-  const infoMode = normalizeLeadFollowupMode(rawInfoMode);
-  if (mode === "off" && infoMode === "off") {
+  const historicalInfoMode = normalizeLeadFollowupMode(rawInfoMode);
+  const rawNewInfoMode = await readSystemSetting(KEY_LEAD_NEW_INFO_FOLLOWUP_MODE);
+  const newInfoMode = normalizeLeadFollowupMode(rawNewInfoMode);
+  const newInfoSinceRaw = await readSystemSetting(KEY_LEAD_NEW_INFO_FOLLOWUP_SINCE);
+  const newInfoSince = typeof newInfoSinceRaw === "string" ? newInfoSinceRaw : null;
+  if (mode === "off" && historicalInfoMode === "off" && newInfoMode === "off") {
     return emptyResult(mode, "Modos off: no se leen candidatos ni se envían mensajes.");
+  }
+
+  if (
+    (mode === "live" || historicalInfoMode === "live" || newInfoMode === "live") &&
+    !isWithinProactiveContactWindow(now)
+  ) {
+    return emptyResult(mode, "Fuera del horario proactivo (09:00–19:00, America/Phoenix); no se envían mensajes.");
   }
 
   const supabase = createSupabaseAdminClient();
@@ -250,7 +267,7 @@ export async function runLeadFollowupJob(now = new Date()): Promise<LeadFollowup
     return emptyResult(mode, "Bot pausado globalmente; no se ejecuta seguimiento.");
   }
 
-  const recoveryDiscovery = infoMode === "live"
+  const recoveryDiscovery = historicalInfoMode === "live"
     ? await discoverHistoricalInfoRecovery(supabase, now)
     : null;
 
@@ -276,7 +293,7 @@ export async function runLeadFollowupJob(now = new Date()): Promise<LeadFollowup
 
   const { data: leads, error: leadsError } = await supabase
     .from("leads")
-    .select("id, name, phone, phone_normalized, status, intent, tags, consent_to_contact, bot_paused, next_follow_up_at")
+    .select("id, name, phone, phone_normalized, status, intent, tags, consent_to_contact, bot_paused, next_follow_up_at, created_at")
     .in("status", ["interested", "payment_pending", "info_requested"])
     // El estado info_requested necesita ademas la etiqueta de solicitud de
     // informacion; la politica pura descarta cualquier fila que no tenga esa
@@ -316,7 +333,10 @@ export async function runLeadFollowupJob(now = new Date()): Promise<LeadFollowup
     rowsByLead.set(row.lead_id, current);
   }
 
-  const provider = mode === "live" || infoMode === "live" ? getActiveWhatsAppProvider() : null;
+  const provider =
+    mode === "live" || historicalInfoMode === "live" || newInfoMode === "live"
+      ? getActiveWhatsAppProvider()
+      : null;
   for (const lead of leadRows) {
     if (result.eligible >= available) break;
     const phone = toPhone(lead);
@@ -339,7 +359,13 @@ export async function runLeadFollowupJob(now = new Date()): Promise<LeadFollowup
     );
     if (!decision.eligible || !decision.stage || !decision.body) {
       incrementReason(result, decision.reason);
-      const decisionMode = decision.stage === "info_requested" ? infoMode : mode;
+      const decisionMode = decision.stage === "info_requested"
+        ? (isNewLeadInfoFollowupScope({
+            createdAt: lead.created_at,
+            tags: lead.tags,
+            newInfoFollowupSince: newInfoSince,
+          }) ? newInfoMode : historicalInfoMode)
+        : mode;
       if (decisionMode === "live" && lead.next_follow_up_at && shouldClearDueFollowup(decision.reason)) {
         await supabase
           .from("leads")
@@ -350,7 +376,14 @@ export async function runLeadFollowupJob(now = new Date()): Promise<LeadFollowup
       continue;
     }
 
-    const candidateMode = decision.stage === "info_requested" ? infoMode : mode;
+    const isNewInfoLead = isNewLeadInfoFollowupScope({
+      createdAt: lead.created_at,
+      tags: lead.tags,
+      newInfoFollowupSince: newInfoSince,
+    });
+    const candidateMode = decision.stage === "info_requested"
+      ? (isNewInfoLead ? newInfoMode : historicalInfoMode)
+      : mode;
     if (candidateMode === "off") {
       incrementReason(
         result,
@@ -419,6 +452,9 @@ export async function runLeadFollowupJob(now = new Date()): Promise<LeadFollowup
           auto_sent_source: "lead_followup",
           followup_stage: decision.stage,
           followup_number: decision.followupNumber,
+          followup_scope: decision.stage === "info_requested"
+            ? (isNewInfoLead ? "new_lead_info" : "historical_info")
+            : "operational",
           awaiting_field: pendingRegistrationField,
           rescue_action: decision.stage === "info_requested" ? "registration_close" : undefined,
           ...(lead.tags ?? []).includes(HISTORICAL_INFO_RECOVERY_TAG)
@@ -454,7 +490,7 @@ export async function runLeadFollowupJob(now = new Date()): Promise<LeadFollowup
   const discoveryNote = recoveryDiscovery
     ? ` histórico: ${recoveryDiscovery.scheduled} programados, ${recoveryDiscovery.blockedTemplate} requieren plantilla, ${recoveryDiscovery.duplicateReview} en revisión.`
     : "";
-  result.note = `Seguimiento ${mode}; rescate de información ${infoMode}: ` +
+  result.note = `Seguimiento ${mode}; info nuevos ${newInfoMode}; rescate histórico ${historicalInfoMode}: ` +
     `${result.sent} mensajes enviados; ${result.failed} fallos.${discoveryNote}`;
   return result;
 }

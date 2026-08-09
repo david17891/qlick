@@ -32,7 +32,8 @@ import {
   KEY_BOT_MAX_ACTIVE_RULES,
   KEY_BOT_CONTEXT_BLOCKS_CONFIG,
   KEY_LEAD_INFO_FOLLOWUP_MODE,
-  KEY_LEAD_FOLLOWUP_MODE
+  KEY_LEAD_FOLLOWUP_MODE,
+  KEY_LEAD_NEW_INFO_FOLLOWUP_MODE
 } from "@/lib/admin/system-settings-server";
 
 export const dynamic = "force-dynamic";
@@ -55,7 +56,8 @@ const WRITABLE_KEYS: ReadonlySet<string> = new Set<string>([
   KEY_BOT_MAX_ACTIVE_RULES,      // number >= 0
   KEY_BOT_CONTEXT_BLOCKS_CONFIG, // object (json)
   KEY_LEAD_FOLLOWUP_MODE,        // off | shadow | live
-  KEY_LEAD_INFO_FOLLOWUP_MODE    // off | shadow | live
+  KEY_LEAD_INFO_FOLLOWUP_MODE,   // off | shadow | live; histórico
+  KEY_LEAD_NEW_INFO_FOLLOWUP_MODE // off | shadow | live; leads nuevos
 ]);
 
 /**
@@ -88,6 +90,7 @@ function validateValueForKey(key: string, value: unknown): string | null {
       return null;
     case KEY_LEAD_FOLLOWUP_MODE:
     case KEY_LEAD_INFO_FOLLOWUP_MODE:
+    case KEY_LEAD_NEW_INFO_FOLLOWUP_MODE:
       if (value !== "off" && value !== "shadow" && value !== "live") {
         return `'${key}' solo acepta off, shadow o live.`;
       }

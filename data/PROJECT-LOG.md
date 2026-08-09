@@ -742,3 +742,10 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 - Los tres seguimientos pendientes asociados a leads con pago pendiente no se modificaron porque pertenecen al flujo operativo de pago, no al rescate histórico.
 - La UI de Conversaciones ahora muestra explícitamente “Ronda manual activa” cuando el rescate está detenido y recomienda revisar cada caso en Revisión humana antes de reactivar automatizaciones.
 - Producción: deploy `dpl_3cLcFR4gm37ekG3Sidfhx8oFZbgs` en `READY`; smoke público `/`, `/eventos`, `/admin` `200` y webhook sin firma `403`. Supabase confirmó nuevamente `lead_info_followup_mode=off`.
+
+## 2026-08-09 — Separación de seguimiento nuevo y horario seguro
+
+- El cron separa el modo histórico `lead_info_followup_mode` del modo de leads nuevos `lead_new_info_followup_mode`.
+- Un lead nuevo solo entra desde el corte `lead_new_info_followup_since` y queda excluido si tiene `recovery:info_historical`; el outbound registra `followup_scope` para distinguir `new_lead_info`, `historical_info` y `operational`.
+- Se agregó una ventana proactiva 09:00–19:00 hora `America/Phoenix`; fuera de ella el cron no envía mensajes. Las respuestas entrantes del bot continúan operando.
+- Pruebas de alcance/horario/cron `6/6`, type-check OK, lint OK y build OK. El modo nuevo queda listo para activarse después del deploy fijando el corte en producción; el rescate histórico permanece `off`.

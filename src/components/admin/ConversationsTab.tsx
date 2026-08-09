@@ -187,6 +187,7 @@ export function ConversationsTab() {
   const [togglingGlobal, setTogglingGlobal] = useState(false);
   const [leadFollowupMode, setLeadFollowupMode] = useState<LeadFollowupMode | "unknown">("unknown");
   const [leadInfoFollowupMode, setLeadInfoFollowupMode] = useState<LeadFollowupMode | "unknown">("unknown");
+  const [leadNewInfoFollowupMode, setLeadNewInfoFollowupMode] = useState<LeadFollowupMode | "unknown">("unknown");
   const [togglingInfoFollowup, setTogglingInfoFollowup] = useState(false);
   const [recoveryStats, setRecoveryStats] = useState<RecoveryStats | null>(null);
   const [discoveringRecovery, setDiscoveringRecovery] = useState(false);
@@ -622,6 +623,26 @@ export function ConversationsTab() {
     void fetchLeadInfoFollowupMode();
   }, [fetchLeadInfoFollowupMode]);
 
+  const fetchLeadNewInfoFollowupMode = useCallback(async () => {
+    try {
+      const res = await safeFetch("/api/admin/system-setting?key=lead_new_info_followup_mode");
+      const json = (await res.json()) as { ok?: boolean; value?: unknown };
+      if (!json.ok) return;
+      const value = json.value;
+      if (value === "off" || value === "shadow" || value === "live") {
+        setLeadNewInfoFollowupMode(value);
+      } else {
+        setLeadNewInfoFollowupMode("off");
+      }
+    } catch {
+      // Best-effort.
+    }
+  }, [safeFetch]);
+
+  useEffect(() => {
+    void fetchLeadNewInfoFollowupMode();
+  }, [fetchLeadNewInfoFollowupMode]);
+
   const fetchRecoveryStats = useCallback(async () => {
     try {
       const res = await safeFetch("/api/admin/crm/lead-recovery");
@@ -708,6 +729,33 @@ export function ConversationsTab() {
     }
   }, [leadInfoFollowupMode, safeFetch]);
 
+  const handleToggleNewInfoFollowup = useCallback(async () => {
+    setTogglingInfoFollowup(true);
+    try {
+      const next = leadNewInfoFollowupMode !== "live";
+      if (
+        next &&
+        !window.confirm(
+          "Se activará el seguimiento de información solo para leads nuevos, dentro de 09:00–19:00 hora Phoenix y con límites anti-repetición. ¿Confirmas?",
+        )
+      ) {
+        return;
+      }
+      await safeFetch("/api/admin/system-setting", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "lead_new_info_followup_mode", value: next ? "live" : "off" }),
+      });
+      if (isMountedRef.current) setLeadNewInfoFollowupMode(next ? "live" : "off");
+    } catch (err) {
+      if (isMountedRef.current) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    } finally {
+      if (isMountedRef.current) setTogglingInfoFollowup(false);
+    }
+  }, [leadNewInfoFollowupMode, safeFetch]);
+
   /* ---------------------------------------------------------------- */
   /*  Envío de mensaje                                                */
   /* ---------------------------------------------------------------- */
@@ -768,9 +816,15 @@ export function ConversationsTab() {
             </Badge>
             <Badge
               tone={leadInfoFollowupMode === "live" ? "success" : leadInfoFollowupMode === "shadow" ? "info" : "neutral"}
-              title="Un solo mensaje para leads que pidieron información y no respondieron. Se detiene después de ese intento."
+              title="Rescate histórico; se mantiene separado de los leads nuevos."
             >
-              Rescate info: {followupModeLabel(leadInfoFollowupMode)}
+              Rescate histórico: {followupModeLabel(leadInfoFollowupMode)}
+            </Badge>
+            <Badge
+              tone={leadNewInfoFollowupMode === "live" ? "success" : leadNewInfoFollowupMode === "shadow" ? "info" : "neutral"}
+              title="Seguimiento de información únicamente para leads creados desde el corte operativo."
+            >
+              Info nuevos: {followupModeLabel(leadNewInfoFollowupMode)}
             </Badge>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
@@ -784,6 +838,17 @@ export function ConversationsTab() {
               title="Activa o desactiva el único mensaje de rescate para quienes pidieron información y quedaron en silencio."
             >
               {leadInfoFollowupMode === "live" ? "Detener rescate automático" : "Activar rescate automático"}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={leadNewInfoFollowupMode === "live" ? "accent" : "outline"}
+              onClick={() => void handleToggleNewInfoFollowup()}
+              disabled={togglingInfoFollowup || leadNewInfoFollowupMode === "unknown"}
+              aria-pressed={leadNewInfoFollowupMode === "live"}
+              title="Seguimiento separado para leads nuevos; respeta horario local y no toca rescates históricos."
+            >
+              {leadNewInfoFollowupMode === "live" ? "Detener info nuevos" : "Activar info nuevos"}
             </Button>
             <Button
               type="button"

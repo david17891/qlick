@@ -21,6 +21,8 @@ mock.module("../src/lib/admin/system-settings-server.ts", {
     KEY_BOT_DAILY_OUTBOUND_LIMIT: "bot_daily_outbound_limit",
     KEY_BOT_PAUSED_GLOBAL: "bot_paused_global",
     KEY_LEAD_INFO_FOLLOWUP_MODE: "lead_info_followup_mode",
+    KEY_LEAD_NEW_INFO_FOLLOWUP_MODE: "lead_new_info_followup_mode",
+    KEY_LEAD_NEW_INFO_FOLLOWUP_SINCE: "lead_new_info_followup_since",
     KEY_LEAD_FOLLOWUP_MODE: "lead_followup_mode",
     readSystemSetting: async (key) => {
       reads.push(key);
@@ -40,6 +42,11 @@ test("lead followup cron: modo ausente cae a off antes de leer leads", async () 
   assert.equal(result.mode, "off");
   assert.equal(result.scanned, 0);
   assert.equal(result.sent, 0);
-  assert.deepEqual(reads, ["lead_followup_mode", "lead_info_followup_mode"]);
+  assert.deepEqual(reads, [
+    "lead_followup_mode",
+    "lead_info_followup_mode",
+    "lead_new_info_followup_mode",
+    "lead_new_info_followup_since",
+  ]);
   assert.match(result.note, /no se leen candidatos/i);
 });

@@ -8,6 +8,8 @@ Este documento es la especificación operativa del rescate y debe mantenerse ali
 
 ## Estado actual
 
+**Corte operativo 2026-08-09:** el rescate histórico permanece detenido (`lead_info_followup_mode=off`). El seguimiento separado de leads nuevos usa `lead_new_info_followup_mode` y solo acepta leads creados desde `lead_new_info_followup_since`, sin la etiqueta `recovery:info_historical`. Ningún envío proactivo ocurre fuera de 09:00–19:00 hora `America/Phoenix`.
+
 Snapshot de producción del 2026-08-08, sin exponer nombres, teléfonos ni otros datos personales. La clasificación histórica ya fue ejecutada de forma idempotente:
 
 | Hallazgo | Cantidad |
@@ -38,6 +40,7 @@ De los 45 sin respuesta, 8 están dentro de las primeras 24 horas, 8 tienen entr
 
 - El cron horario de `.github/workflows/lead-followup.yml` llama a `/api/cron/lead-followup`.
 - `lead_info_followup_mode` es un switch independiente. Desde el 2026-08-09 está en `off` en producción para realizar primero una ronda manual; el bot conversacional y los seguimientos de registro/pago permanecen separados.
+- `lead_new_info_followup_mode` es otro switch independiente para leads nuevos. Su alcance se corta por fecha de alta y excluye cualquier lead de la campaña histórica.
 - Cuando se reactive, el rescate nuevo enviará como máximo un mensaje después de 3 horas y respetará pausa, opt-out, respuestas manuales y la ventana de servicio de WhatsApp. Mientras esté en `off`, la cola solo sirve para revisión.
 - Una respuesta afirmativa, un nombre, un correo o nombre + correo ya pueden entrar al cierre de inscripción sin repetir el mensaje completo de campaña.
 - Al completar el correo, el flujo existente confirma por WhatsApp y correo.
@@ -102,7 +105,7 @@ No se envía texto libre directamente. Primero se debe crear y aprobar una plant
 
 ### Fase 4 — Operación continua
 
-El scheduler seguirá procesando automáticamente solicitudes nuevas. El panel debe mostrar el modo del rescate, el último cron, candidatos pendientes, envíos, respuestas y fallos. El operador podrá pausar el rescate histórico sin desactivar el bot conversacional normal.
+El scheduler puede procesar solicitudes nuevas mediante `lead_new_info_followup_mode`, con máximo de dos intentos no idénticos, detención por respuesta/intervención y horario local 09:00–19:00. El panel muestra por separado `Info nuevos` y `Rescate histórico`; el operador puede detener cualquiera sin desactivar el bot conversacional normal.
 
 ## Reglas de no duplicación
 
