@@ -683,3 +683,11 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 - PR #71 pasó tests CI, type-check y lint; el smoke E2E de Supabase quedó omitido por falta de secretos del runner.
 - Se fusionó a `main` con merge `674fe32` y Vercel lo desplegó como `dpl_2uUzRXeqMLkm6toJ4EkzMLXbkKAn` (`READY`).
 - Smoke público verificado: `/`, `/eventos` y `/admin` `200`; overview CRM sin sesión `401`; webhook WhatsApp sin firma `403`.
+
+## 2026-08-08 — Asociación real de conversaciones con eventos
+
+- Causa raíz: `lead_whatsapp_conversations.related_event_id` existía, pero el webhook y el bot no lo persistían; además, la revisión humana solo usaba confirmaciones, asistencias y `lead_event_links`.
+- Producción: 407 filas históricas recuperaron `lead_id` mediante teléfono normalizado. Se asociaron 318 filas al evento actual CN26 y 988 al evento anterior AA4E usando título, slug, metadata y afinidad inequívoca del lead. Las 227 filas restantes siguen sin evento por falta de evidencia o de lead.
+- Código: los nuevos turnos asocian el evento por botón/texto/único evento publicado y la revisión humana identifica eventos también desde el contenido de WhatsApp.
+- PR #73 mergeado a `main` (`30e80dd3f1a4bfe6a384ececdf2406a143abb3bd`). Vercel `dpl_3Em9QAQtEp8R8WEDAUXbEkqL2G93` quedó `READY`. Smoke: `/` y `/eventos` `200`, `/admin` `200`, APIs administrativas sin sesión `401`, webhook sin firma `403`.
+- Validación: type-check, lint y build verdes; pruebas dirigidas WhatsApp/CRM `106/106`. La suite completa terminó `1642/1646`; los cuatro fallos quedaron en fixtures/dependencias ajenos de pagos y human-first.
