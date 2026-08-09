@@ -100,6 +100,7 @@ import {
   isInfoRescuePending,
   hasTransactionalRegistrationSignal,
 } from "./lead-followup";
+import { syncLeadEventJourneyForBotTurn } from "./lead-event-journey-server";
 import { extractEmailFromText } from "./email-extract";
 import { getAIAgentProfile } from "../crm/agent-utils";
 import {
@@ -8517,6 +8518,40 @@ export async function processInboundMessage(
           ?.awaiting_field ?? null,
       note: sendResult.note
     });
+  }
+
+  // B-04: dual-write no bloqueante del journey por lead + evento. El bot
+  // actual sigue siendo la fuente de respuesta durante shadow; esta
+  // proyección solo registra contexto y transiciones para poder comparar
+  // decisiones antes de activar el nuevo kernel.
+  if (supabase && lead.id && conversationEventId) {
+    try {
+      const journeyResult = await syncLeadEventJourneyForBotTurn({
+        supabase,
+        leadId: lead.id,
+        eventId: conversationEventId,
+        intent,
+        source: "inbound",
+        inboundMessageId: message.messageId ?? null,
+        outboundMessageId: sendResult.externalId ?? null,
+        outboundSent: sendResult.ok,
+        outboundMetadata: plan.metadata ?? null,
+        botVersion: "journey-dual-write-v1",
+      });
+      if (!journeyResult.ok) {
+        errorLog("[whatsapp/bot] journey dual-write falló (no fatal)", {
+          leadId: lead.id,
+          eventId: conversationEventId,
+          error: journeyResult.error,
+        });
+      }
+    } catch (err) {
+      errorLog("[whatsapp/bot] journey dual-write lanzó excepción (no fatal)", {
+        leadId: lead.id,
+        eventId: conversationEventId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   // 8. Tocar last_contacted_at + summary.

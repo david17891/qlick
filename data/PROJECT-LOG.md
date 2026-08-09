@@ -691,3 +691,13 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 - Código: los nuevos turnos asocian el evento por botón/texto/único evento publicado y la revisión humana identifica eventos también desde el contenido de WhatsApp.
 - PR #73 mergeado a `main` (`30e80dd3f1a4bfe6a384ececdf2406a143abb3bd`). Vercel `dpl_3Em9QAQtEp8R8WEDAUXbEkqL2G93` quedó `READY`. Smoke: `/` y `/eventos` `200`, `/admin` `200`, APIs administrativas sin sesión `401`, webhook sin firma `403`.
 - Validación: type-check, lint y build verdes; pruebas dirigidas WhatsApp/CRM `106/106`. La suite completa terminó `1642/1646`; los cuatro fallos quedaron en fixtures/dependencias ajenos de pagos y human-first.
+
+## 2026-08-08 — Journey operativo por persona + evento y dual-write seguro
+
+- Se creó `supabase/migrations/20260808190000_lead_event_journeys.sql` con `lead_event_journeys` (unicidad `(lead_id, event_id)`) y `lead_event_journey_transitions` append-only.
+- Ambas tablas tienen RLS activo, acceso revocado para `anon`/`authenticated` y permisos explícitos para `service_role`; no contienen filas iniciales ni PII nueva.
+- Se agregaron tipos en `src/types/supabase.ts` y contrato puro en `src/lib/whatsapp/lead-event-journey.ts`, con 11 pruebas de invariantes persona–evento.
+- `src/lib/whatsapp/lead-event-journey-server.ts` registra de forma best-effort las transiciones del motor actual. El bot conserva su respuesta y modo actuales; el dual-write no envía mensajes ni cambia el flujo.
+- Producción: migración aplicada correctamente y verificada con tablas existentes, RLS activo y 0 filas iniciales.
+- Verificación: type-check OK, lint OK, pruebas nuevas `11/11`, pruebas dirigidas WhatsApp/modos `84/84`.
+- La suite general queda con `1654/1657`; las 3 fallas aisladas son del fixture E2E de notificación de pagos, que no encuentra la confirmación de evento de prueba y no tocan este cambio.
