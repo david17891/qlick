@@ -15,7 +15,9 @@
 - [x] **B-05 — Resolver de evento compartido:** `EventContextResolver` con niveles `explicit`, `contextual` y `fallback`; el motor lo usa para no heredar un evento por suposición.
 - [x] **B-06 — Hechos oficiales:** `event-context-loader` carga eventos reales, excluye publicados vencidos, calcula fecha/día en `America/Phoenix` y `validateAgentReply` bloquea días incorrectos antes del envío.
 - [x] **B-07 — ACK contextual:** un acuse corto no repite el enlace ni el bloque de campaña; un registro completo termina con cierre neutral y un registro pendiente conserva solo una ayuda breve.
-- [ ] **B-08 en adelante:** captura flexible, idempotencia completa, canary y migración progresiva de automatizaciones.
+- [x] **B-08 — Captura flexible:** nombre/correo en cualquier orden y captura implícita verificados con `132/132` pruebas dirigidas.
+- [x] **B-09 — Idempotencia operativa:** inbound con `whatsapp_message_id` único, claim atómico del cron y supresión segura de welcome idéntico dentro de 15 segundos.
+- [ ] **B-10 en adelante:** matriz completa de regresión, canary y migración progresiva de automatizaciones.
 
 La migración de B-03 se aplicó a producción el 2026-08-08. Las tablas iniciaron vacías y el dual-write se activó únicamente como telemetría aditiva.
 

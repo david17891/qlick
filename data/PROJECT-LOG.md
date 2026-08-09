@@ -725,3 +725,11 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 - La persistencia del ACK conserva `related_event_id` y registra `ack_reason` para auditoría.
 - Pruebas dirigidas B-05/B-07 y bot: `94/94`; type-check y lint OK.
 - Producción: deploy B-07 `dpl_3YVVhAJvSpMXhUcA9cxv3QgsVv1k` en `READY`; smoke público `/`, `/eventos`, `/admin` `200` y webhook sin firma `403`.
+
+## 2026-08-09 — Supresión segura de welcomes duplicados
+
+- Auditoría de producción de los últimos 14 días: 306 mensajes recientes, 141 inbound y 165 outbound; no hubo outbound sin `provider_message_id`.
+- Se encontraron 2 grupos de welcome automático repetido en menos de un segundo. Se agregó `src/lib/whatsapp/response-dedup.ts` para suprimir únicamente el mismo texto de `welcome/greeting` dentro de 15 segundos cuando el outbound previo está marcado como automático.
+- La regla no aplica a captura, pagos, handoffs, preguntas, follow-ups ni mensajes manuales. Ante timestamp o metadata insuficiente, deja pasar el mensaje.
+- Pruebas nuevas `5/5`, type-check OK y lint OK. No se alteró ni eliminó histórico de conversaciones.
+- B-08 queda verificado por la matriz existente de captura flexible `132/132`; B-09 queda implementado en su capa operativa (dedupe inbound, claim del cron y guard de respuesta rápida). La idempotencia persistente de cada outbound/provider retry queda para la siguiente fase.

@@ -105,6 +105,7 @@ import {
 import { syncLeadEventJourneyForBotTurn } from "./lead-event-journey-server";
 import { resolveEventContext } from "./event-context-resolver";
 import { buildContextualAck } from "./ack-policy";
+import { shouldSuppressRapidDuplicateResponse } from "./response-dedup";
 import { extractEmailFromText } from "./email-extract";
 import { getAIAgentProfile } from "../crm/agent-utils";
 import {
@@ -8292,6 +8293,39 @@ export async function processInboundMessage(
         code: eventLinkError.code,
       });
     }
+  }
+
+  // FIX 2026-08-09 (hardening): si el lead manda dos mensajes iniciales
+  // seguidos, Meta puede disparar dos turnos antes de que el primer outbound
+  // termine de verse en el teléfono. Evitamos repetir el mismo welcome, pero
+  // solo para intents iniciales y respuestas automáticas idénticas. Captura,
+  // pagos, handoffs y mensajes manuales no pasan por este guard.
+  const lastOutboundAutoSource =
+    typeof lastOutboundGlobal?.metadata?.auto_sent_source === "string"
+      ? lastOutboundGlobal.metadata.auto_sent_source
+      : null;
+  const duplicateResponse = shouldSuppressRapidDuplicateResponse({
+    candidateIntent: intent,
+    candidateBody: plan.body,
+    lastOutboundBody: lastOutboundGlobal?.body,
+    lastOutboundCreatedAt: lastOutboundGlobal?.timestamp,
+    lastOutboundAutoSource
+  });
+  if (duplicateResponse.suppress) {
+    debugLog("[whatsapp/bot] respuesta inicial duplicada suprimida", {
+      leadId: lead.id,
+      intent,
+      reason: duplicateResponse.reason
+    });
+    return {
+      ok: true,
+      intent,
+      leadId: lead.id,
+      conversationId: inboundConvId ?? undefined,
+      responseKind: "none",
+      demo: false,
+      note: "Respuesta inicial repetida suprimida por ventana de idempotencia."
+    };
   }
 
   let sendResult: { ok: boolean; externalId?: string; demo?: boolean; note?: string } = {
