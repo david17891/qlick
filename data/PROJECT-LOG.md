@@ -733,3 +733,4 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 - La regla no aplica a captura, pagos, handoffs, preguntas, follow-ups ni mensajes manuales. Ante timestamp o metadata insuficiente, deja pasar el mensaje.
 - Pruebas nuevas `5/5`, type-check OK y lint OK. No se alteró ni eliminó histórico de conversaciones.
 - B-08 queda verificado por la matriz existente de captura flexible `132/132`; B-09 queda implementado en su capa operativa (dedupe inbound, claim del cron y guard de respuesta rápida). La idempotencia persistente de cada outbound/provider retry queda para la siguiente fase.
+- Producción: deploy `dpl_e89DMVj4iDQbdufY7Dmw4Vo7xwCM` en `READY`; smoke público `/`, `/eventos`, `/admin` `200` y webhook sin firma `403`. Alias canónico verificado: `https://www.qlick.digital`.
