@@ -147,6 +147,34 @@ test("followup: pago pendiente no continúa después de entregar el registro y Q
   assert.equal(hasCompletedRegistrationSignal(["registration:complete"]), true);
 });
 
+test("followup: una marca de registro por evento también corta el pago", () => {
+  const result = decideLeadFollowup(
+    base({
+      status: "payment_pending",
+      intent: "payment_help",
+      tags: ["registration:payment_pending", "event:las-4-patas:registration_complete"],
+    }),
+  );
+  assert.equal(result.eligible, false);
+  assert.equal(result.reason, "not_a_followup_stage");
+  assert.equal(
+    hasCompletedRegistrationSignal(["event:las-4-patas:registration_complete"]),
+    true,
+  );
+});
+
+test("followup: una persona registrada aún puede pedir información de otro evento", () => {
+  const result = decideLeadFollowup(
+    base({
+      status: "info_requested",
+      intent: "course_information",
+      tags: ["registration:complete", "conversation:info_requested"],
+    }),
+  );
+  assert.equal(result.eligible, true);
+  assert.equal(result.stage, "info_requested");
+});
+
 test("followup: no envía sin consentimiento ni señal de registro", () => {
   const result = decideLeadFollowup(
     base({

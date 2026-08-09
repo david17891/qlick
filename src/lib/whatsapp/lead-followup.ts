@@ -32,7 +32,11 @@ export function getMaxFollowupsForStage(stage: LeadFollowupStage): number {
 export function hasCompletedRegistrationSignal(
   tags: string[] | null | undefined,
 ): boolean {
-  return (tags ?? []).includes(LEAD_REGISTRATION_COMPLETE_TAG);
+  return (tags ?? []).some(
+    (tag) =>
+      tag === LEAD_REGISTRATION_COMPLETE_TAG ||
+      /^event:.+:registration_complete$/.test(tag),
+  );
 }
 
 export interface LeadFollowupInput {
@@ -227,14 +231,17 @@ function firstName(value: string | undefined): string {
 }
 
 function stageForInput(input: Pick<LeadFollowupInput, "status" | "intent" | "tags">): LeadFollowupStage | null {
-  if (hasCompletedRegistrationSignal(input.tags)) return null;
-  if (input.status === "payment_pending") return "payment_pending";
+  // Una inscripción terminada detiene los recordatorios de registro/pago,
+  // pero no debe impedir una futura solicitud explícita de información sobre
+  // otro evento.
   if (
     input.status === "info_requested" &&
     hasRequestedInfoSignal(input.tags)
   ) {
     return "info_requested";
   }
+  if (hasCompletedRegistrationSignal(input.tags)) return null;
+  if (input.status === "payment_pending") return "payment_pending";
   if (
     input.status === "interested" &&
     (input.intent === "enroll_course" ||

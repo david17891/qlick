@@ -99,6 +99,7 @@ import {
   getPendingRegistrationField,
   isInfoRescuePending,
   hasTransactionalRegistrationSignal,
+  LEAD_REGISTRATION_COMPLETE_TAG,
 } from "./lead-followup";
 import { syncLeadEventJourneyForBotTurn } from "./lead-event-journey-server";
 import { extractEmailFromText } from "./email-extract";
@@ -1655,6 +1656,11 @@ async function syncLeadLifecycle(
   const lifecycle = decideLeadLifecycle({
     currentStatus: lead.status,
     currentIntent: lead.intent,
+    registrationComplete: (lead.tags ?? []).some(
+      (tag) =>
+        tag === LEAD_REGISTRATION_COMPLETE_TAG ||
+        /^event:.+:registration_complete$/.test(tag),
+    ),
     ...input,
   });
   const existingTags = lead.tags ?? [];
@@ -1695,6 +1701,56 @@ async function syncLeadLifecycle(
     });
   }
   return lifecycle;
+}
+
+/**
+ * Cierra el seguimiento automático cuando ya existe una confirmación real.
+ *
+ * `payment_pending` describe el pago, no el registro: en eventos con pago en
+ * puerta la persona ya tiene lugar y QR aunque todavía no haya liquidado.
+ * Mantener ambas señales separadas evita que el cron interprete una
+ * inscripción completada como una oportunidad de venta abierta.
+ */
+async function markLeadRegistrationComplete(
+  supabase: SupabaseAdmin,
+  lead: Lead,
+  eventSlug: string | null,
+): Promise<void> {
+  if (!lead.id) return;
+
+  const eventTag = eventSlug
+    ? `event:${eventSlug}:registration_complete`
+    : null;
+  const nextTags = Array.from(
+    new Set([
+      ...(lead.tags ?? []),
+      LEAD_REGISTRATION_COMPLETE_TAG,
+      ...(eventTag ? [eventTag] : []),
+    ]),
+  );
+  const { error } = await supabase
+    .from("leads")
+    .update({
+      tags: nextTags,
+      next_follow_up_at: null,
+    })
+    .eq("id", lead.id);
+
+  if (error) {
+    errorLog("[whatsapp/bot] no se pudo cerrar follow-up tras registro", {
+      leadId: lead.id,
+      eventSlug,
+      code: error.code,
+    });
+    return;
+  }
+
+  lead.tags = nextTags;
+  lead.nextFollowUpAt = undefined;
+  debugLog("[whatsapp/bot] follow-up cerrado: registro completo", {
+    leadId: lead.id,
+    eventSlug,
+  });
 }
 
 function eventSlugFromConversation(
@@ -7553,6 +7609,14 @@ export async function processInboundMessage(
               }
             }
 
+            if (confirmResult?.ok && confirmResult.confirmation) {
+              await markLeadRegistrationComplete(
+                supabase,
+                lead,
+                targetSlug,
+              );
+            }
+
             if (!confirmResult || !confirmResult.ok || !confirmResult.confirmation) {
               errorLog("[whatsapp/bot] pending_payment: createConfirmation fallo", {
                 leadId: lead.id,
@@ -8015,6 +8079,18 @@ export async function processInboundMessage(
               });
             }
           }
+
+          // La confirmación ya existe aunque el pago quede pendiente. En ese
+          // punto el QR y el lugar están resueltos: no debemos dejar que el
+          // cron vuelva a tratar a la persona como registro incompleto o
+          // insistirle automáticamente con el mismo enlace.
+          if (confResult?.ok && confResult.confirmation) {
+            await markLeadRegistrationComplete(
+              supabase,
+              lead,
+              registrationEventSlug,
+            );
+          }
         } else {
           errorLog("[whatsapp/bot] provide_email: no se pudo resolver event_id para confirmation", {
             leadId: lead.id,
@@ -8387,6 +8463,13 @@ export async function processInboundMessage(
                       : String(paymentStatusErr),
                 });
               }
+            }
+            if (confResult?.ok && confResult.confirmation) {
+              await markLeadRegistrationComplete(
+                supabase,
+                lead,
+                icEventSlug,
+              );
             }
           }
         } catch (confErr) {

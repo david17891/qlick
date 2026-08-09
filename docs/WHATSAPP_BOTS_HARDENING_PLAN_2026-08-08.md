@@ -11,6 +11,7 @@
 - [x] **B-02 — Contrato persona–evento:** invariantes documentadas y pruebas sintéticas.
 - [x] **B-03 — Schema aditivo:** `lead_event_journeys` y `lead_event_journey_transitions` aplicadas en Supabase con RLS y acceso backend-only.
 - [x] **B-04 — Dual-write:** el motor actual registra el journey y las transiciones cuando ya existe un evento confiable; no cambia todavía la respuesta ni el modo de producción.
+- [x] **B-04a — Corte post-registro:** una confirmación real + QR cancela seguimientos automáticos de pago; la marca también queda separada por evento.
 - [ ] **B-05 en adelante:** resolver evento compartido, modo shadow, idempotencia completa, canary y migración progresiva de automatizaciones.
 
 La migración de B-03 se aplicó a producción el 2026-08-08. Las tablas iniciaron vacías y el dual-write se activó únicamente como telemetría aditiva.

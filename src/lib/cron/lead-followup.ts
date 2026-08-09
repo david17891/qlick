@@ -68,6 +68,7 @@ interface ConversationRow {
   direction: "inbound" | "outbound";
   body: string | null;
   metadata: unknown;
+  related_event_id: string | null;
   created_at: string;
 }
 
@@ -299,7 +300,7 @@ export async function runLeadFollowupJob(now = new Date()): Promise<LeadFollowup
   const { data: messageRows, error: messagesError } = leadIds.length
     ? await supabase
         .from("lead_whatsapp_conversations")
-        .select("lead_id, direction, body, metadata, created_at")
+        .select("lead_id, direction, body, metadata, related_event_id, created_at")
         .in("lead_id", leadIds)
         .order("created_at", { ascending: true })
     : { data: [], error: null };
@@ -412,6 +413,7 @@ export async function runLeadFollowupJob(now = new Date()): Promise<LeadFollowup
         message_type: "text",
         body: decision.body,
         whatsapp_message_id: sendResult.externalId ?? null,
+        related_event_id: lastOutbound?.related_event_id ?? lastInbound?.related_event_id ?? null,
         metadata: {
           auto_sent: true,
           auto_sent_source: "lead_followup",

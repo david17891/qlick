@@ -701,3 +701,11 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 - Producción: migración aplicada correctamente y verificada con tablas existentes, RLS activo y 0 filas iniciales.
 - Verificación: type-check OK, lint OK, pruebas nuevas `11/11`, pruebas dirigidas WhatsApp/modos `84/84`.
 - La suite general queda con `1654/1657`; las 3 fallas aisladas son del fixture E2E de notificación de pagos, que no encuentra la confirmación de evento de prueba y no tocan este cambio.
+
+## 2026-08-08 — Corte de seguimientos después de confirmación y QR
+
+- Hallazgo real: el lead `Melec850@gmail.com` tenía confirmación y QR válidos para CN26, pero conservaba únicamente `registration:payment_pending`; el cron envió dos recordatorios de pago después del mensaje de registro.
+- Código: `markLeadRegistrationComplete` agrega `registration:complete` y `event:<slug>:registration_complete`, limpia `next_follow_up_at` y actualiza el objeto en memoria. El lifecycle reconoce la marca para no reprogramar el seguimiento en mensajes posteriores.
+- Código: una solicitud explícita de información conserva su propio rescate aunque la persona tenga un registro terminado de otro evento.
+- Pruebas: follow-up + lifecycle `31/31`, type-check OK y lint OK.
+- Producción: se corrigió únicamente el estado operativo del lead de Melec; se conservaron confirmación, QR, correo y `payment_status=pending`. `next_follow_up_at` quedó en `NULL`.
