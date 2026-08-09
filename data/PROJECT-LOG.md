@@ -677,3 +677,9 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 - Cada revisión guardada persiste una nota interna, una interacción de sistema y una entrada `crm_human_review_recorded` en `admin_audit_log`.
 - Se aclaró en la UI y documentación que `Marketing pendiente (etiqueta interna)` no equivale a rechazo de consentimiento. No se enviaron mensajes automáticos.
 - Documentación: `docs/CRM_HUMAN_REVIEW.md`, `docs/CRM_OPERATING_MODEL.md`, `docs/CRM_AUDIT.md` y `docs/STATUS.md`.
+## 2026-08-08 — Promoción a producción vía GitHub PR #71
+
+- Se organizaron los cambios en tres commits: CRM/revisión humana, WhatsApp/IA y panel administrativo/auditoría.
+- PR #71 pasó tests CI, type-check y lint; el smoke E2E de Supabase quedó omitido por falta de secretos del runner.
+- Se fusionó a `main` con merge `674fe32` y Vercel lo desplegó como `dpl_2uUzRXeqMLkm6toJ4EkzMLXbkKAn` (`READY`).
+- Smoke público verificado: `/`, `/eventos` y `/admin` `200`; overview CRM sin sesión `401`; webhook WhatsApp sin firma `403`.
