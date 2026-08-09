@@ -9,6 +9,8 @@
 > se sobreescribe con el nuevo snapshot.
 
 > **Addendum 2026-08-08:** Revisión humana ahora incluye enlace directo a WhatsApp, clasificación automática por evento actual/anterior y borrado permanente auditado de datos CRM. Pagos, confirmaciones y asistencias de eventos se preservan y no se eliminan desde esta vista.
+
+> **Addendum 2026-08-08 — asociación de conversaciones:** `related_event_id` ya se persiste en los nuevos turnos de WhatsApp y la revisión humana también reconoce el evento por el contenido del historial. En producción se reconciliaron 407 filas con su lead mediante teléfono y se asociaron 1,306 conversaciones con evidencia: 318 al evento actual CN26 y 988 al evento anterior AA4E. Quedan 227 mensajes como `Sin evento` por falta de lead o evidencia suficiente; no se asignaron por suposición. Deploy `dpl_3Em9QAQtEp8R8WEDAUXbEkqL2G93` en `READY`; aliases `https://qlick.digital` y `https://www.qlick.digital` verificados.
 >
 > **Producción actual 2026-08-08:** merge `674fe32` desplegado como `dpl_2uUzRXeqMLkm6toJ4EkzMLXbkKAn` (`READY`) desde `main`. Aliases verificados: `https://qlick.digital` y `https://www.qlick.digital`. Smoke público: `/`, `/eventos` y `/admin` `200`; `/api/admin/crm/overview` sin sesión `401`; `/api/whatsapp/webhook` sin firma `403`.
 >
