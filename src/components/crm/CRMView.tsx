@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ComponentType, SVGProps } from "react";
 import type {
   Lead,
@@ -21,6 +21,7 @@ import {
   Bot,
   Calendar,
   Check,
+  ClipboardCheck,
   Download,
   Flame,
   LayoutGrid,
@@ -73,7 +74,6 @@ import {
   getAISuggestionsForLead
 } from "@/lib/crm/agent-utils";
 import {
-  getAppointments,
   getUpcomingAppointments,
   appointmentTypeLabel,
   appointmentStatusLabel,
@@ -83,9 +83,11 @@ import {
   fetchPendingCRMTasks,
   patchLeadStatus,
   archiveLeadClient,
+  patchCRMTasks,
   type PendingTasksSplitClient
 } from "@/lib/crm/ops-client";
 import type { CrmTaskRow } from "@/lib/crm/crm-rows";
+import type { CRMOperationsSummary } from "@/lib/crm/operations-server";
 import { getWhatsAppConfigStatus } from "@/lib/contact/whatsapp";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { LeadDetailDrawer } from "./LeadDetailDrawer";
@@ -96,6 +98,7 @@ type Section =
   | "pipeline"
   | "leads"
   | "conversaciones"
+  | "revision"
   | "calendario"
   | "agente"
   | "whatsapp";
@@ -110,6 +113,7 @@ const SECTIONS: { id: Section; label: string; icon: ComponentType<SVGProps<SVGSV
   // antiguo sigue existiendo como fallback (marcado DEPRECATED) hasta
   // que se confirme que la nueva tab cubre todos los casos de uso.
   { id: "conversaciones", label: "Conversaciones (Nivel 1)", icon: MessageCircle },
+  { id: "revision", label: "Revisión humana", icon: ClipboardCheck },
   { id: "calendario", label: "Calendario", icon: Calendar },
   { id: "agente", label: "Agente IA", icon: Bot },
   { id: "whatsapp", label: "WhatsApp", icon: MessageCircle }
@@ -118,8 +122,10 @@ const SECTIONS: { id: Section; label: string; icon: ComponentType<SVGProps<SVGSV
 /**
  * Vista completa del CRM. Se integra como una sub-pestaña dentro del admin.
  *
- * Todo es demo/mock: lectura de datos ficticios y acciones que no persisten.
- * Las etiquetas "demo" son explícitas en cada sección crítica.
+ * En modo Supabase, leads, conversaciones, tareas e inteligencia se leen de
+ * la API protegida. El modo demo conserva datos locales para recorridos sin
+ * configuración; las áreas que aún no tienen integración real se etiquetan o
+ * se ocultan para no mezclarlas con la operación.
  */
 export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
   const [section, setSection] = useState<Section>("resumen");
@@ -128,7 +134,6 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
   // Modo real vs demo: en modo real hacemos fetch de los leads reales desde
   // la API admin (protegida). En demo usamos los mocks.
   const realMode = isSupabaseConfigured();
-  const mockLeads = getLeads();
 
   const [realLeads, setRealLeads] = useState<Lead[] | null>(null);
   const [realLeadsError, setRealLeadsError] = useState<string | null>(null);
@@ -146,6 +151,8 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
   // Hot Desatendidos. Misma forma que el endpoint /api/admin/crm/overview.
   const [realIntelligence, setRealIntelligence] = useState<unknown | null>(null);
   const [realPendingTasks, setRealPendingTasks] = useState<PendingTasksSplitClient | null>(null);
+  const [realOwners, setRealOwners] = useState<SalesOwner[]>([]);
+  const [realOperations, setRealOperations] = useState<CRMOperationsSummary | null>(null);
   const [realConversations, setRealConversations] = useState<Conversation[] | null>(null);
   // FIX 2026-07-08: trigger manual de refetch de conversaciones (se
   // incrementa después de enviar un WhatsApp desde ConversationsView
@@ -160,9 +167,9 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
 
   useEffect(() => {
     if (!realMode) {
-      setLeads(mockLeads);
+      setLeads(getLeads());
     }
-  }, [realMode, mockLeads]);
+  }, [realMode]);
 
   useEffect(() => {
     if (realLeads !== null) {
@@ -341,6 +348,26 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
     };
   }, [realMode, selectedLead]);
 
+  useEffect(() => {
+    if (!realMode) return;
+    fetch("/api/admin/crm/owners", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.ok && Array.isArray(data.owners)) setRealOwners(data.owners as SalesOwner[]);
+      })
+      .catch(() => setRealOwners([]));
+  }, [realMode]);
+
+  useEffect(() => {
+    if (!realMode) return;
+    fetch("/api/admin/crm/operations", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.ok && data.operations) setRealOperations(data.operations as CRMOperationsSummary);
+      })
+      .catch(() => setRealOperations(null));
+  }, [realMode, realPendingTasks, realLeads]);
+
   // Conversaciones reales: las que el bot WhatsApp intercambió + interacciones
   // manuales del equipo comercial. Server-side lee de lead_whatsapp_conversations
   // y lead_interactions. Refresca cada vez que cambia el lead seleccionado.
@@ -372,11 +399,24 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
     };
   }, [realMode, selectedLead, conversationsRev]);
 
-  const owners = getSalesOwners();
-  // Overview: real si está cargado (incluso durante carga para no parpadear);
-  // demo si no. La carga inicial en realMode muestra el overview demo brevemente.
+  const owners = realMode ? realOwners : getSalesOwners();
+  // En modo real nunca mostramos el overview mock mientras llega la respuesta.
+  // Antes ese fallback hacía que las tarjetas cambiaran de cifras reales a
+  // ficticias durante la carga y podía dejar datos demo visibles si fallaba la API.
   const mockOverview = getCRMOverview();
-  const overview = realMode ? (realOverview ?? mockOverview) : mockOverview;
+  const overview = realMode
+    ? (realOverview ?? {
+        totalLeads: 0,
+        newLeads: 0,
+        contactedLeads: 0,
+        paymentPending: 0,
+        enrolled: 0,
+        activeStudents: 0,
+        conversionRate: 0,
+        overdueFollowUps: 0,
+        upcomingAppointments: 0,
+      })
+    : mockOverview;
   const conversations = useMemo(() => {
     const raw = realMode
       ? (realConversations ?? [])
@@ -385,8 +425,7 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
   }, [realMode, realConversations, deletedLeadConversations]);
   const upcomingTasks = getUpcomingCRMTasks();
   const overdueTasks = getOverdueCRMTasks();
-  const appts = getAppointments();
-  const upcomingAppts = getUpcomingAppointments();
+  const upcomingAppts = realMode ? [] : getUpcomingAppointments();
   const profile = getAIAgentProfile();
   const waProviders = getWhatsAppProviders();
 
@@ -406,6 +445,17 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
   // estado de carga. Si está cargado (incluso vacío), lo usamos.
   const loadingReal = realMode && realLeads === null && !realLeadsError;
   const stages = getPipelineStages(leads);
+
+  async function handleTaskAction(input: {
+    taskIds: string[];
+    action: "completed" | "cancelled" | "reschedule";
+    dueAt?: string;
+    reason?: string;
+  }) {
+    if (!realMode) return;
+    await patchCRMTasks(input);
+    setRealPendingTasks(await fetchPendingCRMTasks());
+  }
 
   return (
     <div className="space-y-6">
@@ -502,8 +552,8 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
             <StatCard label="Pagos pendientes" value={overview.paymentPending} hint="requieren acción" icon={<Wallet className="h-5 w-5" />} tone="neutral" />
             <StatCard label="Inscritos" value={overview.enrolled} icon={<TrendingUp className="h-5 w-5" />} />
             <StatCard label="Alumnos activos" value={overview.activeStudents} icon={<Users className="h-5 w-5" />} />
-            <StatCard label="Conversión (simulada)" value={`${overview.conversionRate}%`} hint="ganados / activos" icon={<TrendingUp className="h-5 w-5" />} tone="accent" />
-            <StatCard label="Seguimientos vencidos" value={overview.overdueFollowUps} hint="tareas atrasadas" icon={<AlertTriangle className="h-5 w-5" />} tone="neutral" />
+            <StatCard label={realMode ? "Conversión" : "Conversión (demo)"} value={`${overview.conversionRate}%`} hint="ganados / activos" icon={<TrendingUp className="h-5 w-5" />} tone="accent" />
+            <StatCard label="Seguimientos vencidos" value={realMode ? pendingTasks.overdue.length : overview.overdueFollowUps} hint="tareas reales pendientes" icon={<AlertTriangle className="h-5 w-5" />} tone="neutral" />
           </div>
 
           {/* Fase 3 — Inteligencia comercial: LVR, SLA, Heat, Hot Desatendidos */}
@@ -534,9 +584,13 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
             </Card>
           )}
 
+          {realMode && realOperations && <OperationsPanel operations={realOperations} owners={owners} />}
+
           <Card className="p-5">
             <h3 className="font-bold text-ink mb-3">Citas próximas</h3>
-            {upcomingAppts.length === 0 ? (
+            {realMode ? (
+              <p className="text-sm text-ink-muted">No hay calendario conectado. Las citas de demostración están ocultas en modo real.</p>
+            ) : upcomingAppts.length === 0 ? (
               <p className="text-sm text-ink-muted">Sin citas próximas.</p>
             ) : (
               <ul className="space-y-2 text-sm">
@@ -651,15 +705,29 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
         </Card>
       )}
 
-      {/* E. Calendario */}
+      {/* E. Revisión humana: cola derivada de conversaciones reales. */}
+      {section === "revision" && (
+        <HumanReviewPanel
+          realMode={realMode}
+          onLeadDeleted={(leadId) => {
+            setRealLeads((current) => current ? current.filter((lead) => lead.id !== leadId) : current);
+            setLeads((current) => current.filter((lead) => lead.id !== leadId));
+            setSelectedLead((current) => current?.id === leadId ? null : current);
+          }}
+        />
+      )}
+
+      {/* F. Calendario */}
       {section === "calendario" && (
         <div className="space-y-4">
           <Card className="p-5">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-bold text-ink">Próximas citas</h3>
-              <Badge tone="info">{upcomingAppts.length} agendadas</Badge>
+              <Badge tone={realMode ? "neutral" : "info"}>{realMode ? "No conectado" : `${upcomingAppts.length} agendadas`}</Badge>
             </div>
-            {upcomingAppts.length === 0 ? (
+            {realMode ? (
+              <EmptyState title="Calendario no conectado" description="Las citas de demostración no se muestran junto con leads reales. La integración de calendario queda pendiente." />
+            ) : upcomingAppts.length === 0 ? (
               <EmptyState title="Sin citas próximas" description="Agenda llamadas o sesiones demo desde el detalle de un lead." />
             ) : (
               <ul className="divide-y divide-brand-50">
@@ -694,7 +762,30 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
             <Card className="p-5 border-red-200 bg-red-50/30">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-bold text-ink">Tareas vencidas</h3>
-                <Badge tone="danger">{pendingTasks.overdue.length} atrasadas</Badge>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone="danger">{pendingTasks.overdue.length} atrasadas</Badge>
+                  {realMode && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={async () => {
+                        if (!window.confirm(`Se reprogramarán ${pendingTasks.overdue.length} tareas para mañana. No se borrarán. ¿Continuar?`)) return;
+                        try {
+                          await handleTaskAction({
+                            taskIds: pendingTasks.overdue.map((task) => task.id),
+                            action: "reschedule",
+                            dueAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+                            reason: "Limpieza operativa de cola vencida",
+                          });
+                        } catch (error) {
+                          alert(error instanceof Error ? error.message : "No se pudo reprogramar la cola.");
+                        }
+                      }}
+                    >
+                      Reprogramar a mañana
+                    </Button>
+                  )}
+                </div>
               </div>
               <ul className="divide-y divide-red-100">
                 {pendingTasks.overdue.map((t) => (
@@ -704,6 +795,8 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
                     leads={leads}
                     overdue
                     onSelectLead={setSelectedLead}
+                    realMode={realMode}
+                    onTaskChanged={handleTaskAction}
                   />
                 ))}
               </ul>
@@ -730,6 +823,8 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
                     leads={leads}
                     overdue={false}
                     onSelectLead={setSelectedLead}
+                    realMode={realMode}
+                    onTaskChanged={handleTaskAction}
                   />
                 ))}
               </ul>
@@ -745,7 +840,7 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
         </div>
       )}
 
-      {/* F. Agente IA */}
+      {/* G. Agente IA */}
       {section === "agente" && (
         <div className="space-y-4">
           <Card className="p-5">
@@ -803,7 +898,7 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
         </div>
       )}
 
-      {/* G. WhatsApp */}
+      {/* H. WhatsApp */}
       {section === "whatsapp" && (
         <WhatsAppConfigView providers={waProviders} />
       )}
@@ -833,6 +928,436 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
 }
 
 /* ----------------------- Sub-componentes ----------------------- */
+
+type HumanReviewItemClient = {
+  leadId: string;
+  leadName: string;
+  leadPhone: string | null;
+  ownerId: string | null;
+  leadStatus: string | null;
+  emailPending: boolean;
+  priority: "high" | "medium" | "low";
+  priorityLabel: string;
+  probableCause: string;
+  probableCauseLabel: string;
+  reasonCodes: string[];
+  evidence: string[];
+  lastDirection: "inbound" | "outbound" | null;
+  lastMessageAt: string | null;
+  ageHours: number | null;
+  lastMessagePreview: string;
+  context: Array<{ direction: "inbound" | "outbound"; body: string; at: string }>;
+  reviewed: boolean;
+  reviewOutcome: string | null;
+  reviewedAt: string | null;
+  eventBucket: "active" | "previous" | "both" | "other" | "unassigned";
+  eventAssociations: Array<{
+    eventId: string;
+    title: string;
+    status: string;
+    startsAt: string | null;
+    kind: "active" | "previous" | "other";
+    sources: string[];
+  }>;
+};
+
+type HumanReviewQueueClient = {
+  generatedAt: string;
+  totalCandidates: number;
+  items: HumanReviewItemClient[];
+  counts: { high: number; medium: number; low: number; reviewed: number; byCause: Record<string, number> };
+};
+
+const reviewCauseOptions = [
+  ["repetitive_or_long_copy", "Respuesta repetitiva o demasiado larga"],
+  ["generic_handoff", "Transferencia genérica demasiado pronto"],
+  ["missing_followup", "Faltó seguimiento o cierre"],
+  ["payment_friction", "Fricción o confusión en el pago"],
+  ["missing_contact_data", "Faltan datos para completar el registro"],
+  ["likely_low_intent", "Señal de intención baja o ambigua"],
+  ["wrong_fact_or_date", "Dato factual o fecha incorrecta"],
+  ["unknown", "Requiere lectura humana"],
+] as const;
+
+const reviewOutcomeOptions = [
+  ["recoverable", "Recuperable"],
+  ["not_recoverable", "No recuperable"],
+  ["needs_human", "Requiere humano"],
+  ["already_resolved", "Ya resuelto"],
+  ["wrong_number", "Número incorrecto"],
+  ["do_not_contact", "No contactar"],
+] as const;
+
+function HumanReviewPanel({ realMode, onLeadDeleted }: { realMode: boolean; onLeadDeleted?: (leadId: string) => void }) {
+  const [queue, setQueue] = useState<HumanReviewQueueClient | null>(null);
+  const [filter, setFilter] = useState<"all" | "open" | "high" | "reviewed">("open");
+  const [loading, setLoading] = useState(realMode);
+  const [error, setError] = useState<string | null>(null);
+  const [savingLeadId, setSavingLeadId] = useState<string | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [deletingLeadId, setDeletingLeadId] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, { cause: string; outcome: string; improvement: string; note: string }>>({});
+
+  const loadQueue = useCallback(async () => {
+    if (!realMode) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/admin/crm/human-review", { cache: "no-store" });
+      const data = await response.json() as { ok?: boolean; queue?: HumanReviewQueueClient; error?: string };
+      if (!response.ok || !data.ok || !data.queue) throw new Error(data.error ?? "No se pudo cargar la revisión humana.");
+      setQueue(data.queue);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo cargar la revisión humana.");
+    } finally {
+      setLoading(false);
+    }
+  }, [realMode]);
+
+  useEffect(() => {
+    void loadQueue();
+  }, [loadQueue]);
+
+  function draftFor(item: HumanReviewItemClient) {
+    return drafts[item.leadId] ?? {
+      cause: item.probableCause,
+      outcome: item.reviewOutcome ?? "recoverable",
+      improvement: improvementDefault(item.probableCause),
+      note: "",
+    };
+  }
+
+  function updateDraft(item: HumanReviewItemClient, patch: Partial<ReturnType<typeof draftFor>>) {
+    setDrafts((current) => ({ ...current, [item.leadId]: { ...draftFor(item), ...patch } }));
+  }
+
+  async function saveReview(item: HumanReviewItemClient) {
+    const draft = draftFor(item);
+    if (!draft.improvement.trim()) return;
+    setSavingLeadId(item.leadId);
+    setError(null);
+    setSaved(null);
+    try {
+      const response = await fetch("/api/admin/crm/human-review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          leadId: item.leadId,
+          probableCause: draft.cause,
+          outcome: draft.outcome,
+          botImprovement: draft.improvement,
+          reviewerNote: draft.note,
+        }),
+      });
+      const data = await response.json() as { ok?: boolean; error?: string };
+      if (!response.ok || !data.ok) throw new Error(data.error ?? "No se pudo guardar la revisión.");
+      setSaved(item.leadId);
+      await loadQueue();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo guardar la revisión.");
+    } finally {
+      setSavingLeadId(null);
+    }
+  }
+
+  async function deleteLead(item: HumanReviewItemClient) {
+    const eventText = item.eventAssociations.length
+      ? `\nEventos relacionados: ${item.eventAssociations.map((event) => event.title).join(", ")}. Los registros de pagos/asistencia de eventos se conservan.`
+      : "";
+    const confirmed = window.confirm(
+      `¿Eliminar permanentemente a ${item.leadName || "este lead"} y sus datos CRM?\n\nSe eliminarán conversaciones WhatsApp, tareas, notas, interacciones, campañas de recuperación y vínculos CRM. Esta acción no se puede deshacer.${eventText}`,
+    );
+    if (!confirmed) return;
+
+    setDeletingLeadId(item.leadId);
+    setError(null);
+    setSaved(null);
+    try {
+      const response = await fetch("/api/admin/crm/human-review", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadId: item.leadId, confirm: true }),
+      });
+      const data = await response.json() as { ok?: boolean; error?: string };
+      if (!response.ok || !data.ok) throw new Error(data.error ?? "No se pudo eliminar el lead.");
+      onLeadDeleted?.(item.leadId);
+      setQueue((current) => current ? {
+        ...current,
+        totalCandidates: Math.max(0, current.totalCandidates - 1),
+        items: current.items.filter((candidate) => candidate.leadId !== item.leadId),
+      } : current);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo eliminar el lead.");
+    } finally {
+      setDeletingLeadId(null);
+    }
+  }
+
+  if (!realMode) {
+    return (
+      <Card className="p-6">
+        <h2 className="text-xl font-bold text-ink">Revisión humana</h2>
+        <p className="mt-2 text-sm text-ink-muted">Esta sección se activa con conversaciones reales de Supabase. No usa datos demo.</p>
+      </Card>
+    );
+  }
+
+  const items = queue?.items.filter((item) =>
+    filter === "all" ||
+    (filter === "open" && !item.reviewed) ||
+    (filter === "high" && item.priority === "high" && !item.reviewed) ||
+    (filter === "reviewed" && item.reviewed),
+  ) ?? [];
+
+  return (
+    <div className="space-y-5">
+      <Card className="p-5 border-brand-200">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold text-ink flex items-center gap-2"><ClipboardCheck className="h-5 w-5" /> Revisión humana</h2>
+            <p className="mt-1 max-w-3xl text-sm text-ink-muted">
+              Cola de casos reales que necesitan lectura humana antes de intentar recuperar el contacto. La causa es una hipótesis basada en señales del contexto, no una sentencia sobre la persona.
+            </p>
+          </div>
+          <Button type="button" variant="secondary" onClick={() => void loadQueue()} disabled={loading}>Actualizar</Button>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <ReviewMetric label="Casos candidatos" value={queue?.totalCandidates ?? 0} />
+          <ReviewMetric label="Prioridad alta" value={queue?.counts.high ?? 0} tone="danger" />
+          <ReviewMetric label="Pendientes de leer" value={Math.max(0, (queue?.totalCandidates ?? 0) - (queue?.counts.reviewed ?? 0))} tone="warning" />
+          <ReviewMetric label="Ya revisados" value={queue?.counts.reviewed ?? 0} tone="success" />
+        </div>
+      </Card>
+
+      <Card className="p-5">
+        <h3 className="font-bold text-ink">Plan de revisión por contexto</h3>
+        <ol className="mt-3 grid gap-2 text-sm text-ink-soft md:grid-cols-2">
+          <li><strong>1. Prioridad alta:</strong> último mensaje entrante, registro, reserva o pago.</li>
+          <li><strong>2. Prioridad media:</strong> el bot quedó como último mensaje por 72 h o más.</li>
+          <li><strong>3. Leer contexto:</strong> revisar hasta seis mensajes, datos del evento y estado del pago.</li>
+          <li><strong>4. Registrar decisión:</strong> resultado, causa probable, nota y mejora concreta del bot.</li>
+          <li><strong>5. Contactar con cuidado:</strong> una respuesta humana individual, sin campaña masiva ni segundo lead.</li>
+          <li><strong>6. Retroalimentar:</strong> agrupar causas semanalmente y ajustar copy, fechas, pagos y escalamiento.</li>
+        </ol>
+        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          “Etiqueta interna: marketing pendiente” no significa que la persona haya rechazado contacto. Solo indica que el CRM no tiene una captura explícita de consentimiento de marketing; la revisión debe distinguir seguimiento operativo de campaña promocional.
+        </p>
+      </Card>
+
+      {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>}
+      {saved && <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">Revisión guardada. Quedó registrada como nota, interacción interna y auditoría.</div>}
+
+      <Card className="p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="font-bold text-ink">Cola para lectura</h3>
+            <p className="text-xs text-ink-muted">{loading ? "Cargando…" : `${items.length} casos en esta vista`}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {(["open", "high", "all", "reviewed"] as const).map((value) => (
+              <button key={value} type="button" onClick={() => setFilter(value)} className={`rounded-full px-3 py-1 text-xs font-semibold ${filter === value ? "bg-brand-500 text-white" : "bg-brand-50 text-ink-soft"}`}>
+                {value === "open" ? "Pendientes" : value === "high" ? "Alta" : value === "all" ? "Todos" : "Revisados"}
+              </button>
+            ))}
+          </div>
+        </div>
+        {!loading && items.length === 0 ? (
+          <p className="mt-5 text-sm text-ink-muted">No hay casos en este filtro.</p>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {items.map((item) => {
+              const draft = draftFor(item);
+              return (
+                <details key={item.leadId} className="rounded-xl border border-brand-100 bg-white p-4">
+                  <summary className="cursor-pointer list-none">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold text-ink">{item.leadName || "Lead sin nombre"}</span>
+                          <Badge tone={item.priority === "high" ? "danger" : item.priority === "medium" ? "warning" : "neutral"}>{item.priorityLabel}</Badge>
+                          {item.reviewed && <Badge tone="success">Revisado: {item.reviewOutcome ?? "sí"}</Badge>}
+                          <ReviewEventBadge bucket={item.eventBucket} />
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink-muted">
+                          <span>{item.leadPhone ?? "Sin teléfono"} · {item.lastMessageAt ? new Date(item.lastMessageAt).toLocaleString("es-MX") : "Sin fecha"}</span>
+                          {humanReviewWhatsAppUrl(item.leadPhone) && (
+                            <a
+                              href={humanReviewWhatsAppUrl(item.leadPhone) ?? undefined}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 font-semibold text-emerald-700 hover:bg-emerald-100"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              <MessageCircle className="h-3.5 w-3.5" /> Abrir WhatsApp
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                      <div className="max-w-xl text-right text-sm text-ink-soft">
+                        <p><strong>Causa probable:</strong> {item.probableCauseLabel}</p>
+                        <p className="mt-1 text-xs text-ink-muted">{item.lastDirection === "inbound" ? "← Lead" : "→ Bot/equipo"} {item.lastMessagePreview}</p>
+                      </div>
+                    </div>
+                  </summary>
+                  <div className="mt-4 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+                    <div>
+                      <h4 className="text-xs font-bold uppercase tracking-wide text-ink-muted">Contexto reciente</h4>
+                      <div className="mt-2 space-y-2 rounded-lg bg-slate-50 p-3">
+                        {item.context.map((message, index) => (
+                          <div key={`${message.at}-${index}`} className={`rounded-lg px-3 py-2 text-sm ${message.direction === "inbound" ? "bg-white text-ink" : "bg-brand-50 text-ink-soft"}`}>
+                            <div className="mb-1 flex items-center justify-between text-[10px] text-ink-muted"><span>{message.direction === "inbound" ? "Lead" : "Bot/equipo"}</span><span>{new Date(message.at).toLocaleString("es-MX")}</span></div>
+                            {message.body}
+                          </div>
+                        ))}
+                      </div>
+                      <ul className="mt-3 space-y-1 text-xs text-ink-muted">{item.evidence.map((evidence) => <li key={evidence}>• {evidence}</li>)}</ul>
+                      <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50/60 p-3">
+                        <p className="text-xs font-bold uppercase tracking-wide text-blue-800">Evento relacionado</p>
+                        {item.eventAssociations.length === 0 ? (
+                          <p className="mt-1 text-xs text-blue-900">No encontramos confirmación, asistencia o vínculo de evento para este lead.</p>
+                        ) : (
+                          <ul className="mt-1 space-y-1 text-xs text-blue-900">
+                            {item.eventAssociations.map((event) => (
+                              <li key={event.eventId}>
+                                <strong>{event.kind === "active" ? "Actual" : event.kind === "previous" ? "Anterior" : "Otro"}:</strong> {event.title}
+                                {event.startsAt ? ` · ${new Date(event.startsAt).toLocaleDateString("es-MX")}` : ""}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-brand-100 p-3">
+                      <h4 className="text-xs font-bold uppercase tracking-wide text-ink-muted">Registrar revisión</h4>
+                      <label className="mt-3 block text-xs font-semibold text-ink-soft">Causa probable
+                        <select value={draft.cause} onChange={(event) => updateDraft(item, { cause: event.target.value })} className="mt-1 w-full rounded-md border border-brand-100 bg-white px-2 py-2 text-sm">
+                          {reviewCauseOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                        </select>
+                      </label>
+                      <label className="mt-3 block text-xs font-semibold text-ink-soft">Resultado
+                        <select value={draft.outcome} onChange={(event) => updateDraft(item, { outcome: event.target.value })} className="mt-1 w-full rounded-md border border-brand-100 bg-white px-2 py-2 text-sm">
+                          {reviewOutcomeOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                        </select>
+                      </label>
+                      <label className="mt-3 block text-xs font-semibold text-ink-soft">Mejora concreta para el bot
+                        <Textarea value={draft.improvement} onChange={(event) => updateDraft(item, { improvement: event.target.value })} rows={3} placeholder="Ej. No repetir toda la campaña después de un 'ok'; ofrecer el siguiente paso." />
+                      </label>
+                      <label className="mt-3 block text-xs font-semibold text-ink-soft">Nota del revisor (opcional)
+                        <Textarea value={draft.note} onChange={(event) => updateDraft(item, { note: event.target.value })} rows={2} placeholder="Contexto adicional, pago, fecha o decisión." />
+                      </label>
+                      <Button type="button" variant="primary" className="mt-3 w-full" onClick={() => void saveReview(item)} disabled={savingLeadId === item.leadId || !draft.improvement.trim()}>
+                        {savingLeadId === item.leadId ? "Guardando…" : item.reviewed ? "Actualizar revisión" : "Guardar revisión"}
+                      </Button>
+                      {item.emailPending && <p className="mt-2 text-[11px] text-ink-muted">Correo pendiente: no se inventa ni se usa como motivo de rechazo.</p>}
+                      <button
+                        type="button"
+                        onClick={() => void deleteLead(item)}
+                        disabled={deletingLeadId === item.leadId || savingLeadId === item.leadId}
+                        className="mt-4 w-full rounded-md border border-red-200 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {deletingLeadId === item.leadId ? "Eliminando…" : "Eliminar lead y datos CRM"}
+                      </button>
+                      <p className="mt-1 text-[10px] text-ink-muted">Borrado permanente y auditado. Pagos, confirmaciones y asistencias se conservan.</p>
+                    </div>
+                  </div>
+                </details>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function improvementDefault(cause: string): string {
+  const defaults: Record<string, string> = {
+    repetitive_or_long_copy: "Evitar mensajes consecutivos y resumir la información en un solo siguiente paso.",
+    generic_handoff: "Escalar a humano solo después de responder la pregunta y explicar qué sigue.",
+    missing_followup: "Cerrar con una pregunta concreta y conservar el contexto en la siguiente respuesta.",
+    payment_friction: "Explicar claramente el monto, fecha, opciones de pago y estado de la reserva.",
+    missing_contact_data: "Pedir solo el dato que falta y no repetir toda la campaña.",
+    likely_low_intent: "Usar un seguimiento breve que confirme si aún busca información.",
+    wrong_fact_or_date: "Validar fecha, hora y día de la semana desde el evento antes de responder.",
+    unknown: "Revisar el contexto y agregar una regla o ejemplo si se repite el patrón.",
+  };
+  return defaults[cause] ?? defaults.unknown;
+}
+
+function humanReviewWhatsAppUrl(phone: string | null): string | null {
+  const digits = phone?.replace(/[^\d]/g, "") ?? "";
+  return digits.length >= 8 ? `https://wa.me/${digits}` : null;
+}
+
+function ReviewEventBadge({ bucket }: { bucket: HumanReviewItemClient["eventBucket"] }) {
+  const labels = {
+    active: "Evento actual",
+    previous: "Evento anterior",
+    both: "Actual + anterior",
+    other: "Otro evento",
+    unassigned: "Sin evento",
+  } as const;
+  const tones = {
+    active: "bg-emerald-50 text-emerald-700",
+    previous: "bg-blue-50 text-blue-700",
+    both: "bg-violet-50 text-violet-700",
+    other: "bg-slate-100 text-slate-700",
+    unassigned: "bg-slate-100 text-slate-500",
+  } as const;
+  return <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${tones[bucket]}`}>{labels[bucket]}</span>;
+}
+
+function ReviewMetric({ label, value, tone = "neutral" }: { label: string; value: number; tone?: "neutral" | "danger" | "warning" | "success" }) {
+  const colors = { neutral: "text-ink", danger: "text-red-600", warning: "text-amber-600", success: "text-emerald-600" };
+  return <div className="rounded-lg border border-brand-100 bg-brand-50/30 px-3 py-3"><p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">{label}</p><p className={`mt-1 text-2xl font-bold ${colors[tone]}`}>{value}</p></div>;
+}
+
+function OperationsPanel({
+  operations,
+  owners,
+}: {
+  operations: CRMOperationsSummary;
+  owners: SalesOwner[];
+}) {
+  const metrics = [
+    { label: "Sin responsable", value: operations.unassignedLeads, tone: "danger" as const },
+    { label: "Leads de eventos", value: operations.eventLeads, tone: "info" as const },
+    { label: "Leads comerciales", value: operations.commercialLeads, tone: "success" as const },
+    { label: "Tareas vencidas", value: operations.overdueTasks, tone: "danger" as const },
+    { label: "Estancados sin tarea", value: operations.staleLeadsWithoutTask, tone: "warning" as const },
+    { label: "Marketing pendiente (etiqueta interna)", value: operations.withoutConsent, tone: "neutral" as const },
+  ];
+  return (
+    <Card className="p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+        <div>
+          <h3 className="font-bold text-ink">Centro de operación CRM</h3>
+          <p className="text-sm text-ink-muted mt-1">
+            Eventos y oportunidades comerciales se gestionan por separado. Las acciones sobre tareas quedan auditadas.
+          </p>
+        </div>
+        <Badge tone={owners.length > 0 ? "success" : "danger"}>
+          {owners.length} responsable{owners.length === 1 ? "" : "s"} autorizado{owners.length === 1 ? "" : "s"}
+        </Badge>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {metrics.map((metric) => (
+          <div key={metric.label} className="rounded-lg border border-brand-100 bg-brand-50/30 px-3 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">{metric.label}</p>
+            <p className="mt-1 text-2xl font-bold text-ink">{metric.value}</p>
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 flex flex-wrap gap-x-5 gap-y-1 text-xs text-ink-muted">
+        <span>{operations.openTasks} tareas abiertas</span>
+        <span>{operations.whatsappConversations} conversaciones WhatsApp</span>
+        <span>{operations.internalInteractions} interacciones internas</span>
+        <span>{operations.internalNotes} notas internas</span>
+        <span>{operations.orphanHandoffs} handoffs huérfanos</span>
+      </div>
+    </Card>
+  );
+}
 
 /**
  * Adapta el CRMTask del mock (camelCase) al shape de crm_tasks en Supabase
@@ -864,12 +1389,16 @@ function CalendarTaskRow({
   task,
   leads,
   overdue,
-  onSelectLead
+  onSelectLead,
+  realMode,
+  onTaskChanged,
 }: {
   task: CrmTaskRow;
   leads: Lead[];
   overdue: boolean;
   onSelectLead: (lead: Lead) => void;
+  realMode?: boolean;
+  onTaskChanged?: (input: { taskIds: string[]; action: "completed" | "cancelled" | "reschedule"; dueAt?: string; reason?: string }) => Promise<void>;
 }) {
   const lead = task.lead_id ? leads.find((l) => l.id === task.lead_id) ?? null : null;
   const dueLabel = task.due_at ? formatDate(task.due_at) : "Sin fecha";
@@ -898,6 +1427,45 @@ function CalendarTaskRow({
         <Badge tone={overdue ? "danger" : task.due_at ? "info" : "neutral"}>
           {dueLabel}
         </Badge>
+        {realMode && onTaskChanged && (
+          <>
+            <Button
+              size="sm"
+              variant="outline"
+              title="Marcar tarea como resuelta"
+              onClick={async () => {
+                try {
+                  await onTaskChanged({ taskIds: [task.id], action: "completed", reason: "Resuelta desde la cola CRM" });
+                } catch (error) {
+                  alert(error instanceof Error ? error.message : "No se pudo actualizar la tarea.");
+                }
+              }}
+            >
+              <Check className="h-4 w-4" />
+            </Button>
+            {overdue && (
+              <Button
+                size="sm"
+                variant="outline"
+                title="Reprogramar para mañana"
+                onClick={async () => {
+                  try {
+                    await onTaskChanged({
+                      taskIds: [task.id],
+                      action: "reschedule",
+                      dueAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+                      reason: "Reprogramación individual desde la cola CRM",
+                    });
+                  } catch (error) {
+                    alert(error instanceof Error ? error.message : "No se pudo reprogramar la tarea.");
+                  }
+                }}
+              >
+                +1d
+              </Button>
+            )}
+          </>
+        )}
       </div>
     </li>
   );
@@ -984,6 +1552,7 @@ function LeadsTable({
   onArchiveLead?: (leadId: string) => void;
   onDeleteConversation?: (leadId: string) => void;
 }) {
+  type SegmentFilter = "all" | "event" | "commercial";
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<LeadStatus | "all">("all");
   const [source, setSource] = useState<LeadSource | "all">("all");
@@ -991,10 +1560,14 @@ function LeadsTable({
   const [ownerFilter, setOwnerFilter] = useState<string>("all");
   const [intent, setIntent] = useState<LeadIntent | "all">("all");
   const [eventFilter, setEventFilter] = useState<string>("all");
+  const [segment, setSegment] = useState<SegmentFilter>("all");
 
   // Memoizar `filtered` (declarado antes del bulk state para que
   // `allVisibleSelected` lo pueda usar sin TDZ).
   const filtered = useMemo(() => leads.filter((l) => {
+    const isEventLead = l.source === "event";
+    if (segment === "event" && !isEventLead) return false;
+    if (segment === "commercial" && isEventLead) return false;
     if (status !== "all" && l.status !== status) return false;
     if (source !== "all" && l.source !== source) return false;
     if (course !== "all" && l.courseOfInterest !== course) return false;
@@ -1010,7 +1583,7 @@ function LeadsTable({
       if (!hay.includes(q.toLowerCase())) return false;
     }
     return true;
-  }), [leads, status, source, course, ownerFilter, intent, eventFilter, q]);
+  }), [leads, segment, status, source, course, ownerFilter, intent, eventFilter, q]);
 
   // =========================================================================
   // FASE 1 CRM — Bulk select + Bulk bar + Export CSV
@@ -1020,6 +1593,7 @@ function LeadsTable({
   // (ver useEffect abajo) previene bulk archive accidental sobre leads
   // ocultos por el filtro.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkOwnerId, setBulkOwnerId] = useState("");
 
   // Reset de selección cuando CUALQUIER filtro cambia. Esto es OBLIGATORIO
   // por seguridad: si el admin seleccionó 10 leads con filtro "Todos" y
@@ -1027,7 +1601,7 @@ function LeadsTable({
   // también se archivarían al disparar bulk action. Ver peer review R7.
   useEffect(() => {
     setSelectedIds(new Set());
-  }, [q, status, source, course, ownerFilter, intent, eventFilter]);
+  }, [q, segment, status, source, course, ownerFilter, intent, eventFilter]);
 
   // Estado del modal de confirmación (type-the-word ARCHIVAR N).
   const [confirmArchiveOpen, setConfirmArchiveOpen] = useState(false);
@@ -1040,11 +1614,12 @@ function LeadsTable({
         kind: "running";
       }
     | {
-        kind: "done";
-        succeeded: number;
-        conflicted: number;
-        failed: number;
-        note?: string;
+      kind: "done";
+      succeeded: number;
+      conflicted: number;
+      failed: number;
+      note?: string;
+      actionLabel?: string;
       }
     | {
         kind: "error";
@@ -1114,6 +1689,7 @@ function LeadsTable({
         conflicted: data.conflicted,
         failed: data.failed,
         note: data.note,
+        actionLabel: "Archivado",
       });
       setSelectedIds(new Set());
       setConfirmArchiveOpen(false);
@@ -1123,6 +1699,30 @@ function LeadsTable({
         kind: "error",
         message: err instanceof Error ? err.message : String(err),
       });
+    }
+  }
+
+  async function executeBulkOwner() {
+    const ids = Array.from(selectedIds);
+    if (!ids.length || !bulkOwnerId) return;
+    if (!window.confirm(`Se asignarán ${ids.length} leads a este responsable. ¿Continuar?`)) return;
+    setBulkFeedback({ kind: "running" });
+    try {
+      const res = await fetch("/api/admin/leads/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadIds: ids, action: "owner", value: bulkOwnerId }),
+      });
+      const data = (await res.json()) as { ok: boolean; succeeded: number; conflicted: number; failed: number; note?: string; error?: string };
+      if (!res.ok || !data.ok) {
+        setBulkFeedback({ kind: "error", message: data.error ?? data.note ?? `HTTP ${res.status}` });
+        return;
+      }
+      setBulkFeedback({ kind: "done", succeeded: data.succeeded, conflicted: data.conflicted, failed: data.failed, note: data.note, actionLabel: "Asignación" });
+      setSelectedIds(new Set());
+      setBulkOwnerId("");
+    } catch (error) {
+      setBulkFeedback({ kind: "error", message: error instanceof Error ? error.message : String(error) });
     }
   }
 
@@ -1172,6 +1772,15 @@ function LeadsTable({
           value={q}
           onChange={(e) => setQ(e.target.value)}
           className="lg:col-span-2"
+        />
+        <Select
+          value={segment}
+          onChange={(value) => setSegment(value as SegmentFilter)}
+          options={[
+            { value: "all", label: "Todos los segmentos" },
+            { value: "commercial", label: "Comerciales" },
+            { value: "event", label: "Eventos" },
+          ]}
         />
         <Select value={status} onChange={(v) => setStatus(v as LeadStatus | "all")} options={statusOptions()} />
         <Select value={source} onChange={(v) => setSource(v as LeadSource)} options={sourceOptions()} />
@@ -1238,6 +1847,21 @@ function LeadsTable({
             >
               <Archive className="h-4 w-4 inline mr-1" /> Archivar Seleccionados
             </Button>
+            {owners.length > 0 && (
+              <>
+                <Select
+                  value={bulkOwnerId}
+                  onChange={setBulkOwnerId}
+                  options={[
+                    { value: "", label: "Asignar responsable…" },
+                    ...owners.map((owner) => ({ value: owner.id, label: owner.name })),
+                  ]}
+                />
+                <Button size="sm" variant="outline" onClick={() => void executeBulkOwner()} disabled={!bulkOwnerId || bulkFeedback?.kind === "running"}>
+                  Asignar seleccionados
+                </Button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -1254,7 +1878,7 @@ function LeadsTable({
         >
           {bulkFeedback.kind === "error"
             ? `Error: ${bulkFeedback.message}`
-            : `Archivado OK: ${bulkFeedback.succeeded} | Conflictos: ${bulkFeedback.conflicted} | Fallos: ${bulkFeedback.failed}${bulkFeedback.note ? ` (${bulkFeedback.note})` : ""}`}
+            : `${bulkFeedback.actionLabel ?? "Operación"} OK: ${bulkFeedback.succeeded} | Conflictos: ${bulkFeedback.conflicted} | Fallos: ${bulkFeedback.failed}${bulkFeedback.note ? ` (${bulkFeedback.note})` : ""}`}
           <button
             type="button"
             className="ml-3 underline"

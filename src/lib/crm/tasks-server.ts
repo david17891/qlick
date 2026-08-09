@@ -13,6 +13,7 @@ import type {
   CrmTaskUpdate,
   CrmTaskStatus,
 } from "./crm-rows";
+import { logAdminAction } from "./audit-server";
 
 /** Devuelve las tareas de un lead, ordenadas por vencimiento asc. */
 export async function getLeadTasks(leadId: string): Promise<CrmTaskRow[]> {
@@ -152,4 +153,65 @@ export async function updateTaskStatus(
     return { ok: false, error: "No se pudo actualizar la tarea." };
   }
   return { ok: true };
+}
+
+export type BulkTaskAction = "completed" | "cancelled" | "reschedule";
+
+/**
+ * Operación segura sobre la cola de tareas: no borra filas, solo cambia su
+ * estado o mueve la fecha. Se ejecuta en una sola actualización SQL y deja un
+ * registro agregado en auditoría para que la cola pueda limpiarse sin perder
+ * trazabilidad.
+ */
+export async function bulkUpdateCRMTasks(input: {
+  taskIds: string[];
+  action: BulkTaskAction;
+  dueAt?: string;
+  actorEmail: string;
+  reason?: string;
+}): Promise<{ ok: boolean; updated: number; error?: string }> {
+  if (!checkSupabaseConfig().configured) return { ok: false, updated: 0, error: "Supabase no configurado." };
+  const ids = Array.from(new Set(input.taskIds.filter(Boolean))).slice(0, 500);
+  if (!ids.length || !input.actorEmail) return { ok: false, updated: 0, error: "Faltan tareas o responsable de la operación." };
+  if (input.action === "reschedule") {
+    if (!input.dueAt || Number.isNaN(new Date(input.dueAt).getTime())) {
+      return { ok: false, updated: 0, error: "Fecha de reprogramación inválida." };
+    }
+    if (new Date(input.dueAt).getTime() <= Date.now()) {
+      return { ok: false, updated: 0, error: "La nueva fecha debe estar en el futuro." };
+    }
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const patch = (input.action === "reschedule"
+    ? { due_at: input.dueAt }
+    : {
+        status: input.action,
+        completed_at: input.action === "completed" ? new Date().toISOString() : null,
+      }) as never;
+  const { data, error } = await supabase
+    .from("crm_tasks")
+    .update(patch)
+    .in("id", ids)
+    .eq("status", "pending")
+    .select("id");
+  if (error) {
+    // eslint-disable-next-line no-console
+    console.error("[tasks] bulkUpdateCRMTasks falló", { code: error.code });
+    return { ok: false, updated: 0, error: "No se pudo actualizar la cola de tareas." };
+  }
+  const updated = data?.length ?? 0;
+  await logAdminAction({
+    actor_email: input.actorEmail,
+    action: "crm_task_bulk_update",
+    entity_type: "crm_task",
+    entity_id: null,
+    metadata: {
+      action: input.action,
+      requested: ids.length,
+      updated,
+      reason: input.reason?.trim().slice(0, 300) || null,
+    },
+  });
+  return { ok: true, updated };
 }

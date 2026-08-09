@@ -139,7 +139,7 @@ export function calculateLeadResponseRisk(lead: Lead): LeadRisk {
   // Consentimiento falso → no se le puede contactar.
   if (!lead.consentToContact) {
     score += 20;
-    reasons.push("Sin consentimiento de contacto");
+    reasons.push("Consentimiento de contacto no capturado");
   }
 
   // Etapas críticas donde el silencio cuesta la venta.

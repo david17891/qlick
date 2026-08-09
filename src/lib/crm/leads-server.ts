@@ -1,5 +1,6 @@
 /**
- * Acceso a leads con persistencia real en Supabase y fallback a mocks.
+ * Acceso a leads con persistencia real en Supabase y fallback a mocks solo en
+ * modo demo.
  *
  * Server-only. Usa el cliente admin (service role) para bypassar RLS en
  * lecturas del CRM y en la inserción desde el formulario (para que el insert
@@ -7,9 +8,11 @@
  *
  * REGLA DE FALLBACK:
  * - Si Supabase NO está configurado (checkSupabaseConfig().configured === false),
- *   todas las funciones caen al mock existente (`src/lib/crm/crm-service.ts`)
- *   y devuelven resultados etiquetados como demo. Así la app sigue 100%
- *   funcional en modo demo y la migración es transparente.
+ *   las funciones de lectura caen al mock existente (`src/lib/crm/crm-service.ts`)
+ *   para que la app siga funcional en modo demo.
+ * - Si Supabase SÍ está configurado pero falla, propagamos el error. Mostrar
+ *   leads demo en producción hace que el operador tome decisiones sobre datos
+ *   que no existen y oculta una incidencia real.
  *
  * Si Supabase SÍ está configurado, las funciones usan la tabla `public.leads`
  * (ver supabase/migrations/20260623000001_init_leads.sql).
@@ -109,19 +112,14 @@ export async function getLeads(
     .order("created_at", { ascending: false })
     .range(from, to);
   if (error) {
-    // No exponemos el detalle del error al caller; caemos a mock para no romper
-    // la UI. Se loggea para diagnóstico del operador.
+    // En modo real no ocultamos una incidencia de persistencia con datos demo.
+    // La ruta HTTP traduce este error a 500 y la UI puede mostrar estado
+    // degradado sin mezclar datos ficticios con los reales.
     // eslint-disable-next-line no-console
-    console.error("[leads-server] getLeads falló; usando mocks", {
+    console.error("[leads-server] getLeads falló en modo real", {
       code: error.code,
     });
-    const all = getLeadsMock();
-    return {
-      leads: all.slice(from, to + 1),
-      total: all.length,
-      page,
-      pageSize,
-    };
+    throw new Error(`Supabase leads query failed (${error.code})`);
   }
   return {
     leads: (data ?? []).map((row) => mapLeadRowToLead(row)),
@@ -148,7 +146,7 @@ export async function getLeadById(id: string): Promise<Lead | undefined> {
   if (error) {
     // eslint-disable-next-line no-console
     console.error("[leads-server] getLeadById falló", { code: error.code, id });
-    return getLeadByIdMock(id);
+    throw new Error(`Supabase lead lookup failed (${error.code})`);
   }
   if (!data) return undefined;
   return mapLeadRowToLead(data);
@@ -654,8 +652,8 @@ export async function createLeadFromEvent(
 
   // Defensa en profundidad: sin email NI phone normalizable, no se puede
   // identificar al lead. Antes esto creaba un row fantasma con email
-  // placeholder (`<slug>.<ts>@placeholder.local`) + tag `needs_email`. En
-  // la práctica, ningún caller legítimo (formulario, encuesta, importador
+  // placeholder + tag `needs_email`. En la práctica, ningún caller legítimo
+  // (formulario, encuesta, importador
   // Excel) llega sin al menos uno — esto solo se disparaba con bugs en el
   // caller o filas mal procesadas. Mejor enterarse.
   if (!normalizedEmail && !normalizedPhone) {
@@ -721,14 +719,10 @@ async function createNewLeadForEvent(
 ): Promise<CreateLeadFromEventResult> {
   const tags = buildEventTags(input);
 
-  // El caller (createLeadFromEvent) ya garantizó que al menos uno de
-  // email/phone está presente. Si llegamos acá sin email, igual podemos
-  // crear el lead porque la columna `email` es NOT NULL con CHECK de
-  // regex, pero necesitamos un email sintético para satisfacer la DB.
-  // Usamos uno claramente etiquetado para que el admin lo limpie.
-  // (Esta rama solo se ejecuta si hay phone válido pero no email.)
-  const email = normalizedEmail
-    ?? `no-email.${input.eventSlug}.${Date.now()}@placeholder.local`;
+  // El caller ya garantizó que existe email o teléfono. El correo es
+  // opcional en leads: si la persona no lo proporcionó, se conserva como
+  // NULL y no se fabrica un valor que parezca un contacto real.
+  const email = normalizedEmail;
 
   const payload: InsertLeadPayload = {
     name: input.name.trim(),
