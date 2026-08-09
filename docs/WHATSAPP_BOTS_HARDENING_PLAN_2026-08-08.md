@@ -13,7 +13,9 @@
 - [x] **B-04 — Dual-write:** el motor actual registra el journey y las transiciones cuando ya existe un evento confiable; no cambia todavía la respuesta ni el modo de producción.
 - [x] **B-04a — Corte post-registro:** una confirmación real + QR cancela seguimientos automáticos de pago; la marca también queda separada por evento.
 - [x] **B-05 — Resolver de evento compartido:** `EventContextResolver` con niveles `explicit`, `contextual` y `fallback`; el motor lo usa para no heredar un evento por suposición.
-- [ ] **B-06 en adelante:** hechos oficiales, ACK contextual, idempotencia completa, canary y migración progresiva de automatizaciones.
+- [x] **B-06 — Hechos oficiales:** `event-context-loader` carga eventos reales, excluye publicados vencidos, calcula fecha/día en `America/Phoenix` y `validateAgentReply` bloquea días incorrectos antes del envío.
+- [x] **B-07 — ACK contextual:** un acuse corto no repite el enlace ni el bloque de campaña; un registro completo termina con cierre neutral y un registro pendiente conserva solo una ayuda breve.
+- [ ] **B-08 en adelante:** captura flexible, idempotencia completa, canary y migración progresiva de automatizaciones.
 
 La migración de B-03 se aplicó a producción el 2026-08-08. Las tablas iniciaron vacías y el dual-write se activó únicamente como telemetría aditiva.
 
@@ -22,6 +24,10 @@ La migración de B-03 se aplicó a producción el 2026-08-08. Las tablas iniciar
 El resolver acepta, en orden de seguridad: botón con slug, código corto, selección del catálogo, slug/título/ubicación inequívocos y contexto de mensajes previos. El fallback de un único evento activo queda marcado como `fallback` y solo se permite cuando no hay intención de servicio ambigua.
 
 La auditoría más reciente encontró 228 conversaciones sin `related_event_id`; 64 no tienen lead y 226 no contienen evidencia explícita suficiente para distinguir CN26 de AA4E. Las dos filas con señales de QR corresponden al evento anterior. Por tanto, el backfill masivo queda deliberadamente detenido: solo se asignarán filas con evidencia reproducible y se conservarán las demás como `Sin evento` para revisión humana.
+
+### Corte B-06/B-07 — hechos y ACK
+
+El loader oficial sigue siendo la fuente de fecha, día, hora, duración, sede, modalidad y precio. La fecha del evento actual se calcula como jueves 20 de agosto de 2026 en hora Pacífico; el texto libre no puede sustituirla. El ACK contextual usa el estado real del registro: si ya existe confirmación/QR, responde sin insistir con pago; si aún falta un paso, pide únicamente ese dato o ofrece ayuda breve.
 
 ## 1. Resultado esperado
 

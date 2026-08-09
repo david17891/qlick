@@ -717,3 +717,10 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 - Auditoría de producción: 228 conversaciones siguen sin evento; 64 no tienen lead y 226 no tienen evidencia suficiente para separar CN26 de AA4E. Las dos filas con señal de QR pertenecen al evento anterior. No se hizo backfill por suposición.
 - Pruebas: resolver + bot + simulaciones de conversación `89/89`; type-check y lint OK.
 - Producción: deploy `dpl_7zD4AEKq1QCj5Kq2YSTewnRqfZi2` en `READY`; smoke público `/`, `/eventos`, `/admin` `200` y webhook sin firma `403`.
+
+## 2026-08-09 — Hechos oficiales y ACK contextual
+
+- B-06 verificado: `event-context-loader` consulta eventos reales, filtra publicados vencidos, calcula el día desde `starts_at` usando `America/Phoenix` y el guardrail rechaza días de semana incorrectos antes de enviar una respuesta LLM.
+- B-07: `ack-policy.ts` distingue registro completo, pago pendiente, campo pendiente y ACK genérico. Un lead con confirmación/QR recibe un cierre neutral; un “Ok” después de un prompt de pago no recibe de nuevo el enlace ni el bloque completo.
+- La persistencia del ACK conserva `related_event_id` y registra `ack_reason` para auditoría.
+- Pruebas dirigidas B-05/B-07 y bot: `94/94`; type-check y lint OK.

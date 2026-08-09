@@ -99,10 +99,12 @@ import {
   getPendingRegistrationField,
   isInfoRescuePending,
   hasTransactionalRegistrationSignal,
+  hasCompletedRegistrationSignal,
   LEAD_REGISTRATION_COMPLETE_TAG,
 } from "./lead-followup";
 import { syncLeadEventJourneyForBotTurn } from "./lead-event-journey-server";
 import { resolveEventContext } from "./event-context-resolver";
+import { buildContextualAck } from "./ack-policy";
 import { extractEmailFromText } from "./email-extract";
 import { getAIAgentProfile } from "../crm/agent-utils";
 import {
@@ -6112,11 +6114,14 @@ export async function processInboundMessage(
     !infoRescuePending &&
     isAckOnly(body)
   ) {
+    const registrationComplete = hasCompletedRegistrationSignal(lead.tags);
     const registrationInProgress =
+      !registrationComplete &&
       Boolean(pendingRegistrationField) ||
-      lead.status === "interested" ||
-      lead.status === "payment_pending" ||
-      hasTransactionalRegistrationSignal(lead.tags);
+      (!registrationComplete &&
+        (lead.status === "interested" ||
+          lead.status === "payment_pending" ||
+          hasTransactionalRegistrationSignal(lead.tags)));
     const registrationField =
       pendingRegistrationField ??
       (registrationInProgress && lead.status !== "payment_pending" ? "name" : null);
@@ -6130,13 +6135,14 @@ export async function processInboundMessage(
       });
     }
 
-    const ackBody = registrationInProgress
-      ? lead.status === "payment_pending"
-        ? "¡Claro! Tu lugar sigue reservado. Si quieres, te reenvío el enlace de pago para completar tu inscripción."
-        : registrationField === "email"
-          ? "¡Claro! Para completar tu registro, solo me falta tu correo. Mándamelo cuando quieras y seguimos."
-          : "¡Claro! Para apartar tu lugar, solo me falta tu nombre completo. Mándamelo cuando quieras y seguimos."
-      : "¡Con gusto! Aquí sigo pendiente por si te surge cualquier otra duda sobre el taller. Si quieres inscribirte, dime y te ayudo.";
+    const ack = buildContextualAck({
+      firstName: lead.name,
+      registrationComplete,
+      paymentPending: lead.status === "payment_pending",
+      awaitingField: registrationInProgress ? registrationField : null,
+      lastOutboundBody: lastOutboundGlobal?.body,
+    });
+    const ackBody = ack.body;
 
     const provider = getActiveWhatsAppProvider();
     let ackSend: { ok: boolean; externalId?: string; demo?: boolean } = {
@@ -6161,11 +6167,13 @@ export async function processInboundMessage(
         message_type: "text",
         body: ackBody,
         whatsapp_message_id: ackSend.externalId ?? null,
-        metadata: {
-          trigger: "ack_only_handler",
-          source_input: body,
-          ...(registrationField ? { awaiting_field: registrationField } : {}),
-        }
+          metadata: {
+            trigger: "ack_only_handler",
+            source_input: body,
+            ack_reason: ack.reason,
+            ...(registrationField ? { awaiting_field: registrationField } : {}),
+          },
+          related_event_id: conversationEventId,
       }).catch((err) => {
         errorLog("[whatsapp/bot] ack-handler persistConversation threw", {
           leadId: lead.id,
@@ -6178,6 +6186,7 @@ export async function processInboundMessage(
     debugLog("[whatsapp/bot] ack_only_handler fired", {
       leadId: lead.id,
       input: body,
+      reason: ack.reason,
       responseSent: ackSend.ok
     });
 
