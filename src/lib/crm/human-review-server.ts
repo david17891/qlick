@@ -96,6 +96,8 @@ interface LeadReviewRow {
 interface EventRow {
   id: string;
   title: string;
+  slug: string;
+  short_code: string | null;
   status: string;
   starts_at: string | null;
 }
@@ -186,12 +188,22 @@ function normalizedEmail(value: string | null | undefined): string | null {
   return email.includes("@") ? email : null;
 }
 
+function normalizedSearchText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
 function buildEventAssociations(
   leads: LeadReviewRow[],
   events: EventRow[],
   links: LeadEventLinkRow[],
   attendees: EventAttendeeRow[],
   confirmations: EventConfirmationRow[],
+  conversations: Conversation[],
 ): Map<string, HumanReviewEventAssociation[]> {
   const eventById = new Map(events.map((event) => [event.id, event]));
   const activeEvent = events
@@ -233,6 +245,28 @@ function buildEventAssociations(
     for (const leadId of leadIds) {
       if (phone && (leadsByPhone.get(phone) ?? []).includes(leadId)) add(leadId, confirmation.event_id, "confirmation_phone");
       else add(leadId, confirmation.event_id, "confirmation_email");
+    }
+  }
+
+  // La relación del lead con un evento también puede estar únicamente en
+  // el historial de WhatsApp. Esto cubre conversaciones informativas que
+  // nunca llegaron a confirmación, asistencia o lead_event_links.
+  for (const conversation of conversations) {
+    const allBodies = conversation.messages
+      .filter(isWhatsAppMessage)
+      .map((message) => `${message.body} ${JSON.stringify(message.metadata ?? {})}`)
+      .join(" ");
+    const normalizedBodies = normalizedSearchText(allBodies);
+    for (const event of events) {
+      const title = normalizedSearchText(event.title);
+      const slug = normalizedSearchText(event.slug);
+      const shortCode = normalizedSearchText(event.short_code ?? "");
+      const hasTitleEvidence = title.length >= 8 && normalizedBodies.includes(title);
+      const hasSlugEvidence = slug.length >= 8 && normalizedBodies.includes(slug);
+      const hasCodeEvidence = shortCode.length >= 3 && normalizedBodies.includes(shortCode);
+      if (hasTitleEvidence || hasSlugEvidence || hasCodeEvidence) {
+        add(conversation.leadId, event.id, "conversation_content");
+      }
     }
   }
 
@@ -372,7 +406,7 @@ export async function getHumanReviewQueue(): Promise<HumanReviewQueue> {
       .eq("action", "crm_human_review_recorded")
       .order("created_at", { ascending: false })
       .limit(1000),
-    supabase.from("events").select("id,title,status,starts_at").order("starts_at", { ascending: false }),
+    supabase.from("events").select("id,title,slug,short_code,status,starts_at").order("starts_at", { ascending: false }),
     supabase.from("lead_event_links").select("lead_id,event_id"),
     supabase.from("event_attendees").select("lead_id,event_id,phone_normalized"),
     supabase.from("event_confirmations").select("event_id,email,phone_normalized"),
@@ -386,6 +420,7 @@ export async function getHumanReviewQueue(): Promise<HumanReviewQueue> {
     (linkResult.data ?? []) as LeadEventLinkRow[],
     (attendeeResult.data ?? []) as EventAttendeeRow[],
     (confirmationResult.data ?? []) as EventConfirmationRow[],
+    conversations,
   );
   const leadsById = new Map(leads.map((lead) => [lead.id, lead]));
   const reviews = new Map<string, { outcome: HumanReviewOutcome | null; at: string }>();
