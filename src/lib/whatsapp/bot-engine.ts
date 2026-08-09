@@ -102,6 +102,7 @@ import {
   LEAD_REGISTRATION_COMPLETE_TAG,
 } from "./lead-followup";
 import { syncLeadEventJourneyForBotTurn } from "./lead-event-journey-server";
+import { resolveEventContext } from "./event-context-resolver";
 import { extractEmailFromText } from "./email-extract";
 import { getAIAgentProfile } from "../crm/agent-utils";
 import {
@@ -1781,21 +1782,20 @@ async function resolveConversationEventId(input: {
 }): Promise<string | null> {
   const events = await loadAllActiveEvents().catch(() => [] as ActiveEventContext[]);
   if (events.length === 0) return null;
-
-  const buttonMatch = input.buttonId?.match(/^evt_(?:info|inscribir|yes|register)_(.+)$/);
-  if (buttonMatch?.[1]) {
-    const buttonEvent = events.find((event) => event.slug === buttonMatch[1]);
-    if (buttonEvent) return buttonEvent.id;
+  const match = resolveEventContext({
+    body: input.body,
+    buttonId: input.buttonId,
+    events,
+    allowSingleEventFallback: detectServiceIntent(input.body).kind === "none",
+  });
+  if (match) {
+    debugLog("[whatsapp/bot] resolveConversationEventId", {
+      eventId: match.event.id,
+      confidence: match.confidence,
+      reason: match.reason,
+    });
   }
-
-  const textMatch = matchTextToEvent(input.body, events);
-  if (textMatch) return textMatch.event.id;
-
-  if (events.length === 1 && detectServiceIntent(input.body).kind === "none") {
-    return events[0].id;
-  }
-
-  return null;
+  return match?.event.id ?? null;
 }
 
 /**

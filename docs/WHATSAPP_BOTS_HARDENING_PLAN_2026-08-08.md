@@ -12,9 +12,16 @@
 - [x] **B-03 — Schema aditivo:** `lead_event_journeys` y `lead_event_journey_transitions` aplicadas en Supabase con RLS y acceso backend-only.
 - [x] **B-04 — Dual-write:** el motor actual registra el journey y las transiciones cuando ya existe un evento confiable; no cambia todavía la respuesta ni el modo de producción.
 - [x] **B-04a — Corte post-registro:** una confirmación real + QR cancela seguimientos automáticos de pago; la marca también queda separada por evento.
-- [ ] **B-05 en adelante:** resolver evento compartido, modo shadow, idempotencia completa, canary y migración progresiva de automatizaciones.
+- [x] **B-05 — Resolver de evento compartido:** `EventContextResolver` con niveles `explicit`, `contextual` y `fallback`; el motor lo usa para no heredar un evento por suposición.
+- [ ] **B-06 en adelante:** hechos oficiales, ACK contextual, idempotencia completa, canary y migración progresiva de automatizaciones.
 
 La migración de B-03 se aplicó a producción el 2026-08-08. Las tablas iniciaron vacías y el dual-write se activó únicamente como telemetría aditiva.
+
+### Corte B-05 — criterio de asociación
+
+El resolver acepta, en orden de seguridad: botón con slug, código corto, selección del catálogo, slug/título/ubicación inequívocos y contexto de mensajes previos. El fallback de un único evento activo queda marcado como `fallback` y solo se permite cuando no hay intención de servicio ambigua.
+
+La auditoría más reciente encontró 228 conversaciones sin `related_event_id`; 64 no tienen lead y 226 no contienen evidencia explícita suficiente para distinguir CN26 de AA4E. Las dos filas con señales de QR corresponden al evento anterior. Por tanto, el backfill masivo queda deliberadamente detenido: solo se asignarán filas con evidencia reproducible y se conservarán las demás como `Sin evento` para revisión humana.
 
 ## 1. Resultado esperado
 

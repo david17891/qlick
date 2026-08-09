@@ -709,3 +709,10 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 - Código: una solicitud explícita de información conserva su propio rescate aunque la persona tenga un registro terminado de otro evento.
 - Pruebas: follow-up + lifecycle `31/31`, type-check OK y lint OK.
 - Producción: se corrigió únicamente el estado operativo del lead de Melec; se conservaron confirmación, QR, correo y `payment_status=pending`. `next_follow_up_at` quedó en `NULL`.
+
+## 2026-08-09 — Resolver seguro de contexto de evento
+
+- Se añadió `src/lib/whatsapp/event-context-resolver.ts`, un contrato puro que clasifica la evidencia como `explicit`, `contextual` o `fallback` y explica la razón de cada coincidencia.
+- `bot-engine` ahora usa el resolver centralizado para persistir el evento de los nuevos turnos sin cambiar la respuesta actual del bot.
+- Auditoría de producción: 228 conversaciones siguen sin evento; 64 no tienen lead y 226 no tienen evidencia suficiente para separar CN26 de AA4E. Las dos filas con señal de QR pertenecen al evento anterior. No se hizo backfill por suposición.
+- Pruebas: resolver + bot + simulaciones de conversación `89/89`; type-check y lint OK.
