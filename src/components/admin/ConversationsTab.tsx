@@ -685,6 +685,14 @@ export function ConversationsTab() {
     setTogglingInfoFollowup(true);
     try {
       const next = leadInfoFollowupMode !== "live";
+      if (
+        next &&
+        !window.confirm(
+          "La ronda manual de recuperación debe quedar revisada antes de enviar rescates automáticos. ¿Confirmas activar el rescate automático?",
+        )
+      ) {
+        return;
+      }
       await safeFetch("/api/admin/system-setting", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -775,7 +783,7 @@ export function ConversationsTab() {
               aria-pressed={leadInfoFollowupMode === "live"}
               title="Activa o desactiva el único mensaje de rescate para quienes pidieron información y quedaron en silencio."
             >
-              {leadInfoFollowupMode === "live" ? "Desactivar rescate info" : "Activar rescate info"}
+              {leadInfoFollowupMode === "live" ? "Detener rescate automático" : "Activar rescate automático"}
             </Button>
             <Button
               type="button"
@@ -812,6 +820,16 @@ export function ConversationsTab() {
             <p className="mt-1">
               Clasifica solicitudes antiguas, separa ventana abierta, plantilla requerida y duplicados. No envía por sí solo.
             </p>
+            {leadInfoFollowupMode === "off" && (
+              <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-amber-900">
+                Ronda manual activa: el rescate automático está detenido. Abre cada chat, revisa el contexto y registra el resultado en <strong>Revisión humana</strong> antes de reactivarlo.
+              </p>
+            )}
+            {leadInfoFollowupMode === "shadow" && (
+              <p className="mt-2 rounded-md border border-blue-200 bg-blue-50 px-2 py-1.5 text-blue-900">
+                Modo simulación: se clasifican candidatos, pero no se envían mensajes.
+              </p>
+            )}
             {recoveryStats && (
               <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1">
                 <span>Total: {recoveryStats.total}</span>

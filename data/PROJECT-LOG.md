@@ -734,3 +734,10 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 - Pruebas nuevas `5/5`, type-check OK y lint OK. No se alteró ni eliminó histórico de conversaciones.
 - B-08 queda verificado por la matriz existente de captura flexible `132/132`; B-09 queda implementado en su capa operativa (dedupe inbound, claim del cron y guard de respuesta rápida). La idempotencia persistente de cada outbound/provider retry queda para la siguiente fase.
 - Producción: deploy `dpl_e89DMVj4iDQbdufY7Dmw4Vo7xwCM` en `READY`; smoke público `/`, `/eventos`, `/admin` `200` y webhook sin firma `403`. Alias canónico verificado: `https://www.qlick.digital`.
+
+## 2026-08-09 — Ronda manual antes de nuevos rescates
+
+- Producción: `lead_info_followup_mode` quedó en `off` mediante actualización controlada y se verificó el valor inmediatamente.
+- La cola histórica conserva 8 `sent`, 11 `duplicate_review`, 43 `blocked_template_required`, 16 `replied` y 27 `excluded`; no hay candidatos `eligible` para envío automático.
+- Los tres seguimientos pendientes asociados a leads con pago pendiente no se modificaron porque pertenecen al flujo operativo de pago, no al rescate histórico.
+- La UI de Conversaciones ahora muestra explícitamente “Ronda manual activa” cuando el rescate está detenido y recomienda revisar cada caso en Revisión humana antes de reactivar automatizaciones.
