@@ -295,6 +295,7 @@ async function persistInboundIfPossible(
           ...(msg.image ? { image: msg.image } : {}),
           ...(msg.document ? { document: msg.document } : {}),
           ...(msg.audio ? { audio: msg.audio } : {}),
+          ...(msg.referral ? { referral: msg.referral } : {}),
         }
       } as never,
       { onConflict: "whatsapp_message_id", ignoreDuplicates: true } as never

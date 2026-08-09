@@ -58,6 +58,23 @@ test("bloquea 'gratis' (regla fatal sin contexto)", () => {
   assert.ok(r.reasons.some((x) => /gratis/i.test(x)));
 });
 
+test("bloquea un día de semana que contradice la fecha oficial del evento", () => {
+  const r = validateAgentReply(
+    "Nos vemos el martes 20 de agosto.",
+    { eventStartsAt: "2026-08-20T23:00:00.000Z" },
+  );
+  assert.equal(r.ok, false);
+  assert.ok(r.reasons.some((x) => /día de la semana incorrecto/i.test(x)));
+});
+
+test("permite el día de semana que corresponde a la fecha oficial", () => {
+  const r = validateAgentReply(
+    "Nos vemos el jueves 20 de agosto.",
+    { eventStartsAt: "2026-08-20T23:00:00.000Z" },
+  );
+  assert.equal(r.ok, true, `reasons: ${r.reasons.join("; ")}`);
+});
+
 /* ─────────────────────────────────────────────────────────────
  * FIX 2026-07-10: 'descuento' y 'promocion' YA NO son filtros ciegos.
  * El LLM puede responder con negaciones honestas.

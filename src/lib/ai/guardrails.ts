@@ -9,6 +9,7 @@
  */
 
 import type { LeadIntent } from "@/types";
+import { findIncorrectEventWeekdayMentions } from "../datetime.ts";
 
 /**
  * Clasificación heurística de intención a partir del texto del lead.
@@ -243,6 +244,8 @@ export function sanitizeLLMOutput(rawText: string): string {
 export interface ValidateReplyContext {
   isFreeEvent?: boolean;
   allowedPhrases?: string[];
+  /** Timestamptz oficial para validar días de la semana mencionados. */
+  eventStartsAt?: string | Date;
 }
 
 /**
@@ -277,6 +280,18 @@ export function validateAgentReply(
   for (const phrase of finalForbidden) {
     if (t.includes(phrase)) {
       reasons.push(`Contiene término prohibido: "${phrase}"`);
+    }
+  }
+
+  if (context?.eventStartsAt) {
+    const incorrectWeekdays = findIncorrectEventWeekdayMentions(
+      reply,
+      context.eventStartsAt,
+    );
+    if (incorrectWeekdays.length > 0) {
+      reasons.push(
+        `Día de la semana incorrecto: ${incorrectWeekdays.join(", ")}`,
+      );
     }
   }
 

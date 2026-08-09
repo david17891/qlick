@@ -23,6 +23,7 @@ test("lead lifecycle: separa información concreta de un saludo aislado", () => 
 
   assert.equal(info.status, "info_requested");
   assert.equal(info.intent, "course_information");
+  assert.ok(info.nextFollowUpAt);
   assert.equal(greeting.status, "contacted");
   assert.equal(greeting.nextFollowUpAt, null);
 });
@@ -115,6 +116,20 @@ test("lead lifecycle: correo capturado deja el lead en pago pendiente", () => {
     botIntent: "provide_email",
     body: "cliente@example.com",
     awaitingField: "email",
+  });
+
+  assert.equal(result.status, "payment_pending");
+  assert.equal(result.intent, "payment_help");
+  assert.ok(result.tagsToAdd.includes("registration:payment_pending"));
+});
+
+test("lead lifecycle: correo directo desde rescate de información inicia el cierre", () => {
+  const result = decideLeadLifecycle({
+    ...base,
+    currentStatus: "info_requested",
+    currentIntent: "course_information",
+    botIntent: "provide_email",
+    body: "cliente@example.com",
   });
 
   assert.equal(result.status, "payment_pending");

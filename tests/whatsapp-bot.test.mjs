@@ -101,6 +101,31 @@ test("handleWebhookPayload: payload con 1 mensaje de texto", () => {
   assert.equal(result.messages[0].type, "text");
 });
 
+test("handleWebhookPayload: conserva referral de entrada de campaña", () => {
+  const result = handleWebhookPayload({
+    entry: [{ changes: [{ value: { messages: [{
+      id: "wamid.referral",
+      from: "523312345678",
+      type: "text",
+      text: { body: "Hola, quiero información" },
+      referral: {
+        source_url: "https://fb.example/ad",
+        source_type: "ad",
+        source_id: "synthetic-ad-1",
+        headline: "Taller sintético",
+      },
+    }] } }] }],
+  });
+
+  assert.deepEqual(result.messages[0].referral, {
+    sourceUrl: "https://fb.example/ad",
+    sourceType: "ad",
+    sourceId: "synthetic-ad-1",
+    headline: "Taller sintético",
+    body: undefined,
+  });
+});
+
 test("handleWebhookPayload: payload vacío devuelve messages=[]", () => {
   const result = handleWebhookPayload({ entry: [] });
   assert.equal(result.ok, true);

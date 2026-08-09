@@ -131,7 +131,7 @@ test("calculateLeadResponseRisk: sin owner + sin consent = high (60)", () => {
   assert.equal(risk.score, 60);
   assert.equal(risk.level, "high");
   assert.ok(risk.reasons.includes("Sin responsable asignado"));
-  assert.ok(risk.reasons.includes("Sin consentimiento de contacto"));
+  assert.ok(risk.reasons.includes("Consentimiento de contacto no capturado"));
 });
 
 test("calculateLeadResponseRisk: payment_pending sin resolver dispara high", () => {

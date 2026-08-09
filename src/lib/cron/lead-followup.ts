@@ -20,11 +20,11 @@ import { checkSupabaseConfig } from "../supabase/health";
 import {
   KEY_BOT_DAILY_OUTBOUND_LIMIT,
   KEY_BOT_PAUSED_GLOBAL,
+  KEY_LEAD_INFO_FOLLOWUP_MODE,
   KEY_LEAD_FOLLOWUP_MODE,
   readSystemSetting,
 } from "../admin/system-settings-server";
 import { getActiveWhatsAppProvider } from "../whatsapp";
-import { getWhatsAppSessionWindow } from "../whatsapp/session-window";
 import type { LeadIntent, LeadStatus } from "@/types/crm";
 import {
   decideLeadFollowup,
@@ -34,9 +34,17 @@ import {
   LEAD_FOLLOWUP_RETRY_DELAY_MS,
   normalizeLeadFollowupMode,
   getPendingRegistrationField,
+  hasRequestedInfoSignal,
+  getEffectiveFollowupOpenUntil,
+  getFreeEntryPointUntil,
   type LeadFollowupMode,
   type LeadFollowupDecision,
 } from "../whatsapp/lead-followup";
+import {
+  discoverHistoricalInfoRecovery,
+  HISTORICAL_INFO_RECOVERY_CAMPAIGN,
+  HISTORICAL_INFO_RECOVERY_TAG,
+} from "./lead-recovery";
 
 const DEFAULT_GLOBAL_OUTBOUND_LIMIT = 50;
 const FOLLOWUP_TOTAL_LIMIT_24H = 20;
@@ -47,7 +55,7 @@ interface LeadFollowupRow {
   name: string;
   phone: string | null;
   phone_normalized: string | null;
-  status: "interested" | "payment_pending" | string;
+  status: "interested" | "payment_pending" | "info_requested" | string;
   intent: string;
   tags: string[] | null;
   consent_to_contact: boolean;
@@ -68,6 +76,7 @@ interface FollowupMetadata {
   manual?: boolean;
   ui_source?: string;
   awaiting_field?: "name" | "email" | null;
+  followup_stage?: "registration_incomplete" | "payment_pending" | "info_requested";
 }
 
 export interface LeadFollowupRunResult {
@@ -125,9 +134,15 @@ function latestRows(rows: ConversationRow[]): {
   return { last, lastInbound, lastOutbound };
 }
 
-function isFollowupMessage(row: ConversationRow, sinceMs: number): boolean {
+function isFollowupMessage(
+  row: ConversationRow,
+  sinceMs: number,
+  stage?: "registration_incomplete" | "payment_pending" | "info_requested",
+): boolean {
   if (row.direction !== "outbound" || Date.parse(row.created_at) < sinceMs) return false;
-  return metadataOf(row.metadata).auto_sent_source === "lead_followup";
+  const metadata = metadataOf(row.metadata);
+  return metadata.auto_sent_source === "lead_followup" &&
+    (!stage || metadata.followup_stage === stage);
 }
 
 function isManualOutbound(row: ConversationRow | null): boolean {
@@ -178,10 +193,15 @@ function decisionForLead(
   lastOutbound: ConversationRow | null;
   count: number;
   awaitingField: "name" | "email" | null;
+  freeEntryPointUntil: string | null;
 } {
-  const sinceMs = now.getTime() - 24 * 60 * 60 * 1000;
   const latest = latestRows(rows);
-  const count = rows.filter((row) => isFollowupMessage(row, sinceMs)).length;
+  const freeEntryPointUntil = getFreeEntryPointUntil(rows, now);
+  const sinceMs = now.getTime() - (freeEntryPointUntil ? 72 : 24) * 60 * 60 * 1000;
+  const infoStage = lead.status === "info_requested" && hasRequestedInfoSignal(lead.tags)
+    ? "info_requested"
+    : undefined;
+  const count = rows.filter((row) => isFollowupMessage(row, sinceMs, infoStage)).length;
   const pendingRegistrationField = getPendingRegistrationField(rows);
   const decision = decideLeadFollowup({
     name: lead.name,
@@ -196,9 +216,10 @@ function decisionForLead(
     lastOutboundManual: isManualOutbound(latest.lastOutbound),
     awaitingField: pendingRegistrationField,
     sentCountInWindow: count,
+    freeEntryPointUntil,
     now,
   });
-  return { decision, ...latest, count, awaitingField: pendingRegistrationField };
+  return { decision, ...latest, count, awaitingField: pendingRegistrationField, freeEntryPointUntil };
 }
 
 function shouldClearDueFollowup(reason: string): boolean {
@@ -213,8 +234,10 @@ export async function runLeadFollowupJob(now = new Date()): Promise<LeadFollowup
 
   const rawMode = await readSystemSetting(KEY_LEAD_FOLLOWUP_MODE);
   const mode = normalizeLeadFollowupMode(rawMode);
-  if (mode === "off") {
-    return emptyResult(mode, "Modo off: no se leen candidatos ni se envían mensajes.");
+  const rawInfoMode = await readSystemSetting(KEY_LEAD_INFO_FOLLOWUP_MODE);
+  const infoMode = normalizeLeadFollowupMode(rawInfoMode);
+  if (mode === "off" && infoMode === "off") {
+    return emptyResult(mode, "Modos off: no se leen candidatos ni se envían mensajes.");
   }
 
   const supabase = createSupabaseAdminClient();
@@ -225,6 +248,10 @@ export async function runLeadFollowupJob(now = new Date()): Promise<LeadFollowup
   if (globalPausedRaw === true) {
     return emptyResult(mode, "Bot pausado globalmente; no se ejecuta seguimiento.");
   }
+
+  const recoveryDiscovery = infoMode === "live"
+    ? await discoverHistoricalInfoRecovery(supabase, now)
+    : null;
 
   const globalLimit = typeof globalLimitRaw === "number" && globalLimitRaw >= 0
     ? globalLimitRaw
@@ -249,10 +276,10 @@ export async function runLeadFollowupJob(now = new Date()): Promise<LeadFollowup
   const { data: leads, error: leadsError } = await supabase
     .from("leads")
     .select("id, name, phone, phone_normalized, status, intent, tags, consent_to_contact, bot_paused, next_follow_up_at")
-    .in("status", ["interested", "payment_pending"])
-    // Una inscripcion iniciada es un seguimiento transaccional dentro de la
-    // ventana de servicio; la politica pura descarta los leads sin señal de
-    // registro y conserva el bloqueo de bajas explicitas.
+    .in("status", ["interested", "payment_pending", "info_requested"])
+    // El estado info_requested necesita ademas la etiqueta de solicitud de
+    // informacion; la politica pura descarta cualquier fila que no tenga esa
+    // senal y conserva el bloqueo de bajas explicitas.
     .eq("bot_paused", false)
     .not("next_follow_up_at", "is", null)
     .lte("next_follow_up_at", now.toISOString())
@@ -288,7 +315,7 @@ export async function runLeadFollowupJob(now = new Date()): Promise<LeadFollowup
     rowsByLead.set(row.lead_id, current);
   }
 
-  const provider = mode === "live" ? getActiveWhatsAppProvider() : null;
+  const provider = mode === "live" || infoMode === "live" ? getActiveWhatsAppProvider() : null;
   for (const lead of leadRows) {
     if (result.eligible >= available) break;
     const phone = toPhone(lead);
@@ -303,6 +330,7 @@ export async function runLeadFollowupJob(now = new Date()): Promise<LeadFollowup
       lastOutbound,
       count,
       awaitingField: pendingRegistrationField,
+      freeEntryPointUntil,
     } = decisionForLead(
       lead,
       rowsByLead.get(lead.id) ?? [],
@@ -310,7 +338,8 @@ export async function runLeadFollowupJob(now = new Date()): Promise<LeadFollowup
     );
     if (!decision.eligible || !decision.stage || !decision.body) {
       incrementReason(result, decision.reason);
-      if (mode === "live" && lead.next_follow_up_at && shouldClearDueFollowup(decision.reason)) {
+      const decisionMode = decision.stage === "info_requested" ? infoMode : mode;
+      if (decisionMode === "live" && lead.next_follow_up_at && shouldClearDueFollowup(decision.reason)) {
         await supabase
           .from("leads")
           .update({ next_follow_up_at: null })
@@ -320,8 +349,17 @@ export async function runLeadFollowupJob(now = new Date()): Promise<LeadFollowup
       continue;
     }
 
+    const candidateMode = decision.stage === "info_requested" ? infoMode : mode;
+    if (candidateMode === "off") {
+      incrementReason(
+        result,
+        decision.stage === "info_requested" ? "info_followup_off" : "followup_off",
+      );
+      continue;
+    }
+
     result.eligible++;
-    if (mode === "shadow") continue;
+    if (candidateMode === "shadow") continue;
     if (!provider) continue;
 
     const claimUntil = await claimLead(supabase, lead, now);
@@ -352,8 +390,12 @@ export async function runLeadFollowupJob(now = new Date()): Promise<LeadFollowup
     }
 
     if (!sendResult.ok) {
-      const session = getWhatsAppSessionWindow(lastInbound?.created_at ?? null, now);
-      const retryAt = session.openUntil && Date.parse(session.openUntil) > now.getTime() + LEAD_FOLLOWUP_RETRY_DELAY_MS
+      const openUntil = getEffectiveFollowupOpenUntil(
+        lastInbound?.created_at ?? null,
+        freeEntryPointUntil,
+        now,
+      );
+      const retryAt = openUntil && Date.parse(openUntil) > now.getTime() + LEAD_FOLLOWUP_RETRY_DELAY_MS
         ? new Date(now.getTime() + LEAD_FOLLOWUP_RETRY_DELAY_MS).toISOString()
         : null;
       await updateClaimedLead(supabase, lead.id, claimUntil, retryAt);
@@ -376,24 +418,42 @@ export async function runLeadFollowupJob(now = new Date()): Promise<LeadFollowup
           followup_stage: decision.stage,
           followup_number: decision.followupNumber,
           awaiting_field: pendingRegistrationField,
+          rescue_action: decision.stage === "info_requested" ? "registration_close" : undefined,
+          ...(lead.tags ?? []).includes(HISTORICAL_INFO_RECOVERY_TAG)
+            ? { recovery_campaign_key: HISTORICAL_INFO_RECOVERY_CAMPAIGN }
+            : {},
         },
       } as never);
     if (persistError) result.failed++;
 
-    const session = getWhatsAppSessionWindow(lastInbound?.created_at ?? null, now);
+    if (!persistError && decision.stage === "info_requested" && (lead.tags ?? []).includes(HISTORICAL_INFO_RECOVERY_TAG)) {
+      await supabase
+        .from("lead_recovery_campaigns" as never)
+        .update({ state: "sent", sent_at: now.toISOString(), updated_at: now.toISOString() } as never)
+        .eq("lead_id", lead.id)
+        .eq("campaign_key", HISTORICAL_INFO_RECOVERY_CAMPAIGN);
+    }
+
+    const openUntil = getEffectiveFollowupOpenUntil(
+      lastInbound?.created_at ?? null,
+      freeEntryPointUntil,
+      now,
+    );
     const next = getNextLeadFollowupAt(
       decision.stage,
       count + 1,
       now,
-      session.openUntil,
+      openUntil,
     );
     await updateClaimedLead(supabase, lead.id, claimUntil, next);
     if (!persistError) result.sent++;
   }
 
-  result.note = mode === "shadow"
-    ? `Shadow: ${result.eligible} candidatos elegibles; 0 mensajes enviados.`
-    : `Live: ${result.sent} mensajes enviados; ${result.failed} fallos.`;
+  const discoveryNote = recoveryDiscovery
+    ? ` histórico: ${recoveryDiscovery.scheduled} programados, ${recoveryDiscovery.blockedTemplate} requieren plantilla, ${recoveryDiscovery.duplicateReview} en revisión.`
+    : "";
+  result.note = `Seguimiento ${mode}; rescate de información ${infoMode}: ` +
+    `${result.sent} mensajes enviados; ${result.failed} fallos.${discoveryNote}`;
   return result;
 }
 

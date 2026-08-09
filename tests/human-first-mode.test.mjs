@@ -193,7 +193,7 @@ test("buildHumanFirstPrompt retorna string no vacío", () => {
 test("buildHumanFirstPrompt declara el modo human_first", () => {
   const prompt = buildHumanFirstPrompt(mkContext());
   assert.match(prompt, /human_first/);
-  assert.match(prompt, /TÚ decides|controla todo|LLM-first/i);
+  assert.match(prompt, /Eres un vendedor humano|LLM-first|REGLA #1/i);
 });
 
 test("buildHumanFirstPrompt contiene cláusulas de safeguards críticas", () => {

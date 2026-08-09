@@ -6,6 +6,8 @@ import {
   getPendingRegistrationField,
   getNextLeadFollowupAt,
   hasCompletedRegistrationSignal,
+  getFreeEntryPointUntil,
+  isInfoRescuePending,
   normalizeLeadFollowupMode,
 } from "../src/lib/whatsapp/lead-followup.ts";
 
@@ -51,9 +53,76 @@ test("followup: pago pendiente usa copy corto", () => {
   assert.match(result.body ?? "", /pago/);
 });
 
-test("followup: saludo o información no se convierte en seguimiento comercial", () => {
+test("followup: rescata una solicitud de información sin pedir consentimiento de marketing", () => {
   const result = decideLeadFollowup(
-    base({ status: "info_requested", intent: "course_information", tags: ["conversation:info_requested"] }),
+    base({
+      status: "info_requested",
+      intent: "course_information",
+      tags: ["conversation:info_requested"],
+      consentToContact: false,
+    }),
+  );
+  assert.equal(result.eligible, true);
+  assert.equal(result.stage, "info_requested");
+  assert.equal(result.followupNumber, 1);
+  assert.match(result.body ?? "", /inscribirte/);
+  assert.match(result.body ?? "", /nombre y correo/);
+});
+
+test("followup: reconoce el rescate pendiente para enrutar una respuesta al cierre", () => {
+  assert.equal(
+    isInfoRescuePending([
+      { direction: "outbound", metadata: { followup_stage: "info_requested", auto_sent_source: "lead_followup" } },
+      { direction: "inbound", metadata: null },
+    ]),
+    true,
+  );
+  assert.equal(
+    isInfoRescuePending([
+      { direction: "outbound", metadata: { followup_stage: "info_requested", auto_sent_source: "lead_followup" } },
+      { direction: "inbound", metadata: null },
+      { direction: "outbound", metadata: { awaiting_field: "name" } },
+    ]),
+    false,
+  );
+});
+
+test("followup: rescate de información se detiene después de un intento", () => {
+  const result = decideLeadFollowup(
+    base({
+      status: "info_requested",
+      intent: "course_information",
+      tags: ["conversation:info_requested"],
+      sentCountInWindow: 1,
+    }),
+  );
+  assert.equal(result.eligible, false);
+  assert.equal(result.reason, "max_attempts_reached");
+});
+
+test("followup: una entrada de campaña conserva la ventana ampliada de 72 horas", () => {
+  const campaignInbound = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
+  const campaignReply = new Date(now.getTime() - 47 * 60 * 60 * 1000).toISOString();
+  const freeEntryPointUntil = getFreeEntryPointUntil([
+    {
+      direction: "inbound",
+      created_at: campaignInbound,
+      metadata: { referral: { sourceType: "ad" } },
+    },
+    { direction: "outbound", created_at: campaignReply, metadata: { auto_sent_source: "bot" } },
+  ], now);
+
+  assert.equal(freeEntryPointUntil, new Date(new Date(campaignInbound).getTime() + 72 * 60 * 60 * 1000).toISOString());
+  const result = decideLeadFollowup(base({
+    lastInboundAt: campaignInbound,
+    freeEntryPointUntil,
+  }));
+  assert.equal(result.eligible, true);
+});
+
+test("followup: un lead sin señal de solicitud no se convierte en seguimiento", () => {
+  const result = decideLeadFollowup(
+    base({ status: "contacted", intent: "course_information", tags: ["conversation:first_contact"] }),
   );
   assert.equal(result.eligible, false);
   assert.equal(result.reason, "not_a_followup_stage");
@@ -80,7 +149,12 @@ test("followup: pago pendiente no continúa después de entregar el registro y Q
 
 test("followup: no envía sin consentimiento ni señal de registro", () => {
   const result = decideLeadFollowup(
-    base({ consentToContact: false, tags: ["conversation:info_requested"] }),
+    base({
+      consentToContact: false,
+      status: "interested",
+      intent: "enroll_course",
+      tags: ["source:whatsapp_bot"],
+    }),
   );
   assert.equal(result.eligible, false);
   assert.equal(result.reason, "consent_missing");
