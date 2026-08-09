@@ -724,3 +724,4 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 - B-07: `ack-policy.ts` distingue registro completo, pago pendiente, campo pendiente y ACK genérico. Un lead con confirmación/QR recibe un cierre neutral; un “Ok” después de un prompt de pago no recibe de nuevo el enlace ni el bloque completo.
 - La persistencia del ACK conserva `related_event_id` y registra `ack_reason` para auditoría.
 - Pruebas dirigidas B-05/B-07 y bot: `94/94`; type-check y lint OK.
+- Producción: deploy B-07 `dpl_3YVVhAJvSpMXhUcA9cxv3QgsVv1k` en `READY`; smoke público `/`, `/eventos`, `/admin` `200` y webhook sin firma `403`.
