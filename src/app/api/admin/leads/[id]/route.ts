@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requireAdmin } from "@/lib/auth/session";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
+import { getLeadById } from "@/lib/crm/leads-server";
 import {
   updateLeadStatus,
   archiveLead,
@@ -32,6 +33,42 @@ import {
  */
 
 export const dynamic = "force-dynamic";
+
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: { id: string } },
+) {
+  if (!checkSupabaseConfig().configured) {
+    return NextResponse.json(
+      { ok: false, error: "Supabase no configurado (modo demo)." },
+      { status: 501 },
+    );
+  }
+
+  const admin = await requireAdmin();
+  if (!admin) {
+    return NextResponse.json(
+      { ok: false, error: "No autenticado como admin." },
+      { status: 401 },
+    );
+  }
+
+  try {
+    const lead = await getLeadById(params.id);
+    if (!lead) {
+      return NextResponse.json(
+        { ok: false, error: "Lead no encontrado." },
+        { status: 404 },
+      );
+    }
+    return NextResponse.json({ ok: true, lead }, { headers: { "Cache-Control": "no-store" } });
+  } catch {
+    return NextResponse.json(
+      { ok: false, error: "Error leyendo el lead." },
+      { status: 500 },
+    );
+  }
+}
 
 export async function PATCH(
   req: NextRequest,

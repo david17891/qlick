@@ -87,7 +87,7 @@ export async function sendServiceLeadNotificationToAdmin(
           <tr><td style="padding: 8px; border-bottom: 1px solid #eee; font-weight: bold;">Campaña:</td><td style="padding: 8px; border-bottom: 1px solid #eee;">${escapeHtml(campaign)}</td></tr>
         </table>
         <p style="margin-top: 20px;">
-          <a href="${escapeHtml(crmLink)}" style="background: #4F46E5; color: #fff; padding: 10px 16px; text-decoration: none; border-radius: 6px; display: inline-block;">Abrir Solicitud en Panel de Servicios</a>
+          <a href="${escapeHtml(crmLink)}" style="background: #4F46E5; color: #fff; padding: 10px 16px; text-decoration: none; border-radius: 6px; display: inline-block;">Abrir lead en el CRM</a>
         </p>
       </div>
     `;

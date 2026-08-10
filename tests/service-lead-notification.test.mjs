@@ -12,6 +12,17 @@ describe("Service Lead Notification formatting & email escaping", () => {
     assert.doesNotMatch(url, /qlick\.app|admin\/dashboard/);
   });
 
+  it("conserva un enlace directo al lead cuando el capturador lo proporciona", async () => {
+    const { buildServiceLeadCrmUrl } = await import(
+      "../src/lib/email/service-lead-notification.ts"
+    );
+
+    const url = buildServiceLeadCrmUrl(
+      "https://www.qlick.digital/admin?tab=crm&leadId=lead-123",
+    );
+    assert.equal(url, "https://www.qlick.digital/admin?tab=crm&leadId=lead-123");
+  });
+
   it("sendServiceLeadNotificationToAdmin sanitiza variables HTML y genera contenido plain text", async () => {
     const { sendServiceLeadNotificationToAdmin } = await import(
       "../src/lib/email/service-lead-notification.ts"

@@ -2,6 +2,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { createCRMTask } from "@/lib/crm/tasks-server";
 import { sendServiceLeadNotificationToAdmin } from "@/lib/email/service-lead-notification";
+import { appBaseUrl } from "@/lib/utils";
 import type {
   CaptureServiceInterestInput,
   CaptureServiceInterestResult,
@@ -233,6 +234,7 @@ export async function captureServiceInterest(
         needSummary: input.needSummary,
         preferredContactTime: input.preferredContactTime,
         campaignKey: input.campaignKey,
+        crmUrl: `${appBaseUrl()}/admin?tab=crm&leadId=${encodeURIComponent(leadId)}`,
       });
       notificationSent = emailResult.ok;
     } catch {
@@ -313,6 +315,7 @@ export async function updateServiceInterestDetails(input: {
           needSummary: interestData.need_summary,
           preferredContactTime: input.preferredContactTime || "Confirmado en chat",
           campaignKey: interestData.campaign_key,
+          crmUrl: `${appBaseUrl()}/admin?tab=crm&leadId=${encodeURIComponent(input.leadId)}`,
           isAppointmentConfirmed: true,
         }).catch(() => null);
       }
@@ -343,4 +346,3 @@ export async function hasActiveServiceInterest(
     return false;
   }
 }
-
