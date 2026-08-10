@@ -758,3 +758,11 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 - Se agregó una prueba de regresión para asegurar que el enlace generado no vuelva a usar el dominio o la ruta antiguos. Prueba dirigida `2/2`; type-check, lint y build OK.
 - Producción: deploy `qlick-5jc3g6r7l-david17891-9351s-projects.vercel.app` en `READY`; smoke público `/`, `/admin` y `/admin?tab=servicios` `200`, webhook sin firma `403`.
 - No se modificaron leads, conversaciones ni correos históricos. Solo las notificaciones nuevas usarán el enlace corregido.
+
+## 2026-08-10 — Deep-link de solicitudes de servicios al CRM
+
+- Auditoría del caso real: el registro existe en `leads` con estado `interested`, en `lead_service_interests` con `service_slug=kickstart-meta-ads`, una tarea CRM y seis mensajes de WhatsApp; no tiene `service_order` porque aún no cuenta con variante ni correo.
+- Se corrigió `captureServiceInterest` y la notificación de cita para construir `/admin?tab=crm&leadId=...`. El botón ahora dice `Abrir lead en el CRM`.
+- Se agregó `GET /api/admin/leads/[id]`, protegido por admin y sin caché, y el CRM usa ese endpoint cuando el lead profundo no está en la página cargada.
+- Pruebas dirigidas `5/5`, type-check, lint y build OK. Producción: deploy `dpl_GGUJMQrxhd2iLsraMotcC32WuH9E` en `READY`; smoke enlace CRM `200`, detalle sin sesión `401` y webhook sin firma `403`.
+- No se creó un pedido artificial ni se modificó el lead real.

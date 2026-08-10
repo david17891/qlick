@@ -3,6 +3,8 @@
 
 > **Addendum 2026-08-09 - enlace de leads de servicios:** las notificaciones nuevas por correo ya no apuntan a `qlick.app/admin/dashboard?tab=servicios`, dominio y ruta que no existen. El enlace canonico ahora es `https://www.qlick.digital/admin?tab=servicios`. Deploy `qlick-5jc3g6r7l-david17891-9351s-projects.vercel.app` en `READY`; smoke `/`, `/admin` y `/admin?tab=servicios` `200`, webhook sin firma `403`. Los correos ya enviados conservan su enlace original y no fueron modificados.
 
+> **Addendum 2026-08-10 - deep-link de leads de servicios:** una solicitud de WhatsApp puede existir como `lead_service_interest` sin ser todavía un `service_order` (faltan variante/correo para cotizar). Las notificaciones nuevas abren directamente `/admin?tab=crm&leadId=...`; el CRM puede cargar el lead por id aunque no esté en la primera página. Deploy `dpl_GGUJMQrxhd2iLsraMotcC32WuH9E` en `READY`; smoke enlace CRM `200`, detalle sin sesión `401` y webhook sin firma `403`.
+
 > **Propósito:** Single source of truth "dónde estamos AHORA". A diferencia de
 > `ROADMAP.md` (planes) y `OPEN_ITEMS.md` (deuda histórica), este doc captura
 > el estado actual de producción en un momento dado.
