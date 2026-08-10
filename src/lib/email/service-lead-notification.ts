@@ -1,5 +1,6 @@
 import { getAdminNotificationRecipients } from "@/lib/email/admin-recipients";
 import { sendEmail } from "@/lib/email/brevo-client";
+import { appBaseUrl } from "@/lib/utils";
 
 export interface ServiceLeadNotificationInput {
   leadName?: string | null;
@@ -24,6 +25,11 @@ function escapeHtml(str: string): string {
     .replace(/'/g, "&#039;");
 }
 
+/** URL vigente del panel para que el correo no dependa de rutas legacy. */
+export function buildServiceLeadCrmUrl(crmUrl?: string | null): string {
+  return crmUrl?.trim() || `${appBaseUrl()}/admin?tab=servicios`;
+}
+
 export async function sendServiceLeadNotificationToAdmin(
   input: ServiceLeadNotificationInput
 ): Promise<{ ok: boolean; error?: string }> {
@@ -40,8 +46,7 @@ export async function sendServiceLeadNotificationToAdmin(
     const variant = input.variantSlug ? input.variantSlug : "No especificado";
     const contactTime = input.preferredContactTime ? input.preferredContactTime : "Sin preferencia expresada";
     const campaign = input.campaignKey ? input.campaignKey : "Orgánico / WhatsApp directo";
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://qlick.app";
-    const crmLink = input.crmUrl ? input.crmUrl : `${siteUrl}/admin/dashboard?tab=servicios`;
+    const crmLink = buildServiceLeadCrmUrl(input.crmUrl);
 
     const isConfirmed = input.isAppointmentConfirmed === true;
     const subject = isConfirmed

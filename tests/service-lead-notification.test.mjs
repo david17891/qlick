@@ -2,6 +2,16 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 describe("Service Lead Notification formatting & email escaping", () => {
+  it("construye el enlace con el dominio y ruta actuales del admin", async () => {
+    const { buildServiceLeadCrmUrl } = await import(
+      "../src/lib/email/service-lead-notification.ts"
+    );
+
+    const url = buildServiceLeadCrmUrl();
+    assert.equal(url, "https://qlick.digital/admin?tab=servicios");
+    assert.doesNotMatch(url, /qlick\.app|admin\/dashboard/);
+  });
+
   it("sendServiceLeadNotificationToAdmin sanitiza variables HTML y genera contenido plain text", async () => {
     const { sendServiceLeadNotificationToAdmin } = await import(
       "../src/lib/email/service-lead-notification.ts"
