@@ -751,3 +751,10 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 - Pruebas de alcance/horario/cron `6/6`, type-check OK, lint OK y build OK. El modo nuevo queda listo para activarse después del deploy fijando el corte en producción; el rescate histórico permanece `off`.
 - Producción: tras el deploy `dpl_CqBJpq5UitiQrqEYtjXjmYgn31fJ`, se fijó `lead_new_info_followup_since=2026-08-09T09:01:22Z` y `lead_new_info_followup_mode=live`; el corte encontró 0 leads existentes en alcance, 0 `info_requested` y 0 programados. `lead_info_followup_mode` permanece `off`.
 - Smoke público: `/`, `/eventos`, `/admin` `200` y webhook sin firma `403`.
+
+## 2026-08-09 — Corrección del enlace del correo de servicios
+
+- Se corrigió `src/lib/email/service-lead-notification.ts`: el fallback del botón ya usa `appBaseUrl()` y la ruta canónica `/admin?tab=servicios`; se eliminó la referencia al dominio inexistente `qlick.app` y a `/admin/dashboard`.
+- Se agregó una prueba de regresión para asegurar que el enlace generado no vuelva a usar el dominio o la ruta antiguos. Prueba dirigida `2/2`; type-check, lint y build OK.
+- Producción: deploy `qlick-5jc3g6r7l-david17891-9351s-projects.vercel.app` en `READY`; smoke público `/`, `/admin` y `/admin?tab=servicios` `200`, webhook sin firma `403`.
+- No se modificaron leads, conversaciones ni correos históricos. Solo las notificaciones nuevas usarán el enlace corregido.
