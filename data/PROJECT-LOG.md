@@ -785,3 +785,10 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 - El seguimiento nuevo implementa +4h, prioridad terminada +24h y último día, con reclamo único por confirmación/hito, horario Phoenix, `shadow/live/off` y endpoint autenticado `/api/cron/event-payment-followups`. El cron diario de encuestas dejó de ejecutar recordatorios de pago.
 - Pruebas dirigidas nuevas `28/28`, type-check, lint, build y audit:voseo OK. Suite completa conserva fallos de fixtures de integración preexistentes y expectativas antiguas de QR/pago en puerta; los escenarios afectados fueron actualizados al contrato nuevo.
 - Preview Vercel `qlick-d1qzaadd7-david17891-9351s-projects.vercel.app` y producción `dpl_J1iCEBGQAe1fpHyuA6tqHKvPeRa8` en `READY`; aliases `qlick.digital`/`www.qlick.digital` verificados `200`. `EVENT_PAYMENT_FOLLOWUP_MODE=off` hasta aprobación Meta y secreto Vault.
+## 2026-08-11 — Hardening conversacional desplegado en producción
+
+- Commit `7c65601` integrado en el checkout principal; no se eliminaron cambios locales ajenos.
+- Guardas activas contra pensamientos filtrados, nombres no verificados y afirmaciones de pago/acceso antes de verificación.
+- Deploy Vercel `dpl_kQpUKkLc4rJsdZ7pimTXsgLs1WPR`, proyecto `qlick`, estado `READY`; aliases `qlick.digital` y `www.qlick.digital` verificados con HTTP 200.
+- `BOT_DECISION_ENGINE_MODE` queda en `legacy` por defecto; `safe` funciona como kill-switch y `live` habilita el contrato estructurado validado.
+- Validación: pruebas focalizadas, type-check, lint, build y audit:voseo verdes. Suite completa no se considera gate por E2E que requieren secretos de Supabase ausentes en el worktree.

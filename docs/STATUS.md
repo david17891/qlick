@@ -1,5 +1,17 @@
 # Project Status — Snapshot vivo
 
+> **Addendum 2026-08-11 — hardening conversacional en producción:** se
+> integró `7c65601` en el checkout principal y se desplegó como
+> `dpl_kQpUKkLc4rJsdZ7pimTXsgLs1WPR` en el proyecto Vercel `qlick`. El build
+> remoto terminó `READY`; `https://qlick.digital`,
+> `https://www.qlick.digital` y `/robots.txt` responden HTTP 200. El bot ahora
+> bloquea pensamientos internos, evita nombres no verificados en saludos/LLM,
+> conserva la regla `confirmed = pago o apartado verificado`, valida copy
+> comercial antes de enviar y dispone de kill-switch `BOT_DECISION_ENGINE_MODE=safe`.
+> El default productivo permanece `legacy` para activar gradualmente el motor
+> estructurado sin poner en riesgo conversaciones existentes. Logs de Vercel
+> de la primera hora: sin errores registrados.
+
 > **Addendum 2026-08-10 — confirmado = pago o apartado verificado:** se desplegó
 > la separación operativa entre `confirmed` y `payment_pending`. Producción
 > Supabase `ugpejblymtbwtsoiykyj` quedó con 32 confirmaciones gratuitas,
