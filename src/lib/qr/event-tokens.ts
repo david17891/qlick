@@ -28,6 +28,7 @@ import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { normalizePhone } from "@/lib/crm/phone-utils";
 import { getEventById } from "@/lib/events/events-server";
 import type { EventConfirmation } from "@/types/events";
+import { isEventRegistrationConfirmed } from "@/lib/events/event-registration-state";
 
 // ─────────────────────────────────────────────────────────────
 // Tipos públicos
@@ -163,7 +164,13 @@ export async function generateEventQrTokens(
     );
     attendees = await getConfirmationsByEventId(input.eventId);
   }
-  if (!attendees || attendees.length === 0) {
+  attendees = (attendees ?? []).filter((attendee) =>
+    isEventRegistrationConfirmed({
+      payment_status: attendee.paymentStatus,
+      registration_status: attendee.registrationStatus,
+    }),
+  );
+  if (attendees.length === 0) {
     return {
       ok: true,
       tokens: [],

@@ -376,9 +376,10 @@ test("REGRESION pago-en-puerta: processInboundMessage con evento de pago fuerza 
       `El mensaje de WhatsApp debe mencionar el precio $599. Got: ${preview}`
     );
     assert.ok(
-      preview.includes("puerta") || preview.includes("Pagar en línea"),
-      `El mensaje debe mencionar las 2 opciones de pago (linea o puerta). Got: ${preview}`
+      /pagar\/evento|pago en línea|completa el pago/i.test(preview),
+      `El mensaje debe incluir el CTA de pago en línea. Got: ${preview}`
     );
+    assert.ok(!/pago en puerta|confirmad[oa]|registrad[oa]|QR/i.test(preview));
     // El bot debe haber llamado `update` en event_confirmations con
     // payment_status='pending'. (Si el updateCalls esta vacio, el bot
     // no entro al path de pago y el flow sigue roto.)

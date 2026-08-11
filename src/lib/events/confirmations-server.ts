@@ -59,6 +59,8 @@ export interface CreateConfirmationInput {
   phoneRaw?: string | null;
   /** Si no se pasa, se calcula con normalizePhone(phoneRaw). */
   phoneNormalized?: string | null;
+  /** Vínculo inequívoco al lead que originó la captura, si está disponible. */
+  leadId?: string | null;
   source?: EventConfirmationSource;
   importBatchId?: string | null;
 }
@@ -167,8 +169,22 @@ export async function createConfirmation(
   const email = input.email?.trim().toLowerCase() || null;
   const phoneNormalized =
     input.phoneNormalized ?? (input.phoneRaw ? normalizePhone(input.phoneRaw) : null);
-
   const supabase = createSupabaseAdminClient();
+  const { data: eventRow } = await supabase
+    .from("events")
+    .select("price_mxn")
+    .eq("id", input.eventId)
+    .maybeSingle();
+  const isPaidEvent = Number((eventRow as { price_mxn?: number | null } | null)?.price_mxn ?? 0) > 0;
+  const registrationStatus = isPaidEvent ? "payment_pending" : "confirmed";
+  const paymentStatus = isPaidEvent ? "pending" : "not_required";
+  const paymentReminderEligibleAt =
+    isPaidEvent && (input.source === "public_form" || input.source === "whatsapp_bot")
+      ? new Date().toISOString()
+      : null;
+  const paymentPriorityExpiresAt = paymentReminderEligibleAt
+    ? new Date(new Date(paymentReminderEligibleAt).getTime() + 24 * 60 * 60 * 1000).toISOString()
+    : null;
   // ON CONFLICT DO NOTHING: si ya existe (UNIQUE constraint), no inserta.
   // Devolvemos la fila existente para que el caller sepa el id.
   //
@@ -181,22 +197,57 @@ export async function createConfirmation(
   // actualizamos el name del existing al input. Esto preserva el dedup
   // por email/phone pero limpia los placeholders.
   const desiredName = input.name.trim();
-  const { data, error } = await supabase
+  const safeLeadId = input.leadId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.leadId)
+    ? input.leadId
+    : null;
+  const payload = {
+    event_id: input.eventId,
+    name: desiredName,
+    email,
+    phone_raw: input.phoneRaw?.trim() || null,
+    phone_normalized: phoneNormalized,
+    source: (input.source ?? "imported_excel") as never,
+    import_batch_id: input.importBatchId ?? null,
+    payment_status: paymentStatus,
+    registration_status: registrationStatus,
+    registration_confirmed_at: registrationStatus === "confirmed"
+      ? new Date().toISOString()
+      : null,
+    // Solo las altas nuevas del funnel activo entran al recordatorio.
+    // Con ignoreDuplicates, una confirmación histórica no se modifica.
+    payment_reminder_eligible_at: paymentReminderEligibleAt,
+    payment_priority_expires_at: paymentPriorityExpiresAt,
+    lead_id: safeLeadId,
+  };
+  let upsertResult = await supabase
     .from("event_confirmations")
     .upsert(
-      {
-        event_id: input.eventId,
-        name: desiredName,
-        email,
-        phone_raw: input.phoneRaw?.trim() || null,
-        phone_normalized: phoneNormalized,
-        source: (input.source ?? "imported_excel") as never,
-        import_batch_id: input.importBatchId ?? null,
-      },
+      payload as never,
       { onConflict: "event_id,email", ignoreDuplicates: true },
     )
     .select("*")
     .maybeSingle();
+  // Durante la transición, un preview o un worker antiguo puede apuntar a
+  // un esquema sin las columnas nuevas. Reintentamos solo con las columnas
+  // históricas; la migración posterior hará explícito el estado al aplicar.
+  if (upsertResult.error?.code === "PGRST204") {
+    const legacyPayload = {
+      event_id: payload.event_id,
+      name: payload.name,
+      email: payload.email,
+      phone_raw: payload.phone_raw,
+      phone_normalized: payload.phone_normalized,
+      source: payload.source,
+      import_batch_id: payload.import_batch_id,
+      payment_status: payload.payment_status,
+    };
+    upsertResult = await supabase
+      .from("event_confirmations")
+      .upsert(legacyPayload as never, { onConflict: "event_id,email", ignoreDuplicates: true })
+      .select("*")
+      .maybeSingle();
+  }
+  const { data, error } = upsertResult;
 
   // El conflict de phone_normalized NO lo cubre el upsert anterior (la
   // constraint es por email O phone). Si el upsert pasó con ignore, pero

@@ -85,6 +85,8 @@ interface TokenRow {
   checked_in_at: string | null;
   checked_in_by: string | null;
   expires_at: string;
+  revoked_at: string | null;
+  revoked_reason: string | null;
 }
 
 interface EventJoinRow {
@@ -117,6 +119,8 @@ async function fetchToken(
       checked_in_at,
       checked_in_by,
       expires_at,
+      revoked_at,
+      revoked_reason,
       event:events ( id, title, starts_at, ends_at, location, slug )
     `,
     )
@@ -164,6 +168,9 @@ export async function GET(
       },
       { status: 410 },
     );
+  }
+  if (found.row.revoked_at) {
+    return NextResponse.json({ ok: false, error: "Este pase no está habilitado." }, { status: 410 });
   }
   return NextResponse.json({
     ok: true,
@@ -224,6 +231,9 @@ export async function POST(
       { status: 410 },
     );
   }
+  if (found.row.revoked_at) {
+    return NextResponse.json({ ok: false, error: "Este pase no está habilitado." }, { status: 410 });
+  }
 
   const supabase = createSupabaseAdminClient();
   const nowIso = new Date().toISOString();
@@ -237,8 +247,7 @@ export async function POST(
   // el warning + opcion de "marcar como pagado en puerta" via
   // /api/staff/check-in/[token]/mark-paid.
   //
-  // - 'paid' / 'pending_verification' (OXXO/SPEI) / 'paid_manual' /
-  //   'not_required' (gratis): OK, check-in.
+  // - 'paid' / 'partial' / 'paid_manual' / 'not_required' (gratis): OK.
   // - 'pending' (evento de pago sin pagar): 403 con info de pago.
   // - 'revoked' (pago devuelto): 403, NO permitir.
   //
@@ -254,7 +263,7 @@ export async function POST(
   if (resolvedConfId) {
     const { data: confRow, error: confErr } = await supabase
       .from("event_confirmations")
-      .select("id, payment_status, name, email, phone_normalized")
+      .select("id, payment_status, registration_status, name, email, phone_normalized")
       .eq("id", resolvedConfId)
       .maybeSingle();
     if (!confErr && confRow) {
@@ -271,7 +280,8 @@ export async function POST(
           { status: 403 },
         );
       }
-      if (ps === "pending") {
+      const registrationStatus = (confRow as { registration_status?: string | null }).registration_status;
+      if (ps === "pending" || ps === "pending_verification" || registrationStatus === "payment_pending") {
         // 403 con la info de pago. El scanner del staff puede
         // usar POST /api/staff/check-in/mark-paid para registrar
         // el pago en puerta y hacer check-in en un solo paso.
@@ -279,9 +289,14 @@ export async function POST(
           {
             ok: false,
             error:
-              "Pago pendiente. Cobrar en caja antes de entrar y luego marcar como pagado en puerta.",
-            payment_status: "pending",
-            requires_action: "collect_payment_door",
+              ps === "pending_verification"
+                ? "Pago en verificación. No se puede entrar hasta confirmarlo."
+                : "Pago pendiente. Cobrar en caja antes de entrar y luego marcar como pagado en puerta.",
+            payment_status: ps,
+            requires_action:
+              ps === "pending_verification"
+                ? "manual_payment_review"
+                : "collect_payment_door",
             attendee: {
               name: (confRow as { name?: string | null }).name,
               event_title: found.event.title,

@@ -207,6 +207,7 @@ export async function submitEventRegistration(
       note: result.note,
     };
   }
+  const paidEvent = (event.priceMXN ?? 0) > 0;
 
   // Sprint pagos-manuales 2026-07-15: si el evento es de cobro (priceMXN > 0)
   // y la confirmation es nueva (created === true), seteamos
@@ -239,7 +240,7 @@ export async function submitEventRegistration(
   // El mismo token sirve para el check-in presencial si después
   // decides ir físicamente (caso híbrido).
   let gateUrl: string | undefined;
-  if (event.format !== "in_person" && event.streamingUrl) {
+  if (!paidEvent && event.format !== "in_person" && event.streamingUrl) {
     gateUrl = await generateGateUrlForConfirmation({
       eventId: event.id,
       confirmationId: result.confirmation?.id ?? "",
@@ -259,7 +260,7 @@ export async function submitEventRegistration(
   // El helper registra el intento en event_email_log y devuelve fallo sin
   // lanzar, para que la confirmación no se pierda si el proveedor falla.
   let emailSent: boolean | undefined;
-  if (result.created && result.confirmation && email) {
+  if (!paidEvent && result.created && result.confirmation && email) {
     try {
       const emailResult = await sendQrPassForConfirmation({
         confirmationId: result.confirmation.id,
@@ -282,18 +283,26 @@ export async function submitEventRegistration(
   // created=false → ya estaba registrada (dedup atómico por email/phone).
   // Lo tratamos como éxito con copy distinto: no la "molestamos" con otro
   // email de bienvenida, pero sí confirmamos que sigue vigente.
+  const reservationEnabled = event.eventRules?.reservation_enabled === true
+    && typeof event.eventRules.reservation_amount_mxn === "number"
+    && event.eventRules.reservation_amount_mxn > 0;
+  const paymentUrl = paidEvent && result.confirmation
+    ? `${appBaseUrl()}/pagar/evento/${event.slug}?confirmation=${result.confirmation.id}${reservationEnabled ? "&payment_option=reservation" : ""}`
+    : null;
   return {
     ok: true,
     created: result.created,
     persisted: result.persisted,
     emailSent,
-    note: result.created
-      ? emailSent === true
-        ? "¡Listo! Confirmamos tu asistencia. Te enviamos por correo tu QR y las instrucciones de pago."
-        : emailSent === false
-          ? "¡Listo! Confirmamos tu asistencia, pero no pudimos entregar el correo. Revisa tu email o contacta al equipo de Qlick."
-          : "¡Listo! Confirmamos tu asistencia. Te enviaremos los detalles antes del evento."
-      : "Ya estás registrada en este evento. Te esperamos.",
+    note: paidEvent
+      ? `Recibimos tus datos. Para confirmar tu asistencia y recibir tu QR, completa tu ${reservationEnabled ? "apartado" : "pago"} aquí: ${paymentUrl}`
+      : result.created
+        ? emailSent === true
+          ? "¡Listo! Confirmamos tu asistencia. Te enviamos por correo tu QR y los detalles del evento."
+          : emailSent === false
+            ? "¡Listo! Confirmamos tu asistencia, pero no pudimos entregar el correo. Revisa tu email o contacta al equipo de Qlick."
+            : "¡Listo! Confirmamos tu asistencia. Te enviaremos los detalles antes del evento."
+        : "Ya estás registrada en este evento. Te esperamos.",
     gateUrl,
   };
 }

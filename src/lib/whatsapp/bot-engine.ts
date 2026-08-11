@@ -814,6 +814,7 @@ export function matchInscriptionIntent(body: string): boolean {
       // "inscribirme" / "inscribime" (típico en chat de México). El bot
       // NO se ofende con errata — matchea intent.
       "\\b(?:quiero\\s+(?:inscribirme|inscribime|registrarme|registrame|reg[ií]strate|apartar|reservar|el\\s+lugar|mi\\s+lugar)|" +
+        "(?:quiero|me\\s+gustar[ií]a)\\s+(?:presenciar|asistir|participar|tomar)\\s+(?:(?:al?|en\\s+el|en\\s+la)\\s+)?(?:taller|evento|curso)|" +
         "me\\s+interesa\\s+(?:inscribirme|el\\s+evento|el\\s+curso|apartar|reservar)|" +
         "inscribirme?\\s+(?:al?\\s*)?(?:evento|curso|taller)?|" +
         "reg(?:i[sz]?t(?:r|rr)?ar?|istrar)me?\\s+(?:al?\\s*)?(?:evento|curso|taller)?|" +
@@ -903,7 +904,8 @@ const CONVERSATIONAL_FILLER_WORDS = new Set([
   "claro", "pues", "hey", "hola", "gracias", "thanks", "ola",
   "oe", "ea", "mm", "hmm", "ups", "ahh", "sii", "nop", "nope",
   "yep", "yup", "mmm", "ajá", "aja", "dale", "va", "listo",
-  "perfecto", "excelente", "genial", "okas", "okis",
+  "perfecto", "excelente", "genial", "okas", "okis", "bns", "buenos",
+  "buenas", "días", "dias", "tardes", "noches",
 ]);
 
 /**
@@ -1410,7 +1412,7 @@ const REGISTER_RE = /^(s[ií]\b|confirmo\b|inscribirme\b|registrarme\b|quiero\b|
 // Sin ancla para detectar la intención aún si el mensaje arranca con un
 // saludo. RIESGO de falsos positivos mitigado porque las frases son
 // específicas del funnel (palabras únicas).
-const REGISTER_PHRASE_RE = /\b(quiero\s+inscribirme|me\s+interesa\s+(inscribirme|el\s+curso|el\s+evento|saber\s+m[aá]s)|inscribirme\s+al?\s+evento|c[oó]mo\s+me\s+inscribo)\b/i;
+const REGISTER_PHRASE_RE = /\b(quiero\s+inscribirme|me\s+interesa\s+(inscribirme|el\s+curso|el\s+evento|saber\s+m[aá]s)|inscribirme\s+al?\s+evento|c[oó]mo\s+me\s+inscribo|(?:quiero|me\s+gustar[ií]a)\s+(?:presenciar|asistir|participar|tomar)\s+(?:(?:al?|en\s+el|en\s+la)\s+)?(?:taller|evento|curso))\b/i;
 
 /**
  * Detección de consultas sobre Servicios B2B / Agencia Qlick (diseño web, anuncios, servicios, etc.).
@@ -1705,6 +1707,22 @@ async function syncLeadLifecycle(
     });
   }
   return lifecycle;
+}
+
+function buildPaymentPendingCopy(args: {
+  attendeeName?: string | null;
+  event: ActiveEventContext;
+  confirmationId: string;
+}): string {
+  const clean = cleanFirstName(args.attendeeName);
+  const saludo = clean ? `¡Hola ${clean}!` : "¡Hola!";
+  const terms = getReservationTerms(args.event);
+  const amount = terms.enabled ? terms.amount : args.event.priceMxn ?? 0;
+  const paymentUrl = `${appBaseUrl()}/pagar/evento/${args.event.slug}?confirmation=${args.confirmationId}${terms.enabled ? "&payment_option=reservation" : ""}`;
+  const balanceLine = terms.enabled
+    ? ` El saldo de $${terms.balance.toLocaleString("es-MX")} MXN se liquida ${terms.note.toLowerCase()}.`
+    : "";
+  return `${saludo} Recibimos tus datos para *${args.event.title}*. Para confirmar tu asistencia y recibir tu QR, ${terms.enabled ? "aparta" : "completa el pago de"} $${amount.toLocaleString("es-MX")} MXN aquí:\n${paymentUrl}.${balanceLine}`;
 }
 
 /**
@@ -3030,6 +3048,7 @@ async function buildResponsePlan(args: {
         kind: "interactive",
         body: bodyText,
         interactive,
+        metadata: { awaiting_confirmation_for_event_slug: evtSlug },
         send: () =>
           provider.send({
             to: phoneNormalized,
@@ -3160,11 +3179,11 @@ case "interactive_event_inscribir": {
             // huerfano y continuamos el flow normal (crear nueva
             // confirmation). Tambien leemos el payment_status para
             // agregar copy dinamico al mensaje.
-            let confRow: { id: string; payment_status: string | null } | null = null;
+            let confRow: { id: string; payment_status: string | null; registration_status?: string | null } | null = null;
             if (existingToken.confirmationId && supabase) {
               const { data: confData } = await supabase
                 .from("event_confirmations" as never)
-                .select("id, payment_status")
+                .select("id, payment_status, registration_status")
                 .eq("id" as never, existingToken.confirmationId)
                 .maybeSingle();
               confRow = confData as { id: string; payment_status: string | null } | null;
@@ -3179,6 +3198,21 @@ case "interactive_event_inscribir": {
                 qrConfirmationId: existingToken.confirmationId,
               });
             } else {
+              const pendingRegistration = confRow.registration_status === "payment_pending"
+                || confRow.payment_status === "pending"
+                || confRow.payment_status === "pending_verification";
+              if (pendingRegistration && (evtReal.priceMxn ?? 0) > 0) {
+                const pendingBody = buildPaymentPendingCopy({
+                  attendeeName: firstName,
+                  event: evtReal,
+                  confirmationId: confRow.id,
+                });
+                return {
+                  kind: "text",
+                  body: pendingBody,
+                  send: () => provider.send({ to: phoneNormalized, body: pendingBody }),
+                };
+              }
               const evtCodeLabel = evtReal.shortCode ? ` (código ${evtReal.shortCode})` : "";
               const cleanAlready = cleanFirstName(firstName);
               const saludoAlready = cleanAlready ? `¡Hola ${cleanAlready}!` : "¡Hola!";
@@ -4403,16 +4437,16 @@ case "interactive_event_inscribir": {
           ? reservationTermsIc.enabled
             // FIX 2026-07-24: hay apartado configurado. Generamos
             // el copy de apartado con el monto del event_rules.
-            ? ` El evento cuesta $${regEvtIc!.priceMxn!.toLocaleString("es-MX")} MXN. Para apartar tu lugar paga $${reservationTermsIc.amount.toLocaleString("es-MX")} MXN en línea; el saldo de $${reservationTermsIc.balance.toLocaleString("es-MX")} MXN se liquida ${reservationTermsIc.note.toLowerCase()}\n\nAparta aquí (tarjeta/OXXO/SPEI): ${appBaseUrl()}/pagar/evento/${regEvtSlugIc}?payment_option=reservation`
+            ? ` El evento cuesta $${regEvtIc!.priceMxn!.toLocaleString("es-MX")} MXN. Para confirmar tu asistencia, aparta $${reservationTermsIc.amount.toLocaleString("es-MX")} MXN en línea; el saldo de $${reservationTermsIc.balance.toLocaleString("es-MX")} MXN se liquida ${reservationTermsIc.note.toLowerCase()}\n\nAparta aquí (tarjeta/OXXO/SPEI): ${appBaseUrl()}/pagar/evento/${regEvtSlugIc}?payment_option=reservation`
             // Sin apartado: copy legacy de pago completo / pago
             // en puerta (preservado).
-            : ` El evento cuesta $${regEvtIc!.priceMxn!.toLocaleString("es-MX")} MXN. Tienes 2 opciones: 1) Pagar en línea ahora (tarjeta/OXXO/SPEI): ${appBaseUrl()}/pagar/evento/${regEvtSlugIc}  2) Pagar en puerta el día del evento (efectivo o tarjeta). Solo avísanos al llegar.`
+            : ` El evento cuesta $${regEvtIc!.priceMxn!.toLocaleString("es-MX")} MXN. Para confirmar tu asistencia, completa el pago en línea aquí: ${appBaseUrl()}/pagar/evento/${regEvtSlugIc}`
           : regEvtIsPaidIc
-            ? ` El evento cuesta $${regEvtIc!.priceMxn!.toLocaleString("es-MX")} MXN. Puedes pagar en puerta el día del evento (efectivo o tarjeta). Te enviaremos el link de pago en línea pronto.`
+            ? ` El evento cuesta $${regEvtIc!.priceMxn!.toLocaleString("es-MX")} MXN. Al verificarse el pago te envío tu QR.`
             : "";
-        const bodyText =
-          `${saludoIc} Ya te tengo registrado. Te enviamos tu QR al ` +
-          `correo ${implicitEmail}.${accessLineIc}${paymentLineIc}`;
+        const bodyText = regEvtIsPaidIc
+          ? `${saludoIc} Recibimos tus datos para el evento.${paymentLineIc}`
+          : `${saludoIc} Ya te tengo registrado. Te enviamos tu QR al correo ${implicitEmail}.${accessLineIc}`;
         return {
           kind: "text",
           body: bodyText,
@@ -4580,16 +4614,20 @@ case "interactive_event_inscribir": {
       const paymentBlock = regEvtIsPaid
         ? checkoutUrl
           ? reservationTerms.enabled
-            ? `\n\nSobre el pago: el evento cuesta $${regPriceMxn.toLocaleString("es-MX")} MXN. Para apartar tu lugar paga $${reservationTerms.amount.toLocaleString("es-MX")} MXN en línea; el saldo de $${reservationTerms.balance.toLocaleString("es-MX")} MXN se liquida ${reservationTerms.note.toLowerCase()}\n\nAparta aquí (tarjeta/OXXO/SPEI): ${checkoutUrl}`
-            : `\n\nSobre el pago: el evento cuesta $${regPriceMxn} MXN. Tienes 2 opciones:\n1. Pagar en línea ahora (tarjeta/OXXO/SPEI): ${checkoutUrl}\n2. Pagar en puerta el día del evento (efectivo o tarjeta). Solo avísanos al llegar.`
-          : `\n\nSobre el pago: el evento cuesta $${regPriceMxn} MXN. Puedes pagar en puerta el día del evento (efectivo o tarjeta). Te enviaremos el link de pago en línea pronto.`
+            ? `\n\nPara confirmar tu asistencia, aparta $${reservationTerms.amount.toLocaleString("es-MX")} MXN en línea. El saldo de $${reservationTerms.balance.toLocaleString("es-MX")} MXN se liquida ${reservationTerms.note.toLowerCase()}\n\nAparta aquí: ${checkoutUrl}`
+            : `\n\nPara confirmar tu asistencia, completa el pago de $${regPriceMxn.toLocaleString("es-MX")} MXN aquí: ${checkoutUrl}`
+          : `\n\nEl enlace de pago estará disponible en breve. Al verificarse el pago te envío tu QR.`
         : "";
-      const eventLine = isVirtual && hasStreamingLink
+      const eventLine = regEvtIsPaid
+        ? ""
+        : isVirtual && hasStreamingLink
         ? `\n\nEs un evento virtual. Te enviamos el link de acceso al stream por correo. Cuando estés listo, haz click y entras.${regEvt?.streamingAccessNote ? `\n\n${regEvt.streamingAccessNote}` : ""}`
         : isVirtual
           ? `\n\nEs un evento virtual. ${regEvt?.streamingAccessNote ? `${regEvt.streamingAccessNote}\n\n` : ""}Aún no tenemos el link del stream configurado — te lo enviamos por correo y por aquí el día del evento. Guarda tu pase con QR, lo vas a necesitar para confirmar asistencia.`
           : `\n\nTambién te enviamos el pase con el QR a tu correo. Lo vas a necesitar el día del evento.`;
-      const bodyText = qrUrl
+      const bodyText = regEvtIsPaid
+        ? `Listo${clean ? " " + clean : ""}, recibimos tus datos para el evento.${paymentBlock}`
+        : qrUrl
         ? `Listo${clean ? " " + clean : ""}, te registramos para el evento. Tu pase (link de check-in): ${qrUrl}${eventLine}${paymentBlock}`
         : `Listo${clean ? " " + clean : ""}, registramos tu email ${email}. Te esperamos el ${evt.date} en ${evt.location}.${paymentBlock}`;
       return {
@@ -7189,13 +7227,14 @@ export async function processInboundMessage(
           const paymentUrl = terms.enabled && existing.confirmationId
             ? `${appBaseUrl()}/pagar/evento/${targetSlug}?confirmation=${existing.confirmationId}&payment_option=reservation`
             : null;
-          const bodyText = terms.enabled && paymentUrl
-            ? `${saludo} Ya estás registrado en *${evtName}*${evtCodeLabel}. El precio total es de $${evt?.priceMxn?.toLocaleString("es-MX") ?? priceDisplay} MXN.\n\n` +
-              `Para apartar tu lugar paga $${terms.amount.toLocaleString("es-MX")} MXN aquí:\n${paymentUrl}\n\n` +
-              `El saldo de $${terms.balance.toLocaleString("es-MX")} MXN se liquida ${terms.note.toLowerCase()}`
-            : `${saludo} Ya estás registrado en *${evtName}*${evtCodeLabel} (${priceDisplay}). ` +
-              `\n\n⚠️ Tu registro está pendiente de pago. Te avisaremos cuando esté listo el enlace para completar el registro.` +
-              `\n\nSi quieres acelerar, escríbenos a hola@qlick.marketing.`;
+          const bodyText = evt && existing.confirmationId
+            ? buildPaymentPendingCopy({
+                attendeeName: lead.name,
+                event: evt,
+                confirmationId: existing.confirmationId,
+              })
+            : `${saludo} Recibimos tus datos para *${evtName}*${evtCodeLabel}. ` +
+              `Completa el pago de ${priceDisplay} aquí cuando tengas el enlace.`;
           const provider = getActiveWhatsAppProvider();
           let sendResult: { ok: boolean; externalId?: string; demo?: boolean } = {
             ok: false
@@ -7462,7 +7501,7 @@ export async function processInboundMessage(
         // Sin email real. Pedir email.
         const bodyText =
           `Gracias ${cleanLeadName}. Ahora mándame tu email y te ` +
-          `paso el QR + el link de pago.`;
+          `envío el enlace para confirmar tu asistencia.`;
         let sendResult: { ok: boolean; externalId?: string; demo?: boolean } = {
           ok: false
         };
@@ -7546,6 +7585,7 @@ export async function processInboundMessage(
               name: lead.name?.trim() || "Asistente",
               email: lead.email ?? null,
               phoneRaw: phoneNormalized,
+              leadId: lead.id,
               source: "whatsapp_bot",
             }).catch((err) => {
               errorLog("[whatsapp/bot] pending_payment: createConfirmation throw", {
@@ -7659,7 +7699,9 @@ export async function processInboundMessage(
             // 2. Mandar email de bienvenida con bloque de pago (vía el
             //    helper sendQrPassForConfirmation que ya usa el form
             //    publico). Fire-and-forget: no bloquea el response.
-            if (lead.email && evtForPayment) {
+            // Conservamos el helper de pase para eventos gratuitos, pero un
+            // evento pagado no recibe QR ni email hasta verificar el pago.
+            if (lead.email && evtForPayment && (evtForPayment.priceMxn ?? 0) <= 0) {
               void (async () => {
                 try {
                   const { sendQrPassForConfirmation } = await import(
@@ -7688,13 +7730,12 @@ export async function processInboundMessage(
             const clean = cleanFirstName(lead.name);
             const saludo = clean ? `¡Listo ${clean}!` : "¡Listo!";
             const bodyText = paymentTerms.enabled
-              ? `${saludo} Tu registro para *${evtName}*${evtCodeLabel} quedó listo. El precio total es de $${evtForPayment?.priceMxn?.toLocaleString("es-MX") ?? priceDisplay} MXN.\n\n` +
-                `Para apartar tu lugar paga $${paymentTerms.amount.toLocaleString("es-MX")} MXN aquí:\n${checkoutUrl}\n\n` +
+              ? `${saludo} Recibimos tus datos para *${evtName}*${evtCodeLabel}. El precio total es de $${evtForPayment?.priceMxn?.toLocaleString("es-MX") ?? priceDisplay} MXN.\n\n` +
+                `Para confirmar tu asistencia, aparta $${paymentTerms.amount.toLocaleString("es-MX")} MXN aquí:\n${checkoutUrl}\n\n` +
                 `El saldo de $${paymentTerms.balance.toLocaleString("es-MX")} MXN se liquida ${paymentTerms.note.toLowerCase()}`
-              : `${saludo} Tu lugar para *${evtName}*${evtCodeLabel} (${priceDisplay}) está apartado.\n\n` +
-                `Para confirmar tu lugar, completa el pago aquí:\n${checkoutUrl}\n\n` +
-                `Aceptamos tarjeta, OXXO, SPEI y transferencia. Si pagas en ` +
-                `efectivo en puerta, avísanos y lo registramos a mano.`;
+              : `${saludo} Recibimos tus datos para *${evtName}*${evtCodeLabel} (${priceDisplay}).\n\n` +
+                `Para confirmar tu asistencia, completa el pago aquí:\n${checkoutUrl}\n\n` +
+                `Aceptamos tarjeta, OXXO y SPEI. Cuando se verifique, te enviamos tu QR.`;
 
             const provider = getActiveWhatsAppProvider();
             let sendResult: { ok: boolean; externalId?: string; demo?: boolean } = {
@@ -7752,6 +7793,7 @@ export async function processInboundMessage(
   // (ultimo outbound del bot). Si no se puede identificar, fallback al
   // primer evento published (comportamiento historico).
   let qrUrl: string | null = null;
+  let registrationPendingPayment = false;
   let registrationEventSlug: string | null = null;
   let registrationEventTitle: string | null = null;
   let registrationEventRequiresName: boolean = false;
@@ -8007,6 +8049,7 @@ export async function processInboundMessage(
             email,
             phoneRaw: phoneNormalized,
             phoneNormalized,
+            leadId: lead.id,
             source: "whatsapp_bot",
           });
           debugLog("[whatsapp/bot] provide_email: confirmation registrada", {
@@ -8063,10 +8106,16 @@ export async function processInboundMessage(
           const regEvtIsPaid =
             typeof regEvt.priceMxn === "number" && regEvt.priceMxn > 0;
           if (regEvtIsPaid && confResult?.ok && confResult.confirmation) {
+            registrationPendingPayment = confResult.confirmation.registrationStatus !== "confirmed"
+              || confResult.confirmation.paymentStatus === "pending"
+              || confResult.confirmation.paymentStatus === "pending_verification";
             try {
               const { error: payUpdErr } = await supabase
                 .from("event_confirmations")
-                .update({ payment_status: "pending" } as never)
+                .update({
+                  payment_status: "pending",
+                  registration_status: "payment_pending",
+                } as never)
                 .eq("id", confResult.confirmation.id);
               if (payUpdErr) {
                 errorLog("[whatsapp/bot] provide_email: payment_status update fallo (no fatal)", {
@@ -8087,6 +8136,15 @@ export async function processInboundMessage(
                 leadId: lead.id,
                 error: payUpdEx instanceof Error ? payUpdEx.message : String(payUpdEx),
               });
+            }
+            if (registrationPendingPayment && qr) {
+              await supabase
+                .from("event_qr_tokens" as never)
+                .update({
+                  revoked_at: new Date().toISOString(),
+                  revoked_reason: "payment_pending_registration",
+                } as never)
+                .eq("token" as never, qr.token);
             }
           }
 
@@ -8123,7 +8181,7 @@ export async function processInboundMessage(
     // REGISTRO (registrationEventSlug), no loadActiveEventContext() que
     // siempre retorna el primero. Asi el email coincide con el QR y la
     // pagina de check-in.
-    if (qrUrl && qr) {
+    if (qrUrl && qr && !registrationPendingPayment) {
       void (async () => {
         try {
           const event = registrationEventSlug
@@ -8371,6 +8429,7 @@ export async function processInboundMessage(
     const ic = planMeta.implicit_capture;
     const capturedEmail = ic.email.toLowerCase().trim();
     const capturedName = ic.name.trim();
+    let implicitPaymentPending = false;
     try {
       // a) Update lead con email + nombre + consent.
       const { error: leadUpdateErr } = await supabase
@@ -8459,6 +8518,7 @@ export async function processInboundMessage(
               email: capturedEmail,
               phoneRaw: phoneNormalized,
               phoneNormalized,
+              leadId: lead.id,
               source: "whatsapp_bot"
             });
             debugLog("[whatsapp/bot] implicit_capture: confirmation registrada", {
@@ -8492,10 +8552,16 @@ export async function processInboundMessage(
               confResult?.ok &&
               confResult.confirmation
             ) {
+              implicitPaymentPending = confResult.confirmation.registrationStatus !== "confirmed"
+                || confResult.confirmation.paymentStatus === "pending"
+                || confResult.confirmation.paymentStatus === "pending_verification";
               try {
                 await supabase
                   .from("event_confirmations" as never)
-                  .update({ payment_status: "pending" } as never)
+                  .update({
+                    payment_status: "pending",
+                    registration_status: "payment_pending",
+                  } as never)
                   .eq("id" as never, confResult.confirmation.id);
               } catch (paymentStatusErr) {
                 errorLog("[whatsapp/bot] implicit_capture: payment_status update falló", {
@@ -8505,6 +8571,15 @@ export async function processInboundMessage(
                       ? paymentStatusErr.message
                       : String(paymentStatusErr),
                 });
+              }
+              if (implicitPaymentPending && qr) {
+                await supabase
+                  .from("event_qr_tokens" as never)
+                  .update({
+                    revoked_at: new Date().toISOString(),
+                    revoked_reason: "payment_pending_registration",
+                  } as never)
+                  .eq("token" as never, qr.token);
               }
             }
             if (confResult?.ok && confResult.confirmation) {
@@ -8523,7 +8598,7 @@ export async function processInboundMessage(
         }
       }
       // f) Send event QR pass email (best-effort).
-      if (qr) {
+      if (qr && !implicitPaymentPending) {
         void (async () => {
           try {
             const event = icEventSlug

@@ -60,6 +60,7 @@ import { grantEventAccess, revokeEventAccess } from "@/lib/lms/event-entitlement
 import { notifyLeadPaymentConfirmed as notifyLeadPaymentConfirmedLib } from "@/lib/payments/notify-lead-payment-confirmed";
 import { findConfirmationIdForEvent } from "@/lib/events/find-confirmation-id";
 import { ensureEventConfirmation } from "@/lib/events/ensure-event-confirmation";
+import { setEventConfirmationPaymentState } from "@/lib/events/event-registration-state";
 import { logAdminAction } from "@/lib/crm/audit-server";
 import {
   extractProductRefFromMetadata,
@@ -1202,20 +1203,29 @@ async function handleCheckoutCompleted(
       (productRef.kind === "event" || productRef.kind === "masterclass") &&
       productRef.paymentPurpose === "reservation";
     if (isReservation) {
-      // El apartado confirma la intención y se registra en el ledger, pero
-      // no entrega acceso completo ni cambia la confirmación a `paid`.
+      // El apartado es un pago verificado: confirma la asistencia y habilita
+      // el pase, aunque conserva `partial` para el saldo restante.
+      let reservationRegistrationStatus: "payment_pending" | "confirmed" = "confirmed";
       if (eventConfirmationId) {
-        const { error: pendingError } = await supabase
-          .from("event_confirmations")
-          .update({ payment_status: "pending" } as never)
-          .eq("id", eventConfirmationId)
-          .neq("payment_status", "revoked");
-        if (pendingError) {
+        const stateResult = await setEventConfirmationPaymentState(supabase, {
+          confirmationId: eventConfirmationId,
+          paymentStatus: "partial",
+        });
+        reservationRegistrationStatus = stateResult.registrationStatus;
+        if (!stateResult.ok) {
           errorLog("[stripe-webhook] reservation payment_status update fallo", {
             confirmationId: eventConfirmationId,
-            error: pendingError.message,
+            error: stateResult.error,
           });
         }
+        await grantEventAccess({
+          userId: userId || null,
+          confirmationId: eventConfirmationId,
+          eventId: productRef.id,
+          source: "event_purchase",
+          paymentId: payment.id,
+          grantedReason: "reservation_payment_verified",
+        });
         try {
           await notifyLeadPaymentConfirmedLib({
             confirmationId: eventConfirmationId,
@@ -1238,8 +1248,9 @@ async function handleCheckoutCompleted(
           event_id: event.id,
           payment_id: payment.id,
           payment_purpose: "reservation",
-          access_granted: false,
-          confirmation_payment_status: "pending",
+          access_granted: Boolean(eventConfirmationId),
+          confirmation_payment_status: "partial",
+          registration_status: reservationRegistrationStatus,
         },
       };
     }
@@ -1297,16 +1308,16 @@ async function handleCheckoutCompleted(
     // causaba que la UI mostrara "Pago pendiente" aunque el cargo
     // ya estuviera cobrado. Lo arreglamos acá, idempotente.
     if (confLookup) {
-      const { error: confUpdErr } = await supabase
-        .from("event_confirmations")
-        .update({ payment_status: "paid" } as never)
-        .eq("id", confLookup);
-      if (confUpdErr) {
+      const stateResult = await setEventConfirmationPaymentState(supabase, {
+        confirmationId: confLookup,
+        paymentStatus: "paid",
+      });
+      if (!stateResult.ok) {
         // No rompemos el flow si falla (el pago está approved igual).
         // Solo loggeamos.
         errorLog("[stripe-webhook] update confirmation payment_status fallo", {
           confirmationId: confLookup,
-          error: confUpdErr.message,
+          error: stateResult.error,
         });
       }
     }
@@ -1757,11 +1768,12 @@ async function handleChargeRefunded(
     if (eventConfirmationIdForRefund) {
       // La confirmación es la vista que consume el QR y el admin. Al
       // revocar el acceso por refund debe dejar de mostrarse como pagada.
-      await supabase
-        .from("event_confirmations")
-        .update({ payment_status: "revoked" } as never)
-        .eq("id", eventConfirmationIdForRefund)
-        .in("payment_status", ["paid", "paid_manual"]);
+      // The helper projects this into `payment_status: "revoked"` and
+      // registration_status=payment_pending while retaining the ledger.
+      await setEventConfirmationPaymentState(supabase, {
+        confirmationId: eventConfirmationIdForRefund,
+        paymentStatus: "revoked",
+      });
     }
     const { data: eventAccess } = await supabase
       .from("event_access")

@@ -12,6 +12,8 @@ export const RELATIONSHIP_STAGES = [
   "interested",
   "capturing",
   "registered",
+  "payment_pending",
+  "confirmed",
   "attended",
   "no_show",
   "closed",

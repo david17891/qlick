@@ -48,6 +48,7 @@ import { getEventPaymentsSnapshot } from "@/lib/payments/event-payments-server";
 import { formatSurveyResponses } from "@/lib/events/survey-display";
 import { SurveyEditor } from "@/components/events/SurveyEditor";
 import { getDefaultSurveyConfig } from "@/lib/events/survey-config-validator";
+import { isEventRegistrationConfirmed } from "@/lib/events/event-registration-state";
 
 interface Props {
   params: { id: string };
@@ -225,8 +226,16 @@ export default async function AdminEventoDetailPage({
     notFound();
   }
 
-  // Conteos para el header.
-  const confirmedCount = confirmations.length;
+  // Conteos para el header. En eventos de pago, solamente el apartado
+  // mínimo o el pago verificado entra a la lista de confirmados. Las filas
+  // pendientes se conservan y se muestran en la pestaña de pagos.
+  const confirmedConfirmations = confirmations.filter((confirmation) =>
+    isEventRegistrationConfirmed({
+      payment_status: confirmation.paymentStatus,
+      registration_status: confirmation.registrationStatus,
+    }),
+  );
+  const confirmedCount = confirmedConfirmations.length;
   const attendedCount = attendees.length;
   const unmatchedCount = unmatchedAttendees.length;
   const surveysCount = surveys.length;
@@ -241,7 +250,7 @@ export default async function AdminEventoDetailPage({
   const attendeesWithPhone = attendees.filter(
     (a) => !!a.phoneNormalized
   ).length;
-  const confirmationsWithPhone = confirmations.filter(
+  const confirmationsWithPhone = confirmedConfirmations.filter(
     (c) => !!c.phoneNormalized
   ).length;
 
@@ -565,7 +574,7 @@ export default async function AdminEventoDetailPage({
             // `tests/confirmation-filter.test.mjs`).
             const { filtered: filteredConfirmations, isFiltered } =
               filterConfirmations({
-                confirmations,
+                confirmations: confirmedConfirmations,
                 query: searchQuery,
                 source: activeSource,
               });
@@ -777,7 +786,7 @@ export default async function AdminEventoDetailPage({
                   )}
                 </form>
 
-                {confirmations.length === 0 ? (
+                {confirmedConfirmations.length === 0 ? (
                   <EmptyState
                     icon="📭"
                     title="Aun no hay confirmados"
@@ -1551,12 +1560,12 @@ export default async function AdminEventoDetailPage({
                 count={confirmedCount}
                 tone="brand"
               >
-                {confirmations.length === 0 ? (
+                {confirmedConfirmations.length === 0 ? (
                   <p className="text-xs text-ink-muted italic text-center py-6 px-2">
                     Aun sin confirmados
                   </p>
                 ) : (
-                  confirmations.map((c) => (
+                  confirmedConfirmations.map((c) => (
                     <PipelineCard
                       key={c.id}
                       name={c.name}

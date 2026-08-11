@@ -40,6 +40,7 @@ import { requireAdmin } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { logAdminAction } from "@/lib/crm/audit-server";
 import { errorLog, infoLog } from "@/lib/log";
+import { setEventConfirmationPaymentState } from "@/lib/events/event-registration-state";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -250,13 +251,13 @@ export async function POST(req: NextRequest) {
     const prevStatus = (confRow as { payment_status?: string | null })
       .payment_status;
     if (prevStatus !== "paid_manual" && prevStatus !== "paid") {
-      const { error: updErr } = await supabase
-        .from("event_confirmations")
-        .update({ payment_status: "paid_manual" } as never)
-        .eq("id", body.confirmation_id);
-      if (updErr) {
+      const stateResult = await setEventConfirmationPaymentState(supabase, {
+        confirmationId: body.confirmation_id,
+        paymentStatus: "paid_manual",
+      });
+      if (!stateResult.ok) {
         return NextResponse.json(
-          { error: `Error actualizando payment_status: ${updErr.message}` },
+          { error: `Error actualizando payment_status: ${stateResult.error}` },
           { status: 500 },
         );
       }

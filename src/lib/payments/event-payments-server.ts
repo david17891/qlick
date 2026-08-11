@@ -126,11 +126,15 @@ export async function getEventPaymentsSnapshot(
     confirmed_at: string;
     import_batch_id: string | null;
     payment_status: string | null;
+    registration_status: string | null;
+    registration_confirmed_at: string | null;
+    payment_priority_expires_at: string | null;
+    lead_id: string | null;
   };
   const { data: confRowsRaw } = await supabase
     .from("event_confirmations")
     .select(
-      "id, event_id, name, email, phone_normalized, source, confirmed_at, import_batch_id, payment_status",
+      "id, event_id, name, email, phone_normalized, source, confirmed_at, import_batch_id, payment_status, registration_status, registration_confirmed_at, payment_priority_expires_at, lead_id",
     )
     .eq("event_id", eventId);
   const confRows = (confRowsRaw ?? []) as unknown as ConfRow[];
@@ -166,7 +170,10 @@ export async function getEventPaymentsSnapshot(
 
   // 3. Calcular stats.
   const stats: EventPaymentStats = {
-    totalConfirmed: confRows.length,
+    totalConfirmed: confRows.filter((row) =>
+      row.registration_status === "confirmed"
+      || (!row.registration_status && ["not_required", "partial", "paid", "paid_manual"].includes(row.payment_status ?? ""))
+    ).length,
     totalPaid: 0,
     totalPending: 0,
     totalPendingVerification: 0,
@@ -184,7 +191,7 @@ export async function getEventPaymentsSnapshot(
     // tambien. Antes solo `paid` se contaba → David (paid_manual) no
     // aparecia en el contador `totalPaid` aunque SÍ estaba aprobado en
     // event_payments.
-    if (s === "paid" || s === "paid_manual") stats.totalPaid++;
+    if (s === "paid" || s === "paid_manual" || s === "partial") stats.totalPaid++;
     else if (s === "pending") stats.totalPending++;
     else if (s === "pending_verification") stats.totalPendingVerification++;
     else if (s === "revoked") stats.totalRevoked++;
@@ -245,8 +252,10 @@ export async function getEventPaymentsSnapshot(
   // event.priceMXN (pesos), multiplicar por 100 para centavos
   // (la API del helper retorna centavos).
   if (defaultPriceMXN > 0) {
-    const pendingCount =
-      stats.totalPending + stats.totalPendingVerification;
+    const pendingCount = confRows.filter((row) =>
+      row.registration_status === "payment_pending"
+      && (row.payment_status === "pending" || row.payment_status === "pending_verification")
+    ).length;
     stats.totalPendingCentavos = pendingCount * defaultPriceMXN * 100;
   }
 
@@ -303,6 +312,10 @@ export async function getEventPaymentsSnapshot(
       importBatchId: c.import_batch_id ?? undefined,
       paymentStatus: (c.payment_status ??
         "not_required") as EventConfirmation["paymentStatus"],
+      registrationStatus: c.registration_status === "confirmed" ? "confirmed" : "payment_pending",
+      registrationConfirmedAt: c.registration_confirmed_at ?? undefined,
+      paymentPriorityExpiresAt: c.payment_priority_expires_at ?? undefined,
+      leadId: c.lead_id ?? undefined,
     }));
 
   return { stats, payments, pendingConfirmations };

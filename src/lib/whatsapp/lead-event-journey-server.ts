@@ -72,7 +72,7 @@ function stageForIntent(
   intent: string,
 ): RelationshipStage {
   if (intent === "opt_out") return "closed";
-  if (intent === "provide_email") return "registered";
+  if (intent === "provide_email") return "payment_pending";
   if (
     intent === "register"
     || intent === "interactive_event_inscribir"

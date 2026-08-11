@@ -155,7 +155,13 @@ export async function ensureEventConfirmation(
         phone_raw: phoneRaw ?? null,
         source: source ?? "public_form",
         payment_status: paymentStatus ?? "paid",
-      })
+        registration_status: paymentStatus === "pending"
+          ? "payment_pending"
+          : "confirmed",
+        registration_confirmed_at: paymentStatus === "pending"
+          ? null
+          : new Date().toISOString(),
+      } as never)
       .select("id, source")
       .single();
     if (insertErr) {

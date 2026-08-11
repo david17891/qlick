@@ -1,5 +1,19 @@
 # Project Status — Snapshot vivo
 
+> **Addendum 2026-08-10 — confirmado = pago o apartado verificado:** se desplegó
+> la separación operativa entre `confirmed` y `payment_pending`. Producción
+> Supabase `ugpejblymtbwtsoiykyj` quedó con 32 confirmaciones gratuitas,
+> 1 pagada y 13 pendientes de pago; los 10 QR históricos vinculados a esas 13
+> filas permanecen en la base, pero están revocados (0 QR activos para
+> pendientes). La migración posterior fue aplicada por el script canónico y
+> auditada sin tablas/columnas faltantes. El dashboard, QR, check-in, acceso,
+> encuestas y broadcasts consumen únicamente `registration_status=confirmed`.
+> Deploy Vercel `dpl_J1iCEBGQAe1fpHyuA6tqHKvPeRa8` en `READY`; aliases
+> `https://qlick.digital` y `https://www.qlick.digital` responden `200`.
+> `EVENT_PAYMENT_FOLLOWUP_MODE` permanece `off` hasta aprobar las dos
+> plantillas Meta y guardar el secreto del cron en Vault; no se enviaron
+> mensajes automáticos durante la promoción.
+
 
 > **Addendum 2026-08-09 - enlace de leads de servicios:** las notificaciones nuevas por correo ya no apuntan a `qlick.app/admin/dashboard?tab=servicios`, dominio y ruta que no existen. El enlace canonico ahora es `https://www.qlick.digital/admin?tab=servicios`. Deploy `qlick-5jc3g6r7l-david17891-9351s-projects.vercel.app` en `READY`; smoke `/`, `/admin` y `/admin?tab=servicios` `200`, webhook sin firma `403`. Los correos ya enviados conservan su enlace original y no fueron modificados.
 

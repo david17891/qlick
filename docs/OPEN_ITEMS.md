@@ -21,6 +21,19 @@
 
 ## 📊 Estado actual (snapshot 2026-07-21 — sprint auditoría autogestionable v0.9.9)
 
+### Seguimiento de pago de eventos — 2026-08-10
+
+- 🟡 **Plantillas Meta:** crear/aprobar `payment_priority_24h` y
+  `payment_last_day`; después guardar sus nombres aprobados en
+  `WHATSAPP_TEMPLATE_PAYMENT_REMINDER_24H` y
+  `WHATSAPP_TEMPLATE_PAYMENT_LAST_DAY`.
+- 🟡 **Cron Supabase:** configurar `EVENT_PAYMENT_FOLLOWUP_CRON_SECRET` en
+  Vault y un job `pg_cron`/`pg_net` cada 15 minutos que invoque
+  `/api/cron/event-payment-followups`. El código está desplegado, pero el modo
+  queda `off` hasta completar esta configuración.
+- 🟢 **Saldo posterior al apartado:** el panel ya muestra el saldo; la campaña
+  automática para cobrarlo queda fuera de este cambio.
+
 > **TL;DR:** main está verde con 1482/1484 tests (HEAD `6065f03` + `ec40b72`).
 > Los 2 fails son pre-existing en `human_first E2E` (sprint bot) — no regresión.
 > FASE 8 (catálogo de servicios + admin) **LIVE en prod** con 1-click payment link.

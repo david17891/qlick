@@ -14,6 +14,7 @@ import { randomBytes } from "node:crypto";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { normalizePhone } from "../crm/phone-utils.ts";
+import { isEventRegistrationConfirmed } from "@/lib/events/event-registration-state";
 
 function isRealMode(): boolean {
   if (typeof window !== "undefined") return false;
@@ -181,7 +182,9 @@ export async function generateSurveyTokensForEvent(
   }
   type ConfRow = { id: string; email: string | null; phone_normalized: string | null };
   type AttRow = { id: string; email: string | null; phone_normalized: string | null };
-  const confs = (confRes.data ?? []) as ConfRow[];
+  const confs = ((confRes.data ?? []) as ConfRow[]).filter((row) =>
+    isEventRegistrationConfirmed(row),
+  );
   const atts = (attRes.data ?? []) as AttRow[];
 
   // 3. Buscar tokens existentes para el evento (idempotencia).

@@ -766,3 +766,22 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 - Se agregó `GET /api/admin/leads/[id]`, protegido por admin y sin caché, y el CRM usa ese endpoint cuando el lead profundo no está en la página cargada.
 - Pruebas dirigidas `5/5`, type-check, lint y build OK. Producción: deploy `dpl_GGUJMQrxhd2iLsraMotcC32WuH9E` en `READY`; smoke enlace CRM `200`, detalle sin sesión `401` y webhook sin firma `403`.
 - No se creó un pedido artificial ni se modificó el lead real.
+
+## 2026-08-10 — Recordatorio suave de pago 24h para nuevas inscripciones
+
+- Las confirmaciones nuevas creadas desde `public_form` o `whatsapp_bot` quedan marcadas con `payment_reminder_eligible_at`; los imports y registros históricos quedan fuera.
+- Se agregó `runPaymentRemindersJob`, integrado al cron existente de `survey-reminders`, con copy suave por WhatsApp, link de pago, log idempotente en `event_payment_reminder_log` y registro en conversaciones.
+- La migración `20260810120000_event_payment_reminder_24h.sql` se aplicó y verificó en Supabase `qlick` (`ugpejblymtbwtsoiykyj`); no modificó confirmaciones existentes.
+- Pruebas dirigidas `22/22`, type-check, lint y build OK. La plantilla Meta opcional se configura con `WHATSAPP_TEMPLATE_PAYMENT_REMINDER_24H` cuando esté aprobada.
+- Por decisión operativa, el job queda fail-closed: sin esa plantilla aprobada no envía WhatsApp fuera de la ventana de 24 horas. En producción verificada hay 12 confirmaciones pendientes, 0 elegibles y 0 recordatorios enviados.
+- Se amplió la detección de inscripción para frases como “quiero presenciar el taller” y “me gustaría asistir al curso”, evitando que el bot vuelva a mostrar la lista genérica.
+- El rescate autónomo quedó conectado a `/api/cron/lead-followup` con ejecución diaria segura, usando `CRON_SECRET`, respetando la ventana de 24 horas, bajas y respuestas manuales. Si no hay campo explícito, pide nombre completo y correo.
+
+## 2026-08-10 — Confirmación de eventos únicamente con pago verificado
+
+- Se agregó la proyección `registration_status` (`confirmed` / `payment_pending`), fecha de confirmación, vencimiento de prioridad de 24 horas, vínculo inequívoco a lead y etapa de jornada `payment_pending`/`confirmed`.
+- La migración posterior `20260810190000_paid_event_registration_state.sql` se aplicó por Management API al proyecto `ugpejblymtbwtsoiykyj`: no borra ledger, migraciones ni QR; revoca artefactos pendientes y preserva los 10 tokens históricos como evidencia. Conteo verificado: 32 gratuitos confirmados, 1 pagado confirmado, 13 pendientes; 0 QR activos para pendientes.
+- Stripe, pagos manuales y apartado mínimo actualizan estado financiero + registro atómicamente; reembolso/revocación revoca acceso y QR. Check-in, gate, QR, encuestas, broadcasts y panel de confirmados filtran solamente `registration_status=confirmed`.
+- El seguimiento nuevo implementa +4h, prioridad terminada +24h y último día, con reclamo único por confirmación/hito, horario Phoenix, `shadow/live/off` y endpoint autenticado `/api/cron/event-payment-followups`. El cron diario de encuestas dejó de ejecutar recordatorios de pago.
+- Pruebas dirigidas nuevas `28/28`, type-check, lint, build y audit:voseo OK. Suite completa conserva fallos de fixtures de integración preexistentes y expectativas antiguas de QR/pago en puerta; los escenarios afectados fueron actualizados al contrato nuevo.
+- Preview Vercel `qlick-d1qzaadd7-david17891-9351s-projects.vercel.app` y producción `dpl_J1iCEBGQAe1fpHyuA6tqHKvPeRa8` en `READY`; aliases `qlick.digital`/`www.qlick.digital` verificados `200`. `EVENT_PAYMENT_FOLLOWUP_MODE=off` hasta aprobación Meta y secreto Vault.

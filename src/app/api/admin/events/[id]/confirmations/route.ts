@@ -57,6 +57,40 @@ interface RouteParams {
   params: { id: string };
 }
 
+export async function GET(req: NextRequest, { params }: RouteParams) {
+  if (!checkSupabaseConfig().configured) {
+    return NextResponse.json({ ok: false, error: "Supabase no configurado (modo demo)." }, { status: 501 });
+  }
+  const admin = await requireAdmin();
+  if (!admin) return NextResponse.json({ ok: false, error: "No autenticado como admin." }, { status: 401 });
+
+  const requestedStatus = req.nextUrl.searchParams.get("registrationStatus") ?? "all";
+  const status = requestedStatus === "confirmed" || requestedStatus === "payment_pending"
+    ? requestedStatus
+    : "all";
+  const supabase = createSupabaseAdminClient();
+  let query = supabase
+    .from("event_confirmations")
+    .select("*")
+    .eq("event_id", params.id)
+    .order("confirmed_at", { ascending: false });
+  if (status !== "all") query = query.eq("registration_status" as never, status as never);
+  const { data, error } = await query;
+  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+
+  const rows = (data ?? []) as Array<{ registration_status?: string | null }>;
+  return NextResponse.json({
+    ok: true,
+    registrationStatus: status,
+    counts: {
+      confirmed: rows.filter((row) => row.registration_status === "confirmed").length,
+      paymentPending: rows.filter((row) => row.registration_status === "payment_pending").length,
+      total: rows.length,
+    },
+    confirmations: data ?? [],
+  });
+}
+
 interface RequestBody {
   name?: string;
   email?: string;
@@ -134,6 +168,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   }
 
   const supabase = createSupabaseAdminClient();
+  const paidEvent = (event.priceMXN ?? 0) > 0;
 
   // 1. Crear o actualizar lead (idempotente).
   let lead = null;
@@ -238,7 +273,10 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
           phone_raw: phoneRaw,
           phone_normalized: phoneNormalized,
           source: "manual",
-        })
+          payment_status: paidEvent ? "pending" : "not_required",
+          registration_status: paidEvent ? "payment_pending" : "confirmed",
+          registration_confirmed_at: paidEvent ? null : new Date().toISOString(),
+        } as never)
         .select("id, name, email, phone_normalized")
         .maybeSingle();
       if (confErr) throw confErr;
@@ -257,7 +295,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
   // 3. Generar / reutilizar QR token (idempotente).
   let qrToken: { token: string; url: string } | null = null;
-  try {
+  if (!paidEvent) try {
     const phoneSentinel =
       phoneNormalized ||
       `+1manual${(emailRaw ?? "").replace(/[^a-z0-9]/g, "").slice(0, 12)}`;
