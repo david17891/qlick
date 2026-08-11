@@ -79,6 +79,8 @@ export const KEY_LEAD_NEW_INFO_FOLLOWUP_MODE = "lead_new_info_followup_mode" as 
 export const KEY_LEAD_NEW_INFO_FOLLOWUP_SINCE = "lead_new_info_followup_since" as const;
 // Feature flag kill switch para la captación de servicios B2B (Meta Ads, etc.).
 export const KEY_BOT_SERVICES_ENABLED = "bot_services_enabled" as const;
+// Rollout del validador/decisión estructurada. Default efectivo: legacy.
+export const KEY_BOT_DECISION_ENGINE_MODE = "bot_decision_engine_mode" as const;
 
 export async function readBotServicesEnabled(): Promise<boolean> {
   const value = await readSystemSetting(KEY_BOT_SERVICES_ENABLED);

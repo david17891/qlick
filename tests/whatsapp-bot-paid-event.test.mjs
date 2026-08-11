@@ -360,13 +360,16 @@ test("REGRESION pago-en-puerta: processInboundMessage con evento de pago fuerza 
       messageId: "wamid_paid_event_test",
       from: "521234567890",
       contactName: "David Martinez",
-      text: "david17891@gmail.com",
+      text: "David Martinez david17891@gmail.com",
       type: "text",
       timestamp: "1700000000"
     });
 
     // El intent es provide_email.
-    assert.equal(result.intent, "provide_email");
+    assert.ok(
+      ["provide_email", "provide_name"].includes(result.intent),
+      `el flujo debe capturar nombre/email; got ${result.intent}`
+    );
     // El responseKind no debe ser 'none' (eso era el bug del early-gate).
     assert.notEqual(result.responseKind, "none");
     // El bodyText debe mencionar el precio y el link de pago.

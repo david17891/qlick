@@ -39,6 +39,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
+import { isVerifiedNameCandidate } from "@/lib/whatsapp/bot-quality";
 
 /* ------------------------------------------------------------------ */
 /* Inputs / Outputs                                                   */
@@ -195,16 +196,7 @@ function hasIntentVerbLocal(text: string | null | undefined): boolean {
  *   - NO es placeholder UI ("Asistente", "Por confirmar", etc).
  */
 export function isValidHumanNameLocal(text: string | null | undefined): boolean {
-  if (!text) return false;
-  const trimmed = text.trim();
-  if (trimmed.length < 2 || trimmed.length > 100) return false;
-  if (/^[\d\s]+$/.test(trimmed)) return false;
-  if (!/[\p{L}]/u.test(trimmed)) return false;
-  if (PLACEHOLDER_NAMES_BLOCKLIST.has(trimmed.toLowerCase())) return false;
-  const words = trimmed.split(/\s+/).filter(Boolean);
-  const wordsWithLetters = words.filter((w) => /[\p{L}]/u.test(w));
-  if (wordsWithLetters.length < 2) return false;
-  return true;
+  return isVerifiedNameCandidate(text);
 }
 
 /**

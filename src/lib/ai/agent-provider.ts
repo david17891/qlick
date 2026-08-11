@@ -30,6 +30,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AIAgentProfile, LeadIntent } from "@/types";
 import type { Database } from "@/types/supabase";
+import type { BotDecision, BotEngineMode } from "@/lib/whatsapp/bot-quality";
 
 export type AIAgentProviderName = "mock" | "openrouter" | "deepseek";
 
@@ -212,6 +213,12 @@ export interface AgentContext {
    * Globales" pero sin instrucciones concretas).
    */
   globalRules?: import("./ai-bot-rules-injector").InjectableRule[];
+  /** Structured decision rollout controls; absent keeps legacy behavior. */
+  botDecisionMode?: BotEngineMode;
+  activeDomain?: "event" | "service" | "support" | "general";
+  expectedReply?: "none" | "event_choice" | "name" | "email" | "payment_action" | "service_goal";
+  registrationStatus?: "payment_pending" | "confirmed" | null;
+  isPaidEvent?: boolean;
 }
 
 export type AgentTask =
@@ -264,6 +271,8 @@ export interface AgentResult {
    * Mock y stubs lo dejan `undefined`.
    */
   usage?: AgentUsage;
+  /** Present only when the structured decision engine is enabled. */
+  decision?: BotDecision;
 }
 
 export interface AIAgentProvider {

@@ -6,7 +6,8 @@ test("ACK: registro completo cierra sin insistir con el pago", () => {
   const result = buildContextualAck({
     firstName: "Melec",
     registrationComplete: true,
-    paymentPending: true,
+    paymentPending: false,
+    registrationStatus: "confirmed",
     awaitingField: null,
     lastOutboundBody: "Hola Melec, ¿quieres completar tu pago?",
   });

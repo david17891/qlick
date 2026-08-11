@@ -10,6 +10,7 @@
 
 import type { LeadIntent } from "@/types";
 import { findIncorrectEventWeekdayMentions } from "../datetime.ts";
+import { hasInternalReasoningLeak } from "../whatsapp/bot-quality";
 
 /**
  * Clasificación heurística de intención a partir del texto del lead.
@@ -264,6 +265,15 @@ export function validateAgentReply(
 ): { ok: boolean; reasons: string[] } {
   const reasons: string[] = [];
   const t = reply.toLowerCase();
+
+  // No intentamos rescatar pensamientos embebidos en el mismo párrafo. Si
+  // aparecen, se bloquea la respuesta completa y el caller usa fallback.
+  if (hasInternalReasoningLeak(reply)) {
+    reasons.push("Contiene razonamiento interno o meta-análisis.");
+  }
+  if (reply.length > 700) {
+    reasons.push("Respuesta demasiado larga.");
+  }
 
   // Construir lista efectiva de frases prohibidas respetando el contexto.
   // Sprint v15 PR #2: si `isFreeEvent`, "gratis" NO se filtra (copy veraz

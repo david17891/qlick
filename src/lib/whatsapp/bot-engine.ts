@@ -105,6 +105,14 @@ import {
 import { syncLeadEventJourneyForBotTurn } from "./lead-event-journey-server";
 import { resolveEventContext } from "./event-context-resolver";
 import { buildContextualAck } from "./ack-policy";
+import {
+  hasInternalReasoningLeak,
+  isVerifiedNameCandidate,
+  trustedLeadName,
+  validateGeneratedReply,
+  buildSafeReply,
+  parseBotEngineMode,
+} from "./bot-quality";
 import { shouldSuppressRapidDuplicateResponse } from "./response-dedup";
 import { extractEmailFromText } from "./email-extract";
 import { getAIAgentProfile } from "../crm/agent-utils";
@@ -1059,7 +1067,7 @@ export function extractNameAndEmailTogether(
 
   // El resto debe ser un nombre válido. Si no, no es caso nuestro
   // (ej. "dale david@x.com" — "dale" es filler, no nombre).
-  if (!isValidHumanName(withoutAnyEmail)) return null;
+  if (!isVerifiedNameCandidate(withoutAnyEmail)) return null;
 
   return {
     name: withoutAnyEmail,
@@ -4290,7 +4298,7 @@ case "interactive_event_inscribir": {
         // Si `withoutEmail` no pasa validación, caemos al path normal
         // (name = rawBody, sin email) y el bot vuelve a pedir el email
         // en el siguiente turno.
-        if (withoutEmail.length >= 2 && isValidHumanName(withoutEmail)) {
+        if (withoutEmail.length >= 2 && isVerifiedNameCandidate(withoutEmail)) {
           name = withoutEmail;
           implicitEmail = embeddedEmail.toLowerCase().trim();
         }
@@ -4322,7 +4330,7 @@ case "interactive_event_inscribir": {
       // E7: detectar inputs basura (emojis, numeros, simbolos).
       // Lo chequeamos ANTES de wordCount < 2 porque un emoji como "👍"
       // tiene 1 palabra pero 0 letras.
-      if (!isValidHumanName(name)) {
+      if (!isVerifiedNameCandidate(name)) {
         const bodyText =
           `Por favor escríbeme tu nombre y apellido con letras para ` +
           `poder generar tu certificado (ej: "Juan Pérez").`;
@@ -4492,6 +4500,9 @@ case "interactive_event_inscribir": {
       // canonicos ("Por") como placeholders UI ("Asistente", "Por
       // confirmar") que pudieron quedar en leads.name de registros
       // anteriores al fix.
+      // Compatibilidad: nombres históricos inequívocos pueden completar el
+      // flujo, pero no se usan para personalizar mensajes hasta tener la
+      // etiqueta explícita de verificación.
       const currentLeadName = lead.name?.trim() ?? "";
       const cleanedCurrentName = isPlaceholderNameUI(currentLeadName)
         ? ""
@@ -4691,7 +4702,9 @@ case "interactive_event_inscribir": {
       // pruebas iniciales) o "test" / "Test Number", no se lo pasamos
       // al LLM. Asi el LLM no genera "Excelente Por!" o "Hola Por!".
       // Ver constante de módulo PLACEHOLDER_NAMES.
-      const cleanLeadName = cleanFirstName(lead.name);
+      // El nombre del perfil de Meta o un placeholder histórico no puede
+      // personalizar respuestas hasta que el usuario lo haya confirmado.
+      const cleanLeadName = trustedLeadName(lead.name, lead.tags);
       // FIX 2026-07-08 (sesion David, "bot salta captura de nombre"):
       // si el lead NO tiene nombre válido (placeholder) Y el body matchea
       // intención de inscripción, NO dejamos que el LLM responda
@@ -4815,7 +4828,7 @@ case "interactive_event_inscribir": {
       const pendingAwaitingField = args.pendingAwaitingField ?? null;
       const bodyLooksLikeEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.trim());
       const bodyWordCount = body.trim().split(/\s+/).filter(Boolean).length;
-      const bodyLooksLikeName = bodyWordCount >= 2 && isValidHumanName(body.trim());
+      const bodyLooksLikeName = bodyWordCount >= 2 && isVerifiedNameCandidate(body.trim());
       const bodyLooksLikeAck = isAckOnly(body);
       const bodyLooksLikeFlowResponse =
         bodyLooksLikeEmail || bodyLooksLikeName || bodyLooksLikeAck;
@@ -4839,6 +4852,10 @@ case "interactive_event_inscribir": {
         eventOfferType = "b2b_service";
       }
       const isFreeEvent = eventOfferType === "free_masterclass";
+      // Kill-switch rápido: `safe` evita cualquier salida generativa y deja
+      // el dominio en una respuesta determinista. El default sigue siendo
+      // legacy para no cambiar producción al desplegar el código.
+      const botDecisionMode = parseBotEngineMode(process.env.BOT_DECISION_ENGINE_MODE);
       // FIX 2026-07-25 (sprint "activar ai_bot_rules en el bot real"):
       // cargar las Reglas de Oro Globales AHORA (después de conocer el
       // activeEvent) para que el loader pueda concatenar las reglas
@@ -4857,7 +4874,20 @@ case "interactive_event_inscribir": {
         eventId: activeEvent?.id,
         eventSlug: activeEvent?.slug
       }).catch(() => []);
-      if (rateLimit.allowed) {
+      if (botDecisionMode === "safe") {
+        result = {
+          ok: true,
+          task: "suggest_reply",
+          provider: "mock",
+          content: buildSafeReply(
+            SERVICE_INQUIRY_RE.test(body) ? "service" : activeEvent ? "event" : "general"
+          ),
+          confidence: 1,
+          needsReview: false,
+          demo: true,
+          note: "BOT_DECISION_ENGINE_MODE=safe",
+        };
+      } else if (rateLimit.allowed) {
         // FIX 2026-07-10 (Sprint 2 sub-sprint 2D): resolver el cliente
         // Supabase admin localmente para pasárselo al tool loop. En la
         // versión final del Sprint 2 (sub-sprint 2E si lo hubiera), esto
@@ -4905,6 +4935,14 @@ case "interactive_event_inscribir": {
           eventOfferType,
           eventRules,
           isFreeEvent,
+          activeDomain: SERVICE_INQUIRY_RE.test(body) ? "service" : activeEvent ? "event" : "general",
+          expectedReply:
+            pendingAwaitingField === "name" || pendingAwaitingField === "email"
+              ? pendingAwaitingField
+              : "none",
+          registrationStatus: lead.status === "payment_pending" ? "payment_pending" : null,
+          isPaidEvent: Boolean(activeEvent && !isFreeEvent),
+          botDecisionMode,
           // FIX 2026-07-10 (Sprint 2 sub-sprint 2D): inyectar leadId y
           // supabase para que el tool loop (sub-sprint 2C) pueda ejecutar
           // `extract_and_save_contact_info` con `UPDATE` real a
@@ -4994,10 +5032,16 @@ case "interactive_event_inscribir": {
       // para nosotros — el lead NO debe verlo. Lo extrajimos arriba
       // (línea `intentFromLlm`) y loggeamos si difiere de welcome.
       // Aquí limpiamos el contenido que SÍ va al lead.
-      let content = sanitizeLLMOutput(
-        stripEscalateFlag(result.content ?? "")
-          .replace(/^INTENT:\s*\w+.*$/m, "")
-      ).trim();
+      const rawModelContent = result.content ?? "";
+      // Nunca intentamos "limpiar" una salida que ya contiene razonamiento
+      // interno: un pensamiento dentro del mismo párrafo también es un leak.
+      const rawContentUnsafe = hasInternalReasoningLeak(rawModelContent);
+      let content = rawContentUnsafe
+        ? ""
+        : sanitizeLLMOutput(
+            stripEscalateFlag(rawModelContent)
+              .replace(/^INTENT:\s*\w+.*$/m, "")
+          ).trim();
       if (!content) {
         content =
           "Disculpa, no pude procesar tu mensaje. ¿Me lo puedes reformular? Si necesitas atención personalizada escríbenos a hola@qlick.marketing.";
@@ -5038,6 +5082,21 @@ case "interactive_event_inscribir": {
           hasIncorrectWeekday && activeEvent?.source === "db"
             ? `La fecha correcta del evento es el ${formatEventWeekday(activeEvent.startsAt)}, ${activeEvent.humanStartsAt}.`
             : profile.fallbackMessage;
+      }
+      const commercialValidation = validateGeneratedReply(content, {
+        isPaidEvent: Boolean(activeEvent && !isFreeEvent),
+        isFreeEvent,
+        paymentPending: lead.status === "payment_pending",
+        hasVerifiedPayment: lead.status !== "payment_pending",
+      });
+      if (!commercialValidation.ok || rawContentUnsafe) {
+        debugLog("[whatsapp/bot] structured safety guard blocked reply", {
+          leadId: lead.id,
+          reasons: rawContentUnsafe
+            ? ["internal_reasoning_leak"]
+            : commercialValidation.reasons,
+        });
+        content = profile.fallbackMessage;
       }
       // FIX 2026-07-02 (sesion David, "Si tras pregunta cerrada"): si el
       // LLM (o el fallback) terminó con una pregunta cerrada de inscripción
@@ -6174,10 +6233,13 @@ export async function processInboundMessage(
       });
     }
 
+    const verifiedAckName = trustedLeadName(lead.name, lead.tags);
     const ack = buildContextualAck({
-      firstName: lead.name,
+      firstName: verifiedAckName,
+      nameVerified: Boolean(verifiedAckName),
       registrationComplete,
       paymentPending: lead.status === "payment_pending",
+      registrationStatus: lead.status === "payment_pending" ? "payment_pending" : registrationComplete ? "confirmed" : null,
       awaitingField: registrationInProgress ? registrationField : null,
       lastOutboundBody: lastOutboundGlobal?.body,
     });
@@ -6474,7 +6536,7 @@ export async function processInboundMessage(
     const infoRescueEmail = Boolean(extractEmailFromText(body));
     const infoRescueName =
       !infoRescueEmail &&
-      isValidHumanName(body) &&
+    isVerifiedNameCandidate(body) &&
       !hasIntentVerb(body);
     // FIX 2026-07-06 (debug David "david martinez" ignorado): si el
     // metadata.awaiting_field no se persistio correctamente (race con
@@ -6901,11 +6963,17 @@ export async function processInboundMessage(
         });
         if (supabase) {
           const updateObj: Database["public"]["Tables"]["leads"]["Update"] = {};
-          if (extName && extName !== "Por confirmar") updateObj.name = extName;
+          if (extName && extName !== "Por confirmar" && isVerifiedNameCandidate(extName)) {
+            updateObj.name = extName;
+            updateObj.tags = Array.from(new Set([...(lead.tags ?? []), "name:user_verified"]));
+          }
           if (extEmail) updateObj.email = extEmail;
           if (Object.keys(updateObj).length > 0) {
             await supabase.from("leads").update(updateObj).eq("id", lead.id);
-            if (extName && extName !== "Por confirmar") lead.name = extName;
+            if (extName && extName !== "Por confirmar" && isVerifiedNameCandidate(extName)) {
+              lead.name = extName;
+              lead.tags = updateObj.tags ?? lead.tags ?? undefined;
+            }
             if (extEmail) lead.email = extEmail;
           }
         }
@@ -6977,12 +7045,13 @@ export async function processInboundMessage(
       !hasEmbeddedEmail &&
       wordCount >= 2 &&
       name.length <= 100 &&
-      isValidHumanName(name)
+      isVerifiedNameCandidate(name)
     ) {
       const previousName = lead.name ?? null;
+      const nextTags = Array.from(new Set([...(lead.tags ?? []), "name:user_verified"]));
       const { error: nameUpdateErr } = await supabase
         .from("leads")
-        .update({ name })
+        .update({ name, tags: nextTags })
         .eq("id", lead.id);
       if (nameUpdateErr) {
         errorLog("[whatsapp/bot] provide_name: update lead.name falló", {
@@ -6993,6 +7062,7 @@ export async function processInboundMessage(
         // Actualizamos el `lead` en memoria para que buildResponsePlan
         // (provide_name handler) use el nuevo nombre.
         lead.name = name;
+        lead.tags = nextTags;
         debugLog("[whatsapp/bot] provide_name: nombre persistido", {
           leadId: lead.id,
           name
@@ -7938,7 +8008,11 @@ export async function processInboundMessage(
         .trim();
       // El name es valido si tiene al menos 2 chars y NO es solo
       // una palabra placeholder ("hola", "registrame", etc).
-      if (allEmailsStripped.length >= 2 && /[A-Za-zÁÉÍÓÚáéíóúÑñ]/.test(allEmailsStripped)) {
+      if (
+        allEmailsStripped.length >= 2 &&
+        /[A-Za-zÁÉÍÓÚáéíóúÑñ]/.test(allEmailsStripped) &&
+        isVerifiedNameCandidate(allEmailsStripped)
+      ) {
         extractedNameFromBody = allEmailsStripped;
       }
     } catch {
@@ -7948,9 +8022,21 @@ export async function processInboundMessage(
     // Si falla (FK, constraint, network), el email queda desactualizado
     // y los siguientes pasos usan el email viejo. Loggeamos para debug
     // pero seguimos el flow (no rompemos la conversación).
+    const verifiedBodyName = extractedNameFromBody && isVerifiedNameCandidate(extractedNameFromBody)
+      ? extractedNameFromBody
+      : null;
     const { error: leadUpdateErr } = await supabase
       .from("leads")
-      .update({ email, consent_to_contact: true })
+      .update({
+        email,
+        consent_to_contact: true,
+        ...(verifiedBodyName
+          ? {
+              name: verifiedBodyName,
+              tags: Array.from(new Set([...(lead.tags ?? []), "name:user_verified"])),
+            }
+          : {}),
+      })
       .eq("id", lead.id);
     if (leadUpdateErr) {
       errorLog("[whatsapp/bot] lead email/consent update falló", {
@@ -8043,8 +8129,10 @@ export async function processInboundMessage(
             // `lead.name` (que puede ser placeholder). Si el body
             // no trae un name claro, fallback a `lead.name`.
             name:
-              extractedNameFromBody ??
-              (lead.name?.trim() && !isPlaceholderNameUI(lead.name) ? lead.name.trim() : null) ??
+              (extractedNameFromBody && isVerifiedNameCandidate(extractedNameFromBody)
+                ? extractedNameFromBody
+                : trustedLeadName(lead.name, lead.tags) ||
+                  (isVerifiedNameCandidate(lead.name) ? lead.name.trim() : "")) ||
               "Asistente",
             email,
             phoneRaw: phoneNormalized,
@@ -8255,9 +8343,13 @@ export async function processInboundMessage(
   }
 
   // 6. Construir plan de respuesta y enviar.
+  // El plan recibe una vista segura del lead para que ningún nombre de perfil
+  // no verificado llegue a saludos, QR o plantillas. La referencia original
+  // se conserva para las actualizaciones operativas.
+  const planLead: Lead = { ...lead, name: trustedLeadName(lead.name, lead.tags) };
   const plan = await buildResponsePlan({
     intent,
-    lead,
+    lead: planLead,
     body,
     isFirstMessage,
     phoneNormalized,
@@ -8429,6 +8521,9 @@ export async function processInboundMessage(
     const ic = planMeta.implicit_capture;
     const capturedEmail = ic.email.toLowerCase().trim();
     const capturedName = ic.name.trim();
+    const verifiedCapturedName = isVerifiedNameCandidate(capturedName)
+      ? capturedName
+      : null;
     let implicitPaymentPending = false;
     try {
       // a) Update lead con email + nombre + consent.
@@ -8436,7 +8531,12 @@ export async function processInboundMessage(
         .from("leads")
         .update({
           email: capturedEmail,
-          name: capturedName,
+          ...(verifiedCapturedName
+            ? {
+                name: verifiedCapturedName,
+                tags: Array.from(new Set([...(lead.tags ?? []), "name:user_verified"])),
+              }
+            : {}),
           consent_to_contact: true
         })
         .eq("id", lead.id);

@@ -67,6 +67,14 @@ import type {
 import type { AgentToolDefinition } from "./agent-tools";
 import type { ActiveEventContext } from "./event-context-loader";
 import {
+  buildSafeReply,
+  parseBotEngineMode,
+  redactForModel,
+  validateBotDecision,
+  validateGeneratedReply,
+  type BotDecision,
+} from "../whatsapp/bot-quality";
+import {
   buildSystemPrompt,
   buildSuperExecutivePrompt,
   // FIX 2026-07-19 (sprint bot v2): import faltante que causaba
@@ -213,6 +221,8 @@ interface CallDeepSeekOptions {
   messages: ChatMessage[];
   /** Si se pasa, se incluyen como `tools` en el payload. */
   tools?: AgentToolDefinition[];
+  /** Fuerza una única función cuando el modo estructurado está activo. */
+  toolChoice?: unknown;
   /** Override del max_tokens (default: tier config). */
   maxTokens?: number;
   /** Override del temperature (default: tier config). */
@@ -439,6 +449,126 @@ interface ExtractOkMessage {
   ok: boolean;
 }
 
+/** Contrato read-only del motor nuevo: nunca expone tools que escriban datos. */
+const EMIT_BOT_DECISION_TOOL: AgentToolDefinition = {
+  type: "function",
+  function: {
+    name: "emit_bot_decision",
+    description: "Emite una única decisión estructurada, sin razonamiento visible ni escritura en base de datos.",
+    parameters: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        domain: { type: "string", enum: ["event", "service", "support", "general"] },
+        intent: { type: "string" },
+        confidence: { type: "number" },
+        entityCandidates: { type: "string", description: "JSON array de entidades exactas" },
+        answerKey: { type: "string" },
+        nextAction: { type: "string", enum: ["none", "event_choice", "name", "email", "payment_action", "service_goal"] },
+        replyDraft: { type: "string" },
+      },
+      required: ["domain", "intent", "confidence", "entityCandidates", "answerKey", "nextAction"],
+    },
+  },
+};
+
+async function runStructuredDecision(
+  task: AgentTask,
+  context: AgentContext,
+): Promise<AgentResult> {
+  const domain = context.activeDomain ?? "general";
+  const safeEvent = context.activeEvent
+    ? {
+        title: context.activeEvent.title,
+        date: context.activeEvent.humanStartsAt,
+        location: context.activeEvent.location,
+        priceMxn: context.activeEvent.priceMxn,
+      }
+    : null;
+  const system =
+    "Devuelve exactamente una llamada a emit_bot_decision. No escribas texto fuera de la llamada. " +
+    "No incluyas thought, reasoning, analysis ni datos personales que no estén en el mensaje.";
+  const user = JSON.stringify({
+    task,
+    domain,
+    expectedReply: context.expectedReply ?? "none",
+    registrationStatus: context.registrationStatus ?? null,
+    isPaidEvent: Boolean(context.isPaidEvent),
+    event: safeEvent,
+    message: redactForModel(context.lastIncomingMessage),
+  });
+  const raw = await callDeepSeekChat({
+    tier: "flash",
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+    tools: [EMIT_BOT_DECISION_TOOL],
+    toolChoice: { type: "function", function: { name: "emit_bot_decision" } },
+    maxTokens: 500,
+    temperature: 0,
+    timeoutMs: 5000,
+  });
+  if (!raw.ok || !raw.toolCall || raw.toolCall.function.name !== "emit_bot_decision") {
+    return {
+      ok: true,
+      task,
+      provider: "deepseek",
+      content: buildSafeReply(domain),
+      confidence: 0,
+      needsReview: true,
+      demo: !process.env.DEEPSEEK_API_KEY,
+      note: `structured decision fallback: ${raw.note}`,
+    };
+  }
+  try {
+    const parsedArgs = JSON.parse(raw.toolCall.function.arguments) as Record<string, unknown>;
+    if (typeof parsedArgs.entityCandidates === "string") {
+      parsedArgs.entityCandidates = JSON.parse(parsedArgs.entityCandidates);
+    }
+    const checked = validateBotDecision(parsedArgs);
+    if (!checked.ok || !checked.decision) {
+      return {
+        ok: true,
+        task,
+        provider: "deepseek",
+        content: buildSafeReply(domain),
+        confidence: 0,
+        needsReview: true,
+        note: `structured decision rejected: ${checked.reasons.join(",")}`,
+      };
+    }
+    const decision: BotDecision = checked.decision;
+    const draft = decision.replyDraft ?? buildSafeReply(decision.domain);
+    const replyCheck = validateGeneratedReply(draft, {
+      isPaidEvent: context.isPaidEvent,
+      isFreeEvent: !context.isPaidEvent,
+      paymentPending: context.registrationStatus === "payment_pending",
+      hasVerifiedPayment: context.registrationStatus !== "payment_pending",
+    });
+    return {
+      ok: true,
+      task,
+      provider: "deepseek",
+      content: replyCheck.ok ? draft : buildSafeReply(decision.domain),
+      confidence: decision.confidence,
+      needsReview: !replyCheck.ok || decision.confidence < 0.8,
+      decision,
+      note: replyCheck.ok ? "structured decision accepted" : `reply rejected: ${replyCheck.reasons.join(",")}`,
+    };
+  } catch (error) {
+    return {
+      ok: true,
+      task,
+      provider: "deepseek",
+      content: buildSafeReply(domain),
+      confidence: 0,
+      needsReview: true,
+      note: `structured decision parse failure: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Llamada universal a DeepSeek (parametrizada por tier)
 // ---------------------------------------------------------------------------
@@ -477,6 +607,7 @@ async function callDeepSeekChat(opts: CallDeepSeekOptions): Promise<CallDeepSeek
   if (opts.tools && opts.tools.length > 0) {
     payload.tools = opts.tools;
   }
+  if (opts.toolChoice) payload.tool_choice = opts.toolChoice;
 
   const timeoutMs = opts.timeoutMs ?? 10_000;
   const MAX_ATTEMPTS = 2;
@@ -1165,6 +1296,12 @@ export const deepseekAgentProvider: AIAgentProvider = {
   stub: false,
 
   async run(task: AgentTask, context: AgentContext): Promise<AgentResult> {
+    const decisionMode = parseBotEngineMode(
+      context.botDecisionMode ?? process.env.BOT_DECISION_ENGINE_MODE,
+    );
+    if (task === "suggest_reply" && decisionMode === "live") {
+      return runStructuredDecision(task, context);
+    }
     // FIX 2026-07-10 (Sprint 2 sub-sprint 2.1): resolver el flag del Kill
     // Switch SRE con preferencia a la DB (system_settings) sobre el
     // env var. Esto habilita el toggle desde el panel admin sin

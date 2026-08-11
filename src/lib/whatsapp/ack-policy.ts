@@ -8,8 +8,10 @@
 
 export interface ContextualAckInput {
   firstName?: string | null;
+  nameVerified?: boolean;
   registrationComplete: boolean;
   paymentPending: boolean;
+  registrationStatus?: "payment_pending" | "confirmed" | null;
   awaitingField: "name" | "email" | null;
   lastOutboundBody?: string | null;
 }
@@ -37,9 +39,12 @@ function lastOutboundWasPaymentPrompt(body?: string | null): boolean {
 }
 
 export function buildContextualAck(input: ContextualAckInput): ContextualAckResult {
-  const name = greeting(input.firstName);
+  const name = input.nameVerified === false ? "" : greeting(input.firstName);
 
-  if (input.registrationComplete) {
+  const isConfirmed = input.registrationStatus === "confirmed"
+    || (input.registrationComplete && !input.paymentPending);
+
+  if (isConfirmed) {
     return {
       body: `¡Perfecto${name}! Tu registro ya está confirmado. Conserva tu pase con QR; si necesitas algo más, aquí estoy.`,
       reason: "registration_complete",
@@ -55,7 +60,7 @@ export function buildContextualAck(input: ContextualAckInput): ContextualAckResu
 
   if (input.paymentPending) {
     return {
-      body: `¡Claro${name}! Tu lugar sigue reservado. Si quieres, te ayudo a completar el pago.`,
+      body: `¡Claro${name}! Tus datos quedaron registrados y el pago sigue pendiente. Cuando se verifique, te envío tu pase.`,
       reason: "payment_pending",
     };
   }
