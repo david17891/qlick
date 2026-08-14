@@ -59,21 +59,21 @@ En **Pagos → Preparar promoción**, el administrador obtiene links individuale
 
 ## Riesgos y acciones recomendadas
 
-### Alto — restringir el endpoint promocional al evento autorizado
+### Resuelto 2026-08-14 — restringir el endpoint promocional al evento autorizado
 
-La ruta acepta `eventSlug` del cuerpo y comprueba que el evento tenga precio $1,000. Un cliente podría intentar aplicar la tarifa promocional a otro evento publicado con el mismo precio. La ruta debe aceptar únicamente el slug autorizado o una configuración de promoción explícita en el evento.
+La ruta quedó limitada al slug autorizado `desarrollo-estructura-curso-canaco`; el checkout individual no cambia.
 
 ### Alto — separar el QR histórico del QR promocional
 
 Actualmente existen QR provisionales históricos para pendientes y el servidor bloquea el check-in hasta que exista pago/apartado verificado. Para la promoción no se reutiliza ese comportamiento: `sendPromoRegistrationEmail` solo envía el enlace y `sendPromoPassEmail` se llama después de `settlePromoOrder`. Los históricos deben permanecer bajo revisión separada para no revocar ni reenviar nada accidentalmente.
 
-### Medio — correo después de liquidar una orden parcial
+### Resuelto 2026-08-14 — correo después de liquidar una orden parcial
 
-`sendPromoPassEmail` evita duplicados por evento y correo. Si primero se apartan $200 y después se liquidan $1,300, el segundo webhook puede no enviar un correo actualizado con saldo liquidado. El QR sigue siendo válido, pero el correo puede conservar el estado “apartado”. La deduplicación debe incluir `promo_order_id` y estado (`partial`/`paid`) o permitir un envío de actualización controlado.
+La deduplicación ahora incluye orden, destinatario y estado (`partial`/`paid`). El QR sigue siendo el mismo, pero el pago total genera un pase actualizado y un comprobante nuevo.
 
-### Medio — entrega al segundo participante
+### Resuelto 2026-08-14 — entrega al segundo participante
 
-El webhook envía el pase promocional al correo de la plaza principal. Si se capturó un correo distinto para la segunda persona, hoy no recibe una copia automática del QR unificado. Antes de una campaña masiva se debe enviar el mismo pase a cada correo válido asociado a la orden, con una sola notificación por orden/estado/destinatario.
+El webhook envía el mismo pase compartido y comprobante a cada correo válido asociado a la orden, con una sola notificación por orden/estado/destinatario.
 
 ### Medio — tokens QR históricos sin confirmación
 
