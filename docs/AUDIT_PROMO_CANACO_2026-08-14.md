@@ -117,3 +117,20 @@ Validación final: migración aditiva aplicada, E2E sintética de dos personas
 pasada (webhook firmado, idempotencia y limpieza), type-check, lint, build,
 audit:voseo y smoke público 200/401 correctos. La suite histórica mantiene
 fallas conocidas de flujos antiguos; no bloquean esta promoción estricta.
+
+## Revisión posterior — actualización de liquidación
+
+- **Cerrado:** la entrega de pase promocional ahora usa una clave de
+  idempotencia por orden, destinatario y estado (`partial`/`paid`). Así, el
+  mismo webhook no duplica correos, pero una liquidación posterior sí envía la
+  actualización de pase total verificado.
+- **Cerrado:** el pase y comprobante se envían a cada participante con correo
+  válido; el QR sigue siendo uno compartido y limitado a dos accesos.
+- **Migración aplicada:** `20260814150000_event_email_dedupe_key.sql`, aditiva,
+  nullable y sin reescribir logs históricos.
+- **Prueba:** apartado → webhook duplicado → liquidación → webhook duplicado,
+  con dos participantes y ocho correos esperados, pasó en E2E sintética.
+
+Los tres QR históricos sin confirmación y el intento de pago pendiente siguen
+sin cambios y requieren revisión administrativa separada; no se revocaron ni
+marcaron automáticamente.

@@ -24,6 +24,7 @@ export async function sendPromoRegistrationEmail(args: {
 
 export async function sendPromoPassEmail(args: {
   event: Event;
+  orderId: string;
   recipient: string | null;
   participantNames: string[];
   qrImageUrl: string;
@@ -32,15 +33,17 @@ export async function sendPromoPassEmail(args: {
   eventQrTokenId?: string | null;
 }): Promise<SendEmailResult> {
   if (!args.recipient) return { ok: false, mode: "prod", error: "La orden no tiene correo de contacto." };
-  // Stripe puede entregar el mismo webhook más de una vez. Reusar el
-  // event_email_log evita mandar el pase grupal dos veces, sin bloquear un
-  // reenvío administrativo explícito desde el panel.
+  // Stripe puede entregar el mismo webhook más de una vez. La clave incluye
+  // orden, destinatario y estado para permitir la actualización apartado →
+  // liquidado sin repetir el mismo estado.
+  const normalizedRecipient = args.recipient.trim().toLowerCase();
+  const dedupeKey = `promo-pass:${args.orderId}:${normalizedRecipient}:${args.paymentStatus}`;
+  const subjectSuffix = args.paymentStatus === "paid" ? " · Pago total verificado" : " · Apartado verificado";
   const supabase = createSupabaseAdminClient();
   const { data: previous } = await supabase
     .from("event_email_log" as never)
     .select("provider_message_id")
-    .eq("event_id" as never, args.event.id)
-    .eq("recipient" as never, args.recipient)
+    .eq("dedupe_key" as never, dedupeKey)
     .eq("email_type" as never, "qr_pass")
     .eq("ok" as never, true)
     .order("sent_at" as never, { ascending: false })
@@ -65,9 +68,11 @@ export async function sendPromoPassEmail(args: {
     priceMXN: 1500,
     reservationAmountMXN: args.paymentStatus === "partial" ? 200 : undefined,
     paymentStatus: args.paymentStatus,
+    subjectSuffix,
   }, {
     eventId: args.event.id,
     eventQrTokenId: args.eventQrTokenId ?? null,
+    dedupeKey,
   });
 }
 

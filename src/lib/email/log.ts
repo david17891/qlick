@@ -41,6 +41,8 @@ export interface LogEventEmailInput {
    * o auditar quien recibio que folio. Nullable para los otros tipos.
    */
   eventCertificateId?: string | null;
+  /** Clave lógica para deduplicar una entrega por orden, estado y destinatario. */
+  dedupeKey?: string | null;
   recipient: string;
   attendeeName?: string | null;
   subject: string;
@@ -66,6 +68,7 @@ export async function logEventEmail(input: LogEventEmailInput): Promise<void> {
       event_id: input.eventId,
       event_qr_token_id: input.eventQrTokenId ?? null,
       event_certificate_id: input.eventCertificateId ?? null,
+      dedupe_key: input.dedupeKey ?? null,
       recipient: input.recipient,
       attendee_name: input.attendeeName ?? null,
       subject: input.subject,

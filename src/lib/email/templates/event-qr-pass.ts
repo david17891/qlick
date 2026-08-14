@@ -93,6 +93,12 @@ export interface EventQrPassInput {
    */
   paymentStatus?: "not_required" | "pending" | "partial" | "paid" | "paid_manual" | "pending_verification" | "revoked" | null;
   /**
+   * Sufijo opcional del asunto para estados que deben producir una
+   * actualización transaccional (por ejemplo, una promoción que pasó de
+   * apartado a liquidada). El cuerpo conserva el título original.
+   */
+  subjectSuffix?: string;
+  /**
    * Nota visible al asistente sobre el acceso al streaming
    * (ej: "el link se desbloquea 10 min antes").
    */
@@ -214,7 +220,7 @@ export function renderEventQrPassEmail(
   // el subject siempre dice "tu pase" (no promete acceso a algo que
   // aún no existe).
   const hasVirtualAccess = (format === "virtual" || format === "hybrid") && Boolean(gateUrl);
-  const subject = `Tu pase para "${esc(input.eventTitle)}"`;
+  const subject = `Tu pase para "${esc(input.eventTitle)}"${input.subjectSuffix ? esc(input.subjectSuffix) : ""}`;
   // Mostrar QR cuando NO hay acceso virtual garantizado (porque es la
   // pieza que el asistente guarda). Migración 20260707093000: virtual
   // sin link también muestra QR — es el "pase" que el asistente debe

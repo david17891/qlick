@@ -381,7 +381,7 @@ async function handlePromoCheckoutCompleted(
     // En una promoción las dos personas reciben el mismo pase compartido y
     // su comprobante Qlick. Cada helper es idempotente por destinatario.
     for (const recipient of recipients) {
-      await sendPromoPassEmail({ event, recipient, participantNames: names, qrImageUrl: settled.qr.qrImageUrl, checkInUrl: settled.qr.checkInUrl, paymentStatus, eventQrTokenId: settled.qr.id });
+      await sendPromoPassEmail({ orderId: promoOrderId, event, recipient, participantNames: names, qrImageUrl: settled.qr.qrImageUrl, checkInUrl: settled.qr.checkInUrl, paymentStatus, eventQrTokenId: settled.qr.id });
       await sendPromoPaymentReceiptEmail({
         event,
         recipient,

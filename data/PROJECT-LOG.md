@@ -1033,3 +1033,15 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 - El extractor normaliza ese patrón solo para proveedores comunes y lo
   reutilizan el bot determinista, `human_first`, lifecycle y la tool de captura.
 - Commit `271dbae`; deploy de producción `dpl_H8SXo5TuZXgESzVWBykQhGrYYEAE`.
+
+### 2026-08-14 — actualización idempotente de promoción al liquidar
+
+- Se agregó `dedupe_key` nullable a `event_email_log` mediante la migración
+  `20260814150000_event_email_dedupe_key.sql`; no se reescribieron logs previos.
+- El pase promocional usa `promo-pass:<orden>:<destinatario>:<estado>` para que
+  el apartado y la liquidación sean entregas distintas, sin duplicar webhooks.
+- E2E sintética validó dos participantes, apartado $200, webhook duplicado,
+  liquidación $1,300, segundo webhook duplicado y ocho correos exactos.
+- Validación: 9/9 pruebas promocionales, type-check y lint correctos; migración
+  aplicada en Supabase. Pendientes históricos (QR sin confirmación y pago
+  pendiente) permanecen sin cambios para revisión administrativa.

@@ -1082,3 +1082,17 @@ con information_schema.columns + pg_constraint antes de culpar al fix."
   agente. Producción: `dpl_H8SXo5TuZXgESzVWBykQhGrYYEAE`; aliases activos.
 - Validación: 71 pruebas focalizadas, type-check, lint, build y smoke público
   del landing/checkout correctos.
+
+## 2026-08-14 — Actualización de pase al liquidar promoción
+
+- Se cerró el último pendiente no bloqueante de la promoción CANACO: el pase
+  promocional distingue apartado y pago total por orden, estado y destinatario.
+  Un webhook duplicado no reenvía; una liquidación posterior sí manda el pase
+  actualizado y el comprobante de pago total.
+- La entrega continúa dirigida a cada participante con correo válido, usando el
+  mismo QR compartido con máximo dos accesos. No se tocó ningún QR histórico ni
+  se cambió el checkout individual.
+- Migración aditiva aplicada por Management API:
+  `20260814150000_event_email_dedupe_key.sql`.
+- Validación: E2E sintética apartado → duplicado → liquidación → duplicado,
+  9/9 pruebas promocionales, type-check y lint correctos.

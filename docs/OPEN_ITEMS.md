@@ -2554,5 +2554,10 @@ Reporte y evidencias: `docs/AUDIT_PROMO_CANACO_2026-08-14.md`.
 - **Cerrado:** reconciliación Stripe OXXO/SPEI cada 15 minutos, integrada al job durable existente y protegida con la misma credencial de cron.
 - **Cerrado:** pase QR compartido y comprobante Qlick para cada participante con email válido; recibo automático Stripe solicitado con `receipt_email`.
 - **Cerrado:** E2E sintética de dos personas, apartado $200, webhook duplicado e idempotencia; no crea cargos reales.
-- **Pendiente no bloqueante:** completar y verificar el correo de actualización cuando una orden `partial` se liquide a `paid` (el pase/comprobante inicial ya se envía correctamente).
+- **Cerrado 2026-08-14:** la actualización `partial` → `paid` usa una clave de
+  idempotencia por orden, estado y destinatario; permite un nuevo pase/comprobante
+  de pago total sin duplicar reintentos del mismo webhook. Migración:
+  `20260814150000_event_email_dedupe_key.sql`.
+- **Cerrado 2026-08-14:** el pase QR compartido y comprobante se entregan a
+  cada participante con correo válido.
 - **Pendiente operativo:** registrar un pago OXXO/SPEI real controlado y confirmar entrega de recibo Stripe en producción; no se requiere para activar el reconciliador.

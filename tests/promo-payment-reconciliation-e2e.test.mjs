@@ -138,4 +138,29 @@ test("promo de dos personas: apartado verificado entrega QR y comprobante a amba
   const duplicate = await POST(new Request("http://localhost/api/webhooks/stripe", { method: "POST", headers: { "stripe-signature": signature }, body: raw }));
   assert.equal(duplicate.status, 200);
   assert.equal(sent.length, 4, "webhook duplicado no debe reenviar pase ni comprobante");
+
+  const fullProductRef = JSON.stringify({
+    kind: "event", id: eventId, slug: event.slug, title: "QA promoción CANACO · Promoción 2 personas",
+    priceMXN: 1500, chargeAmountMXN: 1300, paymentPurpose: "promo_pair_full", startsAt: event.starts_at,
+  });
+  const fullStripeEvent = {
+    id: `evt_${runId}_full`, object: "event", api_version: "2025-09-30.clover", created: Math.floor(Date.now() / 1000), livemode: false,
+    type: "checkout.session.async_payment_succeeded",
+    data: { object: {
+      id: `cs_test_${runId}_full`, object: "checkout.session", mode: "payment", status: "complete", payment_status: "paid",
+      amount_total: 130000, currency: "mxn", payment_intent: `pi_${runId}_full`,
+      customer_email: primaryEmail, customer_details: { email: primaryEmail, name: "QA Persona Uno" },
+      metadata: { product_ref: fullProductRef, promo_order_id: orderId, confirmation_id: created.checkout.primaryConfirmationId, payment_mode: "test" },
+    } },
+  };
+  const fullRaw = JSON.stringify(fullStripeEvent);
+  const fullSignature = new Stripe(process.env.STRIPE_SECRET_KEY || "sk_test_placeholder").webhooks.generateTestHeaderString({ payload: fullRaw, secret });
+  const fullResponse = await POST(new Request("http://localhost/api/webhooks/stripe", { method: "POST", headers: { "stripe-signature": fullSignature }, body: fullRaw }));
+  assert.equal(fullResponse.status, 200);
+  assert.equal(sent.length, 8, "la liquidación debe enviar actualización de pase y comprobante a ambas personas");
+  assert.equal(sent.filter((mail) => mail.subject.includes("Pago total verificado") && !mail.subject.includes("Comprobante Qlick")).length, 2);
+
+  const fullDuplicate = await POST(new Request("http://localhost/api/webhooks/stripe", { method: "POST", headers: { "stripe-signature": fullSignature }, body: fullRaw }));
+  assert.equal(fullDuplicate.status, 200);
+  assert.equal(sent.length, 8, "el webhook de liquidación duplicado no debe reenviar correos");
 });

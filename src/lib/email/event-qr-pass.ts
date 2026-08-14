@@ -39,6 +39,8 @@ export interface SendEventQrPassExtra {
   eventId?: string | null;
   /** ID del token QR (para loggear en event_email_log). */
   eventQrTokenId?: string | null;
+  /** Clave lógica para separar entregas transaccionales por estado. */
+  dedupeKey?: string | null;
 }
 
 /**
@@ -76,6 +78,7 @@ export async function sendEventQrPassEmail(
     emailType: "qr_pass",
     eventId: extra.eventId ?? null,
     eventQrTokenId: extra.eventQrTokenId ?? null,
+    dedupeKey: extra.dedupeKey ?? null,
     recipient: input.attendeeEmail,
     attendeeName: input.attendeeName,
     subject,
