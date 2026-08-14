@@ -13,6 +13,9 @@
 > Se verificaron `/eventos/desarrollo-estructura-curso-canaco` y `/promo`:
 > aparecen los bloques nuevos, no aparece el Markdown antiguo y el checkout
 > promocional sigue separado del flujo normal.
+> La vista responsive móvil compacta quedó activa en el despliegue posterior
+> `dpl_AexbX2pYJc3HnNAnqNR9DpnBKTj7`: muestra la oferta y el CTA en la primera
+> pantalla, mientras el detalle ampliado se conserva para escritorio.
 
 > **Addendum 2026-08-14 — promoción para pendientes:** se cerró el hueco de
 > reactivación de los inscritos con `payment_pending`. En el tab **Pagos** del
