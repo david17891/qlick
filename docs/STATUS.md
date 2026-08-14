@@ -1,5 +1,12 @@
 # Project Status — Snapshot vivo
 
+> **Addendum 2026-08-14 — promoción para pendientes:** se cerró el hueco de
+> reactivación de los inscritos con `payment_pending`. En el tab **Pagos** del
+> evento, el admin puede preparar enlaces individuales de WhatsApp con la
+> promoción de 2 personas ($1,500, apartado $200) y la opción normal de $1,000.
+> Solo se incluyen pendientes con teléfono; no se envía nada automáticamente,
+> no se cambia su estado y el video se adjunta manualmente si corresponde.
+
 > **Addendum 2026-08-13 — promoción de cierre `/promo`:** se añadió de
 > forma aditiva la inscripción de 2 personas por $1,500 MXN, con apartado de
 > $200 MXN o pago completo, sin alterar el checkout normal de $1,000 MXN ni
