@@ -1363,12 +1363,14 @@ export default async function AdminEventoDetailPage({
                 paymentsSnapshot;
               const showPromoBroadcast = searchParams.promo_broadcast === "1";
               const promoBroadcast = buildPromoPendingBroadcast({
-                confirmations: pendingConfirmations.map((confirmation) => ({
+                confirmations: pendingConfirmations
+                  .filter((confirmation) => confirmation.registrationStatus === "payment_pending")
+                  .map((confirmation) => ({
                   id: confirmation.id,
                   name: confirmation.name,
                   phoneNormalized: confirmation.phoneNormalized,
                   phoneRaw: confirmation.phoneRaw,
-                })),
+                  })),
                 eventTitle: event.title,
                 eventDate: formatDate(event.startsAt),
                 eventLocation: event.location,
