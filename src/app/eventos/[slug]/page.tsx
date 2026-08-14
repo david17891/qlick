@@ -31,8 +31,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       robots: { index: false, follow: false },
     };
   }
+  const isCanacoPromo = event.slug === "desarrollo-estructura-curso-canaco";
   const description =
-    event.description?.slice(0, 160) ??
+    (isCanacoPromo
+      ? "Curso presencial para atraer y convertir más clientes con publicidad, Facebook Ads, IA y seguimiento de prospectos. Promoción de cierre para dos personas."
+      : event.description?.replace(/\*\*/g, "").replace(/\s+/g, " ").trim().slice(0, 160)) ??
     `Confirma tu asistencia a ${cleanEventTitle(event.title)} en Qlick Marketing Digital.`;
   return {
     title: `${cleanEventTitle(event.title)} · Qlick`,
