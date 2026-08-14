@@ -976,3 +976,16 @@ con information_schema.columns + pg_constraint antes de culpar al fix."
   aliases `qlick.digital`/`www.qlick.digital` activos. Smoke Node: sitio 200,
   cron sin credencial 401.
 - Validación: 4/4 pruebas focalizadas, type-check y lint correctos.
+
+## 2026-08-13 — Orden del repositorio y ramas
+
+- Se consolidó el trabajo versionable en `codex/production-hardening-20260813`
+  con commits separados para producto, documentación/materiales y Reels
+  protegido. La rama tiene upstream en GitHub y no modifica `main`.
+- Se retiraron ramas locales/remotas demostrablemente integradas o
+  reemplazadas. Se conservaron las ramas y worktrees con trabajo no integrado.
+- CSV de contactos movido a `private-data/` ignorado; previews generados y
+  paquetes de marca de revisión quedan ignorados.
+- Validación del checkout: type-check, lint, build y `audit:voseo` correctos;
+  suite completa 1708/1715. Los 7 restantes son escenarios históricos/E2E que
+  requieren Supabase/Stripe o fixtures antiguas y quedan como deuda explícita.

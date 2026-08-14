@@ -33,6 +33,9 @@
 - **Ramas:** se conservarán únicamente ramas con trabajo no integrado o
   worktrees sucios; las ramas limpias ya integradas se retirarán después de
   verificar el nuevo punto de integración.
+- **Suite completa:** 1,708/1,715 pruebas pasan; los 7 fallos históricos de
+  integración quedan separados de los 66/66 recorridos conversacionales
+  focalizados que sí pasan.
 
 Los puntos de producto que siguen bloqueados por una decisión externa (Meta,
 proveedor de pago, saldo del evento y contenido real) no se marcarán como
