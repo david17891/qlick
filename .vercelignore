@@ -1,0 +1,11 @@
+# Datos locales que nunca son necesarios para compilar la aplicación pública.
+private-data/
+datos-privados/
+
+# Artefactos de pruebas, logs y respaldos locales.
+tests/output/
+*.log
+.env*
+.git/
+.next/
+node_modules/
