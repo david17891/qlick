@@ -268,12 +268,28 @@ function createMockSupabase(overrides = {}) {
         calls.push({ op: "update", table, patch });
         const b = {
           ...builder,
-          eq: async (col, val) => {
+          eq: (col, val) => {
             calls.push({ op: "update.eq", table, col, val, patch });
             if (overrides.updateError) {
-              return { error: overrides.updateError };
+              return {
+                select: () => ({
+                  maybeSingle: async () => ({ error: overrides.updateError, data: null })
+                })
+              };
             }
-            return { error: null };
+            return {
+              select: (cols) => {
+                calls.push({ op: "update.select", table, cols });
+                return {
+                  maybeSingle: async () => ({
+                    data: Object.prototype.hasOwnProperty.call(overrides, "updateResult")
+                      ? overrides.updateResult
+                      : { id: "updated-row" },
+                    error: null
+                  })
+                };
+              }
+            };
           }
         };
         return b;
@@ -381,5 +397,23 @@ test("A15 (Sprint v0.11 multi-evento): el executor maneja el caso legacy v0.10 (
   const updateEq = sb.calls.find((c) => c.op === "update.eq");
   assert.equal(updateEq.col, "id");
   assert.equal(updateEq.val, LEGACY_LEAD_ID);
+});
+
+test("A16: UPDATE sin fila afectada no confirma el acompañante", async () => {
+  const { executeAddEventGuest } = await import(TOOL_URL);
+  const sb = createMockSupabase({
+    selectResult: {
+      data: { id: "row-pk-1", lead_id: "parent-lead-id", guests: [] },
+      error: null
+    },
+    updateResult: null
+  });
+  const r = await executeAddEventGuest(
+    { parent_lead_id: "parent-lead-id", guest_name: "Socio No Guardado", guest_email: null },
+    { supabase: sb }
+  );
+  assert.equal(r.ok, false);
+  assert.equal(r.persisted, false);
+  assert.match(r.note, /confirmar el guardado/i);
 });
 

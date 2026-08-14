@@ -48,6 +48,7 @@ import { getEventPaymentsSnapshot } from "@/lib/payments/event-payments-server";
 import { formatSurveyResponses } from "@/lib/events/survey-display";
 import { SurveyEditor } from "@/components/events/SurveyEditor";
 import { getDefaultSurveyConfig } from "@/lib/events/survey-config-validator";
+import { isEventRegistrationConfirmed } from "@/lib/events/event-registration-state";
 
 interface Props {
   params: { id: string };
@@ -225,8 +226,16 @@ export default async function AdminEventoDetailPage({
     notFound();
   }
 
-  // Conteos para el header.
-  const confirmedCount = confirmations.length;
+  // Conteos para el header. En eventos de pago, solamente el apartado
+  // mínimo o el pago verificado entra a la lista de confirmados. Las filas
+  // pendientes se conservan y se muestran en la pestaña de pagos.
+  const confirmedConfirmations = confirmations.filter((confirmation) =>
+    isEventRegistrationConfirmed({
+      payment_status: confirmation.paymentStatus,
+      registration_status: confirmation.registrationStatus,
+    }),
+  );
+  const confirmedCount = confirmedConfirmations.length;
   const attendedCount = attendees.length;
   const unmatchedCount = unmatchedAttendees.length;
   const surveysCount = surveys.length;
@@ -241,7 +250,7 @@ export default async function AdminEventoDetailPage({
   const attendeesWithPhone = attendees.filter(
     (a) => !!a.phoneNormalized
   ).length;
-  const confirmationsWithPhone = confirmations.filter(
+  const confirmationsWithPhone = confirmedConfirmations.filter(
     (c) => !!c.phoneNormalized
   ).length;
 
@@ -565,7 +574,7 @@ export default async function AdminEventoDetailPage({
             // `tests/confirmation-filter.test.mjs`).
             const { filtered: filteredConfirmations, isFiltered } =
               filterConfirmations({
-                confirmations,
+                confirmations: confirmedConfirmations,
                 query: searchQuery,
                 source: activeSource,
               });
@@ -777,7 +786,7 @@ export default async function AdminEventoDetailPage({
                   )}
                 </form>
 
-                {confirmations.length === 0 ? (
+                {confirmedConfirmations.length === 0 ? (
                   <EmptyState
                     icon="📭"
                     title="Aun no hay confirmados"
@@ -1348,7 +1357,7 @@ export default async function AdminEventoDetailPage({
           {activeTab === "payments" &&
             paymentsSnapshot &&
             (() => {
-              const { stats, payments, pendingConfirmations } =
+              const { stats, payments, pendingConfirmations, promoOrders } =
                 paymentsSnapshot;
               const fmtMoney = (centavos: number) =>
                 `$${(centavos / 100).toFixed(2)} MXN`;
@@ -1468,6 +1477,46 @@ export default async function AdminEventoDetailPage({
                     )}
                   </div>
 
+                  {promoOrders.length > 0 && (
+                    <div className="p-5 border-b border-brand-50 bg-brand-50/20">
+                      <p className="text-sm font-semibold text-ink mb-1">
+                        Promociones de 2 personas ({promoOrders.length})
+                      </p>
+                      <p className="text-xs text-ink-muted mb-3">
+                        Una sola orden y un solo pago para dos accesos. Esta vista no duplica el cargo en &quot;Pagos confirmados&quot;.
+                      </p>
+                      <Table headers={["Participantes", "Estado", "Pagado", "Creada"]}>
+                        {promoOrders.map((order) => (
+                          <tr key={order.orderId} className="hover:bg-white">
+                            <td className="px-5 py-3 text-sm text-ink">
+                              {order.participants.length > 0
+                                ? order.participants.map((participant) => (
+                                  <div key={participant.slotNumber}>
+                                    <span className="font-medium">{participant.name ?? "Cupo por asignar"}</span>
+                                    {participant.slotNumber === 2 && participant.identityStatus === "identity_pending" && (
+                                      <span className="ml-2 text-[10px] text-ink-muted">(pendiente)</span>
+                                    )}
+                                  </div>
+                                ))
+                                : "Cupo por asignar"}
+                            </td>
+                            <td className="px-5 py-3 text-xs">
+                              <Badge tone={order.status === "paid" ? "success" : order.status === "partial" ? "info" : "warning"}>
+                                {order.status === "paid" ? "Pagada" : order.status === "partial" ? "Apartado verificado" : "Pago pendiente"}
+                              </Badge>
+                            </td>
+                            <td className="px-5 py-3 text-xs font-semibold text-ink">
+                              {fmtMoney(Math.round(order.amountPaidMxn * 100))} / {fmtMoney(Math.round(order.totalAmountMxn * 100))}
+                            </td>
+                            <td className="px-5 py-3 text-xs text-ink-muted">
+                              {new Date(order.createdAt).toLocaleDateString("es-MX")}
+                            </td>
+                          </tr>
+                        ))}
+                      </Table>
+                    </div>
+                  )}
+
                   {/* Tabla de pagos confirmados (manual + stripe). */}
                   <div className="p-5">
                     <p className="text-sm font-semibold text-ink mb-2">
@@ -1551,12 +1600,12 @@ export default async function AdminEventoDetailPage({
                 count={confirmedCount}
                 tone="brand"
               >
-                {confirmations.length === 0 ? (
+                {confirmedConfirmations.length === 0 ? (
                   <p className="text-xs text-ink-muted italic text-center py-6 px-2">
                     Aun sin confirmados
                   </p>
                 ) : (
-                  confirmations.map((c) => (
+                  confirmedConfirmations.map((c) => (
                     <PipelineCard
                       key={c.id}
                       name={c.name}

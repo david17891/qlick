@@ -19,7 +19,61 @@
 
 ---
 
+## Snapshot operativo 2026-08-13 — housekeeping
+
+## Auditoría segura 2026-08-13
+
+- **CI:** el fixture de persistencia fue corregido; `npm run test:ci` local
+  queda en 1,701/1,701. El check remoto del PR #76 permanece pendiente de
+  finalizar.
+- **Seguridad Supabase:** ✅ se aplicó
+  `20260813140000_harden_security_definer_grants.sql`; las tres RPC sensibles
+  quedan restringidas a `service_role` y se verificó el resultado en vivo.
+- **Pendiente de schema:** el schema remoto contiene las tablas/columnas
+  operativas nuevas, pero el historial canónico de migraciones no refleja
+  todos los DDL posteriores; no reaplicar migraciones sin reconciliación.
+- **Ramas/worktrees:** no cerrar ni borrar los tres worktrees sucios hasta
+  clasificar sus cambios; las ramas integradas limpias sí podrán retirarse en
+  una ronda posterior.
+
+- **Producción:** último deploy funcional `dpl_7r9xPDZYySjjd95fGu6NEsVoFnf9`,
+  aliases `qlick.digital` y `www.qlick.digital`, smoke 200; el cron sin
+  credencial responde 401.
+- **Bot:** producción continúa en `super_executive_v2`; los arreglos de
+  captura, contexto de pago, QR provisional y handoff están desplegados.
+- **Seguimiento de pago:** continúa en `shadow` hasta contar con plantillas
+  Meta aprobadas; no es un fallo de código y requiere decisión externa.
+- **Datos:** no se versionan CSV, nombres, teléfonos, correos ni exportaciones;
+  los previews generados quedan ignorados por Git.
+- **Ramas:** se conservarán únicamente ramas con trabajo no integrado o
+  worktrees sucios; las ramas limpias ya integradas se retirarán después de
+  verificar el nuevo punto de integración.
+- **Suite completa:** 1,708/1,715 pruebas pasan; los 7 fallos históricos de
+  integración quedan separados de los 66/66 recorridos conversacionales
+  focalizados que sí pasan.
+
+Los puntos de producto que siguen bloqueados por una decisión externa (Meta,
+proveedor de pago, saldo del evento y contenido real) no se marcarán como
+cerrados artificialmente.
+
 ## 📊 Estado actual (snapshot 2026-07-21 — sprint auditoría autogestionable v0.9.9)
+
+### Seguimiento de pago de eventos — 2026-08-10
+
+- 🟡 **Plantillas Meta:** crear/aprobar `payment_priority_24h` y
+  `payment_last_day`; después guardar sus nombres aprobados en
+  `WHATSAPP_TEMPLATE_PAYMENT_REMINDER_24H` y
+  `WHATSAPP_TEMPLATE_PAYMENT_LAST_DAY`.
+- ✅ **Cron Supabase:** `EVENT_PAYMENT_FOLLOWUP_CRON_SECRET` está en Vercel y
+  Vault; job `pg_cron`/`pg_net` activo cada 15 minutos e invoca el endpoint
+  autenticado. El modo productivo quedó en `shadow`: calcula y registra
+  elegibles sin enviar mensajes.
+- 🟡 **Activación live:** aprobar en Meta las plantillas y guardar sus nombres
+  reales en `WHATSAPP_TEMPLATE_PAYMENT_REMINDER_24H` y
+  `WHATSAPP_TEMPLATE_PAYMENT_LAST_DAY`; después cambiar el modo a `live` y
+  verificar un contacto sintético sin tocar conversaciones reales.
+- 🟢 **Saldo posterior al apartado:** el panel ya muestra el saldo; la campaña
+  automática para cobrarlo queda fuera de este cambio.
 
 > **TL;DR:** main está verde con 1482/1484 tests (HEAD `6065f03` + `ec40b72`).
 > Los 2 fails son pre-existing en `human_first E2E` (sprint bot) — no regresión.

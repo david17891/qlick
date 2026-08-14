@@ -151,6 +151,7 @@ export function EventView({ event, pastEvent }: Props) {
   const showForm =
     !pastEvent && status !== "success" && status !== "already-registered";
   const displayTitle = cleanEventTitle(event.title);
+  const paidEvent = (event.priceMXN ?? 0) > 0;
 
   return (
     <>
@@ -257,9 +258,11 @@ export function EventView({ event, pastEvent }: Props) {
                   <LucideIcon icon={Check} size="xl" tone="inherit" />
                 </div>
                 <h2 className="text-2xl font-bold text-ink">
-                  {status === "success"
-                    ? "¡Confirmamos tu asistencia!"
-                    : "Ya estás registrada"}
+                  {paidEvent
+                    ? "¡Datos recibidos! Falta confirmar el pago"
+                    : status === "success"
+                      ? "¡Confirmamos tu asistencia!"
+                      : "Ya estás registrada"}
                 </h2>
                 <p className="mt-2 text-ink-muted text-sm max-w-md mx-auto">
                   {resultNote ??
@@ -334,7 +337,7 @@ export function EventView({ event, pastEvent }: Props) {
           ) : (
             <>
               <h2 className="text-2xl sm:text-3xl font-bold text-ink">
-                Confirma tu asistencia
+                {paidEvent ? "Aparta tu lugar" : "Confirma tu asistencia"}
               </h2>
               <p className="mt-2 text-ink-muted">
                 Déjanos tus datos y te enviaremos los detalles del evento por

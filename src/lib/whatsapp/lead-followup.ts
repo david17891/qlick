@@ -32,7 +32,11 @@ export function getMaxFollowupsForStage(stage: LeadFollowupStage): number {
 export function hasCompletedRegistrationSignal(
   tags: string[] | null | undefined,
 ): boolean {
-  return (tags ?? []).includes(LEAD_REGISTRATION_COMPLETE_TAG);
+  return (tags ?? []).some(
+    (tag) =>
+      tag === LEAD_REGISTRATION_COMPLETE_TAG ||
+      /^event:.+:registration_complete$/.test(tag),
+  );
 }
 
 export interface LeadFollowupInput {
@@ -134,6 +138,59 @@ export function getPendingRegistrationField(
 }
 
 /**
+ * Corrige estados históricos donde el modelo dejó `awaiting_field=name`
+ * aunque el texto enviado ya pedía el correo. El cuerpo visible es una señal
+ * segura porque proviene del outbound persistido, no de una inferencia nueva.
+ */
+export function normalizePendingRegistrationField(
+  messages: Array<{
+    direction: "inbound" | "outbound";
+    body?: string | null;
+    metadata?: unknown;
+  }>,
+): "name" | "email" | null {
+  const field = getPendingRegistrationField(messages);
+  const lastOutbound = [...messages]
+    .reverse()
+    .find((message) => message.direction === "outbound");
+  const body = lastOutbound?.body ?? "";
+
+  // Rescate de outbounds históricos o de proveedores que no conservaron la
+  // metadata: el texto explícito de la pregunta sigue siendo una señal
+  // determinista y permite continuar el flujo sin volver al LLM.
+  const inferredField = !field && body
+    ? /(?:nombre\s+completo|dime\s+(?:tu\s+)?nombre|m[aá]ndame\s+(?:tu\s+)?nombre)\b/i.test(body)
+      ? "name"
+      : /(?:correo|email)\b/i.test(body) &&
+          /(?:falta|m[aá]ndame|dame|p[aá]same|comparte|env[ií]a)/i.test(body)
+        ? "email"
+        : null
+    : null;
+  const effectiveField = field ?? inferredField;
+  if (!effectiveField) return null;
+
+  if (
+    effectiveField === "name" &&
+    /(?:solo|s[oó]lo|[úu]nicamente)\s+(?:me\s+)?falta(?:n)?\s+(?:tu\s+)?(?:mejor\s+)?(?:correo|email)\b/i.test(body)
+  ) {
+    return "email";
+  }
+  if (
+    effectiveField === "name" &&
+    /(?:ahora|solo)\s+(?:m[aá]ndame|dame|p[aá]same|comparte)\s+(?:tu\s+)?(?:correo|email)\b/i.test(body)
+  ) {
+    return "email";
+  }
+  if (
+    effectiveField === "email" &&
+    /(?:necesito|dime|indica|m[aá]ndame|comparte)\s+(?:tu\s+)?nombre\s+completo\b/i.test(body)
+  ) {
+    return "name";
+  }
+  return effectiveField;
+}
+
+/**
  * Indica si el ultimo outbound del bot fue el rescate de informacion y aun
  * no existe una respuesta del bot posterior. Se usa para que un "si" corto
  * entre al cierre de inscripcion, en vez de caer en el ack generico.
@@ -227,14 +284,17 @@ function firstName(value: string | undefined): string {
 }
 
 function stageForInput(input: Pick<LeadFollowupInput, "status" | "intent" | "tags">): LeadFollowupStage | null {
-  if (hasCompletedRegistrationSignal(input.tags)) return null;
-  if (input.status === "payment_pending") return "payment_pending";
+  // Una inscripción terminada detiene los recordatorios de registro/pago,
+  // pero no debe impedir una futura solicitud explícita de información sobre
+  // otro evento.
   if (
     input.status === "info_requested" &&
     hasRequestedInfoSignal(input.tags)
   ) {
     return "info_requested";
   }
+  if (hasCompletedRegistrationSignal(input.tags)) return null;
+  if (input.status === "payment_pending") return "payment_pending";
   if (
     input.status === "interested" &&
     (input.intent === "enroll_course" ||
@@ -274,6 +334,9 @@ export function buildLeadFollowupBody(
   const prefix = greeting ? `Hola ${greeting} 👋` : "Hola 👋";
 
   if (stage === "registration_incomplete") {
+    if (!awaitingField) {
+      return `${prefix}\n\nVeo que quieres avanzar con tu inscripción. Solo me faltan tu nombre completo y tu correo; respóndeme aquí y lo terminamos.`;
+    }
     const field = awaitingField === "email" ? "tu correo" : awaitingField === "name" ? "tu nombre completo" : "un dato";
     if (followupNumber === 1) {
       return `${prefix}\n\n¿Quieres que te ayude a terminar tu registro? Solo me falta ${field}.`;

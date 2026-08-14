@@ -54,7 +54,7 @@ const FAKE_EVENT_CANACO_RESERVATION = {
   id: "00000000-0000-0000-0000-000000000C42",
   slug: "desarrollo-estructura-curso-canaco",
   short_code: "CN26",
-  title: "Las 4 Patas de un Negocio que Vende",
+  title: "Los 4 Pilares de un Negocio que Vende",
   description: "Curso presencial en CANACO.",
   // FIX 2026-07-18: starts_at en el FUTURO para que el filtro
   // `gte(now - 6h)` de `loadAllActiveEvents` no lo excluya.
@@ -500,7 +500,7 @@ test("REGRESION implicit_capture CANACO: genera QR + outbound con copy de aparta
   }
 });
 
-test("REGRESION implicit_capture evento de pago SIN apartado: copy legacy preservado (pago completo / pago en puerta)", async () => {
+test("REGRESION implicit_capture evento de pago SIN apartado: CTA de pago sin acceso previo", async () => {
   currentEventVariant = FAKE_EVENT_PAY_NO_RESERVATION;
   const restoreEnv = setSupabaseEnv();
   const restoreFetch = mockFetch();
@@ -520,10 +520,10 @@ test("REGRESION implicit_capture evento de pago SIN apartado: copy legacy preser
     });
 
     const preview = result.responsePreview ?? "";
-    // Sin apartado: el copy debe ser el LEGACY de pago completo.
+    // Sin apartado: el copy debe pedir el pago completo.
     assert.ok(
-      /Tienes 2 opciones/i.test(preview),
-      `copy sin apartado debe ser el legacy de pago completo. Got: ${preview}`
+      /completa el pago/i.test(preview),
+      `copy sin apartado debe pedir el pago completo. Got: ${preview}`
     );
     assert.ok(
       /\$1,?000/.test(preview),
@@ -534,6 +534,7 @@ test("REGRESION implicit_capture evento de pago SIN apartado: copy legacy preser
       !/\?payment_option=reservation/.test(preview),
       `copy sin apartado NO debe tener ?payment_option=reservation. Got: ${preview}`
     );
+    assert.ok(!/pago en puerta|confirmad[oa]|registrad[oa]|QR/i.test(preview));
   } finally {
     restoreFetch();
     restoreEnv();
@@ -579,7 +580,7 @@ test("CANACO: la respuesta corta de info resume contenido, fecha, pago y ubicaci
   assert.match(copy, /\$1,?000/);
   assert.match(copy, /\$500/);
   assert.match(copy, /20 de agosto de 2026/);
-  assert.match(copy, /dirección exacta está por confirmar/i);
+  assert.doesNotMatch(copy, /dirección exacta está por confirmar/i);
   assert.doesNotMatch(copy, /respond[eé]s|escrib[ií]s|mand[aá]s/i);
 });
 

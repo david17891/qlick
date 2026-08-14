@@ -129,6 +129,10 @@ export function mapEventConfirmationRowToEventConfirmation(
   // payment_status existe en DB desde la migration 20260715014706 pero
   // el typegen de Supabase no lo incluye. Cast defensivo del row.
   const payStatus = (row as Record<string, unknown>).payment_status;
+  const registrationStatus = (row as Record<string, unknown>).registration_status;
+  const registrationConfirmedAt = (row as Record<string, unknown>).registration_confirmed_at;
+  const paymentPriorityExpiresAt = (row as Record<string, unknown>).payment_priority_expires_at;
+  const leadId = (row as Record<string, unknown>).lead_id;
   return {
     id: row.id,
     eventId: row.event_id,
@@ -138,9 +142,19 @@ export function mapEventConfirmationRowToEventConfirmation(
     phoneNormalized: row.phone_normalized ?? undefined,
     source: row.source,
     confirmedAt: row.confirmed_at,
+    registrationStatus:
+      registrationStatus === "confirmed" || registrationStatus === "payment_pending"
+        ? registrationStatus
+        : undefined,
+    registrationConfirmedAt:
+      typeof registrationConfirmedAt === "string" ? registrationConfirmedAt : undefined,
+    paymentPriorityExpiresAt:
+      typeof paymentPriorityExpiresAt === "string" ? paymentPriorityExpiresAt : undefined,
+    leadId: typeof leadId === "string" ? leadId : undefined,
     importBatchId: row.import_batch_id ?? undefined,
     paymentStatus:
       payStatus === "pending" ||
+      payStatus === "partial" ||
       payStatus === "pending_verification" ||
       payStatus === "paid" ||
       payStatus === "revoked" ||

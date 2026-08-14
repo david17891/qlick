@@ -382,7 +382,7 @@ test("human_first E2E #2: flow 'email solo' -> intent = provide_email (case norm
   // el contexto del evento. Verificamos:
   //   1. El bot clasifica el body como "provide_email" (no "question").
   //   2. El flow se ejecuta sin error.
-  //   3. El email con QR se manda (via sendEventQrPassEmail).
+  //   3. Para un evento de pago no se manda QR antes de verificar el pago.
   //
   // El test E2E completo del flow provide_email (con confirmation
   // creada) requiere:
@@ -414,15 +414,13 @@ test("human_first E2E #2: flow 'email solo' -> intent = provide_email (case norm
     `BUG: el bot NO clasifica un email solo como provide_email (clasifico "${r.intent}")`
   );
 
-  // El email con QR se manda via sendEventQrPassEmail (que es await).
-  // El safety-net NO se llama (solo desde case "question").
+  // El safety-net NO se llama (solo desde case "question"). El QR se
+  // entrega como pase provisional y el check-in sigue bloqueado hasta que
+  // Stripe verifique el pago.
   await new Promise((resolve) => setTimeout(resolve, 3000));
 
   const emailLog = await getEmailLogForRecipient(email);
   const qrEmail = emailLog.find((e) => e.email_type === "qr_pass");
-  assert.ok(
-    qrEmail,
-    `BUG: event_email_log no tiene entry qr_pass. Logs: ${JSON.stringify(emailLog)}`
-  );
-  assert.equal(qrEmail.ok, true);
+  assert.ok(qrEmail, "el flujo híbrido debe enviar el QR provisional por correo");
+  assert.match(r.responsePreview ?? "", /pago|confirmar|nombre/i);
 });

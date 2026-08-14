@@ -41,8 +41,10 @@ export async function GET(req: Request) {
 
   // 2. Run job.
   try {
-    const result = await runSurveyRemindersJob();
-    return NextResponse.json(result);
+    const survey = await runSurveyRemindersJob();
+    return NextResponse.json({
+      ...survey,
+    });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("[cron/survey-reminders] excepción", {

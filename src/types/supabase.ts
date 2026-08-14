@@ -1387,6 +1387,170 @@ export type Database = {
           },
         ]
       }
+      lead_event_journey_transitions: {
+        Row: {
+          bot_mode: string | null
+          bot_version: string | null
+          created_at: string
+          event_id: string
+          from_awaiting_field: string | null
+          from_stage: string | null
+          id: string
+          journey_id: string
+          lead_id: string
+          metadata: Json
+          reason: string
+          source: string
+          source_message_id: string | null
+          to_awaiting_field: string
+          to_stage: string
+        }
+        Insert: {
+          bot_mode?: string | null
+          bot_version?: string | null
+          created_at?: string
+          event_id: string
+          from_awaiting_field?: string | null
+          from_stage?: string | null
+          id?: string
+          journey_id: string
+          lead_id: string
+          metadata?: Json
+          reason: string
+          source: string
+          source_message_id?: string | null
+          to_awaiting_field: string
+          to_stage: string
+        }
+        Update: {
+          bot_mode?: string | null
+          bot_version?: string | null
+          created_at?: string
+          event_id?: string
+          from_awaiting_field?: string | null
+          from_stage?: string | null
+          id?: string
+          journey_id?: string
+          lead_id?: string
+          metadata?: Json
+          reason?: string
+          source?: string
+          source_message_id?: string | null
+          to_awaiting_field?: string
+          to_stage?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_event_journey_transitions_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_event_journey_transitions_journey_id_fkey"
+            columns: ["journey_id"]
+            isOneToOne: false
+            referencedRelation: "lead_event_journeys"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_event_journey_transitions_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_event_journey_transitions_source_message_id_fkey"
+            columns: ["source_message_id"]
+            isOneToOne: false
+            referencedRelation: "lead_whatsapp_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_event_journeys: {
+        Row: {
+          awaiting_field: string
+          bot_mode: string | null
+          bot_version: string | null
+          conversation_control: string
+          created_at: string
+          event_id: string
+          follow_up_count: number
+          id: string
+          last_action: string | null
+          last_inbound_at: string | null
+          last_intent: string | null
+          last_outbound_at: string | null
+          lead_id: string
+          metadata: Json
+          next_follow_up_at: string | null
+          payment_status: string
+          recovery_state: string
+          relationship_stage: string
+          updated_at: string
+        }
+        Insert: {
+          awaiting_field?: string
+          bot_mode?: string | null
+          bot_version?: string | null
+          conversation_control?: string
+          created_at?: string
+          event_id: string
+          follow_up_count?: number
+          id?: string
+          last_action?: string | null
+          last_inbound_at?: string | null
+          last_intent?: string | null
+          last_outbound_at?: string | null
+          lead_id: string
+          metadata?: Json
+          next_follow_up_at?: string | null
+          payment_status?: string
+          recovery_state?: string
+          relationship_stage?: string
+          updated_at?: string
+        }
+        Update: {
+          awaiting_field?: string
+          bot_mode?: string | null
+          bot_version?: string | null
+          conversation_control?: string
+          created_at?: string
+          event_id?: string
+          follow_up_count?: number
+          id?: string
+          last_action?: string | null
+          last_inbound_at?: string | null
+          last_intent?: string | null
+          last_outbound_at?: string | null
+          lead_id?: string
+          metadata?: Json
+          next_follow_up_at?: string | null
+          payment_status?: string
+          recovery_state?: string
+          relationship_stage?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_event_journeys_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_event_journeys_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_interactions: {
         Row: {
           channel: Database["public"]["Enums"]["interaction_channel"]

@@ -26,6 +26,7 @@ import { RevokeManualPaymentModal } from "./RevokeManualPaymentModal";
 type PaymentStatus =
   | "not_required"
   | "pending"
+  | "partial"
   | "pending_verification"
   | "paid"
   | "paid_manual"
@@ -63,7 +64,7 @@ export function PaymentStatusActions({
   // FIX auditoria 2026-07-15f: paid_manual (staff cobro en puerta) tiene
   // el mismo tratamiento visual que paid. Antes caía al default que
   // mostraba "Confirmar pagado" — confuso, el staff ya habia cobrado.
-  if (paymentStatus === "paid" || paymentStatus === "paid_manual") {
+  if (paymentStatus === "paid" || paymentStatus === "paid_manual" || paymentStatus === "partial") {
     return (
       <>
         <span
@@ -71,10 +72,12 @@ export function PaymentStatusActions({
           title={
             paymentStatus === "paid_manual"
               ? "Pago registrado en puerta"
+              : paymentStatus === "partial"
+                ? "Apartado verificado"
               : "Pago confirmado"
           }
         >
-          ✓ Pagado
+          {paymentStatus === "partial" ? "✓ Apartado" : "✓ Pagado"}
         </span>
         <button
           type="button"

@@ -192,6 +192,9 @@ export const stripeProvider: PaymentProvider = {
     if (input.confirmationId) {
       metadata.confirmation_id = input.confirmationId;
     }
+    if (input.promoOrderId) {
+      metadata.promo_order_id = input.promoOrderId;
+    }
 
     // URLs por defecto si el caller no las pasa. El success URL recibe
     // ?session_id={CHECKOUT_SESSION_ID} para que la página de éxito pueda
@@ -233,7 +236,7 @@ export const stripeProvider: PaymentProvider = {
                   productRef.kind === "course"
                     ? "Acceso completo al curso en Qlick"
                     : productRef.kind === "event"
-                      ? productRef.paymentPurpose === "reservation"
+                      ? productRef.paymentPurpose === "reservation" || productRef.paymentPurpose === "promo_pair_reservation"
                         ? `Apartado de $${(productRef.chargeAmountMXN ?? productRef.priceMXN).toLocaleString("es-MX")} MXN. Precio total del evento: $${productRef.priceMXN.toLocaleString("es-MX")} MXN.`
                         : `Acceso al evento (${(productRef as { startsAt?: string }).startsAt ?? "próximamente"})`
                       : productRef.kind === "service"

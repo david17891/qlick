@@ -312,7 +312,7 @@ export async function executeAddEventGuest(
 
   const updatedGuests = upsertGuestInArray(existingGuests, newGuest);
 
-  const { error: updateError } = await ctx.supabase
+  const { data: updatedRow, error: updateError } = await ctx.supabase
     .from("event_attendees")
     // Mismo motivo que arriba: GuestRecord[] → Json requiere cast through unknown.
     // FIX 2026-07-14 (Sprint v0.11 multi-evento): el UPDATE usa
@@ -325,7 +325,9 @@ export async function executeAddEventGuest(
     // fila cuya `id` coincide con el `lead_id` SOLO en el caso
     // legacy v0.10 (workaround). En el nuevo modelo fallaría.
     .update({ guests: updatedGuests as unknown as Json })
-    .eq("id", row.id);
+    .eq("id", row.id)
+    .select("id")
+    .maybeSingle();
 
   if (updateError) {
     return {
@@ -334,6 +336,19 @@ export async function executeAddEventGuest(
       persisted: false,
       demo: false,
       note: `Error al guardar el guest: ${updateError.code ?? "unknown"}`
+    };
+  }
+
+  // Supabase puede devolver error=null aunque el filtro no afecte ninguna
+  // fila. Solo confirmamos el acompañante cuando la fila actualizada vuelve
+  // explícitamente desde la base.
+  if (!updatedRow?.id) {
+    return {
+      ok: false,
+      error_email: emailError,
+      persisted: false,
+      demo: false,
+      note: "No se pudo confirmar el guardado del acompañante."
     };
   }
 

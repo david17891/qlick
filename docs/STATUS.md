@@ -1,5 +1,123 @@
 # Project Status — Snapshot vivo
 
+> **Addendum 2026-08-13 — promoción de cierre `/promo`:** se añadió de
+> forma aditiva la inscripción de 2 personas por $1,500 MXN, con apartado de
+> $200 MXN o pago completo, sin alterar el checkout normal de $1,000 MXN ni
+> el pago existente. La orden promocional usa un solo ledger, conserva la
+> segunda plaza como `identity_pending` cuando queda en blanco y genera un QR
+> compartido con máximo dos check-ins únicamente después de pago/apartado
+> verificado. La migración `20260813170000_event_promo_pair_orders.sql` fue
+> aplicada y verificada en Supabase `ugpejblymtbwtsoiykyj`; la página `/promo`,
+> el correo de pago y la vista administrativa de órdenes quedaron incluidos.
+> Validación local: 1,706/1,706 pruebas, type-check, lint y build correctos.
+> La campaña con video no se envía automáticamente: requiere lanzamiento
+> explícito.
+
+> **Addendum 2026-08-13 — auditoría segura de integración:** se reprodujo y
+> corrigió el único fallo del gate estático del PR #76: el fixture de Supabase
+> no modelaba `.select().maybeSingle()` y activaba correctamente el fallback
+> que evita afirmar un guardado no verificado. `test:ci` local quedó en
+> 1,701/1,701, type-check y lint correctos; GitHub está reejecutando el CI.
+> La migración aditiva `20260813140000_harden_security_definer_grants.sql`
+> se aplicó en producción y dejó `get_user_id_by_email`,
+> `issue_event_certificate` y `soft_delete_conversation_tx` ejecutables solo
+> por `service_role`; la verificación posterior confirmó esos grants y
+> eliminó las tres advertencias correspondientes del advisor. No se tocaron
+> datos ni lógica de negocio.
+
+> **Addendum 2026-08-13 — flujo híbrido QR + pago:** se promovió el flujo
+> provisional en `dpl_HrgxbViyXEG7ryML3K8CNYseutFR` al proyecto Vercel `qlick`.
+> En eventos pagados, el correo de captura incluye el QR provisional y el
+> enlace de pago; el QR se conserva estable, pero `/api/check-in` y el gate
+> siguen bloqueando el acceso hasta un pago/apartado verificado. La migración
+> aditiva `20260813120000_restore_provisional_qr_for_pending_payments.sql`
+> reactivó únicamente tokens revocados por `payment_pending_registration`:
+> 14 pendientes activos, 1 pagado activo y ninguna revocación ajena alterada.
+> Smoke: `www.qlick.digital` 200, QR provisional 200 `image/png`, cron POST sin
+> credencial 401. El panel ahora muestra en “Pagos confirmados” solo ledger
+> `approved`/`paid_manual`; intentos fallidos o cancelados no se presentan como
+> cobros. No se enviaron correos masivos históricos automáticamente.
+
+> **Addendum 2026-08-11 — reparación de sede CANACO:** se corrigieron en
+> producción las reglas históricas que decían “dirección por confirmar” y se
+> normalizó `events.location` a `CANACO, Av. Álvaro Obregón 14-15, San Luis
+> Río Colorado, Sonora`. La resolución de sede desde la descripción quedó
+> desplegada selectivamente en Vercel `dpl_HUPgEJ3rwjp6JTSibGUncHfRMr82`,
+> estado `READY`, con `https://qlick.digital` y
+> `https://www.qlick.digital` respondiendo HTTP 200.
+
+> **Addendum 2026-08-11 — blindaje selectivo del bot:** se promovieron
+> `bot-engine`, prompts, provider y executors de persistencia en
+> `dpl_BSYX97H3pjhBCq2JeUv1s73fPvZP`, estado `READY`. Ambos dominios y la
+> página del evento responden HTTP 200 y contienen CANACO, San Luis Río
+> Colorado y Av. Álvaro Obregón.
+
+> **Addendum 2026-08-11 — verificación completa del funnel:** el E2E
+> sintético pasó human_first → `payment_pending` sin QR → webhook Stripe
+> firmado → pago `approved` → acceso `active` → email/QR activo y WhatsApp
+> post-pago. Se corrigió la referencia de jornada para usar el UUID interno
+> de conversación y el QR ahora guarda `confirmation_id`. Deploy final:
+> `dpl_9MN2dG3RnCvMSBYbL2QhjFMp3tG6`, estado `READY`.
+
+> **Addendum 2026-08-11 — activación human_first:** auditoría final aprobada
+> con 117/117 pruebas focalizadas, funnel Stripe/QR 1/1, auditoría voseo,
+> type-check y lint correctos. `system_settings.bot_global_mode` quedó en
+> `human_first` a las 19:01 UTC. Sin datos sintéticos residuales: leads 0,
+> eventos 0 y QR huérfanos 0. Monitoreo inicial: 3 jobs inbound completados,
+> sin errores de validación registrados aún.
+
+> **Addendum 2026-08-11 — renombre del evento CANACO:** el evento publicado
+> conserva su ID y slug, pero ahora se muestra como `Los 4 Pilares de un
+> Negocio que Vende`. También se actualizaron descripción, HTML y PDF públicos.
+> Deploy productivo Vercel `dpl_E6EttV4wYwgn6gp2irc3LaC85amE`, estado `READY`,
+> aliases `https://qlick.digital` y `https://www.qlick.digital`. La página del
+> evento y los 7 HTML públicos responden `200`, muestran el nombre nuevo y no
+> contienen `Las 4 Patas`; los 3 PDF publicados fueron verificados igual.
+
+> **Addendum 2026-08-11 — hardening operativo en producción:** se aplicó la
+> migración aditiva `20260811120000_bot_operational_safety.sql` en Supabase
+> `ugpejblymtbwtsoiykyj` y se habilitó `pg_cron`/`pg_net` con un job cada 15
+> minutos. Los nuevos jobs/telemetría tienen RLS y acceso exclusivo de
+> `service_role`; no contienen cuerpos ni PII. Los handoffs pendientes dejaron
+> el bot pausado de forma reversible. El flujo de QR ahora falla cerrado para
+> eventos pagados sin confirmación y no genera pase utilizable antes del pago.
+> Deploy productivo Vercel `dpl_Gv7Y9yBkmBqr5j5HNwNaogqRBFAa`, estado `READY`,
+> aliases `https://qlick.digital` y `https://www.qlick.digital` verificados
+> HTTP 200; el cron sin credencial responde 401. `EVENT_PAYMENT_FOLLOWUP_MODE`
+> está en `shadow` hasta que Meta apruebe las plantillas; no se envían
+> seguimientos automáticos todavía.
+
+> **Addendum 2026-08-11 — hardening conversacional en producción:** se
+> integró `7c65601` en el checkout principal y se desplegó como
+> `dpl_kQpUKkLc4rJsdZ7pimTXsgLs1WPR` en el proyecto Vercel `qlick`. El build
+> remoto terminó `READY`; `https://qlick.digital`,
+> `https://www.qlick.digital` y `/robots.txt` responden HTTP 200. El bot ahora
+> bloquea pensamientos internos, evita nombres no verificados en saludos/LLM,
+> conserva la regla `confirmed = pago o apartado verificado`, valida copy
+> comercial antes de enviar y dispone de kill-switch `BOT_DECISION_ENGINE_MODE=safe`.
+> El default productivo permanece `legacy` para activar gradualmente el motor
+> estructurado sin poner en riesgo conversaciones existentes. Logs de Vercel
+> de la primera hora: sin errores registrados.
+
+> **Addendum 2026-08-10 — confirmado = pago o apartado verificado:** se desplegó
+> la separación operativa entre `confirmed` y `payment_pending`. Producción
+> Supabase `ugpejblymtbwtsoiykyj` quedó con 32 confirmaciones gratuitas,
+> 1 pagada y 13 pendientes de pago; los 10 QR históricos vinculados a esas 13
+> filas permanecen en la base, pero están revocados (0 QR activos para
+> pendientes). La migración posterior fue aplicada por el script canónico y
+> auditada sin tablas/columnas faltantes. El dashboard, QR, check-in, acceso,
+> encuestas y broadcasts consumen únicamente `registration_status=confirmed`.
+> Deploy Vercel `dpl_J1iCEBGQAe1fpHyuA6tqHKvPeRa8` en `READY`; aliases
+> `https://qlick.digital` y `https://www.qlick.digital` responden `200`.
+> `EVENT_PAYMENT_FOLLOWUP_MODE` permanece `off` hasta aprobar las dos
+> plantillas Meta y guardar el secreto del cron en Vault; no se enviaron
+> mensajes automáticos durante la promoción.
+
+
+> **Addendum 2026-08-09 - enlace de leads de servicios:** las notificaciones nuevas por correo ya no apuntan a `qlick.app/admin/dashboard?tab=servicios`, dominio y ruta que no existen. El enlace canonico ahora es `https://www.qlick.digital/admin?tab=servicios`. Deploy `qlick-5jc3g6r7l-david17891-9351s-projects.vercel.app` en `READY`; smoke `/`, `/admin` y `/admin?tab=servicios` `200`, webhook sin firma `403`. Los correos ya enviados conservan su enlace original y no fueron modificados.
+
+> **Addendum 2026-08-10 - deep-link de leads de servicios:** una solicitud de WhatsApp puede existir como `lead_service_interest` sin ser todavía un `service_order` (faltan variante/correo para cotizar). Las notificaciones nuevas abren directamente `/admin?tab=crm&leadId=...`; el CRM puede cargar el lead por id aunque no esté en la primera página. Deploy `dpl_GGUJMQrxhd2iLsraMotcC32WuH9E` en `READY`; smoke enlace CRM `200`, detalle sin sesión `401` y webhook sin firma `403`.
+
 > **Propósito:** Single source of truth "dónde estamos AHORA". A diferencia de
 > `ROADMAP.md` (planes) y `OPEN_ITEMS.md` (deuda histórica), este doc captura
 > el estado actual de producción en un momento dado.
@@ -11,6 +129,20 @@
 > **Addendum 2026-08-08:** Revisión humana ahora incluye enlace directo a WhatsApp, clasificación automática por evento actual/anterior y borrado permanente auditado de datos CRM. Pagos, confirmaciones y asistencias de eventos se preservan y no se eliminan desde esta vista.
 
 > **Addendum 2026-08-08 — asociación de conversaciones:** `related_event_id` ya se persiste en los nuevos turnos de WhatsApp y la revisión humana también reconoce el evento por el contenido del historial. En producción se reconciliaron 407 filas con su lead mediante teléfono y se asociaron 1,306 conversaciones con evidencia: 318 al evento actual CN26 y 988 al evento anterior AA4E. Quedan 227 mensajes como `Sin evento` por falta de lead o evidencia suficiente; no se asignaron por suposición. Deploy `dpl_3Em9QAQtEp8R8WEDAUXbEkqL2G93` en `READY`; aliases `https://qlick.digital` y `https://www.qlick.digital` verificados.
+
+> **Addendum 2026-08-08 — corte post-registro:** se corrigió un caso real donde Melec tenía confirmación y QR válidos, pero el cron envió dos recordatorios de pago porque el lead no tenía la marca de registro completo. El estado de pago permanece `pending`, pero `next_follow_up_at` quedó en `NULL` y se agregaron marcas global y por evento. El bot ahora cierra el seguimiento automáticamente al crear la confirmación y conserva `related_event_id` al persistir follow-ups. Deploy `dpl_43dPUuLfeTGgnXiYjeo9c8Hjyt75` en `READY`; aliases `https://qlick.digital` y `https://www.qlick.digital` verificados con `/` 200, `/eventos` 200, `/admin` 200 y webhook sin firma 403.
+
+> **Addendum 2026-08-09 — resolver de evento:** se centralizó la asociación de mensajes WhatsApp con niveles de confianza (`explicit`, `contextual`, `fallback`). La auditoría de 228 conversaciones sin evento no encontró base segura para una reasignación masiva: 64 no tienen lead, 226 no tienen evidencia explícita y las dos filas con señales de QR pertenecen al evento anterior. Se conserva `Sin evento` donde la evidencia no alcanza y se deja para revisión humana. Deploy `dpl_7zD4AEKq1QCj5Kq2YSTewnRqfZi2` en `READY`; aliases `https://qlick.digital` y `https://www.qlick.digital` verificados con `/` 200, `/eventos` 200, `/admin` 200 y webhook sin firma 403.
+
+> **Addendum 2026-08-09 — ACK contextual:** el handler de acuses cortos ya distingue confirmación/QR de pago pendiente. Un “Ok”, “Listo” o “Gracias” después de un registro completo devuelve un cierre neutral y no reenvía el enlace de pago; si aún falta un dato, solicita solo ese campo. Deploy `dpl_3YVVhAJvSpMXhUcA9cxv3QgsVv1k` en `READY`; aliases `https://qlick.digital` y `https://www.qlick.digital` verificados con `/` 200, `/eventos` 200, `/admin` 200 y webhook sin firma 403.
+
+> **Addendum 2026-08-09 — duplicados rápidos:** la auditoría de los últimos 14 días encontró 4 grupos de outbound repetidos; 2 fueron el mismo welcome automático enviado dos veces en menos de un segundo. Se agregó un guard idempotente que solo suprime el mismo texto automático de `welcome/greeting` dentro de 15 segundos; no afecta captura, pagos, handoffs ni mensajes manuales. Los mensajes históricos no se borraron ni modificaron. Deploy `dpl_e89DMVj4iDQbdufY7Dmw4Vo7xwCM` en `READY`; alias `https://www.qlick.digital` verificado con `/` 200, `/eventos` 200, `/admin` 200 y webhook sin firma 403. Pendiente: matriz completa de regresión y canary de automatizaciones.
+
+> **Addendum 2026-08-09 — ronda manual de recuperación:** producción tiene el rescate histórico `lead_info_followup_mode=off`. La cola conserva 8 casos `sent`, 11 `duplicate_review`, 43 `blocked_template_required`, 16 `replied` y 27 `excluded`; no hay candidatos `eligible`. Los tres `next_follow_up_at` activos asociados a la cola corresponden a leads con pago pendiente y no se tocaron. La ronda manual debe hacerse desde WhatsApp/Revisión humana antes de reactivar cualquier rescate automático. Deploy de la UI `dpl_3cLcFR4gm37ekG3Sidfhx8oFZbgs` en `READY`; smoke `/`, `/eventos`, `/admin` 200 y webhook sin firma 403.
+
+> **Addendum 2026-08-09 — separación de leads nuevos y horario:** el cron ahora distingue `lead_new_info_followup_mode` del rescate histórico y solo considera leads creados desde `lead_new_info_followup_since`, excluyendo `recovery:info_historical`. Los mensajes proactivos quedan bloqueados fuera de 09:00–19:00 en `America/Phoenix`; las respuestas entrantes del bot no se bloquean por esta regla. B-10 quedó validado con pruebas de alcance y horario, type-check, lint y build.
+
+> **Addendum 2026-08-09 — activación controlada de leads nuevos:** `lead_new_info_followup_mode=live` desde `2026-08-09T09:01:22Z`, con `lead_info_followup_mode=off`. Al activar el corte había 0 leads existentes dentro del alcance, 0 informativos y 0 programados; no se envió ningún mensaje por esta activación. Deploy `dpl_CqBJpq5UitiQrqEYtjXjmYgn31fJ` en `READY`; smoke `/`, `/eventos`, `/admin` 200 y webhook sin firma 403.
 >
 > **Producción actual 2026-08-08:** merge `674fe32` desplegado como `dpl_2uUzRXeqMLkm6toJ4EkzMLXbkKAn` (`READY`) desde `main`. Aliases verificados: `https://qlick.digital` y `https://www.qlick.digital`. Smoke público: `/`, `/eventos` y `/admin` `200`; `/api/admin/crm/overview` sin sesión `401`; `/api/whatsapp/webhook` sin firma `403`.
 >
@@ -47,7 +179,7 @@
 - Deployment de producción: `https://www.qlick.digital` responde con el rediseño; deployment inspectable en `https://vercel.com/david17891-9351s-projects/qlick/DMrn4X7rxvCZuYnGPZMm523aJLyt`.
 - Verificación visual: escritorio 1280×720, móvil 390×844, menú móvil, enlaces principales y estado de consola revisados. La home se dejó como `force-dynamic` porque catálogo/eventos dependen de Supabase en runtime.
 
-- Evento publicado: `Desarrollo y estructura del curso CANACO` (`short_code=CN26`, `id=4100ffe3-54c1-45c1-a3a6-515595a646ad`). Título actual en DB: `"Las 4 Patas de un Negocio que Vende"`. Fecha: 20 de agosto de 2026, 16:00–20:00; sede mostrada: `CANACO` (la dirección exacta sigue pendiente de confirmación).
+- Evento publicado: `Desarrollo y estructura del curso CANACO` (`short_code=CN26`, `id=4100ffe3-54c1-45c1-a3a6-515595a646ad`). Título actual en DB: `"Los 4 Pilares de un Negocio que Vende"`. Fecha: 20 de agosto de 2026, 16:00–20:00; sede mostrada: `CANACO` (la dirección exacta sigue pendiente de confirmación).
 - Modelo comercial activo: total $1,000 MXN; apartado $500 MXN; saldo $500 MXN el día del evento. `event_rules.payment_mode: "live"`. La ruta pública ofrece botones independientes para apartar o pagar completo.
 - Bot de información: cuando una persona escribe `info`, `información` o pregunta por el evento, entrega un resumen del objetivo, las cuatro bases (video, publicidad pagada, inteligencia artificial y seguimiento por WhatsApp), fecha, horario, sede, precio y esquema de apartado; no inventa la dirección pendiente y ofrece el enlace oficial.
 - Flujo de inscripción: el bot conserva español mexicano neutro, genera el enlace `payment_option=reservation`, registra la confirmación en `pending` y deja que el webhook de Stripe la marque como pagada. El flujo de nombre + correo crea un solo QR y un solo correo; no duplica efectos secundarios.
@@ -761,3 +893,124 @@ con information_schema.columns + pg_constraint antes de culpar al fix."
   Resumen actualizado a 14 gaps cerrados.
 - Migration supabase/migrations/20260714140000_rls_bot_usage_daily.sql
   aplicada via Management API.
+
+## 2026-08-11 — Reparación de captura nombre → email en human_first
+
+- Se corrigió el caso observado en producción donde, después de capturar
+  `David Martinez`, el bot volvía a pedir el nombre al recibir el correo.
+- El motor ahora recupera únicamente el mensaje exacto de nombre del historial
+  cuando fue seguido por un outbound que esperaba el email; no usa perfil de
+  Meta, ubicaciones ni frases comerciales como nombre.
+- El paso posterior para eventos pagados ya no promete QR antes del pago: indica
+  que se compartirá el enlace de pago/apartado y que el QR se envía al verificarlo.
+- Validación: 68/68 pruebas de captura de nombre, pruebas de pagos enfocadas,
+  type-check, lint y build correctos.
+- Deploy selectivo Vercel `BcJCn1HP492onXo1ws3hAoWAeW3o` (`READY`) en proyecto
+  `qlick`; `qlick.digital` redirige a `www.qlick.digital` y ambos responden 200.
+
+## 2026-08-11 — Atención manual prioritaria de prospecto
+
+- El modo global se revirtió a `super_executive_v2` por decisión operativa.
+- Se verificó un registro de evento en `payment_pending`, sin pagos y sin QR
+  activo; el QR revocado se conserva como histórico.
+- Se normalizó el nombre capturado y se envió un aviso transaccional con el
+  enlace oficial de apartado de $500 MXN. Meta reportó el mensaje como
+  `delivered`.
+- El registro se completará y el QR se habilitará automáticamente cuando el
+  webhook confirme el pago/apartado.
+
+## 2026-08-11 — Auditoría y reparación de secuencia de captura
+
+- La conversación de Cindy mostró que el primer nombre (`Cindy Jiménez`) se
+  clasificaba como pregunta porque el outbound anterior no persistía el campo
+  esperado; por eso el correo siguiente volvió a disparar la solicitud de
+  nombre. También se detectó una promesa incorrecta de QR antes de pago y el
+  cierre prematuro del seguimiento comercial en `payment_pending`.
+- El motor ahora recupera el campo esperado desde el último mensaje saliente,
+  reconoce la solicitud combinada de nombre + correo y solo cierra el
+  seguimiento cuando la confirmación está realmente pagada, apartada o es
+  gratuita. Los pendientes permanecen elegibles para seguimiento.
+- Se corrigió el lead real afectado: conserva `payment_pending` y
+  `name:user_verified`, sin la etiqueta contradictoria `registration:complete`.
+- Validación: 79/79 pruebas focalizadas, type-check, lint y build correctos.
+- Deploy selectivo posterior `dpl_CmM1oKPpthKqunUh1udcKNV2haBJ` en Vercel
+  `qlick`, con smoke 200 en
+  `www.qlick.digital`; el modo global continúa en `super_executive_v2`.
+
+## 2026-08-12 — Reparación Armando: aislamiento evento/servicio
+
+- Incidente reproducido: Armando Salazar entregó nombre y correo, pero un
+  interés histórico en servicios (`kickstart-meta-ads`) forzó el turno a
+  `question`; no se creó la confirmación y el follow-up volvió a pedir nombre.
+- El motor ahora da prioridad al contexto explícito del evento sobre intereses
+  históricos de servicios. La confirmación del evento ya no depende de que se
+  haya generado un QR previamente.
+- Se reparó el registro real sin emitir QR: `payment_pending`, pago pendiente,
+  prioridad de 24 horas y seguimiento orientado a pago. El modo global sigue
+  siendo `super_executive_v2`.
+- Validación: 164/164 pruebas focalizadas, type-check, lint y build correctos.
+  La suite completa quedó en 1697/1707; los 10 fallos restantes son pruebas
+  históricas conocidas fuera de este incidente.
+- Publicación selectiva en el proyecto Vercel `qlick`; smoke 308 canónico en
+  `qlick.digital` y 200 en `www.qlick.digital`.
+
+## 2026-08-13 — Reparación definitiva del bucle de nombre
+
+- Incidente reproducido: después de capturar nombre y correo, una actualización
+  concurrente podía conservar el nombre pero perder `name:user_verified`;
+  el siguiente turno volvía a pedir el nombre.
+- El motor ahora rehidrata el nombre desde el turno exacto de captura cuando el
+  historial muestra que ya se respondió el nombre, y persiste atómicamente
+  `name_status=user_verified`, etiqueta y origen. No confía en el nombre de
+  perfil ni en texto comercial.
+- Deploy selectivo en Vercel `dpl_8xFDu9U3jaSNEdbPiDWiWmVjdxo6`; build remoto
+  verde. Smoke: `www.qlick.digital` 200 y cron sin credencial 401.
+- Validación: prueba focalizada de captura 72/72, type-check y lint correctos.
+
+## 2026-08-13 — Reparación del scheduler de seguimiento
+
+- El workflow de GitHub Actions estaba enviando `LEAD_FOLLOWUP_CRON_SECRET`,
+  pero la ruta validaba por error `CRON_SECRET`; cada ejecución terminaba en
+  `401 Unauthorized` antes de procesar cualquier lead.
+- La ruta ahora usa validación estricta con `LEAD_FOLLOWUP_CRON_SECRET` y
+  permanece cerrada si falta la credencial.
+- Deploy selectivo `dpl_8EDo27mEcFkCh6zmWXkbDWYcAad4`; build remoto verde.
+  Smoke: sitio 200 y `/api/cron/lead-followup` sin credencial 401.
+
+## 2026-08-13 — Respuesta contextual al recordatorio de pago
+
+- Incidente reproducido en producción: el follow-up preguntó si debía explicar
+  cómo apartar; ante `explícame`, el motor cayó en `question` y el modelo volvió
+  a describir el taller en lugar de explicar el pago.
+- El motor ahora conserva el dominio `payment_pending` y responde de forma
+  determinista con pasos de apartado, monto, saldo y enlace oficial. Si falta
+  una confirmación histórica, usa el enlace genérico del evento sin inventar un
+  registro ni confirmar acceso.
+- Deploy selectivo `dpl_8XAzuFygH8oWoiiRGbX91Z4sXYcZ`; build remoto verde.
+- Validación: 3/3 pruebas focalizadas, type-check y lint correctos.
+
+## 2026-08-13 — Pregunta de pago después del registro
+
+- Incidente reproducido: después de recibir el enlace de apartado en el mismo
+  flujo de registro, `¿Cómo pago?` se clasificaba como escalación humana y el
+  bot respondía que un asesor contactaría al prospecto.
+- El motor ahora reconoce el enlace oficial del turno anterior y responde con
+  los pasos deterministas de apartado. Las incidencias reales (`pagué y no
+  aparece`, rechazo, error, reembolso o devolución) conservan el handoff.
+- Deploy selectivo `dpl_3m6vUPg4WcpNcQobwHgTaSansFEU`; build remoto verde y
+  aliases `qlick.digital`/`www.qlick.digital` activos. Smoke Node: sitio 200,
+  cron sin credencial 401.
+- Validación: 4/4 pruebas focalizadas, type-check y lint correctos.
+
+## 2026-08-13 — Orden del repositorio y ramas
+
+- Se consolidó el trabajo versionable en `codex/production-hardening-20260813`
+  con commits separados para producto, documentación/materiales y Reels
+  protegido. La rama tiene upstream en GitHub y no modifica `main`.
+- Se retiraron ramas locales/remotas demostrablemente integradas o
+  reemplazadas. Se conservaron las ramas y worktrees con trabajo no integrado.
+- CSV de contactos movido a `private-data/` ignorado; previews generados y
+  paquetes de marca de revisión quedan ignorados.
+- Validación del checkout: type-check, lint, build y `audit:voseo` correctos;
+  suite completa 1708/1715. Los 7 restantes son escenarios históricos/E2E que
+  requieren Supabase/Stripe o fixtures antiguas y quedan como deuda explícita.

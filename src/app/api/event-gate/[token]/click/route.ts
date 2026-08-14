@@ -59,7 +59,7 @@ export async function GET(
   const { data: tokenRow, error: tokenErr } = await supabase
     .from("event_qr_tokens")
     .select(
-      "id, event_id, attendee_name, attendee_email, attendee_phone_normalized, expires_at, checked_in_at, events:event_id (id, slug, format, streaming_url)",
+      "id, event_id, confirmation_id, revoked_at, attendee_name, attendee_email, attendee_phone_normalized, expires_at, checked_in_at, events:event_id (id, slug, format, streaming_url, price_mxn)",
     )
     .eq("token", token)
     .maybeSingle();
@@ -74,6 +74,8 @@ export async function GET(
   const row = tokenRow as unknown as {
     id: string;
     event_id: string;
+    confirmation_id: string | null;
+    revoked_at: string | null;
     attendee_name: string;
     attendee_email: string | null;
     attendee_phone_normalized: string | null;
@@ -84,6 +86,7 @@ export async function GET(
       slug: string;
       format: "in_person" | "virtual" | "hybrid";
       streaming_url: string | null;
+      price_mxn: number | null;
     } | null;
   };
 
@@ -95,6 +98,27 @@ export async function GET(
     return NextResponse.redirect(
       new URL("/eventos", appBaseUrl()),
     );
+  }
+  if (row.revoked_at) {
+    return NextResponse.redirect(new URL(`/eventos/${encodeURIComponent(event.slug)}?payment_pending=1`, appBaseUrl()));
+  }
+  if (row.confirmation_id) {
+    const { data: confirmation } = await supabase
+      .from("event_confirmations")
+      .select("payment_status, registration_status")
+      .eq("id", row.confirmation_id)
+      .maybeSingle();
+    const confirmationRow = confirmation as { payment_status?: string | null; registration_status?: string | null } | null;
+    if (confirmationRow?.registration_status === "payment_pending"
+      || confirmationRow?.payment_status === "pending"
+      || confirmationRow?.payment_status === "pending_verification"
+      || confirmationRow?.payment_status === "revoked") {
+      return NextResponse.redirect(new URL(`/eventos/${encodeURIComponent(event.slug)}?payment_pending=1`, appBaseUrl()));
+    }
+  } else if (Number(event.price_mxn ?? 0) > 0) {
+    // A paid event must have a verified confirmation. Orphan/legacy QR
+    // tokens are retained for audit but can never open the event gate.
+    return NextResponse.redirect(new URL(`/eventos/${encodeURIComponent(event.slug)}?payment_pending=1`, appBaseUrl()));
   }
 
   // 5) Si el evento NO es virtual/hybrid (legacy in_person), el gate no

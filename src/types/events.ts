@@ -343,6 +343,14 @@ export interface EventConfirmation {
   phoneNormalized?: string;
   source: EventConfirmationSource;
   confirmedAt: string;
+  /** Fecha histórica de captura; no implica pago en eventos pagados. */
+  registrationStatus?: "payment_pending" | "confirmed";
+  /** Momento en que el pago/apartado verificó la asistencia. */
+  registrationConfirmedAt?: string;
+  /** Fin de la prioridad comercial de 24h (no inventario físico). */
+  paymentPriorityExpiresAt?: string;
+  /** Lead vinculado únicamente cuando el match fue inequívoco. */
+  leadId?: string;
   /** Agrupa filas del mismo import (rollback por batch). */
   importBatchId?: string;
   /**
@@ -363,6 +371,7 @@ export interface EventConfirmation {
   paymentStatus?:
     | "not_required"
     | "pending"
+    | "partial"
     | "pending_verification"
     | "paid"
     | "revoked";

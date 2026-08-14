@@ -91,7 +91,7 @@ export interface EventQrPassInput {
    * si ya pago o no. El reenvio de email (despues de cobrar en puerta
    * o despues del webhook de Stripe) ahora se ve claramente.
    */
-  paymentStatus?: "not_required" | "pending" | "paid" | "paid_manual" | "pending_verification" | "revoked" | null;
+  paymentStatus?: "not_required" | "pending" | "partial" | "paid" | "paid_manual" | "pending_verification" | "revoked" | null;
   /**
    * Nota visible al asistente sobre el acceso al streaming
    * (ej: "el link se desbloquea 10 min antes").
@@ -183,6 +183,11 @@ export function renderEventQrPassEmail(
   const streamingNote = input.streamingAccessNote
     ? esc(input.streamingAccessNote)
     : null;
+  const isPaidEvent = Boolean(input.priceMXN && input.priceMXN > 0);
+  const isPaymentPending =
+    isPaidEvent &&
+    (input.paymentStatus === "pending" ||
+      input.paymentStatus === "pending_verification");
 
   // El QR image URL es publica (https://...). Validamos que sea absoluta
   // por seguridad (no inline data URLs que algunos clientes no renderizan).
@@ -238,7 +243,9 @@ export function renderEventQrPassEmail(
                 ? (format === "hybrid"
                     ? "Tu pase + acceso virtual están listos"
                     : "Tu acceso virtual está listo")
-                : "Tu pase está listo"}
+                : isPaymentPending
+                  ? "Tu pase provisional está listo"
+                  : "Tu pase está listo"}
           </p>
             </td>
           </tr>
@@ -259,7 +266,9 @@ export function renderEventQrPassEmail(
                         ? `Gracias por registrarte a <strong>"${eventTitle}"</strong>. Puedes ir presencialmente (muestra el QR en la entrada) o sumarte virtualmente (confirma con el botón de abajo).`
                         : format === "hybrid"
                           ? `Gracias por registrarte a <strong>"${eventTitle}"</strong>. Puedes ir presencialmente (muestra el QR en la entrada) o esperar al link del stream que te enviaremos por correo el día del evento.`
-                          : `Gracias por registrarte a <strong>"${eventTitle}"</strong>. Tu pase digital está aquí. Muéstralo en la entrada — el staff lo escanea y listo.`
+                          : isPaymentPending
+                            ? `Recibimos tus datos para <strong>"${eventTitle}"</strong>. Este QR es provisional: conserva tu registro y el acceso se habilita cuando se verifique tu pago.`
+                            : `Gracias por registrarte a <strong>"${eventTitle}"</strong>. Tu pase digital está aquí. Muéstralo en la entrada — el staff lo escanea y listo.`
                 }
               </p>
 
@@ -295,6 +304,13 @@ export function renderEventQrPassEmail(
               </table>
                         `;
                       }
+                      if (ps === "partial") {
+                        return `
+              <!-- Badge: APARTADO -->
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:linear-gradient(135deg,#dbeafe 0%,#bfdbfe 100%);border:2px solid #2563eb;border-radius:12px;margin-bottom:24px;">
+                <tr><td align="center" style="padding:20px;"><p style="margin:0 0 6px;font-size:32px;">✅</p><p style="margin:0;font-size:18px;font-weight:800;letter-spacing:1px;color:#1d4ed8;text-transform:uppercase;">Apartado verificado</p><p style="margin:8px 0 0;font-size:13px;color:#1e40af;">Tu QR compartido está habilitado para dos accesos. El saldo de $1,300 MXN se liquida antes o el día del evento.</p></td></tr>
+              </table>`;
+                      }
                       if (ps === "pending") {
                         return `
               <!-- Badge: PENDIENTE -->
@@ -306,7 +322,7 @@ export function renderEventQrPassEmail(
                       Pago pendiente
                     </p>
                     <p style="margin:8px 0 0;font-size:13px;color:#92400e;">
-                      Tu lugar está <strong>reservado provisionalmente</strong>. Confirma tu pago en línea o avísale al equipo si vas a pagar en puerta.
+                      Tu registro queda pendiente de pago. Completa el pago en línea para habilitar tu acceso; este QR provisional no permite entrar antes de la verificación.
                     </p>
                   </td>
                 </tr>
@@ -376,13 +392,13 @@ export function renderEventQrPassEmail(
                 <tr>
                   <td style="padding:20px;">
                     <p style="margin:0 0 8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#c2410c;">
-                      Pago requerido para confirmar tu lugar
+                      Pago requerido para habilitar tu acceso
                     </p>
                     <p style="margin:0 0 12px;font-size:22px;font-weight:700;color:#1a1a1a;">
                       $${input.priceMXN.toLocaleString("es-MX")} MXN
                     </p>
                     <p style="margin:0 0 16px;font-size:13px;line-height:1.5;color:#7c2d12;">
-                      Tu lugar queda <strong>reservado provisionalmente</strong> al confirmar asistencia. Para que el admin marque el pago como confirmado, completa el pago por tarjeta, OXXO, SPEI o transferencia.
+                      Tu registro queda pendiente de pago. Completa el pago por tarjeta, OXXO, SPEI o transferencia para que el equipo habilite tu acceso.
                     </p>
 ${reservationCopy}
                     <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto;">
@@ -395,7 +411,7 @@ ${reservationCopy}
                       </tr>
                     </table>
                     <p style="margin:12px 0 0;font-size:11px;color:#9a9a9a;">
-                      Si prefieres pagar en efectivo en puerta o por transferencia, avísale al equipo de Qlick y te registramos el pago a mano.
+                      Si necesitas ayuda con el pago, responde este correo y te orientamos.
                     </p>
                   </td>
                 </tr>
@@ -413,7 +429,7 @@ ${reservationCopy}
                 <tr>
                   <td align="center" style="padding:24px;">
                     <p style="margin:0 0 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#6d28d9;">
-                      ${format === "in_person" ? "Tu código QR" : "Tu pase digital"}
+                      ${isPaymentPending ? "Tu QR provisional" : format === "in_person" ? "Tu código QR" : "Tu pase digital"}
                     </p>
                     <img
                       src="${qrSrc}"
@@ -423,9 +439,11 @@ ${reservationCopy}
                       style="display:block;margin:0 auto;background:#ffffff;padding:12px;border-radius:8px;border:1px solid #e9d5ff;"
                     />
                     <p style="margin:12px 0 0;font-size:11px;color:#64748b;">
-                      ${format === "in_person"
-                        ? "Escanea desde la app de cámara de tu celular o muestra esta pantalla al staff."
-                        : "Guarda este pase. Cuando llegue el día del evento lo usarás para confirmar tu asistencia virtual."}
+                      ${isPaymentPending
+                        ? "Conserva este QR. El acceso se habilita únicamente después de verificar el pago."
+                        : format === "in_person"
+                          ? "Escanea desde la app de cámara de tu celular o muestra esta pantalla al staff."
+                          : "Guarda este pase. Cuando llegue el día del evento lo usarás para confirmar tu asistencia virtual."}
                     </p>
                   </td>
                 </tr>

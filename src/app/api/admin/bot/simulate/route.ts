@@ -97,7 +97,15 @@ export async function GET() {
         "{ leadId: UUID, profile?: LeadProfile, isFirstMessage?: boolean } | null (opcional)",
       ignoreLeadPause: "boolean (default false)",
       includeEventContext: "boolean (default true)",
-      includeInjectedRules: "boolean (default true)"
+      includeInjectedRules: "boolean (default true)",
+      decisionEngineMode:
+        "legacy | shadow | canary | live | safe (opcional, solo laboratorio)",
+      activeDomain:
+        "event | service | support | general (opcional, contexto de comparación)",
+      expectedReply:
+        "none | event_choice | name | email | payment_action | service_goal",
+      registrationStatus: "payment_pending | confirmed | null",
+      isPaidEvent: "boolean (opcional)"
     },
     guarantees: [
       "CERO llamadas al provider de WhatsApp.",

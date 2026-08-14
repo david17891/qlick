@@ -11,7 +11,7 @@ function makeEvent(overrides = {}) {
     id: "00000000-0000-0000-0000-000000000042",
     slug: "desarrollo-estructura-curso-canaco",
     shortCode: "CN26",
-    title: "Las 4 Patas de un Negocio que Vende",
+    title: "Los 4 Pilares de un Negocio que Vende",
     description: "",
     startsAt: new Date("2026-08-20T23:00:00.000Z"),
     endsAt: new Date("2026-08-21T03:00:00.000Z"),
@@ -42,13 +42,29 @@ test("el primer resumen del evento es compacto y accionable", () => {
   const copy = buildCompactEventInfoCopy(makeEvent());
 
   assert.ok(copy.length < 700, `el resumen debe ser corto: ${copy.length} caracteres`);
-  assert.match(copy, /Las 4 Patas de un Negocio que Vende/);
+  assert.match(copy, /Los 4 Pilares de un Negocio que Vende/);
   assert.match(copy, /20 de agosto de 2026/);
   assert.match(copy, /CANACO/);
   assert.match(copy, /\$1,?000/);
   assert.match(copy, /\$500/);
   assert.match(copy, /¿Quieres apartar tu lugar\?/);
   assert.doesNotMatch(copy, /Durante el curso aprenderás/);
+});
+
+test("la sede concreta de la descripción prevalece sobre una regla histórica de dirección pendiente", () => {
+  const copy = buildCompactEventInfoCopy(
+    makeEvent({
+      description:
+        "📍 **Lugar:** CANACO, Av. Álvaro Obregón 14-15, San Luis Río Colorado, Sonora",
+      eventRules: {
+        ...makeEvent().eventRules,
+        rules: ["Si preguntan por dirección exacta, indica que está por confirmar."],
+      },
+    }),
+  );
+
+  assert.match(copy, /CANACO, Av\. Álvaro Obregón 14-15, San Luis Río Colorado, Sonora/);
+  assert.doesNotMatch(copy, /dirección exacta está por confirmar/i);
 });
 
 test("un audio sin transcripción no llama al LLM ni inventa una respuesta", async () => {

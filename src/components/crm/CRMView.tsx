@@ -244,10 +244,32 @@ export function CRMView({ initialLeadId }: { initialLeadId?: string } = {}) {
   // Cuando los leads reales terminen de cargar, abre el drawer del lead
   // correspondiente si su id coincide con initialLeadId.
   useEffect(() => {
-    if (!initialLeadId || !realLeads) return;
-    const found = realLeads.find((l) => l.id === initialLeadId);
-    if (found) setSelectedLead(found);
-  }, [initialLeadId, realLeads]);
+    if (!initialLeadId || !realMode) return;
+    const found = realLeads?.find((l) => l.id === initialLeadId);
+    if (found) {
+      setSelectedLead(found);
+      return;
+    }
+    if (!realLeads) return;
+
+    let cancelled = false;
+    fetch(`/api/admin/leads/${encodeURIComponent(initialLeadId)}`, {
+      cache: "no-store",
+    })
+      .then(async (res) => {
+        if (!res.ok) return null;
+        const data = await res.json();
+        return data?.ok ? (data.lead as Lead) : null;
+      })
+      .then((lead) => {
+        if (!cancelled && lead) setSelectedLead(lead);
+      })
+      .catch(() => null);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialLeadId, realLeads, realMode]);
 
   useEffect(() => {
     if (!realMode) return;

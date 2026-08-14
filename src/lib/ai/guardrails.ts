@@ -10,6 +10,7 @@
 
 import type { LeadIntent } from "@/types";
 import { findIncorrectEventWeekdayMentions } from "../datetime.ts";
+import { hasInternalReasoningLeak } from "../whatsapp/bot-quality";
 
 /**
  * Clasificación heurística de intención a partir del texto del lead.
@@ -78,12 +79,24 @@ export function mustEscalateToHuman(message: string): {
 } {
   const t = message.toLowerCase();
 
+  // Las preguntas operativas de preventa como "¿cómo pago?" o "¿dónde
+  // aparto?" deben ser contestadas por el flujo determinista de pago cuando
+  // existe un evento pendiente. No son, por sí solas, una incidencia humana.
+  // Las quejas, rechazos, cobros no reconocidos y reembolsos siguen pasando
+  // por handoff aunque contengan la palabra "pago".
+  const routinePaymentHelp =
+    /(?:\b(?:como|cómo)\s+(?:pago|aparto|reservo|confirmo)\b|\b(?:donde|dónde)\s+(?:pago|pagar)\b|\b(?:link|enlace)\s+(?:de\s+)?pago\b|\b(?:quiero|necesito)\s+pagar\b|\bexpl[ií]came\b)/i.test(t) &&
+    !/(?:reembolso|devoluci[oó]n|rechaz|no aparece|no recib[ií]|no se reflej|cobro no|cargo no|duplicad|error|problema)/i.test(t);
+
   if (/reembolso|devoluci[oó]n|queja|denuncia|demand|abogad/.test(t))
     return { escalate: true, reason: "Queja/reembolso/jurídico" };
-  if (/pago|transferencia|spei|oxxo|tarjeta|rechaz/.test(t))
-    return { escalate: true, reason: "Pagos: requiere validación humana" };
   if (/no me funciona|error|bug|no puedo|soporte/.test(t))
     return { escalate: true, reason: "Soporte técnico de plataforma" };
+  if (
+    !routinePaymentHelp &&
+    /pago|pagu[eé]|transferencia|spei|oxxo|tarjeta|rechaz|deposit[eé]|cobr[ée]|cargo/.test(t)
+  )
+    return { escalate: true, reason: "Pagos: requiere validación humana" };
   if (/datos personales|privacidad|baja|eliminar mis datos/.test(t))
     return { escalate: true, reason: "Datos personales / privacidad" };
 
@@ -264,6 +277,15 @@ export function validateAgentReply(
 ): { ok: boolean; reasons: string[] } {
   const reasons: string[] = [];
   const t = reply.toLowerCase();
+
+  // No intentamos rescatar pensamientos embebidos en el mismo párrafo. Si
+  // aparecen, se bloquea la respuesta completa y el caller usa fallback.
+  if (hasInternalReasoningLeak(reply)) {
+    reasons.push("Contiene razonamiento interno o meta-análisis.");
+  }
+  if (reply.length > 700) {
+    reasons.push("Respuesta demasiado larga.");
+  }
 
   // Construir lista efectiva de frases prohibidas respetando el contexto.
   // Sprint v15 PR #2: si `isFreeEvent`, "gratis" NO se filtra (copy veraz

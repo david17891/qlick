@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cuaderno Ejecutivo a Color — Los 4 Pilares de un Negocio que Vende</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Outfit:wght@700;800;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --brand-dark: #070A11;
+      --brand-purple: #AB3FEA;
+      --brand-purple-dark: #6D28D9;
+      --brand-orange: #EF9F08;
+      --brand-cyan: #00F0FF;
+      --brand-emerald: #10B981;
+      --brand-rose: #F43F5E;
+      --bg-page: #FFFFFF;
+      --bg-slate: #F8FAFC;
+      --text-dark: #0F172A;
+      --text-muted: #64748B;
+      --border-light: #E2E8F0;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      color: var(--text-dark);
+      background: #CBD5E1;
+      padding: 2rem 1rem;
+      line-height: 1.5;
+    }
+
+    /* Action bar */
+    .action-bar {
+      max-width: 900px;
+      margin: 0 auto 1.5rem auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--brand-dark);
+      color: #FFF;
+      padding: 1.25rem 2rem;
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    }
+
+    .btn-print {
+      background: linear-gradient(135deg, var(--brand-purple), var(--brand-orange));
+      color: #FFF;
+      font-weight: 800;
+      padding: 0.85rem 1.75rem;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      font-size: 1rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      box-shadow: 0 4px 15px rgba(171,63,234,0.4);
+    }
+
+    /* Individual Sequential Page (8.5" x 11" Portrait ratio) */
+    .page-sheet {
+      background: var(--bg-page);
+      width: 100%;
+      max-width: 850px;
+      height: 1100px;
+      margin: 0 auto 2.5rem auto;
+      border-radius: 16px;
+      box-shadow: 0 15px 40px rgba(0,0,0,0.12);
+      padding: 3.5rem 4rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* PORTADA ELEGANTE MINIMALISTA A COLOR */
+    .cover-sheet {
+      background: var(--brand-dark) !important;
+      color: #FFF !important;
+      text-align: center;
+      justify-content: center;
+      align-items: center;
+      border-radius: 16px;
+    }
+    .cover-glow {
+      position: absolute;
+      width: 450px; height: 450px;
+      border-radius: 50%;
+      filter: blur(120px);
+      opacity: 0.3;
+      pointer-events: none;
+    }
+    .cover-glow-1 { top: -100px; left: -100px; background: var(--brand-purple); }
+    .cover-glow-2 { bottom: -100px; right: -100px; background: var(--brand-orange); }
+
+    .logo-huge {
+      font-family: 'Outfit', sans-serif;
+      font-size: 5rem;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 1;
+      background: linear-gradient(135deg, var(--brand-purple) 0%, #D8B4FE 50%, var(--brand-orange) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 1.5rem;
+      position: relative;
+      z-index: 2;
+    }
+
+    .cover-title-minimal {
+      font-family: 'Outfit', sans-serif;
+      font-size: 2rem;
+      font-weight: 900;
+      letter-spacing: -0.01em;
+      line-height: 1.25;
+      color: #FFFFFF;
+      margin-bottom: 0.5rem;
+      position: relative;
+      z-index: 2;
+    }
+
+    .cover-sub-minimal {
+      font-size: 1rem;
+      color: var(--brand-cyan);
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      position: relative;
+      z-index: 2;
+    }
+
+    .cover-divider {
+      width: 60px;
+      height: 4px;
+      background: linear-gradient(90deg, var(--brand-purple), var(--brand-orange));
+      border-radius: 2px;
+      margin: 1.5rem auto;
+      position: relative;
+      z-index: 2;
+    }
+
+    /* HEADER & FOOTER */
+    .brand-top-bar {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 6px;
+      background: linear-gradient(90deg, var(--brand-purple), var(--brand-orange));
+    }
+
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid var(--border-light);
+      padding-bottom: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .page-header-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.15rem;
+      font-weight: 900;
+      color: var(--brand-dark);
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .badge-presenter {
+      font-size: 0.75rem;
+      font-weight: 800;
+      padding: 0.3rem 0.75rem;
+      border-radius: 20px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .badge-p1 { background: rgba(171, 63, 234, 0.15); color: var(--brand-purple-dark); border: 1px solid rgba(171, 63, 234, 0.3); }
+    .badge-p2 { background: rgba(239, 159, 8, 0.15); color: #B45309; border: 1px solid rgba(239, 159, 8, 0.3); }
+
+    .page-footer {
+      border-top: 1px solid var(--border-light);
+      padding-top: 0.75rem;
+      margin-top: 1.25rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      font-weight: 700;
+    }
+
+    /* CONTENT BLOCKS */
+    .section-banner {
+      background: linear-gradient(135deg, var(--brand-dark), #1E293B);
+      color: #FFF;
+      border-radius: 12px;
+      padding: 0.9rem 1.25rem;
+      margin-bottom: 1.25rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    }
+    .section-banner-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+    }
+
+    .card-colorful {
+      background: var(--bg-slate);
+      border: 1.5px solid var(--border-light);
+      border-left: 5px solid var(--brand-purple);
+      border-radius: 10px;
+      padding: 1.1rem 1.35rem;
+      margin-bottom: 1.25rem;
+    }
+    .card-orange { border-left-color: var(--brand-orange); }
+    .card-emerald { border-left-color: var(--brand-emerald); }
+    .card-cyan { border-left-color: var(--brand-cyan); }
+
+    .sub-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 800;
+      color: var(--brand-purple-dark);
+      margin-top: 1rem;
+      margin-bottom: 0.6rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .prompt-box {
+      background: #070A11;
+      color: #38BDF8;
+      font-family: 'Fira Code', monospace, sans-serif;
+      font-size: 0.88rem;
+      padding: 1rem 1.25rem;
+      border-radius: 10px;
+      line-height: 1.6;
+      margin-top: 0.5rem;
+      margin-bottom: 1rem;
+      border: 1px solid #334155;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.4);
+    }
+
+    .ruled-lines-group {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      justify-content: space-evenly;
+      margin-top: 0.75rem;
+    }
+
+    .ruled-line {
+      border-bottom: 1.5px solid #CBD5E1;
+      height: 2.2rem;
+      width: 100%;
+    }
+
+    .table-editorial {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.5rem;
+      font-size: 0.88rem;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .table-editorial th {
+      background: var(--brand-dark);
+      color: #FFF;
+      text-align: left;
+      padding: 0.75rem;
+      font-weight: 800;
+    }
+    .table-editorial td {
+      padding: 0.75rem;
+      border-bottom: 1px solid var(--border-light);
+      background: #FFF;
+    }
+
+    /* PRINT RULES */
+    @media print {
+      @page {
+        size: letter portrait;
+        margin: 0 !important;
+      }
+      html, body {
+        background: #FFF !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+      .action-bar { display: none !important; }
+      .page-sheet {
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        width: 8.5in !important;
+        height: 11in !important;
+        max-width: 8.5in !important;
+        max-height: 11in !important;
+        padding: 0.6in 0.75in !important;
+        margin: 0 !important;
+        page-break-after: always !important;
+        break-after: page !important;
+      }
+      .cover-sheet {
+        border-radius: 0 !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Screen Action Bar -->
+  <div class="action-bar">
+    <div>
+      <strong style="font-size: 1.1rem;">📘 Libro de Trabajo Ejecutivo a Color — Qlick Marketing Digital</strong>
+      <div style="font-size: 0.8rem; color: #94A3B8;">16 Páginas Secuenciales de Alto Impacto Visual | Listo para Impresión / Encuadernado</div>
+    </div>
+    <button class="btn-print" onclick="window.print()">🖨️ Imprimir / Guardar PDF (16 Págs)</button>
+  </div>
+
+  <!-- PÁGINA 1: PORTADA ELEGANTE MINIMALISTA A COLOR -->
+  <div class="page-sheet cover-sheet">
+    <div class="cover-glow cover-glow-1"></div>
+    <div class="cover-glow cover-glow-2"></div>
+    
+    <div class="logo-huge">QLICK</div>
+    <div class="cover-title-minimal">LOS 4 PILARES DE UN NEGOCIO QUE VENDE</div>
+    <div class="cover-divider"></div>
+    <div class="cover-sub-minimal">MANUAL DE TRABAJO Y GUÍA PRÁCTICA</div>
+    
+    <div style="font-size: 0.9rem; color: #94A3B8; margin-top: 3rem; position: relative; z-index: 2;">
+      CANACO SAN LUIS RÍO COLORADO | 2026
+    </div>
+    <div class="page-footer" style="width: 100%; border-top-color: rgba(255,255,255,0.15); color: #94A3B8; position: relative; z-index: 2;">
+      <span>QLICK MARKETING DIGITAL</span>
+      <span>PÁGINA 1 DE 16</span>
+    </div>
+  </div>
+
+  <!-- PÁGINA 2: ÍNDICE Y BIENVENIDA -->
+  <div class="page-sheet">
+    <div class="brand-top-bar"></div>
+    <div>
+      <div class="page-header">
+        <span class="page-header-title">🗺️ Índice General & Bienvenida</span>
+        <span style="font-family: 'Outfit', sans-serif; font-weight: 900; color: var(--brand-purple);">QLICK</span>
+      </div>
+
+      <div class="card-colorful">
+        <h3 style="font-family: 'Outfit', sans-serif; font-size: 1.15rem; font-weight: 900; color: var(--brand-purple-dark);">
+          Bienvenido a tu Guía Práctica de Ventas
+        </h3>
+        <p style="font-size: 0.9rem; color: #334155; margin-top: 0.4rem;">
+          Este cuaderno de trabajo ha sido diseñado para que apliques cada concepto en tiempo real durante el taller presencial en CANACO San Luis Río Colorado.
+        </p>
+      </div>
+
+      <div class="sub-title">📌 Estructura del Taller (4 Horas Presenciales):</div>
+      <table class="table-editorial">
+        <thead>
+          <tr><th>Módulo</th><th>Presentador</th><th>Páginas</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>Diagnóstico Inicial</strong></td><td>Evaluación del Negocio</td><td>Pág. 3</td></tr>
+          <tr><td><strong>Pata 1: Video Rápido</strong></td><td>Presentador 1 (Horas 1-2)</td><td>Págs. 4-5</td></tr>
+          <tr><td><strong>Pata 2: IA & Carteles</strong></td><td>Presentador 1 (Horas 1-2)</td><td>Págs. 6-8</td></tr>
+          <tr><td><strong>Pata 3: Facebook Ads</strong></td><td>Presentador 2 (Horas 3-4)</td><td>Págs. 9-10</td></tr>
+          <tr><td><strong>Pata 4: Cierre WhatsApp</strong></td><td>Presentador 2 (Horas 3-4)</td><td>Págs. 11-13</td></tr>
+          <tr><td><strong>Plan de Acción 7 Días</strong></td><td>Hoja de Trabajo Libre</td><td>Págs. 14-16</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="page-footer">
+      <span>Los 4 Pilares de un Negocio que Vende — Qlick</span>
+      <span>Página 2 de 16</span>
+    </div>
+  </div>
+
+  <!-- PÁGINA 3: DIAGNÓSTICO INICIAL -->
+  <div class="page-sheet">
+    <div class="brand-top-bar"></div>
+    <div style="display: flex; flex-direction: column; height: 100%;">
+      <div class="page-header">
+        <span class="page-header-title">🔍 Diagnóstico Comercial Inicial</span>
+        <span class="badge-presenter badge-p1">PATA 0 — EVALUACIÓN</span>
+      </div>
+
+      <div class="section-banner">
+        <span class="section-banner-title">Evaluando tus 4 Pilares Comerciales</span>
+      </div>
+
+      <table class="table-editorial">
+        <thead>
+          <tr><th>Pata Comercial</th><th>Deficiente (❌)</th><th>Fuerte (✅)</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>1. Anuncio Visual</strong></td><td>Sin video / borroso</td><td>Video 20s / imagen limpia</td></tr>
+          <tr><td><strong>2. Textos & IA</strong></td><td>Tardo horas sin copy</td><td>Redacto con IA en 15s</td></tr>
+          <tr><td><strong>3. Facebook Ads</strong></td><td>Botón azul a ciegas</td><td>Pauta dirigida a WhatsApp</td></tr>
+          <tr><td><strong>4. Cierre WhatsApp</strong></td><td>Solo pongo precio</td><td>Guiones respuesta rápida</td></tr>
+        </tbody>
+      </table>
+
+      <div class="sub-title">Anota tu objetivo principal de ventas para este mes:</div>
+      <div class="ruled-lines-group">
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <span>Los 4 Pilares de un Negocio que Vende — Qlick</span>
+      <span>Página 3 de 16</span>
+    </div>
+  </div>
+
+  <!-- PÁGINA 4: PATA 1 — VIDEO MARKETING -->
+  <div class="page-sheet">
+    <div class="brand-top-bar"></div>
+    <div>
+      <div class="page-header">
+        <span class="page-header-title">🎥 Pata 1 — Video Marketing Rápido</span>
+        <span class="badge-presenter badge-p1">PRESENTADOR 1</span>
+      </div>
+
+      <div class="section-banner" style="background: linear-gradient(135deg, #6D28D9, #AB3FEA);">
+        <span class="section-banner-title">Grabándote en 20 Segundos sin Pena</span>
+      </div>
+
+      <div class="card-colorful card-cyan">
+        <h4 style="font-family: 'Outfit', sans-serif; font-size: 1rem; font-weight: 800; color: #0284C7; margin-bottom: 0.4rem;">
+          💡 Las 5 Regles de Oro de la Grabación en Celular:
+        </h4>
+        <ol style="font-size: 0.88rem; color: #334155; padding-left: 1.2rem; line-height: 1.7;">
+          <li>Limpia el lente de tu cámara frontal antes de empezar.</li>
+          <li>Mira directamente a la ventana para luz natural perfecta.</li>
+          <li>Mira al hoyito de la cámara, no a tu propia cara en la pantalla.</li>
+          <li>Usa un tono enérgico y sonriente en los primeros 3 segundos.</li>
+          <li>Pásalo por el Bot de Telegram para subtítulos automáticos.</li>
+        </ol>
+      </div>
+
+      <div class="sub-title">Escribe la Idea del Video para tu Negocio:</div>
+      <div class="ruled-lines-group">
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <span>Los 4 Pilares de un Negocio que Vende — Qlick</span>
+      <span>Página 4 de 16</span>
+    </div>
+  </div>
+
+  <!-- PÁGINA 5: PATA 1 — EJERCICIO DE GUIÓN -->
+  <div class="page-sheet">
+    <div class="brand-top-bar"></div>
+    <div style="display: flex; flex-direction: column; height: 100%;">
+      <div class="page-header">
+        <span class="page-header-title">✍️ Pata 1 — Ejercicio Guión de 20s</span>
+        <span class="badge-presenter badge-p1">PRESENTADOR 1</span>
+      </div>
+
+      <div class="sub-title">1. Producto / Servicio a Promocionar Hoy:</div>
+      <div class="ruled-line"></div>
+
+      <div class="sub-title">2. Guión en 3 Bloques Directos:</div>
+      <div style="font-size: 0.85rem; font-weight: 800; color: var(--brand-purple-dark); margin-bottom: 0.4rem;">
+        Gancho (0-3s) → Solución/Beneficio (3-12s) → Llamado a WhatsApp (12-20s):
+      </div>
+
+      <div class="ruled-lines-group">
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <span>Los 4 Pilares de un Negocio que Vende — Qlick</span>
+      <span>Página 5 de 16</span>
+    </div>
+  </div>
+
+  <!-- PÁGINA 6: PATA 2 — IA COPYWRITING -->
+  <div class="page-sheet">
+    <div class="brand-top-bar"></div>
+    <div>
+      <div class="page-header">
+        <span class="page-header-title">🤖 Pata 2 — IA Estratégica & Copys</span>
+        <span class="badge-presenter badge-p1">PRESENTADOR 1</span>
+      </div>
+
+      <div class="section-banner" style="background: linear-gradient(135deg, #0F172A, #334155);">
+        <span class="section-banner-title">Redactando Textos de Venta con ChatGPT / Gemini</span>
+      </div>
+
+      <div class="sub-title">Prompt Maestro para el Texto de tu Anuncio:</div>
+      <div class="prompt-box">
+"Escribe un texto corto y persuasivo para Facebook de mi negocio de [NOMBRE DEL NEGOCIO] en San Luis Río Colorado. Ofrecemos [PRODUCTO/OFERTA] e incluye un llamado a enviar mensaje por WhatsApp."
+      </div>
+
+      <div class="sub-title">Adaptación del Texto para tu Negocio:</div>
+      <div class="ruled-lines-group">
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <span>Los 4 Pilares de un Negocio que Vende — Qlick</span>
+      <span>Página 6 de 16</span>
+    </div>
+  </div>
+
+  <!-- PÁGINA 7: PATA 2 — CARTELES CON IA -->
+  <div class="page-sheet">
+    <div class="brand-top-bar"></div>
+    <div style="display: flex; flex-direction: column; height: 100%;">
+      <div class="page-header">
+        <span class="page-header-title">🎨 Pata 2 — Carteles Directos con IA</span>
+        <span class="badge-presenter badge-p1">PRESENTADOR 1</span>
+      </div>
+
+      <div class="sub-title">Prompt Master para Generar tu Cartel Promocional:</div>
+      <div class="prompt-box">
+"Crea un cartel publicitario cuadrado moderno para redes sociales de mi negocio [NOMBRE] en San Luis Río Colorado. Producto: [PRODUCTO]. Oferta: [OFERTA]. Estilo limpio, colores vibrantes y profesional."
+      </div>
+
+      <div class="sub-title">Anota las Palabras Clave y Elementos de tu Cartel:</div>
+      <div class="ruled-lines-group">
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <span>Los 4 Pilares de un Negocio que Vende — Qlick</span>
+      <span>Página 7 de 16</span>
+    </div>
+  </div>
+
+  <!-- PÁGINA 8: PATA 2 — EJERCICIO COPY -->
+  <div class="page-sheet">
+    <div class="brand-top-bar"></div>
+    <div style="display: flex; flex-direction: column; height: 100%;">
+      <div class="page-header">
+        <span class="page-header-title">📝 Pata 2 — Borrador Final del Copy</span>
+        <span class="badge-presenter badge-p1">PRESENTADOR 1</span>
+      </div>
+
+      <div class="sub-title">Escribe el Texto Final que Usarás en tu Anuncio:</div>
+      <div class="ruled-lines-group">
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <span>Los 4 Pilares de un Negocio que Vende — Qlick</span>
+      <span>Página 8 de 16</span>
+    </div>
+  </div>
+
+  <!-- PÁGINA 9: PATA 3 — FACEBOOK ADS -->
+  <div class="page-sheet">
+    <div class="brand-top-bar"></div>
+    <div>
+      <div class="page-header">
+        <span class="page-header-title">📱 Pata 3 — Montaje en Facebook Ads</span>
+        <span class="badge-presenter badge-p2">PRESENTADOR 2</span>
+      </div>
+
+      <div class="section-banner" style="background: linear-gradient(135deg, #0284C7, #0369A1);">
+        <span class="section-banner-title">Pautando en Celular & Laptop</span>
+      </div>
+
+      <div class="card-colorful card-orange">
+        <h4 style="font-family: 'Outfit', sans-serif; font-weight: 800; color: #B45309; margin-bottom: 0.4rem;">
+          ⚙️ Los 4 Pasos de Configuración:
+        </h4>
+        <div style="font-size: 0.88rem; color: #334155; line-height: 1.7;">
+          1. <strong>Objetivo:</strong> Mensajes directos a WhatsApp.<br>
+          2. <strong>Ubicación:</strong> San Luis Río Colorado (+15 km).<br>
+          3. <strong>Anuncio:</strong> Cargar el video de 20s o el cartel generado con IA.<br>
+          4. <strong>Presupuesto:</strong> Desde $50 a $100 MXN diarios.
+        </div>
+      </div>
+
+      <div class="sub-title">Checklist de Verificación antes de Publicar:</div>
+      <div class="ruled-lines-group">
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <span>Los 4 Pilares de un Negocio que Vende — Qlick</span>
+      <span>Página 9 de 16</span>
+    </div>
+  </div>
+
+  <!-- PÁGINA 10: PATA 3 — HOJA DE PAUTA -->
+  <div class="page-sheet">
+    <div class="brand-top-bar"></div>
+    <div style="display: flex; flex-direction: column; height: 100%;">
+      <div class="page-header">
+        <span class="page-header-title">📊 Pata 3 — Hoja de Pauta Comercial</span>
+        <span class="badge-presenter badge-p2">PRESENTADOR 2</span>
+      </div>
+
+      <div class="sub-title">1. Definición de tu Cliente en San Luis:</div>
+      <div class="ruled-line"></div>
+      <div class="ruled-line"></div>
+
+      <div class="sub-title">2. Presupuesto Semanal de Prueba:</div>
+      <div class="ruled-lines-group">
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+      </div>
+
+      <div class="card-colorful card-emerald" style="margin-top: 1rem;">
+        <strong>📈 Proyección Estimada con $100 MXN/día:</strong><br>
+        ~200 mensajes directos al mes = ~30 clientes nuevos con buen cierre.
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <span>Los 4 Pilares de un Negocio que Vende — Qlick</span>
+      <span>Página 10 de 16</span>
+    </div>
+  </div>
+
+  <!-- PÁGINA 11: PATA 4 — CIERRE WHATSAPP -->
+  <div class="page-sheet">
+    <div class="brand-top-bar"></div>
+    <div style="display: flex; flex-direction: column; height: 100%;">
+      <div class="page-header">
+        <span class="page-header-title">💬 Pata 4 — Cierre Inmediato en WA</span>
+        <span class="badge-presenter badge-p2">PRESENTADOR 2</span>
+      </div>
+
+      <div class="section-banner" style="background: linear-gradient(135deg, #059669, #047857);">
+        <span class="section-banner-title">Fórmula de Respuesta en 3 Pasos</span>
+      </div>
+
+      <div class="card-colorful card-emerald">
+        1. <strong>Saludo Amable + Nombre:</strong> "¡Hola [Nombre]! Qué gusto saludarte..."<br>
+        2. <strong>Precio + Beneficio Inmediato:</strong> "El costo es de $X e incluye..."<br>
+        3. <strong>Pregunta de Cierre (Doble Opción):</strong> "¿Te queda mejor hoy a las 4pm o mañana a las 10am?"
+      </div>
+
+      <div class="sub-title">Redacta tu Respuesta Rápida de WhatsApp:</div>
+      <div class="ruled-lines-group">
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <span>Los 4 Pilares de un Negocio que Vende — Qlick</span>
+      <span>Página 11 de 16</span>
+    </div>
+  </div>
+
+  <!-- PÁGINA 12: PATA 4 — MATRIZ DE OBJECIONES -->
+  <div class="page-sheet">
+    <div class="brand-top-bar"></div>
+    <div style="display: flex; flex-direction: column; height: 100%;">
+      <div class="page-header">
+        <span class="page-header-title">🛡️ Pata 4 — Matriz de Objeciones</span>
+        <span class="badge-presenter badge-p2">PRESENTADOR 2</span>
+      </div>
+
+      <div class="sub-title">1. Objeción "¿Está muy caro?":</div>
+      <div class="prompt-box">
+"Entiendo [Nombre], la inversión es importante. En nuestro negocio ofrecemos [Beneficio/Garantía]. ¿Te gustaría probar el paquete básico?"
+      </div>
+
+      <div class="sub-title">2. Objeción "Lo voy a pensar":</div>
+      <div class="prompt-box">
+"¡Por supuesto! La promoción vence el viernes. ¿Tienes alguna duda puntual antes de decidir?"
+      </div>
+
+      <div class="sub-title">Respuesta a tu Objeción más Frecuente:</div>
+      <div class="ruled-lines-group">
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <span>Los 4 Pilares de un Negocio que Vende — Qlick</span>
+      <span>Página 12 de 16</span>
+    </div>
+  </div>
+
+  <!-- PÁGINA 13: PATA 4 — NIVELES DE AUTOMATIZACIÓN -->
+  <div class="page-sheet">
+    <div class="brand-top-bar"></div>
+    <div style="display: flex; flex-direction: column; height: 100%;">
+      <div class="page-header">
+        <span class="page-header-title">⚡ Pata 4 — Bots & Automatización</span>
+        <span class="badge-presenter badge-p2">PRESENTADOR 2</span>
+      </div>
+
+      <div class="sub-title">Los 3 Niveles de Atención:</div>
+      <div class="card-colorful card-orange">
+        🟢 <strong>Nivel 1: Manual:</strong> Respuestas con la fórmula de 3 pasos.<br>
+        🟡 <strong>Nivel 2: Business Meta:</strong> Respuestas rápidas guardadas en el teclado.<br>
+        🔴 <strong>Nivel 3: Bot IA de Qlick:</strong> Atención y agendado automático 24/7.
+      </div>
+
+      <div class="sub-title">Anota los Datos Clave que Debe Responder tu Bot:</div>
+      <div class="ruled-lines-group">
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <span>Los 4 Pilares de un Negocio que Vende — Qlick</span>
+      <span>Página 13 de 16</span>
+    </div>
+  </div>
+
+  <!-- PÁGINA 14: PLAN DE ACCIÓN DE 7 DÍAS -->
+  <div class="page-sheet">
+    <div class="brand-top-bar"></div>
+    <div style="display: flex; flex-direction: column; height: 100%;">
+      <div class="page-header">
+        <span class="page-header-title">🚀 Plan de Acción de 7 Días</span>
+        <span class="badge-presenter badge-p1">EJECUCIÓN</span>
+      </div>
+
+      <div class="section-banner">
+        <span class="section-banner-title">Calendario Post-Taller</span>
+      </div>
+
+      <div style="font-size: 0.9rem; color: #334155; line-height: 2;">
+        [  ] <strong>Día 1:</strong> Graba tu video de 20s o genera tu cartel directo con IA.<br>
+        [  ] <strong>Día 2:</strong> Redacta tu texto publicitario en ChatGPT/Gemini.<br>
+        [  ] <strong>Día 3:</strong> Activa tu campaña en Facebook Ads dirigida a WhatsApp ($50/día).<br>
+        [  ] <strong>Día 4:</strong> Aplica la fórmula de respuesta en 3 pasos con los prospectos.<br>
+        [  ] <strong>Día 5:</strong> Envía el Toque 1 de seguimiento a quienes no agendaron.<br>
+        [  ] <strong>Día 6-7:</strong> Mide tus ventas cerradas y ajusta el presupuesto.
+      </div>
+
+      <div class="sub-title">Meta Personal de Ventas para los Próximos 7 Días:</div>
+      <div class="ruled-lines-group">
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <span>Los 4 Pilares de un Negocio que Vende — Qlick</span>
+      <span>Página 14 de 16</span>
+    </div>
+  </div>
+
+  <!-- PÁGINA 15: HOJA DE NOTAS DEL ALUMNO -->
+  <div class="page-sheet">
+    <div class="brand-top-bar"></div>
+    <div style="display: flex; flex-direction: column; height: 100%;">
+      <div class="page-header">
+        <span class="page-header-title">📝 Notas Libres del Alumno</span>
+        <span style="font-family: 'Outfit', sans-serif; font-weight: 900; color: var(--brand-purple);">NOTAS</span>
+      </div>
+
+      <div class="sub-title">Anotaciones del Taller & Contactos Comerciales:</div>
+      <div class="ruled-lines-group">
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+        <div class="ruled-line"></div>
+      </div>
+    </div>
+
+    <div class="page-footer">
+      <span>Los 4 Pilares de un Negocio que Vende — Qlick</span>
+      <span>Página 15 de 16</span>
+    </div>
+  </div>
+
+  <!-- PÁGINA 16: CONTRAPORTADA ELEGANTE -->
+  <div class="page-sheet cover-sheet">
+    <div class="cover-glow cover-glow-1"></div>
+    
+    <div class="logo-huge" style="font-size: 3.8rem;">QLICK</div>
+    <div style="font-size: 1.2rem; font-weight: 800; color: #FFF; margin-bottom: 0.5rem;">
+      ¡GRACIAS POR ACOMPAÑARNOS!
+    </div>
+    <div style="font-size: 0.95rem; color: var(--brand-cyan);">
+      San Luis Río Colorado, Sonora | www.qlick.app
+    </div>
+
+    <div class="page-footer" style="width: 100%; border-top-color: rgba(255,255,255,0.15); color: #94A3B8; position: relative; z-index: 2; margin-top: 5rem;">
+      <span>QLICK MARKETING DIGITAL</span>
+      <span>PÁGINA 16 DE 16</span>
+    </div>
+  </div>
+
+</body>
+</html>

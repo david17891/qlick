@@ -124,7 +124,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   // futuro (MEMORY: A-2).
   let confirmationQuery = supabase
     .from("event_confirmations" as never)
-    .select("id, name, email, phone_normalized, payment_status" as never)
+    .select("id, name, email, phone_normalized, payment_status, registration_status" as never)
     .eq("event_id" as never, event.id as never);
   if (targetEmail) {
     confirmationQuery = confirmationQuery.ilike("email" as never, targetEmail);
@@ -144,6 +144,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       email: string | null;
       phone_normalized: string | null;
       payment_status?: string | null;
+      registration_status?: string | null;
     } | null;
     error: { message: string } | null;
   };
@@ -162,6 +163,16 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       { status: 404 },
     );
   }
+  if ((event.priceMXN ?? 0) > 0
+    && (confirmation.registration_status === "payment_pending"
+      || confirmation.payment_status === "pending"
+      || confirmation.payment_status === "pending_verification"
+      || confirmation.payment_status === "revoked")) {
+    return NextResponse.json(
+      { ok: false, error: "El QR se envía después de verificar el pago o apartado.", paymentStatus: confirmation.payment_status ?? "pending" },
+      { status: 409 },
+    );
+  }
 
   // 2. Buscar QR token vigente o regenerar uno nuevo.
   let qrToken: { token: string; url: string } | null = null;
@@ -174,6 +185,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     .eq("event_id", event.id)
     .eq("attendee_phone_normalized", phoneSentinel)
     .gt("expires_at", new Date().toISOString())
+    .is("revoked_at" as never, null)
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
@@ -194,6 +206,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         attendee_phone_normalized: phoneSentinel,
         attendee_name: confirmation.name ?? "Asistente",
         attendee_email: confirmation.email,
+        confirmation_id: confirmation.id,
         token,
         expires_at: expiresAt.toISOString(),
       })

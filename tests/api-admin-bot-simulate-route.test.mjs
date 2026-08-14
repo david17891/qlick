@@ -144,6 +144,36 @@ test("S1.11 (Sprint v0.9.7): tierOverride='ultra' (fuera del enum) se normaliza 
   }
 });
 
+test("S1.12: el comparador acepta modo y contexto estructurado", async () => {
+  const { parseSimulateRequest } = await import(SCHEMA_URL);
+  const r = parseSimulateRequest({
+    message: "sí",
+    decisionEngineMode: "live",
+    activeDomain: "event",
+    expectedReply: "payment_action",
+    registrationStatus: "payment_pending",
+    isPaidEvent: true
+  });
+  assert.equal(r.ok, true);
+  if (r.ok) {
+    assert.equal(r.value.decisionEngineMode, "live");
+    assert.equal(r.value.activeDomain, "event");
+    assert.equal(r.value.expectedReply, "payment_action");
+    assert.equal(r.value.registrationStatus, "payment_pending");
+    assert.equal(r.value.isPaidEvent, true);
+  }
+});
+
+test("S1.13: un modo de motor inválido se rechaza", async () => {
+  const { parseSimulateRequest } = await import(SCHEMA_URL);
+  const r = parseSimulateRequest({
+    message: "hola",
+    decisionEngineMode: "production"
+  });
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.ok(r.error.includes("decisionEngineMode"));
+});
+
 /* ================================================================== */
 /*  S2. Estructura del route.ts                                         */
 /* ================================================================== */

@@ -273,6 +273,39 @@ test("buildHumanFirstPrompt inyecta coursesCatalogBlock cuando existe", () => {
   assert.match(prompt, /Masterclass Marketing \+ IA — \$200 MXN/);
 });
 
+test("human_first en evento pagado pide pago y no promete apartado", () => {
+  const prompt = buildHumanFirstPrompt(
+    mkContext({
+      activeDomain: "event",
+      isPaidEvent: true,
+      eventOfferType: "paid_workshop",
+      activeEvent: {
+        source: "db",
+        priceMxn: 500,
+        promptBlock: "Evento de pago de prueba"
+      }
+    })
+  );
+  assert.match(prompt, /enlace oficial de pago/);
+  assert.doesNotMatch(prompt, /te lo aparto|te aparto lugar/);
+});
+
+test("human_first en evento gratuito usa cierre de registro gratuito", () => {
+  const prompt = buildHumanFirstPrompt(
+    mkContext({
+      activeDomain: "event",
+      isPaidEvent: false,
+      eventOfferType: "free_masterclass",
+      activeEvent: {
+        source: "db",
+        priceMxn: 0,
+        promptBlock: "Evento gratuito de prueba"
+      }
+    })
+  );
+  assert.match(prompt, /registro en el evento gratuito/);
+});
+
 /* ─────────────────────────────────────────────────────────────
  * 5. resolveIntent — PR #2: skip de intents cuando human_first
  *    Verifica que:

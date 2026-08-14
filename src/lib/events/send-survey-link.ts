@@ -45,6 +45,7 @@ import {
   markSurveyTokenSent,
 } from "./survey-tokens";
 import { buildSurveyInviteWhatsAppMessage } from "./survey-invite-message";
+import { isEventRegistrationConfirmed } from "@/lib/events/event-registration-state";
 
 /* ------------------------------------------------------------------ */
 /* Tipos públicos                                                       */
@@ -120,15 +121,20 @@ async function fetchConfirmations(eventId: string): Promise<ConfirmationRow[]> {
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase
     .from("event_confirmations")
-    .select("id, name, email, phone_normalized")
+    .select("id, name, email, phone_normalized, payment_status, registration_status")
     .eq("event_id", eventId);
   if (error || !data) return [];
-  return (data as unknown as ConfirmationRow[]).map((c) => ({
-    id: c.id,
-    name: c.name ?? "Sin nombre",
-    email: c.email?.trim().toLowerCase() || null,
-    phone_normalized: c.phone_normalized ?? null,
-  }));
+  return (data as unknown as (ConfirmationRow & {
+    payment_status?: string | null;
+    registration_status?: string | null;
+  })[])
+    .filter((c) => isEventRegistrationConfirmed(c))
+    .map((c) => ({
+      id: c.id,
+      name: c.name ?? "Sin nombre",
+      email: c.email?.trim().toLowerCase() || null,
+      phone_normalized: c.phone_normalized ?? null,
+    }));
 }
 
 /* ------------------------------------------------------------------ */

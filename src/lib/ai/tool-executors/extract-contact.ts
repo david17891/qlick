@@ -39,6 +39,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
+import { isVerifiedNameCandidate } from "@/lib/whatsapp/bot-quality";
 
 /* ------------------------------------------------------------------ */
 /* Inputs / Outputs                                                   */
@@ -195,16 +196,7 @@ function hasIntentVerbLocal(text: string | null | undefined): boolean {
  *   - NO es placeholder UI ("Asistente", "Por confirmar", etc).
  */
 export function isValidHumanNameLocal(text: string | null | undefined): boolean {
-  if (!text) return false;
-  const trimmed = text.trim();
-  if (trimmed.length < 2 || trimmed.length > 100) return false;
-  if (/^[\d\s]+$/.test(trimmed)) return false;
-  if (!/[\p{L}]/u.test(trimmed)) return false;
-  if (PLACEHOLDER_NAMES_BLOCKLIST.has(trimmed.toLowerCase())) return false;
-  const words = trimmed.split(/\s+/).filter(Boolean);
-  const wordsWithLetters = words.filter((w) => /[\p{L}]/u.test(w));
-  if (wordsWithLetters.length < 2) return false;
-  return true;
+  return isVerifiedNameCandidate(text);
 }
 
 /**
@@ -414,10 +406,12 @@ export async function executeExtractAndSaveContact(
   if (validatedName) patch.name = validatedName;
   if (validatedEmail) patch.email = validatedEmail;
 
-  const { error } = await ctx.supabase
+  const { data: updatedLead, error } = await ctx.supabase
     .from("leads")
     .update(patch)
-    .eq("id", ctx.leadId);
+    .eq("id", ctx.leadId)
+    .select("id")
+    .maybeSingle();
 
   if (error) {
     // eslint-disable-next-line no-console
@@ -437,6 +431,21 @@ export async function executeExtractAndSaveContact(
       persisted: false,
       demo: false,
       note: `Error al persistir en Supabase (${(error as { code?: string }).code ?? "unknown"}).`
+    };
+  }
+
+  // Supabase puede devolver error=null cuando el UPDATE no coincide con
+  // ninguna fila (por ejemplo, leadId inexistente o una política que no
+  // permite ver la fila). Nunca debemos decirle al prospecto que guardamos
+  // sus datos si no recibimos la fila afectada.
+  if (!updatedLead?.id) {
+    return {
+      ok: false,
+      error_name: nameError,
+      error_email: emailError,
+      persisted: false,
+      demo: false,
+      note: "No se encontró el lead para confirmar el guardado."
     };
   }
 

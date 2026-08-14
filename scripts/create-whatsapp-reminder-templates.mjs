@@ -1,10 +1,13 @@
 /**
  * scripts/create-whatsapp-reminder-templates.mjs
  *
- * Crea los 3 templates de WhatsApp Cloud API para recordatorios de eventos:
+ * Crea los templates de WhatsApp Cloud API para recordatorios de eventos y pago:
  *   - recordatorio_evento_24h (UTILITY) — "mañana es el evento..."
  *   - recordatorio_evento_2h  (UTILITY) — "en 2 horas..."
  *   - recordatorio_evento_1h  (UTILITY) — "en 1 hora..."
+ *   - payment_priority_24h (MARKETING) — terminó la prioridad comercial de 24h
+ *   - payment_last_day (MARKETING) — última oportunidad antes del evento
+ *   - recordatorio_pago_inscripcion_24h (MARKETING) — legado conservado
  *
  * Categoría UTILITY (no MARKETING) — Meta aprueba más rápido y sin
  * restricciones de opt-out agresivo. Transaccional: te recordamos el
@@ -107,13 +110,56 @@ const TEMPLATES = [
       ["David", "Marketing + IA para Emprendedores", "sábado, 11 de julio · 11:00 a.m.", "Zoom (link por email)", "https://qlick.digital/check-in/abc123"],
     ],
   },
+  {
+    name: "payment_priority_24h",
+    category: "MARKETING",
+    body:
+      "Tu prioridad de 24 horas para *{{1}}* terminó.\n" +
+      "Todavía puedes confirmar mientras el registro siga abierto: {{2}}\n\n" +
+      "Al verificarse el apartado te envío tu pase.",
+    example: [
+      [
+        "Masterclass de ventas",
+        "https://www.qlick.digital/pagar/evento/masterclass-ventas?confirmation=synthetic",
+      ],
+    ],
+  },
+  {
+    name: "payment_last_day",
+    category: "MARKETING",
+    body:
+      "*{{1}}* es mañana. Si deseas asistir, confirma hoy con tu apartado: {{2}}\n\n" +
+      "Tu QR se envía al verificar el pago.",
+    example: [
+      [
+        "Masterclass de ventas",
+        "https://www.qlick.digital/pagar/evento/masterclass-ventas?confirmation=synthetic",
+      ],
+    ],
+  },
+  {
+    name: "recordatorio_pago_inscripcion_24h",
+    category: "MARKETING",
+    body:
+      "Hola {{1}} 👋\n\n" +
+      "Te recordamos que tu inscripción a *{{2}}* sigue pendiente de pago.\n" +
+      "Cuando tengas un momento, puedes completarlo aquí: {{3}}\n\n" +
+      "Si ya realizaste el pago, ignora este mensaje.",
+    example: [
+      [
+        "Ana",
+        "Masterclass de ventas",
+        "https://www.qlick.digital/pagar/evento/masterclass-ventas?confirmation=synthetic",
+      ],
+    ],
+  },
 ];
 
 async function createTemplate(tpl) {
   const url = `https://graph.facebook.com/${API_VERSION}/${WABA}/message_templates`;
   const body = {
     name: tpl.name,
-    category: "UTILITY",
+    category: tpl.category ?? "UTILITY",
     language: "es_MX",
     components: [
       {

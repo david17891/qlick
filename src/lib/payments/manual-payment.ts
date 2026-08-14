@@ -41,6 +41,7 @@ import { grantEventAccess } from "@/lib/lms/event-entitlements";
 import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { sendEmail } from "@/lib/email/brevo-client";
 import { renderPaymentConfirmedEmail } from "@/lib/email/templates/payment-confirmed";
+import { setEventConfirmationPaymentState } from "@/lib/events/event-registration-state";
 
 /* ------------------------------------------------------------------ */
 /*  Tipos publicos                                                    */
@@ -93,7 +94,7 @@ export interface ManualPaymentResult {
   paymentId?: string;
   eventAccessId?: string;
   /** Status final del confirmado despues del registro. */
-  paymentStatus?: "paid" | "pending_verification" | "revoked";
+  paymentStatus?: "paid" | "partial" | "pending" | "pending_verification" | "revoked";
   /**
    * Si el method se valido contra Stripe API, este campo tiene el
    * `payment_intent_id` de Stripe (para trazabilidad y para evitar
@@ -332,7 +333,7 @@ export async function registerManualPayment(
     email: string | null;
     phone_normalized: string | null;
     source: string;
-    payment_status: "not_required" | "pending" | "paid" | "revoked";
+    payment_status: "not_required" | "pending" | "partial" | "paid" | "revoked";
   };
   const { data: conf, error: confErr } = await supabase
     .from("event_confirmations")
@@ -350,6 +351,23 @@ export async function registerManualPayment(
       error: `Confirmation ${input.confirmationId} no existe o no pertenece al evento ${input.eventId}.`,
     };
   }
+
+  const { data: eventForThreshold } = await supabase
+    .from("events")
+    .select("price_mxn, event_rules")
+    .eq("id", input.eventId)
+    .maybeSingle();
+  const eventThresholdRow = eventForThreshold as unknown as {
+    price_mxn?: number | null;
+    event_rules?: { reservation_enabled?: boolean; reservation_amount_mxn?: number } | null;
+  } | null;
+  const totalPriceMXN = Number(eventThresholdRow?.price_mxn ?? 0);
+  const reservationAmountMXN = eventThresholdRow?.event_rules?.reservation_enabled === true
+    ? Number(eventThresholdRow.event_rules.reservation_amount_mxn ?? 0)
+    : 0;
+  const confirmationThresholdMXN = reservationAmountMXN > 0
+    ? reservationAmountMXN
+    : totalPriceMXN;
 
   // Si ya esta paid con un pago previo, abortamos para evitar doble cobro.
   if (confTyped.payment_status === "paid") {
@@ -386,6 +404,13 @@ export async function registerManualPayment(
       verificationNote = verification.error ?? "Verificacion Stripe fallo.";
     }
   }
+  const confirmationPaymentStatus = finalPaymentStatus === "paid"
+    ? input.amountMXN >= totalPriceMXN && totalPriceMXN > 0
+      ? "paid"
+      : input.amountMXN >= confirmationThresholdMXN && input.amountMXN > 0
+        ? "partial"
+        : "pending"
+    : "pending_verification";
 
   // 4. Crear el row en event_payments.
   // FIX 2026-07-17 (sprint event-payments manual flow): el codigo
@@ -490,7 +515,7 @@ export async function registerManualPayment(
       });
       if (rpcId) userId = rpcId as string;
     }
-    if (userId) {
+    if (userId && (confirmationPaymentStatus === "paid" || confirmationPaymentStatus === "partial")) {
       const access = await grantEventAccess({
         userId,
         eventId: input.eventId,
@@ -517,10 +542,11 @@ export async function registerManualPayment(
   // 6. Marcar event_confirmations.payment_status. Cast a `as never`
   //    porque el typegen esta stale (la columna existe en DB post
   //    migration 20260715014706).
-  const { error: updateErr } = await supabase
-    .from("event_confirmations")
-    .update({ payment_status: finalPaymentStatus } as never)
-    .eq("id", input.confirmationId);
+  const stateResult = await setEventConfirmationPaymentState(supabase, {
+    confirmationId: input.confirmationId,
+    paymentStatus: confirmationPaymentStatus,
+  });
+  const updateErr = stateResult.ok ? null : { message: stateResult.error ?? "unknown" };
 
   if (updateErr) {
     return {
@@ -545,9 +571,13 @@ export async function registerManualPayment(
       stripe_payment_intent_id: verification?.paymentIntentId ?? null,
       stripe_verification_ok: verification?.ok ?? null,
       final_payment_status: finalPaymentStatus,
+      confirmation_payment_status: confirmationPaymentStatus,
     },
     before: { payment_status: confTyped.payment_status },
-    after: { payment_status: finalPaymentStatus, payment_id: paymentId },
+    after: {
+      payment_status: confirmationPaymentStatus,
+      payment_id: paymentId,
+    },
   });
 
   // 8. Email transaccional: "recibimos tu pago". Solo cuando el pago
@@ -556,7 +586,7 @@ export async function registerManualPayment(
   //    cliente). Si no hay email del cliente (guest), skip silencioso.
   //    El envio es best-effort: si Brevo falla, loggeamos pero no
   //    rompemos el flow principal.
-  if (finalPaymentStatus === "paid" && confTyped.email) {
+  if ((confirmationPaymentStatus === "paid" || confirmationPaymentStatus === "partial") && confTyped.email) {
     try {
       // Leemos el evento solo aca (no antes, para no penalizar paths
       // que no mandan email). Tipo local por typegen stale.
@@ -604,7 +634,7 @@ export async function registerManualPayment(
     ok: true,
     paymentId: paymentId,
     eventAccessId,
-    paymentStatus: finalPaymentStatus,
+    paymentStatus: confirmationPaymentStatus,
     stripePaymentIntentId: verification?.paymentIntentId,
     note: verificationNote ?? undefined,
   };
@@ -649,6 +679,7 @@ export async function revokeManualPayment(params: {
     payment_status:
       | "not_required"
       | "pending"
+      | "partial"
       | "paid"
       | "pending_verification"
       | "revoked";
@@ -669,6 +700,7 @@ export async function revokeManualPayment(params: {
   }
   if (
     confTyped.payment_status !== "paid" &&
+    confTyped.payment_status !== "partial" &&
     confTyped.payment_status !== "pending_verification"
   ) {
     return {
@@ -679,10 +711,11 @@ export async function revokeManualPayment(params: {
 
   // 2. Marcar event_confirmations.payment_status='revoked'. Cast a
   //    `as never` por typegen stale.
-  const { error: updateErr } = await supabase
-    .from("event_confirmations")
-    .update({ payment_status: "revoked" } as never)
-    .eq("id", params.confirmationId);
+  const stateResult = await setEventConfirmationPaymentState(supabase, {
+    confirmationId: params.confirmationId,
+    paymentStatus: "revoked",
+  });
+  const updateErr = stateResult.ok ? null : { message: stateResult.error ?? "unknown" };
 
   if (updateErr) {
     return { ok: false, error: `Error revocando: ${updateErr.message}` };

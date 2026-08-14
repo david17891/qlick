@@ -73,8 +73,14 @@ export const KEY_LEAD_FOLLOWUP_MODE = "lead_followup_mode" as const;
 // Es independiente del seguimiento de inscripción/pago y queda apagado por
 // defecto para no cambiar el comportamiento de producción al desplegar.
 export const KEY_LEAD_INFO_FOLLOWUP_MODE = "lead_info_followup_mode" as const;
+// Seguimiento de información únicamente para leads creados después del
+// corte operativo. No comparte la cola ni el switch del rescate histórico.
+export const KEY_LEAD_NEW_INFO_FOLLOWUP_MODE = "lead_new_info_followup_mode" as const;
+export const KEY_LEAD_NEW_INFO_FOLLOWUP_SINCE = "lead_new_info_followup_since" as const;
 // Feature flag kill switch para la captación de servicios B2B (Meta Ads, etc.).
 export const KEY_BOT_SERVICES_ENABLED = "bot_services_enabled" as const;
+// Rollout del validador/decisión estructurada. Default efectivo: legacy.
+export const KEY_BOT_DECISION_ENGINE_MODE = "bot_decision_engine_mode" as const;
 
 export async function readBotServicesEnabled(): Promise<boolean> {
   const value = await readSystemSetting(KEY_BOT_SERVICES_ENABLED);

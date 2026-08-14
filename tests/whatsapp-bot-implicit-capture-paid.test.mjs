@@ -288,20 +288,15 @@ test("REGRESION implicit_capture presencial+de_pago: NO dice 'link de Zoom', men
       `copy debe mencionar el precio $1,000 MXN. Got: ${preview}`
     );
     assert.ok(
-      /Pagar en línea|pagar en puerta/i.test(preview),
-      `copy debe mencionar las opciones de pago. Got: ${preview}`
+      /pago en línea|completa el pago|pagar\/evento/i.test(preview),
+      `copy debe incluir el CTA de pago. Got: ${preview}`
     );
     // NO debe pedir confirmacion con "Si me confirmas".
     assert.ok(
       !/Si me confirmas/i.test(preview),
       `BUG REGRESION: copy pide confirmacion con "Si me confirmas". Got: ${preview}`
     );
-    // Debe mencionar que es presencial ("el dia del evento") o
-    // el streamingAccessNote (que es null en este caso).
-    assert.ok(
-      /día del evento|streaming/i.test(preview),
-      `copy debe mencionar como accede el asistente. Got: ${preview}`
-    );
+    assert.ok(!/confirmad[oa]|registrad[oa]|QR|pago en puerta/i.test(preview));
     // El intent es provide_name (con implicit_capture metadata).
     assert.equal(result.intent, "provide_name");
   } finally {
@@ -310,7 +305,7 @@ test("REGRESION implicit_capture presencial+de_pago: NO dice 'link de Zoom', men
   }
 });
 
-test("REGRESION implicit_capture virtual+de_pago: SI menciona link de Zoom, menciona pago", async () => {
+test("REGRESION implicit_capture virtual+de_pago: no entrega acceso antes del pago", async () => {
   currentEventVariant = FAKE_EVENT_VIRTUAL;
   const restoreEnv = setSupabaseEnv();
   const restoreFetch = mockFetch();
@@ -329,17 +324,14 @@ test("REGRESION implicit_capture virtual+de_pago: SI menciona link de Zoom, menc
     });
 
     const preview = result.responsePreview ?? "";
-    // Para virtual SI debe decir "Zoom" o "streaming".
-    assert.ok(
-      /Zoom|stream/i.test(preview),
-      `copy debe mencionar el link de Zoom para evento virtual. Got: ${preview}`
-    );
+    assert.ok(!/Zoom|stream|QR|acceso/i.test(preview));
     // Tambien debe mencionar el pago.
     // FIX 2026-07-24: formato MX con toLocaleString.
     assert.ok(
       /\$1,?000/.test(preview),
       `copy debe mencionar el precio. Got: ${preview}`
     );
+    assert.ok(!/confirmad[oa]|registrad[oa]|pago en puerta/i.test(preview));
   } finally {
     restoreFetch();
     restoreEnv();

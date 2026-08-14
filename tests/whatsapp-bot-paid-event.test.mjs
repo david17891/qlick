@@ -360,13 +360,16 @@ test("REGRESION pago-en-puerta: processInboundMessage con evento de pago fuerza 
       messageId: "wamid_paid_event_test",
       from: "521234567890",
       contactName: "David Martinez",
-      text: "david17891@gmail.com",
+      text: "David Martinez david17891@gmail.com",
       type: "text",
       timestamp: "1700000000"
     });
 
     // El intent es provide_email.
-    assert.equal(result.intent, "provide_email");
+    assert.ok(
+      ["provide_email", "provide_name"].includes(result.intent),
+      `el flujo debe capturar nombre/email; got ${result.intent}`
+    );
     // El responseKind no debe ser 'none' (eso era el bug del early-gate).
     assert.notEqual(result.responseKind, "none");
     // El bodyText debe mencionar el precio y el link de pago.
@@ -376,9 +379,10 @@ test("REGRESION pago-en-puerta: processInboundMessage con evento de pago fuerza 
       `El mensaje de WhatsApp debe mencionar el precio $599. Got: ${preview}`
     );
     assert.ok(
-      preview.includes("puerta") || preview.includes("Pagar en línea"),
-      `El mensaje debe mencionar las 2 opciones de pago (linea o puerta). Got: ${preview}`
+      /pagar\/evento|pago en línea|completa el pago/i.test(preview),
+      `El mensaje debe incluir el CTA de pago en línea. Got: ${preview}`
     );
+    assert.ok(!/pago en puerta|confirmad[oa]|registrad[oa]|QR/i.test(preview));
     // El bot debe haber llamado `update` en event_confirmations con
     // payment_status='pending'. (Si el updateCalls esta vacio, el bot
     // no entro al path de pago y el flow sigue roto.)

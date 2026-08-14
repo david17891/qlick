@@ -166,7 +166,8 @@ test("CASO 2: con tool_call → 2 llamadas exactas y tool se ejecuta", async () 
 
     assert.equal(result.ok, true);
     assert.equal(mock.calls().length, 2, "fetch se llama EXACTAMENTE 2 veces");
-    assert.ok(result.content.includes("Juan"), "content debe incluir el saludo");
+    assert.match(result.content, /Recibí tus datos|no pude confirmar el guardado/i,
+      "sin Supabase real no debe afirmar que el lead quedó registrado");
   } finally {
     mock.restore();
   }
@@ -330,17 +331,23 @@ test("CASO 4: tool execution >800ms → fallback por timeout, loop termina OK", 
       return {
         update() {
           updateCalls += 1;
-          return {
+          const terminal = {
             eq() {
-              return {
-                then(onFulfilled) {
-                  // Sleep 1500ms simulando Supabase congestionado.
-                  return new Promise((resolve) => setTimeout(resolve, 1500))
-                    .then(() => onFulfilled({ data: null, error: { code: "57014", message: "statement timeout" } }));
-                }
-              };
+              return terminal;
+            },
+            select() {
+              return terminal;
+            },
+            maybeSingle() {
+              return terminal;
+            },
+            then(onFulfilled) {
+              // Sleep 1500ms simulando Supabase congestionado.
+              return new Promise((resolve) => setTimeout(resolve, 1500))
+                .then(() => onFulfilled({ data: null, error: { code: "57014", message: "statement timeout" } }));
             }
           };
+          return terminal;
         }
       };
     }
@@ -356,7 +363,7 @@ test("CASO 4: tool execution >800ms → fallback por timeout, loop termina OK", 
 
     assert.equal(result.ok, true, "loop debe terminar OK aunque tool timeout");
     assert.equal(mock.calls().length, 2, "loop siempre hace max 2 calls");
-    assert.ok(/demora|problema|por favor|confirmas/i.test(result.content),
+    assert.ok(/recibí tus datos|no pude confirmar|demora|problema|por favor|confirmas/i.test(result.content),
       `content debe ser fallback humano, got: ${result.content}`);
     assert.ok(
       !/problema t[eé]cnico/i.test(result.content),
@@ -377,16 +384,22 @@ test("CASO 4: nota incluye 'excedió' cuando tool tarda demasiado", async () => 
       return {
         update() {
           updateCalls += 1;
-          return {
+          const terminal = {
             eq() {
-              return {
-                then(onFulfilled) {
-                  return new Promise((resolve) => setTimeout(resolve, 1500))
-                    .then(() => onFulfilled({ data: null, error: null }));
-                }
-              };
+              return terminal;
+            },
+            select() {
+              return terminal;
+            },
+            maybeSingle() {
+              return terminal;
+            },
+            then(onFulfilled) {
+              return new Promise((resolve) => setTimeout(resolve, 1500))
+                .then(() => onFulfilled({ data: null, error: null }));
             }
           };
+          return terminal;
         }
       };
     }
@@ -417,7 +430,7 @@ test("CASO 4: nota incluye 'excedió' cuando tool tarda demasiado", async () => 
  * CASO 5 — 2ª llamada falla, tool OK previo
  * ========================================================== */
 
-test("CASO 5: 2ª llamada 503 + tool OK → fallback humano desde tool result", async () => {
+test("CASO 5: 2ª llamada 503 + tool sin persistencia → fallback honesto", async () => {
   process.env.DEEPSEEK_TOOLS_ENABLED = "true";
 
   const mock = installDeepseekFetchMock([
@@ -430,14 +443,14 @@ test("CASO 5: 2ª llamada 503 + tool OK → fallback humano desde tool result", 
 
     assert.equal(result.ok, true, "loop NO debe fallar — hay fallback");
     assert.equal(mock.calls().length, 2);
-    assert.ok(/Marcos/.test(result.content),
-      `fallback debe incluir el firstName 'Marcos', got: ${result.content}`);
+    assert.match(result.content, /Recibí tus datos|no pude confirmar el guardado/i,
+      `fallback no debe afirmar registro en modo demo, got: ${result.content}`);
     assert.ok(
       !/problema t[eé]cnico/i.test(result.content),
       "fallback NO debe sonar a 'problema técnico'"
     );
-    assert.ok(result.note.includes("[2C fallback]"),
-      `note debe marcar el path 2C fallback, got: ${result.note}`);
+    assert.ok(result.note.includes("[2C capture not persisted]"),
+      `note debe marcar que la captura no quedó persistida, got: ${result.note}`);
   } finally {
     mock.restore();
   }
@@ -451,15 +464,22 @@ test("CASO 5: 2ª llamada 503 + tool FAILED → fallback neutro", async () => {
     from() {
       return {
         update() {
-          return {
+          const terminal = {
             eq() {
-              return {
-                then(onFulfilled) {
-                  return Promise.resolve({ data: null, error: { code: "42P01", message: "undefined_table" } });
-                }
-              };
+              return terminal;
+            },
+            select() {
+              return terminal;
+            },
+            maybeSingle() {
+              return terminal;
+            },
+            then(onFulfilled) {
+              return Promise.resolve({ data: null, error: { code: "42P01", message: "undefined_table" } })
+                .then(onFulfilled);
             }
           };
+          return terminal;
         }
       };
     }
@@ -752,8 +772,9 @@ test("CASO 9: add_event_guest → dispatch enruta a executeAddEventGuest (no rec
     assert.ok(
       /socio/.test(result.content) ||
         /Carlos/.test(result.content) ||
-        /Listo/.test(result.content),
-      `2ª respuesta debe reflejar el éxito del add_guest; got: ${result.content}`
+        /Listo/.test(result.content) ||
+        /no pude confirmar el guardado/i.test(result.content),
+      `2ª respuesta debe reflejar éxito o falta de persistencia del add_guest; got: ${result.content}`
     );
   } finally {
     mock.restore();

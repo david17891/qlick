@@ -110,9 +110,16 @@ dev-*.log
 /encuesta_*.xlsx
 /leads_*.xlsx
 /evento_*.xlsx
+/*.csv
 
 # --- Artefactos de presentaciones a socios (no van al repo) ---
 /junta-socios-*
+
+# Previews generados para revisión visual; los artefactos publicables viven
+# en `public/` fuera de estas carpetas y se versionan de forma explícita.
+/public/preview_carta/
+/public/preview_pdf/
+/public/brand/*.zip
 
 # --- Scratch / tmp locales de sesiones de auditoría o experimentación ---
 # `scratch/` contiene scripts one-shot (audits, parches, smoke tests) que se
