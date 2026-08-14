@@ -1,5 +1,17 @@
 # Project Status — Snapshot vivo
 
+> **Addendum 2026-08-13 — auditoría segura de integración:** se reprodujo y
+> corrigió el único fallo del gate estático del PR #76: el fixture de Supabase
+> no modelaba `.select().maybeSingle()` y activaba correctamente el fallback
+> que evita afirmar un guardado no verificado. `test:ci` local quedó en
+> 1,701/1,701, type-check y lint correctos; GitHub está reejecutando el CI.
+> La migración aditiva `20260813140000_harden_security_definer_grants.sql`
+> se aplicó en producción y dejó `get_user_id_by_email`,
+> `issue_event_certificate` y `soft_delete_conversation_tx` ejecutables solo
+> por `service_role`; la verificación posterior confirmó esos grants y
+> eliminó las tres advertencias correspondientes del advisor. No se tocaron
+> datos ni lógica de negocio.
+
 > **Addendum 2026-08-13 — flujo híbrido QR + pago:** se promovió el flujo
 > provisional en `dpl_HrgxbViyXEG7ryML3K8CNYseutFR` al proyecto Vercel `qlick`.
 > En eventos pagados, el correo de captura incluye el QR provisional y el

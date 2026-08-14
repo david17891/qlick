@@ -1,3 +1,17 @@
+## 2026-08-13 — Auditoría segura de integración
+
+- Se reprodujo el único fallo del CI del PR #76 en `CASO D`: el mock de
+  Supabase no implementaba `.select().maybeSingle()` y provocaba el fallback
+  correcto de no afirmar un guardado no verificado.
+- Se actualizó únicamente el fixture sintético; `npm run test:ci` quedó en
+  1,701/1,701, con type-check y lint correctos. Commit `378b77c`.
+- Se aplicó la migración aditiva
+  `20260813140000_harden_security_definer_grants.sql` vía Management API.
+  `get_user_id_by_email`, `issue_event_certificate` y
+  `soft_delete_conversation_tx` quedaron ejecutables solo por `service_role`;
+  grants y advisor de seguridad se verificaron después. Commit `ae1f13e`.
+- No se modificaron datos, conversaciones, pagos, leads, QR ni worktrees.
+
 ## 2026-08-08 — Revisión humana: WhatsApp, eventos y borrado CRM
 
 - La cola de Revisión humana muestra un enlace `wa.me` por lead con teléfono válido; abrirlo no envía mensajes por sí solo.

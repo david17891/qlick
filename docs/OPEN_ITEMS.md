@@ -21,6 +21,21 @@
 
 ## Snapshot operativo 2026-08-13 — housekeeping
 
+## Auditoría segura 2026-08-13
+
+- **CI:** el fixture de persistencia fue corregido; `npm run test:ci` local
+  queda en 1,701/1,701. El check remoto del PR #76 permanece pendiente de
+  finalizar.
+- **Seguridad Supabase:** ✅ se aplicó
+  `20260813140000_harden_security_definer_grants.sql`; las tres RPC sensibles
+  quedan restringidas a `service_role` y se verificó el resultado en vivo.
+- **Pendiente de schema:** el schema remoto contiene las tablas/columnas
+  operativas nuevas, pero el historial canónico de migraciones no refleja
+  todos los DDL posteriores; no reaplicar migraciones sin reconciliación.
+- **Ramas/worktrees:** no cerrar ni borrar los tres worktrees sucios hasta
+  clasificar sus cambios; las ramas integradas limpias sí podrán retirarse en
+  una ronda posterior.
+
 - **Producción:** último deploy funcional `dpl_7r9xPDZYySjjd95fGu6NEsVoFnf9`,
   aliases `qlick.digital` y `www.qlick.digital`, smoke 200; el cron sin
   credencial responde 401.
