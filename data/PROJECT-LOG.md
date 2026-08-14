@@ -1024,3 +1024,12 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 - Migración aditiva aplicada: `20260814123000_promo_receipt_email_type.sql`.
 - Producción: `dpl_8kaPJbZXGQ12ejNmQqLzsP6Dpucp`; smoke `/promo`, evento y cron sin credencial verificados (200, 200, 401).
 - Validación: type-check, lint, build, focused promo/Stripe tests y E2E sintética de dos participantes pasaron. La suite global mantiene 5 fallas históricas/no relacionadas (human_first y funnel híbrido previo).
+
+### 2026-08-14 — reparación de correo con dominio espaciado
+
+- Se reparó una inscripción pendiente cuyo correo llegó con el error obvio
+  `@gmail com`; se actualizó la confirmación existente y el lead, sin duplicar
+  registro ni emitir QR previo al pago.
+- El extractor normaliza ese patrón solo para proveedores comunes y lo
+  reutilizan el bot determinista, `human_first`, lifecycle y la tool de captura.
+- Commit `271dbae`; deploy de producción `dpl_H8SXo5TuZXgESzVWBykQhGrYYEAE`.

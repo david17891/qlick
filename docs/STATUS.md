@@ -1069,3 +1069,16 @@ con information_schema.columns + pg_constraint antes de culpar al fix."
 - Tras el pago/apartado verificado, la orden promocional entrega un QR compartido de dos accesos y envía a cada participante con correo válido: pase QR + comprobante propio Qlick. Stripe también recibe `receipt_email` para su recibo automático.
 - Migración aditiva aplicada por Management API: `20260814123000_promo_receipt_email_type.sql`.
 - E2E sintética pasada: dos participantes, webhook firmado de apartado $200, dos confirmaciones `partial/confirmed`, QR `max_check_ins=2`, cuatro correos y webhook duplicado sin reenvíos. No creó cargos reales y limpió sus datos.
+
+## 2026-08-14 — Reparación de correo con dominio espaciado
+
+- Se corrigió una inscripción pendiente cuyo correo llegó como
+  `usuario@gmail com`: la confirmación y el lead quedaron normalizados, sin
+  duplicar registro ni emitir QR antes del pago.
+- El extractor compartido repara únicamente proveedores comunes con un espacio
+  obvio antes del TLD (`gmail com` → `gmail.com`); dominios empresariales o
+  errores ambiguos siguen requiriendo confirmación.
+- Aplica al flujo determinista, `human_first`, ciclo de vida y herramienta del
+  agente. Producción: `dpl_H8SXo5TuZXgESzVWBykQhGrYYEAE`; aliases activos.
+- Validación: 71 pruebas focalizadas, type-check, lint, build y smoke público
+  del landing/checkout correctos.
