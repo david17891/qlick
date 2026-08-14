@@ -987,3 +987,20 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
   del registro; el admin revisa cada conversación y puede adjuntar el video.
 - Pruebas nuevas: 2 casos de copy, filtrado por teléfono y ausencia de claims
   de pago/QR antes de verificación.
+
+## 2026-08-14 — Copy compacto del evento CANACO
+
+- La landing pública dejó de presentar la descripción como un párrafo único:
+  ahora separa temario, promoción de cierre, opción individual, beneficios y
+  logística, con CTA directo a `/promo` para dos personas.
+- La descripción de `events` se normalizó con una migración aditiva y
+  reejecutable: conserva precio normal de $1,000, apartado de $500, sede,
+  horarios, constancia y beneficio por pago completo. La promoción de $1,500
+  y apartado de $200 permanece aislada en `/promo` para no alterar el contexto
+  ni el checkout normal del bot.
+- Se verificó Supabase después de aplicar
+  `20260813235000_optimize_canaco_event_description.sql`: evento publicado,
+  `price_mxn=1000`, `reservation_amount_mxn=500` y reglas de pago intactas.
+- Se excluyeron `private-data/`, respaldos y salidas de pruebas de los paquetes
+  de Vercel mediante `.vercelignore`.
+- Validación: type-check, lint, build, audit:voseo y CI de los PR 79/80 verdes.
