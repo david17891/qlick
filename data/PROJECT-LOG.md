@@ -960,3 +960,18 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
   worktrees con cambios pendientes.
 - Smoke: `www.qlick.digital` 200, cron sin credencial 401 y endpoint de Reels
   cerrado por secreto ausente (503 fail-closed). Reels no se activa.
+## 2026-08-13 — Promoción de cierre para dos personas
+
+- Se implementó `/promo` para el evento CANACO: dos plazas por $1,500 MXN,
+  apartado de $200 MXN o liquidación completa; la opción normal de una plaza
+  por $1,000 MXN sigue usando su checkout existente.
+- La orden promocional tiene un solo pago, reusa registros pendientes, no
+  convierte el pago existente, conserva la segunda identidad como pendiente
+  sin inventar certificado y entrega un QR compartido con dos usos atómicos.
+- Se agregaron correos de captura y pase, webhook Stripe idempotente para
+  tarjeta/OXXO/SPEI, revocación por reembolso y una sección administrativa que
+  separa la orden promocional del ledger individual.
+- Migración aplicada y verificada: `20260813170000_event_promo_pair_orders.sql`.
+- Validación: `test:ci` 1706/1706, type-check, lint, build y prueba focalizada
+  de promoción 5/5.
+- No se enviaron mensajes masivos ni video automáticamente.

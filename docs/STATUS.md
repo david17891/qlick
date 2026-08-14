@@ -1,5 +1,18 @@
 # Project Status — Snapshot vivo
 
+> **Addendum 2026-08-13 — promoción de cierre `/promo`:** se añadió de
+> forma aditiva la inscripción de 2 personas por $1,500 MXN, con apartado de
+> $200 MXN o pago completo, sin alterar el checkout normal de $1,000 MXN ni
+> el pago existente. La orden promocional usa un solo ledger, conserva la
+> segunda plaza como `identity_pending` cuando queda en blanco y genera un QR
+> compartido con máximo dos check-ins únicamente después de pago/apartado
+> verificado. La migración `20260813170000_event_promo_pair_orders.sql` fue
+> aplicada y verificada en Supabase `ugpejblymtbwtsoiykyj`; la página `/promo`,
+> el correo de pago y la vista administrativa de órdenes quedaron incluidos.
+> Validación local: 1,706/1,706 pruebas, type-check, lint y build correctos.
+> La campaña con video no se envía automáticamente: requiere lanzamiento
+> explícito.
+
 > **Addendum 2026-08-13 — auditoría segura de integración:** se reprodujo y
 > corrigió el único fallo del gate estático del PR #76: el fixture de Supabase
 > no modelaba `.select().maybeSingle()` y activaba correctamente el fallback

@@ -1357,7 +1357,7 @@ export default async function AdminEventoDetailPage({
           {activeTab === "payments" &&
             paymentsSnapshot &&
             (() => {
-              const { stats, payments, pendingConfirmations } =
+              const { stats, payments, pendingConfirmations, promoOrders } =
                 paymentsSnapshot;
               const fmtMoney = (centavos: number) =>
                 `$${(centavos / 100).toFixed(2)} MXN`;
@@ -1476,6 +1476,46 @@ export default async function AdminEventoDetailPage({
                       </Table>
                     )}
                   </div>
+
+                  {promoOrders.length > 0 && (
+                    <div className="p-5 border-b border-brand-50 bg-brand-50/20">
+                      <p className="text-sm font-semibold text-ink mb-1">
+                        Promociones de 2 personas ({promoOrders.length})
+                      </p>
+                      <p className="text-xs text-ink-muted mb-3">
+                        Una sola orden y un solo pago para dos accesos. Esta vista no duplica el cargo en &quot;Pagos confirmados&quot;.
+                      </p>
+                      <Table headers={["Participantes", "Estado", "Pagado", "Creada"]}>
+                        {promoOrders.map((order) => (
+                          <tr key={order.orderId} className="hover:bg-white">
+                            <td className="px-5 py-3 text-sm text-ink">
+                              {order.participants.length > 0
+                                ? order.participants.map((participant) => (
+                                  <div key={participant.slotNumber}>
+                                    <span className="font-medium">{participant.name ?? "Cupo por asignar"}</span>
+                                    {participant.slotNumber === 2 && participant.identityStatus === "identity_pending" && (
+                                      <span className="ml-2 text-[10px] text-ink-muted">(pendiente)</span>
+                                    )}
+                                  </div>
+                                ))
+                                : "Cupo por asignar"}
+                            </td>
+                            <td className="px-5 py-3 text-xs">
+                              <Badge tone={order.status === "paid" ? "success" : order.status === "partial" ? "info" : "warning"}>
+                                {order.status === "paid" ? "Pagada" : order.status === "partial" ? "Apartado verificado" : "Pago pendiente"}
+                              </Badge>
+                            </td>
+                            <td className="px-5 py-3 text-xs font-semibold text-ink">
+                              {fmtMoney(Math.round(order.amountPaidMxn * 100))} / {fmtMoney(Math.round(order.totalAmountMxn * 100))}
+                            </td>
+                            <td className="px-5 py-3 text-xs text-ink-muted">
+                              {new Date(order.createdAt).toLocaleDateString("es-MX")}
+                            </td>
+                          </tr>
+                        ))}
+                      </Table>
+                    </div>
+                  )}
 
                   {/* Tabla de pagos confirmados (manual + stripe). */}
                   <div className="p-5">

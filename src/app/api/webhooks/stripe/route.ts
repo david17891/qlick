@@ -61,6 +61,9 @@ import { notifyLeadPaymentConfirmed as notifyLeadPaymentConfirmedLib } from "@/l
 import { findConfirmationIdForEvent } from "@/lib/events/find-confirmation-id";
 import { ensureEventConfirmation } from "@/lib/events/ensure-event-confirmation";
 import { setEventConfirmationPaymentState } from "@/lib/events/event-registration-state";
+import { settlePromoOrder, revokePromoOrder } from "@/lib/events/promo-orders-server";
+import { sendPromoPassEmail } from "@/lib/email/event-promo";
+import { getEventById } from "@/lib/events/events-server";
 import { logAdminAction } from "@/lib/crm/audit-server";
 import {
   extractProductRefFromMetadata,
@@ -267,6 +270,112 @@ async function processStripeEvent(
 type CheckoutSession = Stripe.Checkout.Session;
 type AdminClient = ReturnType<typeof createSupabaseAdminClient>;
 
+async function handlePromoCheckoutPending(
+  session: CheckoutSession,
+  productRef: Extract<ProductRef, { kind: "event" }>,
+  promoOrderId: string,
+  idempotencyKey: string,
+  stripeMode: "test" | "live",
+): Promise<ProcessOutcome> {
+  const supabase = createSupabaseAdminClient();
+  const { data: order } = await supabase
+    .from("event_promo_orders" as never)
+    .select("id, event_id, primary_confirmation_id")
+    .eq("id" as never, promoOrderId)
+    .eq("event_id" as never, productRef.id)
+    .maybeSingle();
+  if (!order) return { status: 200, body: { ok: false, mode: "promo_order_not_found", session_id: session.id } };
+  const orderRow = order as { id: string; primary_confirmation_id: string };
+  const amountMxn = typeof session.amount_total === "number" ? session.amount_total / 100 : 0;
+  const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id ?? null;
+  const { error } = await supabase.from("event_payments" as never).upsert({
+    confirmation_id: orderRow.primary_confirmation_id,
+    promo_order_id: promoOrderId,
+    method: "stripe",
+    status: "pending",
+    amount_mxn: amountMxn,
+    currency: session.currency?.toUpperCase() ?? "MXN",
+    external_reference: session.id,
+    idempotency_key: idempotencyKey,
+    stripe_session_id: session.id,
+    stripe_payment_intent_id: paymentIntentId,
+    stripe_mode: stripeMode,
+    metadata: { source: "stripe-webhook", payment_purpose: productRef.paymentPurpose ?? "promo_pair_reservation" },
+  } as never, { onConflict: "stripe_session_id" });
+  if (error && error.code !== "23505") throw new Error(`Error registrando promo pending: ${error.message}`);
+  return { status: 200, body: { ok: true, mode: "promo_checkout_pending", order_id: promoOrderId } };
+}
+
+async function handlePromoCheckoutCompleted(
+  session: CheckoutSession,
+  productRef: Extract<ProductRef, { kind: "event" }>,
+  promoOrderId: string,
+  idempotencyKey: string,
+  stripeMode: "test" | "live",
+): Promise<ProcessOutcome> {
+  const supabase = createSupabaseAdminClient();
+  const { data: order } = await supabase
+    .from("event_promo_orders" as never)
+    .select("id, event_id, primary_confirmation_id, total_amount_mxn, deposit_amount_mxn, status")
+    .eq("id" as never, promoOrderId)
+    .eq("event_id" as never, productRef.id)
+    .maybeSingle();
+  if (!order) return { status: 200, body: { ok: false, mode: "promo_order_not_found", session_id: session.id } };
+  const orderRow = order as { id: string; event_id: string; primary_confirmation_id: string; total_amount_mxn: number; deposit_amount_mxn: number; status: string };
+  const amountMxn = typeof session.amount_total === "number" ? session.amount_total / 100 : 0;
+  const expectedMxn = productRef.chargeAmountMXN ?? (productRef.paymentPurpose === "promo_pair_reservation" ? Number(orderRow.deposit_amount_mxn) : Number(orderRow.total_amount_mxn));
+  if (Math.round(amountMxn * 100) !== Math.round(expectedMxn * 100)) {
+    await supabase.from("event_promo_orders" as never).update({ status: "failed", metadata: { amount_discrepancy: true, expected_mxn: expectedMxn, actual_mxn: amountMxn } } as never).eq("id" as never, promoOrderId);
+    return { status: 200, body: { ok: false, mode: "promo_amount_discrepancy_blocked", order_id: promoOrderId, expected_mxn: expectedMxn, actual_mxn: amountMxn } };
+  }
+  const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id ?? null;
+  const { data: existingPayment } = await supabase
+    .from("event_payments" as never)
+    .select("id")
+    .eq("stripe_session_id" as never, session.id)
+    .maybeSingle();
+  let paymentId = (existingPayment as { id?: string } | null)?.id ?? null;
+  if (!paymentId) {
+    const { data: inserted, error } = await supabase.from("event_payments" as never).insert({
+      confirmation_id: orderRow.primary_confirmation_id,
+      promo_order_id: promoOrderId,
+      method: "stripe",
+      status: "approved",
+      amount_mxn: amountMxn,
+      currency: session.currency?.toUpperCase() ?? "MXN",
+      external_reference: session.id,
+      idempotency_key: idempotencyKey,
+      stripe_session_id: session.id,
+      stripe_payment_intent_id: paymentIntentId,
+      stripe_mode: stripeMode,
+      metadata: {
+        source: "stripe-webhook",
+        payment_purpose: productRef.paymentPurpose ?? "promo_pair_full",
+        event_total_mxn: orderRow.total_amount_mxn,
+      },
+    } as never).select("id").single();
+    if (error && error.code !== "23505") throw new Error(`Error insertando promo event_payment: ${error.message}`);
+    paymentId = (inserted as { id?: string } | null)?.id ?? null;
+    if (!paymentId) {
+      const { data: race } = await supabase.from("event_payments" as never).select("id").eq("stripe_session_id" as never, session.id).maybeSingle();
+      paymentId = (race as { id?: string } | null)?.id ?? null;
+    }
+  }
+  if (!paymentId) return { status: 200, body: { ok: false, mode: "promo_payment_not_recorded", order_id: promoOrderId } };
+  const paymentOption = productRef.paymentPurpose === "promo_pair_reservation" ? "reservation" : "full";
+  const settled = await settlePromoOrder({ orderId: promoOrderId, paymentId, paymentOption, amountPaidMxn: amountMxn });
+  if (!settled.ok) return { status: 200, body: { ok: false, mode: "promo_settlement_failed", order_id: promoOrderId, error: settled.error } };
+  const event = await getEventById(orderRow.event_id);
+  if (event && settled.qr) {
+    const { data: participantRows } = await supabase.from("event_promo_order_participants" as never).select("name").eq("promo_order_id" as never, promoOrderId).order("slot_number", { ascending: true });
+    const names = ((participantRows ?? []) as unknown as Array<{ name: string | null }>).map((row) => row.name).filter((name): name is string => Boolean(name));
+    const { data: primary } = await supabase.from("event_promo_order_participants" as never).select("email").eq("promo_order_id" as never, promoOrderId).eq("slot_number" as never, 1).maybeSingle();
+    const recipient = (primary as { email?: string | null } | null)?.email ?? null;
+    await sendPromoPassEmail({ event, recipient, participantNames: names, qrImageUrl: settled.qr.qrImageUrl, checkInUrl: settled.qr.checkInUrl, paymentStatus: paymentOption === "reservation" ? "partial" : "paid", eventQrTokenId: settled.qr.id });
+  }
+  return { status: 200, body: { ok: true, mode: "promo_checkout_completed", order_id: promoOrderId, payment_id: paymentId, payment_status: paymentOption === "reservation" ? "partial" : "paid", confirmation_ids: settled.confirmationIds } };
+}
+
 /**
  * Registra una sesión de pago diferido (OXXO/SPEI) sin otorgar acceso.
  * Stripe emite `checkout.session.completed` al crear el voucher, pero la
@@ -313,6 +422,11 @@ async function handleCheckoutPending(
       status: 200,
       body: { ok: true, mode: "service_checkout_pending", order_id: productRef.orderId },
     };
+  }
+
+  const promoOrderId = session.metadata?.promo_order_id;
+  if (productRef.kind === "event" && promoOrderId) {
+    return handlePromoCheckoutPending(session, productRef, promoOrderId, idempotencyKey, stripeMode);
   }
 
   if (productRef.kind === "event" || productRef.kind === "masterclass") {
@@ -711,6 +825,14 @@ async function handleCheckoutCompleted(
     return handleServiceCheckoutCompleted(session, productRef, stripeMode, event.id);
   }
 
+  // Promo pair orders use the same Stripe event product but a separate
+  // financial/order projection. Handle them before the single-seat path so a
+  // $1,500 or $200 session is never compared with the normal $1,000 price.
+  const promoOrderId = session.metadata?.promo_order_id;
+  if (productRef.kind === "event" && promoOrderId) {
+    return handlePromoCheckoutCompleted(session, productRef, promoOrderId, idempotencyKey, stripeMode);
+  }
+
   // 1. Resolver user_id (puede venir de metadata o ser guest checkout).
   //    Guest checkout (desde 2026-07-08): metadata.user_id es "" y
   //    session.customer_email tiene el email del comprador. Buscamos al
@@ -1003,7 +1125,7 @@ async function handleCheckoutCompleted(
       .maybeSingle();
     if (existingEventPayment) {
       const { data: promoted, error: promoteError } = await supabase
-        .from("event_payments")
+        .from("event_payments" as never)
         .update({
           status: "approved",
           stripe_payment_intent_id: stripePaymentIntentId,
@@ -1618,6 +1740,7 @@ async function handleChargeRefunded(
   let paymentUserId: string | null = null;
   let courseId: string | null = null;
   let eventConfirmationIdForRefund: string | null = null;
+  let promoOrderIdForRefund: string | null = null;
   let serviceOrderIdForRefund: string | null = null;
 
   // 1) Buscar en payments (cursos).
@@ -1656,22 +1779,22 @@ async function handleChargeRefunded(
     // 2) Buscar en event_payments (eventos).
     const { data: evPayByPi } = paymentIntentRef
       ? await supabase
-          .from("event_payments")
-          .select("id, confirmation_id, amount_mxn, status")
+          .from("event_payments" as never)
+          .select("id, confirmation_id, promo_order_id, amount_mxn, status" as never)
           .eq("stripe_payment_intent_id", paymentIntentRef)
           .maybeSingle()
       : { data: null };
     const { data: evPayByCharge } = !evPayByPi
       ? await supabase
-          .from("event_payments")
-          .select("id, confirmation_id, amount_mxn, status")
+          .from("event_payments" as never)
+          .select("id, confirmation_id, promo_order_id, amount_mxn, status" as never)
           .eq("stripe_charge_id", chargeRef)
           .maybeSingle()
       : { data: null };
     const { data: evPayByExternal } = !evPayByPi && !evPayByCharge
       ? await supabase
-          .from("event_payments")
-          .select("id, confirmation_id, amount_mxn, status")
+          .from("event_payments" as never)
+          .select("id, confirmation_id, promo_order_id, amount_mxn, status" as never)
           .eq("external_reference", externalRef)
           .maybeSingle()
       : { data: null };
@@ -1680,6 +1803,7 @@ async function handleChargeRefunded(
       paymentKind = "event";
       paymentId = (evPay as { id: string }).id;
       eventConfirmationIdForRefund = (evPay as { confirmation_id: string }).confirmation_id;
+      promoOrderIdForRefund = (evPay as { promo_order_id?: string | null }).promo_order_id ?? null;
       // El user_id del event_payment se resuelve via el access
       // (event_access.user_id linkeado por payment_id).
     } else {
@@ -1764,6 +1888,19 @@ async function handleChargeRefunded(
       reason: revokeReason,
     });
   } else if (paymentKind === "event") {
+    if (promoOrderIdForRefund) {
+      await revokePromoOrder(promoOrderIdForRefund, revokeReason);
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          mode: "promo_refund_processed",
+          event_id: event.id,
+          payment_id: paymentId,
+          promo_order_id: promoOrderIdForRefund,
+        },
+      };
+    }
     // Evento: buscar event_access por payment_id.
     if (eventConfirmationIdForRefund) {
       // La confirmación es la vista que consume el QR y el admin. Al
@@ -1866,7 +2003,7 @@ async function handleChargeDispute(
       paymentId = (coursePay as { id: string }).id;
     } else {
       const { data: evPay } = await supabase
-        .from("event_payments")
+        .from("event_payments" as never)
         .select("id")
         .eq("stripe_payment_intent_id", paymentIntentId)
         .maybeSingle();
@@ -1900,7 +2037,7 @@ async function handleChargeDispute(
       paymentId = (coursePay as { id: string }).id;
     } else {
       const { data: evPay } = await supabase
-        .from("event_payments")
+        .from("event_payments" as never)
         .select("id")
         .eq("stripe_charge_id", chargeId)
         .maybeSingle();

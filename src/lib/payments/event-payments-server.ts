@@ -69,6 +69,24 @@ export interface EventPaymentsSnapshot {
   payments: EventPaymentRow[];
   /** Confirmados pendientes o pending_verification (los que el admin tiene que revisar). */
   pendingConfirmations: EventConfirmation[];
+  /** Órdenes promocionales de dos plazas, separadas del ledger normal. */
+  promoOrders: EventPromoOrderRow[];
+}
+
+export interface EventPromoOrderRow {
+  orderId: string;
+  status: string;
+  paymentOption: string;
+  totalAmountMxn: number;
+  depositAmountMxn: number;
+  amountPaidMxn: number;
+  participants: Array<{
+    slotNumber: number;
+    name: string | null;
+    email: string | null;
+    identityStatus: string;
+  }>;
+  createdAt: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -107,6 +125,7 @@ export async function getEventPaymentsSnapshot(
     },
     payments: [],
     pendingConfirmations: [],
+    promoOrders: [],
   };
 
   if (!isRealMode() || !eventId) return empty;
@@ -166,6 +185,62 @@ export async function getEventPaymentsSnapshot(
       .in("confirmation_id", Array.from(confIds))
       .order("created_at", { ascending: false });
     eventPayments = (epRowsRaw ?? []) as unknown as EventPaymentDbRow[];
+  }
+
+  // Promo orders have one shared payment and up to two participant slots.
+  // Read them separately so the normal one-person payment table never
+  // presents the same Stripe charge twice. If the additive migration is not
+  // present in a preview, keep the existing event-payments view working.
+  type PromoOrderDbRow = {
+    id: string;
+    status: string;
+    payment_option: string;
+    total_amount_mxn: number;
+    deposit_amount_mxn: number;
+    amount_paid_mxn: number;
+    created_at: string;
+  };
+  type PromoParticipantDbRow = {
+    promo_order_id: string;
+    slot_number: number;
+    name: string | null;
+    email: string | null;
+    identity_status: string;
+  };
+  let promoOrders: EventPromoOrderRow[] = [];
+  const { data: promoRaw, error: promoError } = await supabase
+    .from("event_promo_orders" as never)
+    .select("id, status, payment_option, total_amount_mxn, deposit_amount_mxn, amount_paid_mxn, created_at")
+    .eq("event_id" as never, eventId)
+    .order("created_at" as never, { ascending: false });
+  if (!promoError && promoRaw) {
+    const orders = promoRaw as unknown as PromoOrderDbRow[];
+    const orderIds = orders.map((row) => row.id);
+    const { data: participantsRaw } = orderIds.length
+      ? await supabase
+        .from("event_promo_order_participants" as never)
+        .select("promo_order_id, slot_number, name, email, identity_status")
+        .in("promo_order_id" as never, orderIds)
+        .order("slot_number" as never, { ascending: true })
+      : { data: [] };
+    const participants = (participantsRaw ?? []) as unknown as PromoParticipantDbRow[];
+    promoOrders = orders.map((order) => ({
+      orderId: order.id,
+      status: order.status,
+      paymentOption: order.payment_option,
+      totalAmountMxn: Number(order.total_amount_mxn),
+      depositAmountMxn: Number(order.deposit_amount_mxn),
+      amountPaidMxn: Number(order.amount_paid_mxn),
+      participants: participants
+        .filter((participant) => participant.promo_order_id === order.id)
+        .map((participant) => ({
+          slotNumber: participant.slot_number,
+          name: participant.name,
+          email: participant.email,
+          identityStatus: participant.identity_status,
+        })),
+      createdAt: order.created_at,
+    }));
   }
 
   // 3. Calcular stats.
@@ -324,5 +399,5 @@ export async function getEventPaymentsSnapshot(
       leadId: c.lead_id ?? undefined,
     }));
 
-  return { stats, payments, pendingConfirmations };
+  return { stats, payments, pendingConfirmations, promoOrders };
 }

@@ -91,7 +91,7 @@ export interface EventQrPassInput {
    * si ya pago o no. El reenvio de email (despues de cobrar en puerta
    * o despues del webhook de Stripe) ahora se ve claramente.
    */
-  paymentStatus?: "not_required" | "pending" | "paid" | "paid_manual" | "pending_verification" | "revoked" | null;
+  paymentStatus?: "not_required" | "pending" | "partial" | "paid" | "paid_manual" | "pending_verification" | "revoked" | null;
   /**
    * Nota visible al asistente sobre el acceso al streaming
    * (ej: "el link se desbloquea 10 min antes").
@@ -303,6 +303,13 @@ export function renderEventQrPassEmail(
                 </tr>
               </table>
                         `;
+                      }
+                      if (ps === "partial") {
+                        return `
+              <!-- Badge: APARTADO -->
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:linear-gradient(135deg,#dbeafe 0%,#bfdbfe 100%);border:2px solid #2563eb;border-radius:12px;margin-bottom:24px;">
+                <tr><td align="center" style="padding:20px;"><p style="margin:0 0 6px;font-size:32px;">✅</p><p style="margin:0;font-size:18px;font-weight:800;letter-spacing:1px;color:#1d4ed8;text-transform:uppercase;">Apartado verificado</p><p style="margin:8px 0 0;font-size:13px;color:#1e40af;">Tu QR compartido está habilitado para dos accesos. El saldo de $1,300 MXN se liquida antes o el día del evento.</p></td></tr>
+              </table>`;
                       }
                       if (ps === "pending") {
                         return `

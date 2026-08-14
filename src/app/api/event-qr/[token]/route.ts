@@ -57,7 +57,7 @@ export async function GET(_req: Request, { params }: RouteParams) {
   const supabase = createSupabaseAdminClient();
   const { data: tokenRow, error: tokenError } = await supabase
     .from("event_qr_tokens" as never)
-    .select("revoked_at, confirmation_id, events:event_id ( price_mxn )" as never)
+    .select("revoked_at, confirmation_id, is_shared_qr, promo_order_id, events:event_id ( price_mxn )" as never)
     .eq("token" as never, token as never)
     .maybeSingle();
   if (tokenError || !tokenRow) return new Response("Token no encontrado", { status: 404 });

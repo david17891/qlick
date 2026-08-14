@@ -53,6 +53,13 @@ interface TokenRow {
   checked_in_at: string | null;
   checked_in_by: string | null;
   expires_at: string;
+  revoked_at: string | null;
+  revoked_reason: string | null;
+  confirmation_id: string | null;
+  is_shared_qr?: boolean;
+  promo_order_id?: string | null;
+  max_check_ins?: number;
+  check_in_count?: number;
 }
 
 interface EventJoinRow {
@@ -76,7 +83,7 @@ async function fetchQrToken(
   const { data, error } = await supabase
     .from("event_qr_tokens" as never)
     .select(
-      "id, event_id, attendee_name, attendee_phone_normalized, attendee_email, token, checked_in_at, checked_in_by, expires_at",
+      "id, event_id, attendee_name, attendee_phone_normalized, attendee_email, token, checked_in_at, checked_in_by, expires_at, revoked_at, revoked_reason, confirmation_id, is_shared_qr, promo_order_id, max_check_ins, check_in_count",
     )
     .eq("token" as never, token)
     .maybeSingle();
@@ -169,6 +176,48 @@ export async function POST(req: Request) {
       },
       { status: 409 },
     );
+  }
+
+  if (found.row.is_shared_qr && found.row.promo_order_id) {
+    const supabase = createSupabaseAdminClient();
+    const { data: order } = await supabase
+      .from("event_promo_orders" as never)
+      .select("id, status, event_id")
+      .eq("id" as never, found.row.promo_order_id)
+      .eq("event_id" as never, found.row.event_id)
+      .maybeSingle();
+    const orderRow = order as { id: string; status: string } | null;
+    if (!orderRow || !["partial", "paid"].includes(orderRow.status)) {
+      return NextResponse.json({ ok: false, error: "Pago pendiente. El pase compartido aún no está habilitado." }, { status: 403 });
+    }
+    const rpc = supabase.rpc as unknown as (fn: string, args: Record<string, string>) => Promise<{ data: unknown; error: { message: string } | null }>;
+    const { data: claimed, error: claimError } = await rpc("claim_event_promo_qr_checkin", { p_token: qr_token });
+    if (claimError) return NextResponse.json({ ok: false, error: "No se pudo validar el pase compartido." }, { status: 500 });
+    const claim = Array.isArray(claimed) ? (claimed[0] as { check_in_number?: number } | undefined) : undefined;
+    if (!claim?.check_in_number) return NextResponse.json({ ok: false, error: "Este QR ya consumió los dos accesos permitidos.", maxCheckIns: 2 }, { status: 409 });
+    const { data: participant } = await supabase
+      .from("event_promo_order_participants" as never)
+      .select("confirmation_id, name, email")
+      .eq("promo_order_id" as never, orderRow.id)
+      .eq("slot_number" as never, claim.check_in_number)
+      .maybeSingle();
+    const person = participant as { confirmation_id?: string | null; name?: string | null; email?: string | null } | null;
+    let attendeeEmail = person?.email ?? null;
+    if (attendeeEmail) {
+      const { data: duplicateEmail } = await supabase.from("event_attendees").select("id").eq("event_id", found.row.event_id).eq("email", attendeeEmail).maybeSingle();
+      if (duplicateEmail) attendeeEmail = null;
+    }
+    await supabase.from("event_attendees").insert({
+      event_id: found.row.event_id,
+      confirmation_id: person?.confirmation_id ?? null,
+      name: person?.name ?? null,
+      email: attendeeEmail,
+      phone_normalized: null,
+      checked_in_by: staff_email ?? "staff@qlick.checkin",
+      source: "check_in",
+    } as never);
+    await recordStaffLinkUse(staffLink.id);
+    return NextResponse.json({ ok: true, attendee: { name: person?.name ?? "Acceso del grupo", event_title: found.event.title, already_checked_in: false }, sharedQr: true, checkInNumber: claim.check_in_number, maxCheckIns: 2 });
   }
 
   // 4. Determinar el actor del audit. El staff puede tipear email +

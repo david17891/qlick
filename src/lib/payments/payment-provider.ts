@@ -33,7 +33,12 @@ export interface ProductRefBase {
   /** Precio en MXN. En Fase 1 single-price; precios múltiples son Fase 2. */
   priceMXN: number;
   chargeAmountMXN?: number;
-  paymentPurpose?: "full" | "reservation" | "balance";
+  paymentPurpose?:
+    | "full"
+    | "reservation"
+    | "balance"
+    | "promo_pair_full"
+    | "promo_pair_reservation";
 }
 
 export interface ProductRefCourse extends ProductRefBase {
@@ -128,6 +133,8 @@ export interface CreateCheckoutInput {
    * cursos no tienen este concepto).
    */
   confirmationId?: string;
+  /** Orden promocional de evento; solo lo usa el checkout /promo. */
+  promoOrderId?: string;
 
   /* ----------------- LEGACY (mock provider) ---------------------- *
    * Mantener como opcionales unicamente para que el mock provider

@@ -88,6 +88,10 @@ interface TokenRow {
   revoked_at: string | null;
   revoked_reason: string | null;
   confirmation_id: string | null;
+  is_shared_qr?: boolean;
+  promo_order_id?: string | null;
+  max_check_ins?: number;
+  check_in_count?: number;
 }
 
 interface EventJoinRow {
@@ -124,6 +128,10 @@ async function fetchToken(
       revoked_at,
       revoked_reason,
       confirmation_id,
+      is_shared_qr,
+      promo_order_id,
+      max_check_ins,
+      check_in_count,
       event:events ( id, title, starts_at, ends_at, location, slug, price_mxn )
     `,
     )
@@ -236,6 +244,63 @@ export async function POST(
   }
   if (found.row.revoked_at) {
     return NextResponse.json({ ok: false, error: "Este pase no está habilitado." }, { status: 410 });
+  }
+
+  if (found.row.is_shared_qr && found.row.promo_order_id) {
+    const supabase = createSupabaseAdminClient();
+    const { data: order } = await supabase
+      .from("event_promo_orders" as never)
+      .select("id, status, event_id")
+      .eq("id" as never, found.row.promo_order_id)
+      .eq("event_id" as never, found.row.event_id)
+      .maybeSingle();
+    const orderRow = order as { id: string; status: string } | null;
+    if (!orderRow || !["partial", "paid"].includes(orderRow.status)) {
+      return NextResponse.json({ ok: false, error: "Pago pendiente. Este pase compartido se habilita al verificar el apartado o pago." }, { status: 403 });
+    }
+    const rpc = supabase.rpc as unknown as (fn: string, args: Record<string, string>) => Promise<{ data: unknown; error: { message: string } | null }>;
+    const { data: claimed, error: claimError } = await rpc("claim_event_promo_qr_checkin", { p_token: token });
+    if (claimError) {
+      return NextResponse.json({ ok: false, error: "No se pudo validar el pase compartido." }, { status: 500 });
+    }
+    const claim = Array.isArray(claimed) ? (claimed[0] as { check_in_number?: number } | undefined) : undefined;
+    if (!claim?.check_in_number) {
+      return NextResponse.json({ ok: false, error: "Este QR ya consumió los dos accesos permitidos.", maxCheckIns: 2 }, { status: 409 });
+    }
+    const { data: participant } = await supabase
+      .from("event_promo_order_participants" as never)
+      .select("confirmation_id, name, email")
+      .eq("promo_order_id" as never, orderRow.id)
+      .eq("slot_number" as never, claim.check_in_number)
+      .maybeSingle();
+    const person = participant as { confirmation_id?: string | null; name?: string | null; email?: string | null } | null;
+    let attendeeEmail = person?.email ?? null;
+    if (attendeeEmail) {
+      const { data: duplicateEmail } = await supabase
+        .from("event_attendees")
+        .select("id")
+        .eq("event_id", found.row.event_id)
+        .eq("email", attendeeEmail)
+        .maybeSingle();
+      if (duplicateEmail) attendeeEmail = null;
+    }
+    await supabase.from("event_attendees").insert({
+      event_id: found.row.event_id,
+      confirmation_id: person?.confirmation_id ?? null,
+      name: person?.name ?? null,
+      email: attendeeEmail,
+      phone_normalized: null,
+      checked_in_by: PUBLIC_ACTOR.email,
+      source: "check_in",
+    } as never);
+    return NextResponse.json({
+      ok: true,
+      attendee: { name: person?.name ?? "Acceso del grupo", event_title: found.event.title },
+      checkedInAt: new Date().toISOString(),
+      sharedQr: true,
+      checkInNumber: claim.check_in_number,
+      maxCheckIns: 2,
+    });
   }
 
   const supabase = createSupabaseAdminClient();
