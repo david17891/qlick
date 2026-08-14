@@ -792,3 +792,149 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 - Deploy Vercel `dpl_kQpUKkLc4rJsdZ7pimTXsgLs1WPR`, proyecto `qlick`, estado `READY`; aliases `qlick.digital` y `www.qlick.digital` verificados con HTTP 200.
 - `BOT_DECISION_ENGINE_MODE` queda en `legacy` por defecto; `safe` funciona como kill-switch y `live` habilita el contrato estructurado validado.
 - Validación: pruebas focalizadas, type-check, lint, build y audit:voseo verdes. Suite completa no se considera gate por E2E que requieren secretos de Supabase ausentes en el worktree.
+
+## 2026-08-11 — Controles operativos y scheduler de pagos
+
+- Migraciones aditivas `20260811120000_bot_operational_safety.sql` y
+  `20260811130000_enable_event_payment_scheduler.sql` aplicadas por
+  Management API a `ugpejblymtbwtsoiykyj`; no se borraron mensajes, leads,
+  pagos ni QR.
+- Se pausaron 13 leads con handoff pendiente; se crearon tablas con RLS para
+  jobs inbound, acciones outbound y turnos sin cuerpos/PII.
+- QR/gate/check-in de eventos pagados fallan cerrado antes de confirmación.
+  `pg_cron` job `event-payment-followups-every-15m` activo; modo Vercel
+  `shadow` y cron sin credencial verificado 401.
+- Deploy `dpl_Gv7Y9yBkmBqr5j5HNwNaogqRBFAa` a `qlick.digital`/`www.qlick.digital`
+  `READY`; build remoto, type-check, lint y pruebas focalizadas verdes.
+
+## 2026-08-11 — Renombre del evento CANACO
+
+- El evento publicado conserva su ID y slug, pero ahora se llama
+  `Los 4 Pilares de un Negocio que Vende`.
+- Se actualizó también el encabezado de su descripción pública y los materiales
+  visibles/fixtures relacionados; no se creó un evento duplicado ni se tocaron
+  pagos, registros, QR o conversaciones.
+
+## 2026-08-11 — Publicación del renombre del evento CANACO
+
+- Deploy productivo Vercel `dpl_E6EttV4wYwgn6gp2irc3LaC85amE` en `qlick` quedó
+  `READY` con aliases `qlick.digital` y `www.qlick.digital`.
+- Se verificaron en producción la página del evento, 7 HTML y 3 PDF: todos
+  muestran `Los 4 Pilares` y ninguno conserva `Las 4 Patas`.
+
+## 2026-08-11 — Reparación de sede CANACO y despliegue selectivo
+
+- Se sustituyeron las reglas históricas que indicaban “dirección por confirmar”
+  y se normalizó la sede estructurada a `CANACO, Av. Álvaro Obregón 14-15,
+  San Luis Río Colorado, Sonora`.
+- Se desplegó selectivamente `dpl_HUPgEJ3rwjp6JTSibGUncHfRMr82` en `qlick`;
+  build remoto `READY`, con HTTP 200 en `qlick.digital` y
+  `www.qlick.digital`.
+
+## 2026-08-11 — Promoción del blindaje del motor conversacional
+
+- Se promovieron selectivamente los cinco archivos del motor y persistencia
+  en `dpl_BSYX97H3pjhBCq2JeUv1s73fPvZP`; build remoto `READY`.
+- La página del evento en ambos dominios responde `200` y muestra la sede
+  completa de CANACO en San Luis Río Colorado.
+
+## 2026-08-11 — Verificación y reparación del funnel completo
+
+- El E2E sintético confirmó: `payment_pending` sin QR antes del pago; webhook
+  Stripe firmado; pago aprobado; acceso activo; email/QR y WhatsApp después
+  del pago.
+- Se corrigió `source_message_id` para usar el UUID interno de la conversación
+  y se agregó `confirmation_id` al token QR.
+- Deploy final selectivo `dpl_9MN2dG3RnCvMSBYbL2QhjFMp3tG6`, `READY`.
+
+## 2026-08-11 — Activación global de human_first
+
+- Auditoría final aprobada: 117/117 pruebas focalizadas; funnel Stripe/QR
+  sintético 1/1; `audit:voseo`, type-check y lint correctos.
+- `system_settings.bot_global_mode` activado como `human_first` en producción.
+- Verificación post-prueba: 0 leads/eventos sintéticos residuales y 0 QR
+  huérfanos. El monitoreo parte sin tráfico human_first registrado todavía.
+
+## 2026-08-11 — Hotfix producción: captura nombre → email
+
+- Se corrigió la regresión reportada en la prueba de WhatsApp: tras capturar un
+  nombre válido, el siguiente correo ya no dispara nuevamente la solicitud de
+  nombre cuando el historial demuestra la secuencia nombre → “esperando email”.
+- Se eliminó la promesa de QR antes de pago en el mensaje posterior al nombre
+  para eventos pagados; el QR queda condicionado a pago/apartado verificado.
+- Pruebas: 68/68 captura de nombre, regresiones de pagos, type-check, lint y
+  build verdes.
+- Deploy selectivo `BcJCn1HP492onXo1ws3hAoWAeW3o` en Vercel `qlick`, `READY`,
+  con smoke 200 en ambos dominios canónicos.
+
+## 2026-08-11 — Atención manual prioritaria de prospecto
+
+- Se restauró `bot_global_mode=super_executive_v2` en producción.
+- Se confirmó que el registro del prospecto está en `payment_pending`, sin
+  pagos registrados y sin QR activo antes del pago.
+- Se corrigió la normalización del nombre y se envió un aviso transaccional con
+  el enlace de apartado; Meta confirmó entrega. El outbound quedó asociado al
+  lead y conservó su estado de entrega.
+
+## 2026-08-11 — Auditoría human y reparación de captura secuencial
+
+- Incidente reproducido en producción: `Cindy Jiménez` fue tratado como
+  pregunta, el correo volvió a pedir nombre y el paso de nombre prometió QR
+  antes del pago.
+- Se corrigió `bot-engine.ts` para inferir el campo desde el último outbound,
+  reconocer “mándame tu nombre y correo” y mantener abiertos los seguimientos
+  mientras la confirmación esté en `payment_pending`.
+- Se retiró de forma aditiva la etiqueta `registration:complete` del lead
+  afectado; no se borraron conversaciones, pagos ni QR históricos.
+- 79/79 pruebas focalizadas, type-check, lint y build correctos. Deploy
+  selectivo `dpl_CmM1oKPpthKqunUh1udcKNV2haBJ` a Vercel con
+  `super_executive_v2` aún activo.
+
+## 2026-08-12 — Armando: contaminación de contexto servicio → evento
+
+- Se reprodujo que el lead había capturado `Armando Salazar` y
+  `eruvielsalazar@gmail.com`, pero `hasActiveServiceInterest()` prevalecía
+  sobre el evento seleccionado. El turno se marcó `question`, no se creó la
+  confirmación y el cron volvió a pedir nombre.
+- Se añadió prioridad explícita del contexto de evento y el safety-net ya no
+  se bloquea por intereses históricos de servicios cuando existe ese contexto.
+  La confirmación ya no está condicionada a un QR previo.
+- Se reparó el registro real como `payment_pending`, sin QR activo, con
+  prioridad de pago de 24 horas y journey `payment_action`. No se borraron
+  conversaciones, pagos ni tokens históricos.
+- Pruebas focalizadas 164/164, type-check, lint y build verdes. Suite completa:
+  1697/1707; permanecen 10 fallos E2E históricos.
+- 2026-08-13 — Flujo híbrido de eventos: QR provisional + pago
+  - Migración aditiva `20260813120000_restore_provisional_qr_for_pending_payments.sql` aplicada vía Management API; solo reactivó tokens con motivo exacto `payment_pending_registration` y estado pendiente.
+  - Correo Brevo y los caminos de captura del bot ahora incluyen el enlace de pago junto al QR provisional. El check-in/gate conserva validación del ledger y bloquea acceso antes de pago.
+  - Panel de pagos filtra la tabla de confirmados a `approved`/`paid_manual`, separando intentos fallidos/cancelados.
+  - Deploy Vercel `dpl_HrgxbViyXEG7ryML3K8CNYseutFR`, build remoto verde y smoke público verificado.
+
+## 2026-08-13 — Reparación del bucle de nombre tras actualización concurrente
+
+- El nombre capturado podía quedar guardado sin `name:user_verified`; el turno de correo lo consideraba no confiable y volvía a solicitarlo.
+- Se añadió recuperación por secuencia exacta de conversación y persistencia atómica de estado, etiqueta, origen y fecha de verificación. No se borró ni reemplazó ningún dato histórico.
+- Deploy selectivo `dpl_8xFDu9U3jaSNEdbPiDWiWmVjdxo6`; smoke público 200/401, prueba focalizada 72/72, type-check y lint verdes.
+
+## 2026-08-13 — Scheduler de seguimiento: secreto dedicado
+
+- El workflow enviaba `LEAD_FOLLOWUP_CRON_SECRET`, mientras la ruta comprobaba `CRON_SECRET`; GitHub recibía 401 y el job terminaba sin ejecutar el proceso.
+- Se cambió la ruta a `checkStrictCronAuth(req, "LEAD_FOLLOWUP_CRON_SECRET")`, sin relajar el cierre seguro.
+- Deploy `dpl_8EDo27mEcFkCh6zmWXkbDWYcAad4`; build remoto verde y smoke público 200/401.
+
+## 2026-08-13 — Follow-up de pago: conservar contexto ante “explícame”
+
+- La respuesta corta al recordatorio se clasificaba como pregunta general y el bot describía el taller, no el proceso de apartado.
+- Se añadió detección contextual y copy determinista con pasos de pago y enlace oficial; funciona aun cuando la confirmación histórica no esté vinculada al lead.
+- Deploy `dpl_8XAzuFygH8oWoiiRGbX91Z4sXYcZ`; 3/3 pruebas focalizadas, type-check y lint verdes.
+
+## 2026-08-13 — Contexto de pago tras registro
+
+- `¿Cómo pago?` después del enlace de registro caía en el handoff porque el
+  gate trataba toda mención de pago como incidencia y la regla contextual solo
+  miraba recordatorios automáticos.
+- Se amplió el contexto a enlaces de pago del turno anterior y se separaron
+  preguntas operativas de incidencias (pago no reflejado, rechazo, error y
+  reembolso). No se relajaron las reglas de confirmación ni de acceso.
+- Deploy selectivo `dpl_7r9xPDZYySjjd95fGu6NEsVoFnf9`; 4/4 pruebas focalizadas,
+  type-check y lint verdes; smoke 200/401.

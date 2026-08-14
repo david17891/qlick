@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cuaderno de Trabajo Oficial — Tabloide Vertical 11" x 17" Imposición Exacta</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Outfit:wght@700;800;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --brand-dark: #070A11;
+      --brand-purple: #AB3FEA;
+      --brand-purple-dark: #6D28D9;
+      --brand-orange: #EF9F08;
+      --brand-cyan: #00F0FF;
+      --text-dark: #0F172A;
+      --text-muted: #64748B;
+      --border: #CBD5E1;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      color: var(--text-dark);
+      background: #E2E8F0;
+      padding: 2rem 1rem;
+      line-height: 1.45;
+    }
+
+    .action-bar {
+      max-width: 1000px;
+      margin: 0 auto 1.5rem auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--brand-dark);
+      color: #FFF;
+      padding: 1.25rem 2rem;
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    }
+
+    .btn-print {
+      background: linear-gradient(135deg, var(--brand-purple), var(--brand-orange));
+      color: #FFF;
+      font-weight: 800;
+      padding: 0.85rem 1.75rem;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      font-size: 1rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      box-shadow: 0 4px 15px rgba(171,63,234,0.4);
+    }
+
+    .tabloide-portrait-sheet {
+      background: #FFF;
+      width: 100%;
+      max-width: 800px;
+      height: 1236px;
+      margin: 0 auto 3rem auto;
+      border-radius: 12px;
+      box-shadow: 0 12px 35px rgba(0,0,0,0.12);
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+      border: 2px dashed #94A3B8;
+    }
+
+    .cut-line-h {
+      width: 100%;
+      height: 2px;
+      border-top: 2px dashed #EF9F08;
+      position: relative;
+      z-index: 20;
+    }
+    .cut-line-label {
+      position: absolute;
+      top: -10px; left: 50%;
+      transform: translateX(-50%);
+      background: #EF9F08;
+      color: #000;
+      font-size: 0.65rem;
+      font-weight: 900;
+      padding: 2px 8px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .media-carta-block {
+      height: 50%;
+      width: 100%;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      position: relative;
+    }
+
+    .spine-fold-v {
+      position: absolute;
+      top: 0; left: 50%;
+      width: 1px; height: 100%;
+      border-left: 1px dashed #CBD5E1;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    .page-box {
+      padding: 2rem 2.25rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    .cover-minimalist {
+      background: var(--brand-dark) !important;
+      color: #FFF !important;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .cover-glow {
+      position: absolute;
+      width: 260px; height: 260px;
+      border-radius: 50%;
+      filter: blur(90px);
+      opacity: 0.25;
+      pointer-events: none;
+    }
+    .cover-glow-1 { top: -60px; left: -60px; background: var(--brand-purple); }
+    .cover-glow-2 { bottom: -60px; right: -60px; background: var(--brand-orange); }
+
+    .logo-huge {
+      font-family: 'Outfit', sans-serif;
+      font-size: 3.5rem;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 1;
+      background: linear-gradient(135deg, var(--brand-purple) 0%, #D8B4FE 50%, var(--brand-orange) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 0.85rem;
+      position: relative;
+      z-index: 2;
+    }
+
+    .cover-title-minimal {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.35rem;
+      font-weight: 900;
+      letter-spacing: -0.01em;
+      line-height: 1.2;
+      color: #FFFFFF;
+      margin-bottom: 0.35rem;
+      position: relative;
+      z-index: 2;
+    }
+    .cover-sub-minimal {
+      font-size: 0.78rem;
+      color: var(--brand-cyan);
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      position: relative;
+      z-index: 2;
+    }
+    .cover-divider {
+      width: 40px;
+      height: 3px;
+      background: linear-gradient(90deg, var(--brand-purple), var(--brand-orange));
+      border-radius: 2px;
+      margin: 0.85rem auto;
+      position: relative;
+      z-index: 2;
+    }
+
+    .brand-line {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 4px;
+      background: linear-gradient(90deg, var(--brand-purple), var(--brand-orange));
+    }
+
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1.5px solid #E2E8F0;
+      padding-bottom: 0.4rem;
+      margin-bottom: 0.75rem;
+    }
+    .page-header-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.92rem;
+      font-weight: 900;
+      color: var(--brand-dark);
+      text-transform: uppercase;
+    }
+    .page-header-brand {
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.82rem;
+      font-weight: 900;
+      color: var(--brand-purple);
+    }
+
+    .page-footer {
+      border-top: 1px solid #E2E8F0;
+      padding-top: 0.4rem;
+      margin-top: 0.75rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-weight: 700;
+    }
+
+    .section-banner {
+      background: var(--brand-dark);
+      color: #FFF;
+      border-radius: 6px;
+      padding: 0.55rem 0.75rem;
+      margin-bottom: 0.75rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .section-banner-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.88rem;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+
+    .sub-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 800;
+      color: var(--brand-purple-dark);
+      margin-top: 0.65rem;
+      margin-bottom: 0.35rem;
+    }
+
+    /* NATURAL COMPACT NOTEBOOK WRITING LINES */
+    .ruled-lines-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      margin-top: 0.35rem;
+    }
+
+    .ruled-line {
+      border-bottom: 1.5px solid #CBD5E1;
+      height: 1.45rem;
+      width: 100%;
+    }
+
+    .box-info {
+      background: #F8FAFC;
+      border: 1.5px solid var(--border);
+      border-radius: 6px;
+      padding: 0.7rem;
+      margin-bottom: 0.7rem;
+      font-size: 0.8rem;
+    }
+
+    .prompt-box {
+      background: #070A11;
+      color: #38BDF8;
+      font-family: monospace;
+      font-size: 0.75rem;
+      padding: 0.7rem 0.85rem;
+      border-radius: 6px;
+      line-height: 1.5;
+      margin-top: 0.35rem;
+      margin-bottom: 0.6rem;
+      border: 1px solid #334155;
+    }
+
+    .table-editorial {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.35rem;
+      font-size: 0.78rem;
+    }
+    .table-editorial th {
+      background: #F1F5F9;
+      color: var(--brand-dark);
+      text-align: left;
+      padding: 0.45rem;
+      border: 1px solid #CBD5E1;
+      font-weight: 800;
+    }
+    .table-editorial td {
+      padding: 0.45rem;
+      border: 1px solid #CBD5E1;
+    }
+
+    @media print {
+      @page {
+        size: 11in 17in portrait;
+        margin: 0 !important;
+      }
+
+      html, body {
+        background: #FFF !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        width: 11in !important;
+        height: 17in !important;
+        overflow: visible !important;
+      }
+
+      .action-bar { display: none !important; }
+      
+      .tabloide-portrait-sheet {
+        box-shadow: none !important;
+        width: 11in !important;
+        height: 17in !important;
+        min-width: 11in !important;
+        min-height: 17in !important;
+        max-width: 11in !important;
+        max-height: 17in !important;
+        border: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        page-break-after: always !important;
+        break-after: page !important;
+        page-break-inside: avoid !important;
+        break-inside: avoid !important;
+        border-radius: 0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+      }
+
+      .media-carta-block {
+        height: 8.5in !important;
+        width: 11in !important;
+        display: grid !important;
+        grid-template-columns: 5.5in 5.5in !important;
+      }
+
+      .page-box {
+        width: 5.5in !important;
+        height: 8.5in !important;
+        padding: 0.5in 0.6in !important;
+        box-sizing: border-box !important;
+      }
+
+      .cut-line-h {
+        border-top: 1px dashed #CBD5E1 !important;
+      }
+      .cut-line-label { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Screen Action Bar -->
+  <div class="action-bar">
+    <div>
+      <strong style="font-size: 1.1rem;">📘 Libro de Trabajo — Tabloide Vertical (11" x 17")</strong>
+      <div style="font-size: 0.8rem; color: #94A3B8;">2 Hojas Físicas Tabloide Vertical Doble Cara = Renglones Ajustados de 1.45rem</div>
+    </div>
+    <button class="btn-print" onclick="window.print()">🖨️ Imprimir Tabloide Vertical (PDF)</button>
+  </div>
+
+  <!-- TABLOIDE 1 — FRENTE -->
+  <div class="tabloide-portrait-sheet">
+    <div class="media-carta-block">
+      <div class="spine-fold-v"></div>
+      
+      <!-- Pág 16 -->
+      <div class="page-box cover-minimalist">
+        <div class="cover-glow cover-glow-1"></div>
+        <div class="logo-huge" style="font-size: 2.6rem;">QLICK</div>
+        <div style="font-size: 0.95rem; font-weight: 800; color: #FFF; margin-bottom: 0.3rem;">
+          ¡GRACIAS POR ACOMPAÑARNOS!
+        </div>
+        <div style="font-size: 0.78rem; color: var(--brand-cyan);">
+          San Luis Río Colorado, Sonora | www.qlick.app
+        </div>
+        <div class="page-footer" style="width: 100%; border-top-color: rgba(255,255,255,0.15); color: #94A3B8;">
+          <span>QLICK MARKETING DIGITAL</span>
+          <span>PÁGINA 16</span>
+        </div>
+      </div>
+
+      <!-- Pág 1 -->
+      <div class="page-box cover-minimalist">
+        <div class="cover-glow cover-glow-2"></div>
+        <div class="logo-huge">QLICK</div>
+        <div class="cover-title-minimal">LOS 4 PILARES DE UN NEGOCIO QUE VENDE</div>
+        <div class="cover-divider"></div>
+        <div class="cover-sub-minimal">MANUAL DE TRABAJO Y GUÍA PRÁCTICA</div>
+        <div style="font-size: 0.75rem; color: #94A3B8; margin-top: 1rem;">
+          CANACO SAN LUIS RÍO COLORADO | 2026
+        </div>
+        <div class="page-footer" style="width: 100%; border-top-color: rgba(255,255,255,0.15); color: #94A3B8;">
+          <span>QLICK MARKETING DIGITAL</span>
+          <span>PÁGINA 1</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="cut-line-h"><span class="cut-line-label">✂️ Línea de Corte Horizontal al Centro (8.5 in)</span></div>
+
+    <div class="media-carta-block">
+      <div class="spine-fold-v"></div>
+
+      <!-- Pág 14 -->
+      <div class="page-box">
+        <div class="brand-line"></div>
+        <div>
+          <div class="page-header">
+            <span class="page-header-title">Plan de Acción de 7 Días</span>
+            <span class="page-header-brand">EJECUCIÓN</span>
+          </div>
+          <div class="section-banner">
+            <span class="section-banner-title">🚀 Calendario Post-Taller</span>
+          </div>
+          <div style="font-size: 0.8rem; color: #334155; line-height: 1.6;">
+            [  ] <strong>Día 1:</strong> Graba video de 20s o cartel IA.<br>
+            [  ] <strong>Día 2:</strong> Redacta copy publicitario en IA.<br>
+            [  ] <strong>Día 3:</strong> Activa campaña Ads a WhatsApp ($50/día).<br>
+            [  ] <strong>Día 4-7:</strong> Atiende prospectos y cierra ventas.
+          </div>
+          <div class="sub-title">Compromiso de Ventas esta Semana:</div>
+          <div class="ruled-lines-group">
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+          </div>
+        </div>
+        <div class="page-footer">
+          <span>Los 4 Pilares de un Negocio que Vende</span>
+          <span>Página 14</span>
+        </div>
+      </div>
+
+      <!-- Pág 3 -->
+      <div class="page-box">
+        <div class="brand-line"></div>
+        <div style="display: flex; flex-direction: column; height: 100%;">
+          <div class="page-header">
+            <span class="page-header-title">Diagnóstico Comercial</span>
+            <span class="page-header-brand">QLICK</span>
+          </div>
+          <div class="section-banner">
+            <span class="section-banner-title">🔍 Evaluando los 4 Pilares</span>
+          </div>
+          <table class="table-editorial">
+            <thead>
+              <tr><th>Pata Comercial</th><th>Deficiente (❌)</th><th>Fuerte (✅)</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>1. Video</strong></td><td>Sin video</td><td>Video 20s</td></tr>
+              <tr><td><strong>2. Textos IA</strong></td><td>Sin copy</td><td>Copy IA 15s</td></tr>
+              <tr><td><strong>3. Ads</strong></td><td>Botón azul</td><td>Ads a WA</td></tr>
+              <tr><td><strong>4. Cierre</strong></td><td>Solo precio</td><td>Guiones rápido</td></tr>
+            </tbody>
+          </table>
+          <div class="sub-title">Anota tu objetivo principal hoy:</div>
+          <div class="ruled-lines-group">
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+          </div>
+        </div>
+        <div class="page-footer">
+          <span>Los 4 Pilares de un Negocio que Vende</span>
+          <span>Página 3</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TABLOIDE 1 — VUELTA -->
+  <div class="tabloide-portrait-sheet">
+    <div class="media-carta-block">
+      <div class="spine-fold-v"></div>
+
+      <!-- Pág 2 -->
+      <div class="page-box">
+        <div class="brand-line"></div>
+        <div>
+          <div class="page-header">
+            <span class="page-header-title">Índice & Bienvenida</span>
+            <span class="page-header-brand">QLICK</span>
+          </div>
+          <div class="box-info">
+            <strong>Bienvenido a tu Libro de Trabajo</strong><br>
+            Herramienta práctica presencial y guía permanente de consulta.
+          </div>
+          <table class="table-editorial">
+            <thead>
+              <tr><th>Módulo</th><th>Tema Principal</th><th>Págs</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Diagnóstico</strong></td><td>Evaluación inicial</td><td>Pág. 3</td></tr>
+              <tr><td><strong>Pata 1 & 2</strong></td><td>Video, IA e Imágenes</td><td>Págs. 4-8</td></tr>
+              <tr><td><strong>Pata 3 & 4</strong></td><td>Ads y Cierre WhatsApp</td><td>Págs. 9-13</td></tr>
+              <tr><td><strong>Plan 7 Días</strong></td><td>Checklist y Notas</td><td>Págs. 14-16</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="page-footer">
+          <span>Los 4 Pilares de un Negocio que Vende</span>
+          <span>Página 2</span>
+        </div>
+      </div>
+
+      <!-- Pág 15 (14 Renglones Ajustados) -->
+      <div class="page-box">
+        <div class="brand-line"></div>
+        <div style="display: flex; flex-direction: column; height: 100%;">
+          <div class="page-header">
+            <span class="page-header-title">Notas Libres del Alumno</span>
+            <span class="page-header-brand">NOTAS</span>
+          </div>
+          <div class="sub-title">Anotaciones del Taller:</div>
+          <div class="ruled-lines-group">
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+          </div>
+        </div>
+        <div class="page-footer">
+          <span>Los 4 Pilares de un Negocio que Vende</span>
+          <span>Página 15</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="cut-line-h"><span class="cut-line-label">✂️ Línea de Corte Horizontal al Centro (8.5 in)</span></div>
+
+    <div class="media-carta-block">
+      <div class="spine-fold-v"></div>
+
+      <!-- Pág 4 -->
+      <div class="page-box">
+        <div class="brand-line"></div>
+        <div>
+          <div class="page-header">
+            <span class="page-header-title">Pata 1 — Video Marketing</span>
+            <span class="page-header-brand">PRESENTADOR 1</span>
+          </div>
+          <div class="section-banner">
+            <span class="section-banner-title">🎥 Grabándote en 20s</span>
+          </div>
+          <div style="font-size: 0.78rem; color: #334155; line-height: 1.5;">
+            1. Limpia el lente de tu cámara.<br>
+            2. Luz de frente (ventana natural).<br>
+            3. Mira al hoyito del lente.<br>
+            4. Subtítulos automáticos con el Bot.
+          </div>
+          <div class="sub-title">Idea de Video:</div>
+          <div class="ruled-lines-group">
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+          </div>
+        </div>
+        <div class="page-footer">
+          <span>Los 4 Pilares de un Negocio que Vende</span>
+          <span>Página 4</span>
+        </div>
+      </div>
+
+      <!-- Pág 13 -->
+      <div class="page-box">
+        <div class="brand-line"></div>
+        <div style="display: flex; flex-direction: column; height: 100%;">
+          <div class="page-header">
+            <span class="page-header-title">Pata 4 — Automatización WA</span>
+            <span class="page-header-brand">PRESENTADOR 2</span>
+          </div>
+          <div class="box-info">
+            🟢 Nivel 1: Manual 3 pasos.<br>
+            🟡 Nivel 2: Respuestas rápidas.<br>
+            🔴 Nivel 3: Bot IA Qlick 24/7.
+          </div>
+          <div class="sub-title">Tu Respuesta Automática:</div>
+          <div class="ruled-lines-group">
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+          </div>
+        </div>
+        <div class="page-footer">
+          <span>Los 4 Pilares de un Negocio que Vende</span>
+          <span>Página 13</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TABLOIDE 2 — FRENTE -->
+  <div class="tabloide-portrait-sheet">
+    <div class="media-carta-block">
+      <div class="spine-fold-v"></div>
+
+      <!-- Pág 12 -->
+      <div class="page-box">
+        <div class="brand-line"></div>
+        <div style="display: flex; flex-direction: column; height: 100%;">
+          <div class="page-header">
+            <span class="page-header-title">Pata 4 — Objeciones</span>
+            <span class="page-header-brand">PRESENTADOR 2</span>
+          </div>
+          <div class="sub-title">1. "¿Está muy caro?":</div>
+          <div class="prompt-box">
+"Entiendo la inversión, ofrecemos [Garantía]. ¿Probamos paquete básico?"
+          </div>
+          <div class="sub-title">Tu Respuesta a Objeción:</div>
+          <div class="ruled-lines-group">
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+          </div>
+        </div>
+        <div class="page-footer">
+          <span>Los 4 Pilares de un Negocio que Vende</span>
+          <span>Página 12</span>
+        </div>
+      </div>
+
+      <!-- Pág 5 -->
+      <div class="page-box">
+        <div class="brand-line"></div>
+        <div style="display: flex; flex-direction: column; height: 100%;">
+          <div class="page-header">
+            <span class="page-header-title">Pata 1 — Ejercicio Guión</span>
+            <span class="page-header-brand">PRESENTADOR 1</span>
+          </div>
+          <div class="sub-title">Guión en 3 Bloques (20s):</div>
+          <div style="font-size: 0.72rem; font-weight: 800; color: var(--brand-purple-dark);">
+            Gancho (0-3s) → Solución (3-12s) → CTA WA (12-20s):
+          </div>
+          <div class="ruled-lines-group">
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+          </div>
+        </div>
+        <div class="page-footer">
+          <span>Los 4 Pilares de un Negocio que Vende</span>
+          <span>Página 5</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="cut-line-h"><span class="cut-line-label">✂️ Línea de Corte Horizontal al Centro (8.5 in)</span></div>
+
+    <div class="media-carta-block">
+      <div class="spine-fold-v"></div>
+
+      <!-- Pág 10 -->
+      <div class="page-box">
+        <div class="brand-line"></div>
+        <div style="display: flex; flex-direction: column; height: 100%;">
+          <div class="page-header">
+            <span class="page-header-title">Pata 3 — Hoja de Pauta</span>
+            <span class="page-header-brand">PRESENTADOR 2</span>
+          </div>
+          <div class="sub-title">1. Segmentación San Luis:</div>
+          <div class="ruled-line"></div>
+          <div class="sub-title">2. Presupuesto Diario:</div>
+          <div class="ruled-line"></div>
+          <div class="box-info" style="margin-top: 0.4rem;">
+            📊 $100 MXN/día = ~200 prospectos/mes.
+          </div>
+          <div class="ruled-lines-group">
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+          </div>
+        </div>
+        <div class="page-footer">
+          <span>Los 4 Pilares de un Negocio que Vende</span>
+          <span>Página 10</span>
+        </div>
+      </div>
+
+      <!-- Pág 7 -->
+      <div class="page-box">
+        <div class="brand-line"></div>
+        <div style="display: flex; flex-direction: column; height: 100%;">
+          <div class="page-header">
+            <span class="page-header-title">Pata 2 — Cartel con IA</span>
+            <span class="page-header-brand">PRESENTADOR 1</span>
+          </div>
+          <div class="prompt-box">
+"Crea un cartel cuadrado para [NEGOCIO] en San Luis. Producto: [PRODUCTO]."
+          </div>
+          <div class="sub-title">Palabras Clave Producto:</div>
+          <div class="ruled-lines-group">
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+          </div>
+        </div>
+        <div class="page-footer">
+          <span>Los 4 Pilares de un Negocio que Vende</span>
+          <span>Página 7</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TABLOIDE 2 — VUELTA -->
+  <div class="tabloide-portrait-sheet">
+    <div class="media-carta-block">
+      <div class="spine-fold-v"></div>
+
+      <!-- Pág 6 -->
+      <div class="page-box">
+        <div class="brand-line"></div>
+        <div>
+          <div class="page-header">
+            <span class="page-header-title">Pata 2 — IA Copy</span>
+            <span class="page-header-brand">PRESENTADOR 1</span>
+          </div>
+          <div class="prompt-box">
+"Escribe un texto corto para Facebook anunciando [NEGOCIO] en San Luis con [OFERTA]."
+          </div>
+          <div class="sub-title">Adaptación Copy:</div>
+          <div class="ruled-lines-group">
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+          </div>
+        </div>
+        <div class="page-footer">
+          <span>Los 4 Pilares de un Negocio que Vende</span>
+          <span>Página 6</span>
+        </div>
+      </div>
+
+      <!-- Pág 11 -->
+      <div class="page-box">
+        <div class="brand-line"></div>
+        <div style="display: flex; flex-direction: column; height: 100%;">
+          <div class="page-header">
+            <span class="page-header-title">Pata 4 — Cierre WhatsApp</span>
+            <span class="page-header-brand">PRESENTADOR 2</span>
+          </div>
+          <div class="box-info">
+            1. Saludo Amable + Nombre.<br>
+            2. Beneficio Principal + Precio.<br>
+            3. Pregunta Cierre.
+          </div>
+          <div class="sub-title">Tu Respuesta Estándar:</div>
+          <div class="ruled-lines-group">
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+          </div>
+        </div>
+        <div class="page-footer">
+          <span>Los 4 Pilares de un Negocio que Vende</span>
+          <span>Página 11</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="cut-line-h"><span class="cut-line-label">✂️ Línea de Corte Horizontal al Centro (8.5 in)</span></div>
+
+    <div class="media-carta-block">
+      <div class="spine-fold-v"></div>
+
+      <!-- Pág 8 -->
+      <div class="page-box">
+        <div class="brand-line"></div>
+        <div style="display: flex; flex-direction: column; height: 100%;">
+          <div class="page-header">
+            <span class="page-header-title">Pata 2 — Ejercicio Copy</span>
+            <span class="page-header-brand">PRESENTADOR 1</span>
+          </div>
+          <div class="sub-title">Texto Generado con IA:</div>
+          <div class="ruled-lines-group">
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+          </div>
+        </div>
+        <div class="page-footer">
+          <span>Los 4 Pilares de un Negocio que Vende</span>
+          <span>Página 8</span>
+        </div>
+      </div>
+
+      <!-- Pág 9 -->
+      <div class="page-box">
+        <div class="brand-line"></div>
+        <div style="display: flex; flex-direction: column; height: 100%;">
+          <div class="page-header">
+            <span class="page-header-title">Pata 3 — Facebook Ads</span>
+            <span class="page-header-brand">PRESENTADOR 2</span>
+          </div>
+          <div style="font-size: 0.78rem; color: #334155; line-height: 1.5;">
+            1. Objetivo Mensajes a WA.<br>
+            2. Ubicación San Luis Río Colorado.<br>
+            3. Carga Imagen + Copy IA.<br>
+            4. Presupuesto $50/día.
+          </div>
+          <div class="sub-title">Checklist de Campaña:</div>
+          <div class="ruled-lines-group">
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+            <div class="ruled-line"></div>
+          </div>
+        </div>
+        <div class="page-footer">
+          <span>Los 4 Pilares de un Negocio que Vende</span>
+          <span>Página 9</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

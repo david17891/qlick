@@ -19,6 +19,25 @@
 
 ---
 
+## Snapshot operativo 2026-08-13 — housekeeping
+
+- **Producción:** último deploy funcional `dpl_7r9xPDZYySjjd95fGu6NEsVoFnf9`,
+  aliases `qlick.digital` y `www.qlick.digital`, smoke 200; el cron sin
+  credencial responde 401.
+- **Bot:** producción continúa en `super_executive_v2`; los arreglos de
+  captura, contexto de pago, QR provisional y handoff están desplegados.
+- **Seguimiento de pago:** continúa en `shadow` hasta contar con plantillas
+  Meta aprobadas; no es un fallo de código y requiere decisión externa.
+- **Datos:** no se versionan CSV, nombres, teléfonos, correos ni exportaciones;
+  los previews generados quedan ignorados por Git.
+- **Ramas:** se conservarán únicamente ramas con trabajo no integrado o
+  worktrees sucios; las ramas limpias ya integradas se retirarán después de
+  verificar el nuevo punto de integración.
+
+Los puntos de producto que siguen bloqueados por una decisión externa (Meta,
+proveedor de pago, saldo del evento y contenido real) no se marcarán como
+cerrados artificialmente.
+
 ## 📊 Estado actual (snapshot 2026-07-21 — sprint auditoría autogestionable v0.9.9)
 
 ### Seguimiento de pago de eventos — 2026-08-10
@@ -27,10 +46,14 @@
   `payment_last_day`; después guardar sus nombres aprobados en
   `WHATSAPP_TEMPLATE_PAYMENT_REMINDER_24H` y
   `WHATSAPP_TEMPLATE_PAYMENT_LAST_DAY`.
-- 🟡 **Cron Supabase:** configurar `EVENT_PAYMENT_FOLLOWUP_CRON_SECRET` en
-  Vault y un job `pg_cron`/`pg_net` cada 15 minutos que invoque
-  `/api/cron/event-payment-followups`. El código está desplegado, pero el modo
-  queda `off` hasta completar esta configuración.
+- ✅ **Cron Supabase:** `EVENT_PAYMENT_FOLLOWUP_CRON_SECRET` está en Vercel y
+  Vault; job `pg_cron`/`pg_net` activo cada 15 minutos e invoca el endpoint
+  autenticado. El modo productivo quedó en `shadow`: calcula y registra
+  elegibles sin enviar mensajes.
+- 🟡 **Activación live:** aprobar en Meta las plantillas y guardar sus nombres
+  reales en `WHATSAPP_TEMPLATE_PAYMENT_REMINDER_24H` y
+  `WHATSAPP_TEMPLATE_PAYMENT_LAST_DAY`; después cambiar el modo a `live` y
+  verificar un contacto sintético sin tocar conversaciones reales.
 - 🟢 **Saldo posterior al apartado:** el panel ya muestra el saldo; la campaña
   automática para cobrarlo queda fuera de este cambio.
 

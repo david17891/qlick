@@ -16,6 +16,12 @@
   Pendientes operativos: aprobación Meta + secreto Vault/cron; el modo está
   `off` hasta entonces.
 
+- [x] **Hardening conversacional y operativo (2026-08-11):** migración
+  aditiva de estados de nombre/jornada y telemetría sin PII, pausa reversible
+  de handoffs, bloqueo de QR/acceso antes de pago y cron Supabase cada 15
+  minutos. Deploy `dpl_Gv7Y9yBkmBqr5j5HNwNaogqRBFAa` en `READY`. Seguimiento de
+  pago en `shadow` hasta aprobación de plantillas Meta.
+
 - [x] **FASE 8 — Sistema integral de pedidos de servicios** — sprint cerrado el 2026-07-21 06:00 Phoenix y **mergeado a `main` (HEAD `76ca9ad`)**. 14 commits atómicos consecutivos a `main` (`e9689c7..76ca9ad`). 1480/1480 tests verde, type-check 0, lint 0/0, build OK. **E2E real verificado contra prod**: cliente llena form en `/servicios/sitio-web` → POST `/api/services/checkout/` → 200 con `order_number: QO-2026-0001` → fila en DB con `status: pending_contact` → email Brevo al admin.
   - **Qué incluye (6 sub-fases):**
     - **8A — Fixes puntuales**: WhatsApp directo con fallback duro a `+5216532935492` (wa.me de David, sin depender de env var). Migration `20260721044345` agrega `'proximamente'` al CHECK constraint de `public.courses.status`; los 5 cursos del demo del LMS ahora muestran badge "Próximamente" + CTA deshabilitado en `/cursos`. Banner ámbar en `/cursos/[slug]` con WhatsApp "Avísame cuando abra".

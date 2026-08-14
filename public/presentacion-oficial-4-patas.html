@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Presentación Oficial — Los 4 Pilares de un Negocio que Vende</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800;900&family=Outfit:wght@800;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #070A11;
+      --bg-card: rgba(15, 23, 42, 0.85);
+      --border-color: rgba(255, 255, 255, 0.12);
+      --brand-purple: #C084FC;
+      --brand-orange: #F59E0B;
+      --brand-cyan: #38BDF8;
+      --brand-green: #34D399;
+      --text-main: #FFFFFF;
+      --text-muted: #CBD5E1;
+      --font-display: 'Outfit', sans-serif;
+      --font-body: 'Plus Jakarta Sans', sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: var(--font-body);
+    }
+
+    .glow {
+      position: fixed;
+      width: 900px;
+      height: 900px;
+      border-radius: 50%;
+      filter: blur(200px);
+      opacity: 0.18;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .glow-1 { top: -250px; left: -250px; background: #9333EA; }
+    .glow-2 { bottom: -250px; right: -250px; background: #D97706; }
+
+    /* Full Stage Layout without outer card constraint */
+    .stage {
+      position: relative;
+      z-index: 1;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 1.75rem 3.5rem 1.25rem 3.5rem;
+      overflow: hidden;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      height: 45px;
+      margin-bottom: 0.5rem;
+    }
+    .brand-logo {
+      font-family: var(--font-display);
+      font-weight: 900;
+      font-size: 2.2rem;
+      color: #FFF;
+      letter-spacing: -0.02em;
+    }
+    .location-tag {
+      font-size: 1.05rem;
+      font-weight: 800;
+      color: var(--brand-cyan);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .slide-viewport {
+      flex: 1;
+      position: relative;
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
+      overflow: hidden;
+      margin: 0.5rem 0 1rem 0;
+    }
+
+    /* Clean Slide Container - No outer card border around title */
+    .slide {
+      display: none;
+      width: 100%;
+      height: 100%;
+      flex-direction: column;
+      justify-content: flex-start;
+      overflow: hidden;
+    }
+    .slide.active {
+      display: flex;
+    }
+
+    /* TYPOGRAPHY MATCHING IMAGE 2 EXACTLY */
+    .slide-eyebrow {
+      font-size: 1.15rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--brand-cyan);
+      margin-bottom: 0.35rem;
+    }
+    .slide-title {
+      font-family: var(--font-display);
+      font-size: clamp(2.3rem, 3.1vw, 3.3rem);
+      font-weight: 900;
+      line-height: 1.15;
+      margin-bottom: 0.5rem;
+      color: #FFFFFF;
+    }
+    .slide-desc {
+      font-size: clamp(1.2rem, 1.45vw, 1.5rem);
+      color: var(--text-muted);
+      line-height: 1.5;
+      font-weight: 500;
+      margin-bottom: 1.5rem;
+    }
+
+    /* Responsive Grids taking up remaining height */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; flex: 1; align-items: stretch; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; flex: 1; align-items: stretch; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.25rem; flex: 1; align-items: stretch; }
+
+    /* INDIVIDUAL CONTENT CARDS - Clean rounded dark boxes like Image 2 */
+    .box {
+      background: var(--bg-card);
+      border: 1.5px solid var(--border-color);
+      border-radius: 20px;
+      padding: 2rem 2.25rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 15px 40px rgba(0,0,0,0.4);
+      overflow: hidden;
+    }
+    .box-num {
+      font-family: var(--font-display);
+      font-size: 2.8rem;
+      font-weight: 900;
+      line-height: 1;
+      color: var(--brand-purple);
+      margin-bottom: 0.4rem;
+    }
+    .box-title {
+      font-size: clamp(1.35rem, 1.7vw, 1.75rem);
+      font-weight: 800;
+      margin-bottom: 0.75rem;
+      color: #FFF;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .box-text {
+      font-size: clamp(1.15rem, 1.35vw, 1.4rem);
+      color: var(--text-muted);
+      line-height: 1.6;
+      font-weight: 500;
+    }
+
+    .prompt-box {
+      background: #020617;
+      border: 2px solid rgba(56,189,248,0.4);
+      border-radius: 20px;
+      padding: 2rem 2.5rem;
+      font-family: monospace;
+      font-size: clamp(1.2rem, 1.5vw, 1.5rem);
+      color: #38BDF8;
+      line-height: 1.65;
+      white-space: pre-wrap;
+      flex: 1;
+      display: flex;
+      align-items: center;
+      box-shadow: 0 15px 40px rgba(0,0,0,0.5);
+      overflow: hidden;
+    }
+
+    .highlight-box {
+      background: linear-gradient(135deg, rgba(147,51,234,0.25), rgba(217,119,6,0.25));
+      border: 2px solid rgba(192,132,252,0.4);
+      border-radius: 24px;
+      padding: 2.5rem;
+      text-align: center;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      backdrop-filter: blur(16px);
+    }
+
+    footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      height: 45px;
+    }
+    .progress-bar-wrap {
+      position: absolute;
+      bottom: 0; left: 0; width: 100%; height: 4px;
+      background: rgba(255,255,255,0.08);
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #A855F7, #F59E0B);
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+    .counter { font-size: 1.15rem; font-weight: 700; color: var(--text-muted); }
+
+    .nav-group {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+    }
+    .nav-btn {
+      background: rgba(255,255,255,0.12);
+      color: #FFF;
+      border: 1px solid var(--border-color);
+      padding: 0.6rem 1.4rem;
+      border-radius: 10px;
+      font-weight: 800;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: all 0.2s;
+    }
+    .nav-btn:hover { background: rgba(255,255,255,0.22); }
+    .nav-btn-primary {
+      background: linear-gradient(135deg, #A855F7, #F59E0B);
+      color: #FFF;
+      border: none;
+    }
+
+    select.slide-select {
+      background: rgba(0,0,0,0.85);
+      color: #fff;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 0.45rem 0.85rem;
+      font-size: 0.95rem;
+      font-weight: 700;
+      outline: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="glow glow-1"></div>
+  <div class="glow glow-2"></div>
+
+  <div class="stage">
+    <!-- Header -->
+    <header>
+      <div class="brand-logo">QLICK</div>
+      <div class="location-tag">CANACO San Luis Río Colorado</div>
+    </header>
+
+    <!-- Slide Stage Viewport -->
+    <div class="slide-viewport">
+
+      <!-- SLIDE 1 -->
+      <div class="slide active" id="slide-1">
+        <div>
+          <span class="slide-eyebrow">20 de Agosto de 2026</span>
+          <h1 class="slide-title">Los 4 Pilares de un Negocio que Vende</h1>
+          <p class="slide-desc">Taller práctico presencial de 4 horas para crear videos en celular, generar planes e imágenes con Inteligencia Artificial, lanzar anuncios pagados y cerrar por WhatsApp.</p>
+        </div>
+
+        <div class="grid-4">
+          <div class="box">
+            <div class="box-num">1</div>
+            <div class="box-title">🎥 Video Rápido</div>
+            <div class="box-text">Videos de 20s en celular y guiones ágiles.</div>
+          </div>
+          <div class="box">
+            <div class="box-num">2</div>
+            <div class="box-title">🤖 IA & Imágenes</div>
+            <div class="box-text">Creación directa de imágenes con IA y planes de negocio.</div>
+          </div>
+          <div class="box">
+            <div class="box-num">3</div>
+            <div class="box-title">📱 Facebook Ads</div>
+            <div class="box-text">Campaña pagada dirigida a tu WhatsApp.</div>
+          </div>
+          <div class="box">
+            <div class="box-num">4</div>
+            <div class="box-title">💬 Cierre WhatsApp</div>
+            <div class="box-text">Estrategia de respuestas y demostración de Bots IA Qlick.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SLIDE 2 (MATCHING IMAGE 2 EXACTLY) -->
+      <div class="slide" id="slide-2">
+        <div>
+          <span class="slide-eyebrow">DIAGNÓSTICO INICIAL</span>
+          <h2 class="slide-title">¿Por qué el 80% de los Negocios se Estancan?</h2>
+          <p class="slide-desc">Un negocio no falla por falta de ganas; falla cuando cojea cualquiera de los 4 pilares del proceso comercial.</p>
+        </div>
+
+        <div class="grid-2">
+          <div class="box">
+            <div class="box-title" style="color: #F87171;">❌ Errores Comunes</div>
+            <ul style="margin-left: 1.5rem; font-size: clamp(1.15rem, 1.35vw, 1.4rem); color: var(--text-muted); line-height: 1.7; font-weight: 500;">
+              <li>Subir volantes impresos a redes sociales.</li>
+              <li>Pagar el botón "Promocionar publicación" sin rumbo.</li>
+              <li>Tardar horas en redactar textos o responder mensajes.</li>
+              <li>Contestar solo el precio en WhatsApp y matar la venta.</li>
+            </ul>
+          </div>
+          <div class="box">
+            <div class="box-title" style="color: var(--brand-green);">✅ La Estrategia Ganadora</div>
+            <ul style="margin-left: 1.5rem; font-size: clamp(1.15rem, 1.35vw, 1.4rem); color: var(--text-muted); line-height: 1.7; font-weight: 500;">
+              <li>Video de 20s o imagen limpia que detiene el scroll.</li>
+              <li>Texto con gancho redactado por IA en 15 segundos.</li>
+              <li>Campaña en Facebook Ads dirigida directo a tu WhatsApp.</li>
+              <li>Atención inmediata con guiones y Bots inteligentes.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- SLIDE 3 -->
+      <div class="slide" id="slide-3">
+        <div>
+          <span class="slide-eyebrow">EL FLUJO DEL TALLER</span>
+          <h2 class="slide-title">4 Horas, 4 Pasos, 1 Anuncio Encendido</h2>
+          <p class="slide-desc">Cada módulo construye el insumo necesario para el siguiente bloque. Saldrás con tu campaña armada en vivo.</p>
+        </div>
+
+        <div class="grid-2">
+          <div class="box" style="border-color: var(--brand-cyan);">
+            <div class="box-title" style="color: var(--brand-cyan);">PRESENTADOR 1 — Creación & IA</div>
+            <div class="box-text">Video Marketing Rápido en Celular + Planes, Prompts e Imágenes directas con IA (ChatGPT/Gemini).</div>
+          </div>
+          <div class="box" style="border-color: var(--brand-purple);">
+            <div class="box-title" style="color: var(--brand-purple);">PRESENTADOR 2 — Pauta & Cierre</div>
+            <div class="box-text">Montaje de la campaña en Facebook Ads + Estrategia y demostración de Bots en WhatsApp.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SLIDE 4 -->
+      <div class="slide" id="slide-4">
+        <div>
+          <span class="slide-eyebrow">PATA 1 — VIDEO MARKETING</span>
+          <h2 class="slide-title">5 Reglas de Oro para Grabarte en 20 Segundos</h2>
+          <p class="slide-desc">Los videos cortos en celular generan mucha cercanía y confianza en tu negocio local:</p>
+        </div>
+
+        <div class="grid-4">
+          <div class="box">
+            <div class="box-title">1. Limpia el Lente</div>
+            <div class="box-text">Limpia la grasa de la cámara del celular antes de grabar.</div>
+          </div>
+          <div class="box">
+            <div class="box-title">2. Luz de Frente</div>
+            <div class="box-text">Ponte de cara a una ventana iluminada (nunca de espaldas).</div>
+          </div>
+          <div class="box">
+            <div class="box-title">3. Mira al Lente</div>
+            <div class="box-text">Mira al hoyito de la cámara para conectar con el cliente.</div>
+          </div>
+          <div class="box">
+            <div class="box-title">4. Edición Bot</div>
+            <div class="box-text">Envía el video al Bot para subtítulos automáticos y mejora de audio.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SLIDE 5 -->
+      <div class="slide" id="slide-5">
+        <div>
+          <span class="slide-eyebrow">PATA 1 — GUIÓN DE VIDEO 1</span>
+          <h2 class="slide-title">Fórmula 1: Problema → Solución</h2>
+          <p class="slide-desc">Ideal para servicios, talleres y consultoría:</p>
+        </div>
+
+        <div class="prompt-box">
+(0-3s) GANCHO: "¿Cansado de batallar con [Problema de tu cliente] en San Luis?"
+(3-12s) VALOR: "En [Nombre de tu Negocio] te lo resolvemos hoy mismo con garantía."
+(12-20s) CTA: "Mándame un mensaje a WhatsApp dando clic abajo."
+        </div>
+      </div>
+
+      <!-- SLIDE 6 -->
+      <div class="slide" id="slide-6">
+        <div>
+          <span class="slide-eyebrow">PATA 1 — GUIÓN DE VIDEO 2</span>
+          <h2 class="slide-title">Fórmula 2: Producto en Acción</h2>
+          <p class="slide-desc">Ideal para restaurantes, estética y tiendas físicas:</p>
+        </div>
+
+        <div class="prompt-box">
+(0-3s) GANCHO: "Mira nada más cómo quedó este [Producto/Trabajo] hoy..."
+(3-12s) VALOR: "Preparamos/hacemos cada uno con los mejores materiales en nuestro local."
+(12-20s) CTA: "Toca el botón de abajo y te reservamos tu lugar por WhatsApp."
+        </div>
+      </div>
+
+      <!-- SLIDE 7 -->
+      <div class="slide" id="slide-7">
+        <div>
+          <span class="slide-eyebrow">PATA 1 — GUIÓN DE VIDEO 3</span>
+          <h2 class="slide-title">Fórmula 3: Promoción Especial</h2>
+          <p class="slide-desc">Ideal para promociones de temporada o paquetes:</p>
+        </div>
+
+        <div class="prompt-box">
+(0-3s) GANCHO: "¡Atención San Luis Río Colorado! Únicamente esta semana..."
+(3-12s) VALOR: "Tenemos [Descuento u Oferta] en [Tu Servicio/Producto]."
+(12-20s) CTA: "No te lo pierdas, mándame mensaje directo a WhatsApp aquí abajo."
+        </div>
+      </div>
+
+      <!-- SLIDE 8 -->
+      <div class="slide" id="slide-8">
+        <div>
+          <span class="slide-eyebrow">PATA 1 — BOT DE EDICIÓN</span>
+          <h2 class="slide-title">Edición Automática con el Bot de Telegram</h2>
+          <p class="slide-desc">Envías tu video grabado en 20 segundos y el Bot lo procesa automáticamente:</p>
+        </div>
+
+        <div class="grid-3">
+          <div class="box">
+            <div class="box-title">Subtítulos Legibles</div>
+            <div class="box-text">Agrega subtítulos automáticos para que se entienda sin activar volumen.</div>
+          </div>
+          <div class="box">
+            <div class="box-title">Audio y Brillo</div>
+            <div class="box-text">Corrige la iluminación y mejora la nitidez del micrófono.</div>
+          </div>
+          <div class="box">
+            <div class="box-title">Título Superior</div>
+            <div class="box-text">Añade un banner superior con el título del negocio.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SLIDE 9 -->
+      <div class="slide" id="slide-9">
+        <div>
+          <span class="slide-eyebrow">PATA 2 — INTELIGENCIA ARTIFICIAL</span>
+          <h2 class="slide-title">IA para Planes, Ideas e Imágenes Directas</h2>
+          <p class="slide-desc">Usa ChatGPT o Gemini en tu celular como tu estratega de negocios y creador visual las 24 horas.</p>
+        </div>
+
+        <div class="box" style="border-color: var(--brand-cyan);">
+          <div class="box-title" style="color: var(--brand-cyan);">¿Qué harás en la Pata 2 con IA?</div>
+          <ul style="margin-left: 1.5rem; font-size: clamp(1.15rem, 1.35vw, 1.4rem); color: var(--text-muted); line-height: 1.7; margin-top: 0.5rem; font-weight: 500;">
+            <li>Generar tu cartel publicitario completo con IA sin tocar Canva.</li>
+            <li>Redactar el texto con gancho (copy) para acompañar tu anuncio.</li>
+            <li>Crear planes de promociones e ideas operativas para tu negocio.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- SLIDE 10 -->
+      <div class="slide" id="slide-10">
+        <div>
+          <span class="slide-eyebrow">PATA 2 — CARTEL CON IA</span>
+          <h2 class="slide-title">Generación Directa de tu Cartel con IA</h2>
+          <p class="slide-desc">Copia esta orden en ChatGPT, Gemini o Bing Creator:</p>
+        </div>
+
+        <div class="prompt-box">
+"Crea un cartel publicitario cuadrado moderno para redes sociales de mi negocio [NOMBRE DE TU NEGOCIO] en San Luis Río Colorado.
+Producto: [LO QUE VENDES].
+Oferta o texto a incluir: [TEXTO CORTO DE OFERTA].
+Estilo visual: Fotografía limpia comercial, colores vibrantes, iluminación profesional."
+        </div>
+      </div>
+
+      <!-- SLIDE 11 -->
+      <div class="slide" id="slide-11">
+        <div>
+          <span class="slide-eyebrow">PATA 2 — EJEMPLO ALIMENTOS</span>
+          <h2 class="slide-title">Prompt para Negocios de Alimentos</h2>
+        </div>
+
+        <div class="prompt-box">
+"Crea un cartel publicitario cuadrado para Facebook de un restaurante de hamburguesas llamado 'Burgers SLRC'. En el centro muestra una hamburguesa artesanal deliciosa e iluminada. En la parte superior coloca un texto limpio que diga '¡COMBO FAMILIAR $299!'. Estilo publicitario profesional, colores apetitosos."
+        </div>
+      </div>
+
+      <!-- SLIDE 12 -->
+      <div class="slide" id="slide-12">
+        <div>
+          <span class="slide-eyebrow">PATA 2 — EJEMPLO BELLEZA</span>
+          <h2 class="slide-title">Prompt para Salones de Belleza</h2>
+        </div>
+
+        <div class="prompt-box">
+"Crea una imagen publicitaria limpia estilo spa para el salón de belleza 'Studio Bella'. Muestra una modelo con cabello radiante y piel cuidada. Incluye un texto elegante que diga 'PAQUETE FACIAL + PEINADO'. Estilo fresco, tonos pastel y luz natural brillante."
+        </div>
+      </div>
+
+      <!-- SLIDE 13 -->
+      <div class="slide" id="slide-13">
+        <div>
+          <span class="slide-eyebrow">PATA 2 — EJEMPLO AUTOMOTRIZ</span>
+          <h2 class="slide-title">Prompt para Taller Automotriz y Servicios</h2>
+        </div>
+
+        <div class="prompt-box">
+"Crea un anuncio publicitario para un taller automotriz llamado 'AutoServicio Pro'. Muestra un automóvil moderno impecable en un taller limpio con luces LED. Incluye un titular en color contrastante que diga 'CAMBIO DE ACEITE Y REVISIÓN'. Estilo corporativo masculino en tonos azul y gris."
+        </div>
+      </div>
+
+      <!-- SLIDE 14 -->
+      <div class="slide" id="slide-14">
+        <div>
+          <span class="slide-eyebrow">PATA 2 — REDACCIÓN DEL COPY</span>
+          <h2 class="slide-title">Prompt para Redactar el Texto del Anuncio</h2>
+        </div>
+
+        <div class="prompt-box">
+"Escribe un texto corto para publicar en Facebook anunciando mi negocio de [NOMBRE DE TU NEGOCIO] en San Luis Río Colorado, ofreciendo [DESCUENTO U OFERTA] e invitando a enviar mensaje por WhatsApp."
+        </div>
+      </div>
+
+      <!-- SLIDE 15 -->
+      <div class="slide" id="slide-15">
+        <div>
+          <span class="slide-eyebrow">PATA 2 — IDEAS DE PROMOCIONES</span>
+          <h2 class="slide-title">IA para Promociones y Tareas Operativas</h2>
+        </div>
+
+        <div class="grid-2">
+          <div class="box">
+            <div class="box-title" style="color: var(--brand-purple);">Ideas de Promociones:</div>
+            <div class="prompt-box" style="font-size: 1.15rem;">
+"Dame 3 ideas de ofertas sencillas para mi negocio de [Tu Negocio] este mes en San Luis Río Colorado."
+            </div>
+          </div>
+          <div class="box">
+            <div class="box-title" style="color: var(--brand-orange);">Organización Operativa:</div>
+            <div class="prompt-box" style="font-size: 1.15rem;">
+"Dame un plan semanal sencillo para organizar mis ventas y atención por WhatsApp."
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SLIDE 16 -->
+      <div class="slide" id="slide-16">
+        <div>
+          <span class="slide-eyebrow">CIERRE DEL BLOQUE 1</span>
+          <h2 class="slide-title">¡Tus Materiales Están Listos para Pautar!</h2>
+          <p class="slide-desc">Al terminar las primeras 2 horas ya tienes tu video/imagen lista + tu texto redactado con IA.</p>
+        </div>
+
+        <div class="grid-2">
+          <div class="box" style="border-color: var(--brand-green);">
+            <div class="box-title" style="color: var(--brand-green);">✅ Insumo 1: Visual</div>
+            <div class="box-text">Video de 20s grabado o cartel de IA descargado en tu teléfono.</div>
+          </div>
+          <div class="box" style="border-color: var(--brand-cyan);">
+            <div class="box-title" style="color: var(--brand-cyan);">✅ Insumo 2: Copy</div>
+            <div class="box-text">Texto publicitario persuasivo redactado por ChatGPT/Gemini.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SLIDE 17 -->
+      <div class="slide" id="slide-17">
+        <div>
+          <span class="slide-eyebrow">RECESO DE 15 MINUTOS</span>
+          <h1 class="slide-title">Pausa de Café y Networking</h1>
+          <p class="slide-desc">Platica con tus vecinos emprendedores, intercambia contactos y prepara tu teléfono para el Bloque 2.</p>
+        </div>
+
+        <div class="highlight-box">
+          <h3 style="font-size: clamp(1.8rem, 2.4vw, 2.4rem); color: var(--brand-orange);">En el Bloque 2 Verás (Presentador 2):</h3>
+          <p style="font-size: clamp(1.25rem, 1.5vw, 1.55rem); margin-top: 0.75rem; color: #FFF;">Montaje de tu campaña en Facebook Ads + Cierre y Demostración del Bot IA Qlick en WhatsApp.</p>
+        </div>
+      </div>
+
+      <!-- SLIDE 18 -->
+      <div class="slide" id="slide-18">
+        <div>
+          <span class="slide-eyebrow">BLOQUE 2 — PRESENTADOR 2</span>
+          <h2 class="slide-title">Pata 3: Publicidad Pagada en Facebook Ads</h2>
+          <p class="slide-desc">Presentador 2 toma la imagen/video (Pata 1) y el texto (Pata 2) de un participante y configura la campaña en vivo proyectando su pantalla.</p>
+        </div>
+      </div>
+
+      <!-- SLIDE 19 -->
+      <div class="slide" id="slide-19">
+        <div>
+          <span class="slide-eyebrow">PATA 3 — FACEBOOK ADS</span>
+          <h2 class="slide-title">Por qué el Botón Azul Quemaba tu Dinero</h2>
+        </div>
+
+        <div class="grid-2">
+          <div class="box">
+            <div class="box-title" style="color: #F87171;">❌ Botón "Promocionar Publicación"</div>
+            <div class="box-text">Solo busca 'likes' o reproducciones de gente al azar. Los likes no pagan las cuentas.</div>
+          </div>
+          <div class="box">
+            <div class="box-title" style="color: var(--brand-green);">✅ Campaña Objetivo WhatsApp</div>
+            <div class="box-text">Cada clic envía a un cliente potencial directamente a tu chat de WhatsApp listo para comprar.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SLIDE 20 -->
+      <div class="slide" id="slide-20">
+        <div>
+          <span class="slide-eyebrow">PATA 3 — MONTAJE DE CAMPAÑA</span>
+          <h2 class="slide-title">Los 4 Pasos para Configurar tu Campaña</h2>
+        </div>
+
+        <div class="grid-4">
+          <div class="box">
+            <div class="box-title">Paso 1</div>
+            <div class="box-text">Selecciona el objetivo: <strong>Mensajes a WhatsApp</strong>.</div>
+          </div>
+          <div class="box">
+            <div class="box-title">Paso 2</div>
+            <div class="box-text">Fija la ubicación: <strong>San Luis Río Colorado</strong>.</div>
+          </div>
+          <div class="box">
+            <div class="box-title">Paso 3</div>
+            <div class="box-text">Carga tu imagen de IA / video + texto de IA.</div>
+          </div>
+          <div class="box">
+            <div class="box-title">Paso 4</div>
+            <div class="box-text">Asigna presupuesto diario ($50 a $100 MXN).</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SLIDE 21 -->
+      <div class="slide" id="slide-21">
+        <div>
+          <span class="slide-eyebrow">PATA 3 — SEGMENTACIÓN LOCAL</span>
+          <h2 class="slide-title">Segmentación en San Luis Río Colorado</h2>
+        </div>
+
+        <div class="grid-3">
+          <div class="box">
+            <div class="box-title">1. Ubicación Exacta</div>
+            <div class="box-text">San Luis Río Colorado + radio de 5 a 15 km según tu tipo de negocio.</div>
+          </div>
+          <div class="box">
+            <div class="box-title">2. Rango de Edad</div>
+            <div class="box-text">Filtra la edad de quienes toman la decisión de compra (ej. 25 a 55 años).</div>
+          </div>
+          <div class="box">
+            <div class="box-title">3. Intereses Clave</div>
+            <div class="box-text">Intereses afines a tu giro (comida, belleza, autos, negocios).</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SLIDE 22 -->
+      <div class="slide" id="slide-22">
+        <div>
+          <span class="slide-eyebrow">PATA 3 — PRESUPUESTO</span>
+          <h2 class="slide-title">Presupuesto Mínimo y Retorno Estimado</h2>
+        </div>
+
+        <div class="box" style="border-color: var(--brand-orange);">
+          <div class="box-title" style="color: var(--brand-orange);">📊 Simulación con $100 MXN al día:</div>
+          <div style="font-size: clamp(1.2rem, 1.4vw, 1.45rem); color: var(--text-muted); line-height: 1.7; margin-top: 0.5rem; font-weight: 500;">
+            • <strong>Presupuesto diario:</strong> $100 pesos al día ($3,000 MXN al mes).<br>
+            • <strong>Costo por mensaje estimado:</strong> $15 pesos por prospecto.<br>
+            • <strong>Prospectos mensuales:</strong> ~200 personas interesadas escribiéndote.<br>
+            • <strong>Ventas estimadas (tasa 15%):</strong> 30 clientes nuevos al mes.
+          </div>
+        </div>
+      </div>
+
+      <!-- SLIDE 23 -->
+      <div class="slide" id="slide-23">
+        <div>
+          <span class="slide-eyebrow">PATA 4 — WHATSAPP</span>
+          <h2 class="slide-title">El Arte del Cierre de Ventas por Chat</h2>
+          <p class="slide-desc">La campaña ya está trayendo mensajes a WhatsApp. Ahora aprende a convertirlos en clientes que pagan.</p>
+        </div>
+
+        <div class="highlight-box">
+          <div class="box-title" style="color: #F87171;">El Error #1 en WhatsApp:</div>
+          <p style="font-size: clamp(1.2rem, 1.45vw, 1.5rem); color: #FFF; margin-top: 0.5rem;">
+            Cuando el cliente pregunta <em>"¿Precio?"</em> y respondes solo: <em>"$500 pesos"</em> y nada más. El cliente dice "gracias" y se va.
+          </p>
+        </div>
+      </div>
+
+      <!-- SLIDE 24 -->
+      <div class="slide" id="slide-24">
+        <div>
+          <span class="slide-eyebrow">PATA 4 — FÓRMULA DE RESPUESTA</span>
+          <h2 class="slide-title">La Fórmula de la Respuesta Inmediata</h2>
+        </div>
+
+        <div class="grid-3">
+          <div class="box">
+            <div class="box-title">Paso 1: Saludo</div>
+            <div class="box-text">"¡Hola [Nombre]! Con gusto te paso la información..."</div>
+          </div>
+          <div class="box">
+            <div class="box-title">Paso 2: Valor + Precio</div>
+            <div class="box-text">Explicación rápida del beneficio principal e inversión.</div>
+          </div>
+          <div class="box" style="border-color: var(--brand-cyan);">
+            <div class="box-title" style="color: var(--brand-cyan);">Paso 3: Pregunta Cierre</div>
+            <div class="box-text">"¿Te gustaría agendar para hoy o prefieres mañana?"</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SLIDE 25 -->
+      <div class="slide" id="slide-25">
+        <div>
+          <span class="slide-eyebrow">PATA 4 — OBJECIÓN 1</span>
+          <h2 class="slide-title">Cómo Responder a "¿Está muy caro?"</h2>
+        </div>
+
+        <div class="prompt-box" style="color: #FFF;">
+"Entiendo perfectamente [Nombre], la inversión es importante. En nuestro negocio no competimos por ser los más baratos sino por ofrecerte [Garantía / Beneficio]. ¿Te gustaría probar con un paquete básico primero?"
+        </div>
+      </div>
+
+      <!-- SLIDE 26 -->
+      <div class="slide" id="slide-26">
+        <div>
+          <span class="slide-eyebrow">PATA 4 — OBJECIÓN 2</span>
+          <h2 class="slide-title">Cómo Responder a "Lo voy a pensar"</h2>
+        </div>
+
+        <div class="prompt-box" style="color: #FFF;">
+"¡Por supuesto [Nombre]! Tomarte tu tiempo es ideal. Solo para tenerlo en cuenta: la promoción especial termina este viernes. ¿Tienes alguna duda puntual sobre la garantía o los horarios antes de decidir?"
+        </div>
+      </div>
+
+      <!-- SLIDE 27 -->
+      <div class="slide" id="slide-27">
+        <div>
+          <span class="slide-eyebrow">PATA 4 — SEGUIMIENTO</span>
+          <h2 class="slide-title">Secuencia de Seguimiento en 3 Pasos</h2>
+        </div>
+
+        <div class="grid-3">
+          <div class="box">
+            <div class="box-title">Toque 1 (24 horas)</div>
+            <div class="box-text">"Hola [Nombre], ¿pudiste revisar la información? Cuéntame si tienes alguna duda."</div>
+          </div>
+          <div class="box">
+            <div class="box-title">Toque 2 (72 horas)</div>
+            <div class="box-text">"¡Hola [Nombre]! Te comento que nos quedan 2 lugares esta semana. ¿Te apunto?"</div>
+          </div>
+          <div class="box">
+            <div class="box-title">Toque 3 (7 días)</div>
+            <div class="box-text">"Hola [Nombre], te dejo abierta la información para cuando lo requieras. ¡Saludos!"</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SLIDE 28 -->
+      <div class="slide" id="slide-28">
+        <div>
+          <span class="slide-eyebrow">PATA 4 — NIVELES DE BOTS</span>
+          <h2 class="slide-title">Los 3 Niveles de Atención en WhatsApp</h2>
+        </div>
+
+        <div class="grid-3">
+          <div class="box">
+            <div class="box-title">🟢 Nivel 1: Manual</div>
+            <div class="box-text">Atención directa por ti o tu equipo aplicando la fórmula de respuesta.</div>
+          </div>
+          <div class="box">
+            <div class="box-title">🟡 Nivel 2: Business Meta</div>
+            <div class="box-text">Respuestas rápidas guardadas y mensajes de bienvenida automáticos.</div>
+          </div>
+          <div class="box" style="border-color: var(--brand-purple); background: rgba(192,132,252,0.2);">
+            <div class="box-title" style="color: var(--brand-purple);">🔴 Nivel 3: Bot IA Qlick</div>
+            <div class="box-text">Atención inteligente 24/7, responde objeciones y califica clientes automáticamente.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SLIDE 29 -->
+      <div class="slide" id="slide-29">
+        <div>
+          <span class="slide-eyebrow">PATA 4 — DEMOSTRACIÓN EN VIVO</span>
+          <h2 class="slide-title">Demostración del Bot IA Personalizado Qlick</h2>
+        </div>
+
+        <div class="box" style="border-color: var(--brand-cyan);">
+          <div class="box-title" style="color: var(--brand-cyan);">¿Qué hace el Bot IA de Qlick por tu negocio?</div>
+          <ul style="margin-left: 1.5rem; font-size: clamp(1.15rem, 1.35vw, 1.4rem); color: var(--text-muted); line-height: 1.7; margin-top: 0.5rem; font-weight: 500;">
+            <li>Responde inmediatamente a cualquier hora del día o de la noche.</li>
+            <li>Conoce tus precios, servicios, horarios y objeciones frecuentes.</li>
+            <li>Agenda citas o registra al prospecto en el CRM de Qlick sin intervención humana.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- SLIDE 30 -->
+      <div class="slide" id="slide-30">
+        <div>
+          <span class="slide-eyebrow">PLAN DE ACCIÓN</span>
+          <h2 class="slide-title">Tu Plan de Trabajo de 7 Días</h2>
+        </div>
+
+        <div class="grid-4">
+          <div class="box">
+            <div class="box-title">Día 1</div>
+            <div class="box-text">Graba tu video de 20s o genera tu imagen con IA.</div>
+          </div>
+          <div class="box">
+            <div class="box-title">Día 2</div>
+            <div class="box-text">Crea tu texto publicitario en ChatGPT/Gemini.</div>
+          </div>
+          <div class="box">
+            <div class="box-title">Día 3</div>
+            <div class="box-text">Activa tu campaña en Facebook Ads con $50/día.</div>
+          </div>
+          <div class="box">
+            <div class="box-title">Día 4-7</div>
+            <div class="box-text">Atiende tus prospectos en WhatsApp y mide ventas.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SLIDE 31 -->
+      <div class="slide" id="slide-31">
+        <div>
+          <span class="slide-eyebrow">CONCLUSIÓN</span>
+          <h2 class="slide-title">Los 4 Pilares de tu Negocio Estándar</h2>
+        </div>
+
+        <div class="grid-4">
+          <div class="box">
+            <div class="box-title">🎥 1. Video 20s</div>
+            <div class="box-text">Grabación rápida con celular y guión ágil.</div>
+          </div>
+          <div class="box">
+            <div class="box-title">🤖 2. IA e Imagen</div>
+            <div class="box-text">Cartel directo con IA y copy con gancho.</div>
+          </div>
+          <div class="box">
+            <div class="box-title">📱 3. Ads</div>
+            <div class="box-text">Campaña dirigida a WhatsApp.</div>
+          </div>
+          <div class="box">
+            <div class="box-title">💬 4. Cierre</div>
+            <div class="box-text">Atención rápida y Bots inteligentes.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SLIDE 32 -->
+      <div class="slide" id="slide-32">
+        <div>
+          <span class="slide-eyebrow">¡MUCHAS GRACIAS!</span>
+          <h1 class="slide-title">Cierre del Taller y Preguntas Finales</h1>
+        </div>
+
+        <div class="highlight-box">
+          <h3 style="font-size: clamp(1.8rem, 2.4vw, 2.4rem); color: var(--brand-orange);">¡Gracias por acompañarnos en CANACO San Luis Río Colorado!</h3>
+          <p style="font-size: clamp(1.25rem, 1.5vw, 1.55rem); margin-top: 0.75rem; color: #FFF;">Qlick Marketing Digital — Potenciando los negocios de nuestra región.</p>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Footer Controls -->
+    <footer>
+      <div class="progress-bar-wrap">
+        <div class="progress-bar-fill" id="progress"></div>
+      </div>
+      <div class="counter" id="slideCounter">Diapositiva 1 de 32</div>
+      <div class="nav-group">
+        <select id="slideJump" class="slide-select" onchange="jumpToSlide(this.value)"></select>
+        <button class="nav-btn" onclick="prevSlide()">← Anterior</button>
+        <button class="nav-btn nav-btn-primary" onclick="nextSlide()">Siguiente →</button>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    let current = 1;
+    const total = 32;
+
+    const select = document.getElementById('slideJump');
+    for (let i = 1; i <= total; i++) {
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.innerText = `Diapositiva ${i}`;
+      select.appendChild(opt);
+    }
+
+    function updateDeck() {
+      document.querySelectorAll('.slide').forEach(s => s.classList.remove('active'));
+      const activeSlide = document.getElementById(`slide-${current}`);
+      if(activeSlide) activeSlide.classList.add('active');
+
+      document.getElementById('slideCounter').innerText = `Diapositiva ${current} de ${total}`;
+      document.getElementById('progress').style.width = `${(current / total) * 100}%`;
+      select.value = current;
+    }
+
+    function jumpToSlide(val) {
+      current = parseInt(val);
+      updateDeck();
+    }
+
+    function nextSlide() {
+      if (current < total) { current++; updateDeck(); }
+    }
+    function prevSlide() {
+      if (current > 1) { current--; updateDeck(); }
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === 'Space') nextSlide();
+      if (e.key === 'ArrowLeft') prevSlide();
+    });
+
+    updateDeck();
+  </script>
+</body>
+</html>

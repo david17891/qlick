@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Los 4 Pilares de un Negocio que Vende — Presentación Interactiva</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@500;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-main: #0B0F17;
+      --bg-card: rgba(22, 28, 45, 0.7);
+      --bg-glass: rgba(255, 255, 255, 0.04);
+      --border-color: rgba(255, 255, 255, 0.08);
+      --accent-cyan: #00F0FF;
+      --accent-violet: #8A2BE2;
+      --accent-emerald: #10B981;
+      --accent-orange: #FF6B00;
+      --text-main: #F3F4F6;
+      --text-muted: #9CA3AF;
+      --font-display: 'Outfit', sans-serif;
+      --font-body: 'Plus Jakarta Sans', sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg-main);
+      color: var(--text-main);
+      font-family: var(--font-body);
+      min-height: 100vh;
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .bg-glow {
+      position: fixed;
+      width: 600px;
+      height: 600px;
+      border-radius: 50%;
+      filter: blur(140px);
+      opacity: 0.15;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .glow-1 { top: -100px; left: -100px; background: var(--accent-cyan); }
+    .glow-2 { bottom: -100px; right: -100px; background: var(--accent-violet); }
+
+    header {
+      position: relative;
+      z-index: 10;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1.25rem 2rem;
+      border-bottom: 1px solid var(--border-color);
+      background: rgba(11, 15, 23, 0.8);
+      backdrop-filter: blur(12px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-family: var(--font-display);
+      font-weight: 800;
+      font-size: 1.25rem;
+      letter-spacing: -0.02em;
+    }
+    .brand-badge {
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-violet));
+      color: #000;
+      font-size: 0.75rem;
+      font-weight: 800;
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+      text-transform: uppercase;
+    }
+
+    .course-meta {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      font-size: 0.875rem;
+      color: var(--text-muted);
+    }
+    .meta-tag {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: var(--bg-glass);
+      padding: 0.35rem 0.8rem;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+    }
+
+    main {
+      flex: 1;
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      max-width: 1200px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+
+    .slide-container { position: relative; min-height: 580px; }
+    .slide {
+      display: none;
+      animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 24px;
+      padding: 2.5rem;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+    }
+    .slide.active { display: block; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(12px) scale(0.99); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .slide-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--accent-cyan);
+      margin-bottom: 0.75rem;
+    }
+
+    .slide-title {
+      font-family: var(--font-display);
+      font-size: 2.25rem;
+      font-weight: 800;
+      line-height: 1.2;
+      margin-bottom: 1rem;
+      background: linear-gradient(135deg, #FFF 60%, var(--text-muted));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .slide-subtitle {
+      font-size: 1.05rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+      margin-bottom: 2rem;
+    }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
+
+    .card {
+      background: var(--bg-glass);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 1.5rem;
+      transition: all 0.3s ease;
+    }
+    .card:hover {
+      border-color: rgba(255,255,255,0.2);
+      transform: translateY(-2px);
+    }
+    .card-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .interactive-box {
+      background: rgba(0, 240, 255, 0.03);
+      border: 1px dashed rgba(0, 240, 255, 0.3);
+      border-radius: 16px;
+      padding: 1.5rem;
+      margin-top: 1rem;
+    }
+
+    .form-group { margin-bottom: 1rem; }
+    .form-group label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 0.4rem;
+    }
+    .form-control, select {
+      width: 100%;
+      background: rgba(0,0,0,0.4);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 0.75rem 1rem;
+      color: #fff;
+      font-family: var(--font-body);
+      font-size: 0.95rem;
+      outline: none;
+      transition: border 0.2s;
+    }
+    .form-control:focus, select:focus { border-color: var(--accent-cyan); }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      background: linear-gradient(135deg, var(--accent-cyan), #0099FF);
+      color: #000;
+      font-weight: 700;
+      font-size: 0.95rem;
+      padding: 0.75rem 1.5rem;
+      border-radius: 12px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 20px rgba(0, 240, 255, 0.3);
+    }
+    .btn-secondary {
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+    }
+    .btn-secondary:hover {
+      background: rgba(255,255,255,0.2);
+      box-shadow: none;
+    }
+
+    .prompt-output {
+      background: #05070A;
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 12px;
+      padding: 1.25rem;
+      font-family: monospace;
+      font-size: 0.9rem;
+      color: #38BDF8;
+      line-height: 1.5;
+      position: relative;
+      margin-top: 1rem;
+      white-space: pre-wrap;
+    }
+
+    footer {
+      position: relative;
+      z-index: 10;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1rem 2rem;
+      background: rgba(11, 15, 23, 0.9);
+      border-top: 1px solid var(--border-color);
+    }
+
+    .progress-bar {
+      height: 4px;
+      background: var(--bg-glass);
+      width: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent-cyan), var(--accent-violet));
+      width: 10%;
+      transition: width 0.3s ease;
+    }
+
+    .slide-counter { font-size: 0.9rem; color: var(--text-muted); font-weight: 600; }
+    .nav-btns { display: flex; gap: 0.75rem; }
+
+    .tab-nav { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+    .tab-btn {
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      background: var(--bg-glass);
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .tab-btn.active {
+      background: var(--accent-emerald);
+      color: #000;
+      border-color: var(--accent-emerald);
+    }
+
+    .script-box {
+      background: #0B141A;
+      border-left: 4px solid var(--accent-emerald);
+      padding: 1.25rem;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="bg-glow glow-1"></div>
+  <div class="bg-glow glow-2"></div>
+
+  <!-- Header -->
+  <header>
+    <div class="brand">
+      <span>QLICK</span>
+      <span class="brand-badge">Presencial</span>
+    </div>
+    <div class="course-meta">
+      <div class="meta-tag">📌 <strong>Curso:</strong> Los 4 Pilares de un Negocio que Vende</div>
+      <div class="meta-tag">📍 CANACO SLRC</div>
+      <div class="meta-tag">⏱️ 4 Horas</div>
+    </div>
+  </header>
+
+  <!-- Main Slide Canvas -->
+  <main>
+    <div class="slide-container">
+
+      <!-- SLIDE 1: Cover -->
+      <div class="slide active" id="slide-1">
+        <span class="slide-eyebrow">🚀 Taller Práctico Presencial</span>
+        <h1 class="slide-title">Los 4 Pilares de un Negocio que Vende</h1>
+        <p class="slide-subtitle">Fortalece la atracción, pauta pagada, inteligencia artificial y seguimiento por WhatsApp para escalar tu negocio local en San Luis Río Colorado.</p>
+
+        <div class="grid-4" style="margin-top: 2rem;">
+          <div class="card">
+            <div class="card-title">🎨 1. Publicidad Visual</div>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.5rem;">Diseño de anuncios ganadores e imágenes publicitarias con IA.</p>
+          </div>
+          <div class="card">
+            <div class="card-title">📱 2. Meta Ads Pagados</div>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.5rem;">Campañas a WhatsApp y clientes potenciales sin desperdiciar presupuesto.</p>
+          </div>
+          <div class="card">
+            <div class="card-title">🤖 3. Inteligencia Artificial</div>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.5rem;">Copys irresistibles y aceleración de tareas operativas.</p>
+          </div>
+          <div class="card">
+            <div class="card-title">💬 4. Cierre en WhatsApp</div>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.5rem;">Seguimiento estructurado y manejo de objeciones para cerrar ventas.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- SLIDE 2: Pata 1 - Publicidad Visual & IA -->
+      <div class="slide" id="slide-2">
+        <span class="slide-eyebrow">🎨 PATA 1 — CREACIÓN Y EDICIÓN VISUAL</span>
+        <h2 class="slide-title">Anatomía de un Anuncio que Sí Convierte</h2>
+        <p class="slide-subtitle">La mayoría de los anuncios locales fallan porque parecen volante impreso llevado a redes. Aprende a estructurar imágenes que detienen el scroll.</p>
+
+        <div class="grid-2">
+          <div class="card">
+            <h3 style="color: var(--accent-cyan); margin-bottom: 1rem;">4 Elementos Obligatorios</h3>
+            <ul style="list-style: none; space-y: 0.75rem; font-size: 0.95rem; color: var(--text-main);">
+              <li style="margin-bottom: 0.75rem;">⚡ <strong>1. Gancho Visual:</strong> Foto real de alta calidad o imagen generada con IA.</li>
+              <li style="margin-bottom: 0.75rem;">💥 <strong>2. Titular de Dolor/Deseo:</strong> Máximo 7 palabras claras en contraste alto.</li>
+              <li style="margin-bottom: 0.75rem;">🎯 <strong>3. Beneficio Principal:</strong> Qué va a ganar el cliente inmediatamente.</li>
+              <li style="margin-bottom: 0.75rem;">📲 <strong>4. Llamado a la Acción (CTA):</strong> "Toca aquí para pedir por WhatsApp".</li>
+            </ul>
+          </div>
+
+          <!-- Generador Interactivo de Prompts para Imágenes -->
+          <div class="card">
+            <h3 style="color: var(--accent-cyan); margin-bottom: 0.5rem;">🛠️ Creador de Prompts de IA para Anuncios</h3>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">Selecciona los parámetros de tu negocio para generar el comando exacto para ChatGPT / Midjourney / Canva IA:</p>
+
+            <div class="form-group">
+              <label>Giro de tu Negocio:</label>
+              <select id="promptGiro" onchange="generateImagePrompt()">
+                <option value="restaurante">Restaurante / Alimentos</option>
+                <option value="belleza">Salón de Belleza / Estética</option>
+                <option value="servicios">Servicios Profesionales / Contables</option>
+                <option value="automotriz">Taller Automotriz / Lavado</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label>Estilo de Anuncio:</label>
+              <select id="promptEstilo" onchange="generateImagePrompt()">
+                <option value="fotorealista">Fotografía Realista Comercial</option>
+                <option value="minimalista">Minimalista Moderno con Texto</option>
+                <option value="3d">Ilustración 3D de Alto Impacto</option>
+              </select>
+            </div>
+
+            <div class="prompt-output" id="imagePromptResult">Cargando prompt...</div>
+            <button class="btn btn-secondary" style="margin-top: 0.75rem; width: 100%;" onclick="copyPrompt('imagePromptResult')">📋 Copiar Prompt al Portapapeles</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- SLIDE 3: Pata 2 - Meta Ads Pagados -->
+      <div class="slide" id="slide-3">
+        <span class="slide-eyebrow">📱 PATA 2 — PUBLICIDAD PAGADA EN META</span>
+        <h2 class="slide-title">Configuración de Campañas que Traen Mensajes</h2>
+        <p class="slide-subtitle">No tires tu dinero en el botón azul "Promocionar publicación". Aprende a configurar campañas con objetivo real a WhatsApp.</p>
+
+        <div class="grid-2">
+          <div>
+            <div class="card" style="margin-bottom: 1rem;">
+              <div class="card-title" style="color: var(--accent-orange);">⚠️ El Error Común</div>
+              <p style="font-size: 0.9rem; color: var(--text-muted);">Pagar likes o alcance sin un embudo directo de respuesta rápida. Los likes no pagan la nómina.</p>
+            </div>
+            <div class="card">
+              <div class="card-title" style="color: var(--accent-emerald);">✅ La Estrategia Ganadora</div>
+              <p style="font-size: 0.9rem; color: var(--text-muted);">Campaña con objetivo <strong>Mensajes a WhatsApp Directo</strong>, acotada a San Luis Río Colorado y un radio de 5 a 15 km.</p>
+            </div>
+          </div>
+
+          <!-- Calculadora Interactiva de ROI y Presupuesto Meta Ads -->
+          <div class="card">
+            <h3 style="color: var(--accent-cyan); margin-bottom: 1rem;">📊 Simulación de Presupuesto y Clientes</h3>
+
+            <div class="form-group">
+              <label>Presupuesto Diario (MXN):</label>
+              <input type="number" id="budgetMXN" value="100" class="form-control" oninput="calculateAdsROI()">
+            </div>
+
+            <div class="form-group">
+              <label>Costo Estimado por Mensaje (MXN):</label>
+              <input type="number" id="costPerMsg" value="15" class="form-control" oninput="calculateAdsROI()">
+            </div>
+
+            <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 12px; margin-top: 1rem;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem;">
+                <span>Mensajes por Día Estimados:</span>
+                <strong id="resMsgs" style="color: var(--accent-cyan);">6 a 7 prospectos</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.9rem;">
+                <span>Prospectos al Mes (30 días):</span>
+                <strong id="resMonthlyMsgs" style="color: var(--accent-emerald);">200 prospectos</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: 0.9rem;">
+                <span>Ventas Estimadas (Tasa 15%):</span>
+                <strong id="resSales" style="color: var(--accent-orange);">30 clientes nuevos</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SLIDE 4: Pata 3 - Inteligencia Artificial Aplicada -->
+      <div class="slide" id="slide-4">
+        <span class="slide-eyebrow">🤖 PATA 3 — INTELIGENCIA ARTIFICIAL APLICADA</span>
+        <h2 class="slide-title">La IA como Copiloto de Copywriting</h2>
+        <p class="slide-subtitle">Genera en segundos textos persuasivos para tus anuncios usando la fórmula AIDA (Atención, Interés, Deseo, Acción).</p>
+
+        <div class="interactive-box">
+          <h3 style="color: var(--accent-cyan); margin-bottom: 0.75rem;">⚡ Generador de Copy AIDA para Anuncios</h3>
+          <div class="grid-2">
+            <div>
+              <div class="form-group">
+                <label>Nombre de tu Producto / Oferta:</label>
+                <input type="text" id="copyProduct" value="Paquete Mantenimiento Preventivo Automotriz" class="form-control" oninput="generateAICopy()">
+              </div>
+              <div class="form-group">
+                <label>Oferta o Descuento Específico:</label>
+                <input type="text" id="copyOffer" value="20% de descuento este mes" class="form-control" oninput="generateAICopy()">
+              </div>
+            </div>
+            <div>
+              <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Copy Generado para Tu Anuncio:</label>
+              <div class="prompt-output" id="copyOutputResult" style="height: 140px; overflow-y: auto;">Cargando copy...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SLIDE 5: Pata 4 - Cierre y WhatsApp -->
+      <div class="slide" id="slide-5">
+        <span class="slide-eyebrow">💬 PATA 4 — SEGUIMIENTO Y CIERRE EN WHATSAPP</span>
+        <h2 class="slide-title">Simulador de Manejo de Objeciones</h2>
+        <p class="slide-subtitle">Cuando el cliente pregunta precio, nunca des solo el número. Selecciona una objeción común para ver el guión de respuesta exacto:</p>
+
+        <div class="tab-nav">
+          <button class="tab-btn active" onclick="showObjection('caro', this)">"Está muy caro"</button>
+          <button class="tab-btn" onclick="showObjection('pensar', this)">"Lo voy a pensar"</button>
+          <button class="tab-btn" onclick="showObjection('info', this)">"¿Precio e información?"</button>
+        </div>
+
+        <div class="script-box" id="objectionScript">
+          <strong>Respuesta sugerida para "Está muy caro":</strong><br><br>
+          "Entiendo perfectamente [Nombre], la calidad y garantía son super importantes. Más allá del precio, ¿buscas un servicio rápido para resolver esto hoy mismo o prefieres comparar opciones?"
+        </div>
+      </div>
+
+      <!-- SLIDE 6: Plan de Acción -->
+      <div class="slide" id="slide-6">
+        <span class="slide-eyebrow">🚀 CONCLUSIÓN Y PLAN DE ACCIÓN</span>
+        <h2 class="slide-title">Tu Plan de 7 Días para Romperla</h2>
+        <p class="slide-subtitle">Lo aprendido hoy solo funciona si se ejecuta. Este es tu mapa de trabajo inmediato:</p>
+
+        <div class="grid-4">
+          <div class="card" style="border-top: 3px solid var(--accent-cyan);">
+            <div class="card-title">Día 1 - 2</div>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.5rem;">Crear 2 imágenes publicitarias con IA y redactar copys en ChatGPT.</p>
+          </div>
+          <div class="card" style="border-top: 3px solid var(--accent-violet);">
+            <div class="card-title">Día 3</div>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.5rem;">Lanzar campaña en Meta Ads con $50 - $100 MXN al día a WhatsApp.</p>
+          </div>
+          <div class="card" style="border-top: 3px solid var(--accent-emerald);">
+            <div class="card-title">Día 4 - 6</div>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.5rem;">Responder mensajes entrantes usando las plantillas de objeciones.</p>
+          </div>
+          <div class="card" style="border-top: 3px solid var(--accent-orange);">
+            <div class="card-title">Día 7</div>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.5rem;">Hacer seguimiento de 3 toques a los prospectos pendientes y medir ventas.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Controls Footer -->
+  <footer>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+    <div class="slide-counter" id="slideCounter">Diapositiva 1 de 6</div>
+    <div class="nav-btns">
+      <button class="btn btn-secondary" onclick="prevSlide()">← Anterior</button>
+      <button class="btn" onclick="nextSlide()">Siguiente →</button>
+    </div>
+  </footer>
+
+  <script>
+    let currentSlide = 1;
+    const totalSlides = 6;
+
+    function updateSlide() {
+      document.querySelectorAll('.slide').forEach(s => s.classList.remove('active'));
+      const activeSlide = document.getElementById(`slide-${currentSlide}`);
+      if(activeSlide) activeSlide.classList.add('active');
+
+      document.getElementById('slideCounter').innerText = `Diapositiva ${currentSlide} de ${totalSlides}`;
+      document.getElementById('progressFill').style.width = `${(currentSlide / totalSlides) * 100}%`;
+    }
+
+    function nextSlide() {
+      if (currentSlide < totalSlides) {
+        currentSlide++;
+        updateSlide();
+      }
+    }
+
+    function prevSlide() {
+      if (currentSlide > 1) {
+        currentSlide--;
+        updateSlide();
+      }
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === 'Space') nextSlide();
+      if (e.key === 'ArrowLeft') prevSlide();
+    });
+
+    function generateImagePrompt() {
+      const giro = document.getElementById('promptGiro').value;
+      const estilo = document.getElementById('promptEstilo').value;
+
+      const prompts = {
+        restaurante: {
+          fotorealista: "Fotografía gastronómica comercial ultra detallada, platillo estrella iluminado con luz cálida de restaurante, fondo sutilmente desenfocado, colores vibrantes, 8k resolution, apetitoso.",
+          minimalista: "Banner publicitario minimalista con fondo oscuro elegante, plato limpio en el centro, espacio superior limpio para texto publicitario, estética premium.",
+          "3d": "Ilustración 3D moderna de hamburguesa / platillo estilo Pixar, colores saturados brillantes, sobre fondo degradado brillante, estilo publicitario divertido."
+        },
+        belleza: {
+          fotorealista: "Retrato fotográfico comercial de mujer sonriente con piel radiante, en salón de belleza iluminado, estilo editorial de revista, tonos suaves.",
+          minimalista: "Diseño minimalista con paleta pastel, elementos botánicos sutiles, espacio libre para tipografía de oferta de spa/estética.",
+          "3d": "Render 3D de frascos de cosmetología y cuidado facial flotando con gotas de agua realistas, iluminación estelar de estudio."
+        },
+        servicios: {
+          fotorealista: "Foto corporativa moderna de emprendedor trabajando en laptop en oficina iluminada, expresión de confianza, tono azul profesional.",
+          minimalista: "Diseño publicitario ejecutivo con formas geométricas limpias en tonos azul y blanco, contraste óptimo para anuncio contable/legal.",
+          "3d": "Personaje 3D amigable celebrando el éxito de su negocio con gráficos de crecimiento de fondo, estilo tecnología e innovación."
+        },
+        automotriz: {
+          fotorealista: "Fotografía publicitaria de auto recién lavado y pulido en taller automotriz con reflejos brillantes de luz LED, detalle hiperrealista.",
+          minimalista: "Silueta limpia de automóvil moderno con destello de luz brillante, fondo oscuro elegante, espacio amplio para texto de promoción.",
+          "3d": "Vehículo 3D estilizado tipo concepto, colores metálicos vibrantes, escenario dinámico con energía."
+        }
+      };
+
+      document.getElementById('imagePromptResult').innerText = prompts[giro][estilo] || "Selecciona las opciones para generar el prompt.";
+    }
+
+    function calculateAdsROI() {
+      const budget = parseFloat(document.getElementById('budgetMXN').value) || 0;
+      const cost = parseFloat(document.getElementById('costPerMsg').value) || 1;
+
+      const dailyMsgs = Math.floor(budget / cost);
+      const monthlyMsgs = dailyMsgs * 30;
+      const estimatedSales = Math.floor(monthlyMsgs * 0.15);
+
+      document.getElementById('resMsgs').innerText = `${dailyMsgs} prospectos al día`;
+      document.getElementById('resMonthlyMsgs').innerText = `${monthlyMsgs} prospectos al mes`;
+      document.getElementById('resSales').innerText = `${estimatedSales} ventas cerradas (estimado)`;
+    }
+
+    function generateAICopy() {
+      const product = document.getElementById('copyProduct').value || "Servicio Específico";
+      const offer = document.getElementById('copyOffer').value || "Promoción Especial";
+
+      document.getElementById('copyOutputResult').innerText = 
+`🚨 ¡Atención San Luis Río Colorado! 
+
+¿Cansado de buscar calidad sin pagar de más? Te presentamos nuestro ${product}.
+
+✨ Aprovecha esta semana: ${offer}.
+
+📲 Da clic en el botón de abajo y envíanos un mensaje por WhatsApp para reservar tu lugar antes de que se agoten.`;
+    }
+
+    function showObjection(type, btn) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      const scripts = {
+        caro: `<strong>Respuesta para "¿Está muy caro?":</strong><br><br>"Entiendo perfectamente [Nombre], el presupuesto es clave. En nuestro negocio no competimos por ser los más baratos, sino por darte [Beneficio principal / Garantía]. ¿Te gustaría probar con un paquete básico primero?"`,
+        pensar: `<strong>Respuesta para "Lo voy a pensar":</strong><br><br>"¡Por supuesto [Nombre]! Tomarte tu tiempo es ideal. Solo como dato: la promoción de [Oferta] termina este viernes. ¿Tienes alguna duda puntual sobre la garantía o los horarios antes de decidir?"`,
+        info: `<strong>Respuesta para "¿Precio e información?":</strong><br><br>"¡Hola [Nombre]! Con gusto te cuento: nuestro [Servicio] incluye [3 beneficios clave] por solo $[Precio] MXN. ¿Te gustaría agendar para hoy en la tarde o prefieres mañana?"`
+      };
+
+      document.getElementById('objectionScript').innerHTML = scripts[type];
+    }
+
+    function copyPrompt(id) {
+      const text = document.getElementById(id).innerText;
+      navigator.clipboard.writeText(text);
+      alert('¡Prompt copiado al portapapeles!');
+    }
+
+    generateImagePrompt();
+    calculateAdsROI();
+    generateAICopy();
+  </script>
+</body>
+</html>
