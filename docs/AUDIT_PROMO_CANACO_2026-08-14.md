@@ -99,3 +99,21 @@ Antes de enviar el video a los inscritos:
 6. Probar manualmente un pendiente real con la herramienta de WhatsApp, sin activar campaña masiva ni enviar video automáticamente.
 
 No se realizaron cargos, envíos de WhatsApp, envíos de video ni cambios destructivos durante esta auditoría.
+
+## Cierre de implementación — 2026-08-14
+
+La auditoría se convirtió en cambios productivos sin tocar registros
+históricos: el checkout promo solo acepta el evento CANACO; Stripe conserva la
+confirmación por webhook y el cron durable de Supabase reconsulta cada 15
+minutos las sesiones pendientes para cubrir OXXO/SPEI. Una sesión no pagada
+sigue pendiente y no genera QR ni acceso.
+
+Al verificarse el apartado de $200 o el pago total, la orden actualiza las dos
+confirmaciones nombradas, crea un QR compartido con dos usos y envía a cada
+participante con correo válido el pase y un comprobante Qlick. El checkout
+también solicita el recibo automático de Stripe mediante `receipt_email`.
+
+Validación final: migración aditiva aplicada, E2E sintética de dos personas
+pasada (webhook firmado, idempotencia y limpieza), type-check, lint, build,
+audit:voseo y smoke público 200/401 correctos. La suite histórica mantiene
+fallas conocidas de flujos antiguos; no bloquean esta promoción estricta.
