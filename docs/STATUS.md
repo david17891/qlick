@@ -972,7 +972,7 @@ con information_schema.columns + pg_constraint antes de culpar al fix."
 - El motor ahora reconoce el enlace oficial del turno anterior y responde con
   los pasos deterministas de apartado. Las incidencias reales (`pagué y no
   aparece`, rechazo, error, reembolso o devolución) conservan el handoff.
-- Deploy selectivo `dpl_7r9xPDZYySjjd95fGu6NEsVoFnf9`; build remoto verde y
+- Deploy selectivo `dpl_3m6vUPg4WcpNcQobwHgTaSansFEU`; build remoto verde y
   aliases `qlick.digital`/`www.qlick.digital` activos. Smoke Node: sitio 200,
   cron sin credencial 401.
 - Validación: 4/4 pruebas focalizadas, type-check y lint correctos.

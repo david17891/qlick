@@ -938,3 +938,11 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
   reembolso). No se relajaron las reglas de confirmación ni de acceso.
 - Deploy selectivo `dpl_7r9xPDZYySjjd95fGu6NEsVoFnf9`; 4/4 pruebas focalizadas,
   type-check y lint verdes; smoke 200/401.
+
+## 2026-08-13 — Release de housekeeping
+
+- Se desplegó el punto consolidado `dpl_3m6vUPg4WcpNcQobwHgTaSansFEU` en
+  producción después de separar commits, limpiar ramas integradas y conservar
+  worktrees con cambios pendientes.
+- Smoke: `www.qlick.digital` 200, cron sin credencial 401 y endpoint de Reels
+  cerrado por secreto ausente (503 fail-closed). Reels no se activa.
