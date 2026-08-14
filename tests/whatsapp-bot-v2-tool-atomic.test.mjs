@@ -66,11 +66,12 @@ import {
 function fakeSupabaseUpdateChain() {
   const calls = [];
   let nextError = null;
+  let nextData = { id: "lead-test-1" };
 
   // Promise-like + encadenable. Cumple el patrón thenable de JS.
   const terminal = {
     then(onFulfilled, onRejected) {
-      const response = { data: null, error: nextError };
+      const response = { data: nextData, error: nextError };
       return Promise.resolve(response).then(onFulfilled, onRejected);
     },
     // Encadenable: postgrest-js permite .eq() después de .update() y
@@ -113,6 +114,9 @@ function fakeSupabaseUpdateChain() {
     },
     setNextError(err) {
       nextError = err;
+    },
+    setNextData(data) {
+      nextData = data;
     }
   };
 }
@@ -469,6 +473,20 @@ test("UPDATE error → ok=false + persisted=false + nota con código", async () 
   assert.equal(result.ok, false);
   assert.equal(result.persisted, false);
   assert.ok(result.note.includes("42P01"));
+});
+
+test("UPDATE sin fila afectada → no confirma persistencia", async () => {
+  const sb = fakeSupabaseUpdateChain();
+  sb.setNextData(null);
+  const ctx = makeCtx({ supabase: sb.client });
+  const result = await executeExtractAndSaveContact(
+    { name: "Juan Pérez", email: "juan@gmail.com" },
+    ctx
+  );
+
+  assert.equal(result.ok, false);
+  assert.equal(result.persisted, false);
+  assert.match(result.note, /No se encontró el lead/);
 });
 
 /* ------------------------------------------------------------------ */

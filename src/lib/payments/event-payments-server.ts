@@ -263,7 +263,13 @@ export async function getEventPaymentsSnapshot(
   // FIX 2026-07-17: join con confirmations por `confirmation_id` (FK
   // directa, no por `idempotency_key` regex). Mucho mas simple.
   const confById = new Map(confRows.map((c) => [c.id, c]));
-  const payments: EventPaymentRow[] = eventPayments.map((p) => {
+  // La tabla "Pagos confirmados" no debe mezclar intentos pending,
+  // failed o cancelled. Esos estados ya se reflejan en las tarjetas y en
+  // pendingConfirmations; mantenerlos aquí hacía parecer que había pagos
+  // cobrados cuando el ledger solo tenía un approved.
+  const payments: EventPaymentRow[] = eventPayments
+    .filter((p) => p.status === "approved" || p.status === "paid_manual")
+    .map((p) => {
     const conf = confById.get(p.confirmation_id) ?? null;
     const md = (p.metadata ?? {}) as Record<string, unknown>;
     return {
@@ -291,7 +297,7 @@ export async function getEventPaymentsSnapshot(
         p.method === "stripe" && typeof md.session_id === "string",
       createdAt: p.created_at,
     };
-  });
+    });
 
   // 5. Lista de confirmados pendientes (los que el admin tiene que
   //    revisar). Solo eventos de pago tienen pendientes.

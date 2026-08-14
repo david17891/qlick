@@ -24,6 +24,8 @@
 
 import { generateQrPng } from "@/lib/qr/generate";
 import { appBaseUrl } from "@/lib/utils";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { checkSupabaseConfig } from "@/lib/supabase/health";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +48,28 @@ export async function GET(_req: Request, { params }: RouteParams) {
   if (!token || token.length < 16) {
     return new Response("Token invalido", { status: 400 });
   }
+
+  // The image endpoint is public, but it must not manufacture a usable pass
+  // for a revoked/unknown token or for a paid registration before payment.
+  if (!checkSupabaseConfig().configured) {
+    return new Response("QR no disponible", { status: 503 });
+  }
+  const supabase = createSupabaseAdminClient();
+  const { data: tokenRow, error: tokenError } = await supabase
+    .from("event_qr_tokens" as never)
+    .select("revoked_at, confirmation_id, events:event_id ( price_mxn )" as never)
+    .eq("token" as never, token as never)
+    .maybeSingle();
+  if (tokenError || !tokenRow) return new Response("Token no encontrado", { status: 404 });
+  const row = tokenRow as unknown as {
+    revoked_at?: string | null;
+    confirmation_id?: string | null;
+    events?: { price_mxn?: number | null } | null;
+  };
+  if (row.revoked_at) return new Response("Pase no habilitado", { status: 410 });
+  // Los registros pendientes conservan un QR provisional. La autorización
+  // real sigue estando en los endpoints de check-in/gate, que validan el
+  // ledger antes de permitir el acceso.
 
   // El QR codifica la URL publica del check-in (misma URL que se manda
   // por WhatsApp). El staff escanea y abre esa URL.

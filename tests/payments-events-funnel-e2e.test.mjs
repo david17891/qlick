@@ -14,6 +14,7 @@ import assert from "node:assert/strict";
 import { createClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
 import { readFileSync, existsSync } from "node:fs";
+import { createHmac } from "node:crypto";
 
 function loadEnv() {
   if (!existsSync(".env.local")) return;
@@ -51,6 +52,19 @@ class MockNextResponse extends Response {
     headers.set("content-type", "application/json");
     return new Response(JSON.stringify(body), { ...init, headers });
   }
+}
+
+function signedMetaRequest(payload, secret) {
+  const rawBody = JSON.stringify(payload);
+  const signature = `sha256=${createHmac("sha256", secret).update(rawBody, "utf8").digest("hex")}`;
+  return new Request("http://localhost/api/whatsapp/webhook", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-hub-signature-256": signature,
+    },
+    body: rawBody,
+  });
 }
 
 before(() => {
@@ -123,6 +137,7 @@ async function cleanup() {
 
 after(async () => {
   await cleanup();
+  delete process.env.WHATSAPP_WEBHOOK_SECRET;
 });
 
 test("funnel completo con Stripe test y webhook firmado", async () => {
@@ -167,16 +182,47 @@ test("funnel completo con Stripe test y webhook firmado", async () => {
   settings.invalidateCache?.();
 
   const { processInboundMessage } = await import("../src/lib/whatsapp/bot-engine.ts");
-  const conversation = await processInboundMessage({
-    messageId: `${runId}-wa-1`,
-    from: testPhone,
-    contactName: "QA Test User",
-    text: `QA Test User ${testEmail}`,
-    type: "text",
-    timestamp: String(Math.floor(Date.now() / 1000)),
-  });
-  assert.equal(conversation.ok, true, conversation.note ?? "bot error");
-  await new Promise((resolve) => setTimeout(resolve, 4000));
+  void processInboundMessage;
+
+  // Capa real de Meta: payload oficial, firma HMAC y route handler HTTP.
+  const whatsappSecret = "qa-meta-secret";
+  process.env.WHATSAPP_WEBHOOK_SECRET = whatsappSecret;
+  const { POST: whatsappWebhook } = await import("../src/app/api/whatsapp/webhook/route.ts");
+  const whatsappPayload = {
+    object: "whatsapp_business_account",
+    entry: [{
+      id: "qa-waba",
+      changes: [{
+        field: "messages",
+        value: {
+          messaging_product: "whatsapp",
+          metadata: { display_phone_number: "15550000000", phone_number_id: "qa-phone-id" },
+          contacts: [{ wa_id: testPhone.replace(/^\+/, ""), profile: { name: "QA Test User" } }],
+          messages: [{
+            from: testPhone.replace(/^\+/, ""),
+            id: `${runId}-wa-1`,
+            timestamp: String(Math.floor(Date.now() / 1000)),
+            type: "text",
+            text: { body: `QA Test User ${testEmail}` },
+          }],
+        },
+      }],
+    }],
+  };
+  const whatsappResponse = await whatsappWebhook(signedMetaRequest(whatsappPayload, whatsappSecret));
+  const whatsappBody = await whatsappResponse.json();
+  assert.equal(whatsappResponse.status, 200, JSON.stringify(whatsappBody));
+  assert.equal(whatsappBody.persisted, 1);
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+
+  // Meta puede reentregar el mismo wamid. Debe persistirlo como duplicate y
+  // no volver a ejecutar el bot ni mandar otra respuesta.
+  const outboundAfterFirstWebhook = capturedWhatsApp.length;
+  const duplicateResponse = await whatsappWebhook(signedMetaRequest(whatsappPayload, whatsappSecret));
+  const duplicateBody = await duplicateResponse.json();
+  assert.equal(duplicateResponse.status, 200);
+  assert.equal(duplicateBody.duplicatesSkipped, 1);
+  assert.equal(capturedWhatsApp.length, outboundAfterFirstWebhook);
 
   const { data: confirmation, error: confirmationError } = await supabase.from("event_confirmations")
     .select("id, event_id, email, phone_normalized, payment_status")
@@ -194,13 +240,44 @@ test("funnel completo con Stripe test y webhook firmado", async () => {
   assert.ok((messages ?? []).some((m) => m.direction === "inbound"));
   assert.ok((messages ?? []).some((m) => m.direction === "outbound"));
   assert.ok(capturedWhatsApp.length >= 1, "debe capturarse outbound de WhatsApp");
-  assert.ok(capturedEmails.some((e) => e.to === testEmail), "debe simularse email al lead");
+  assert.equal(capturedEmails.some((e) => e.to === testEmail), false,
+    "no debe enviarse QR/email antes del pago");
+  const { data: prePaymentQr } = await supabase.from("event_qr_tokens")
+    .select("id")
+    .eq("event_id", event.id);
+  assert.equal((prePaymentQr ?? []).length, 0, "no debe existir QR antes del pago");
 
-  const { data: emailLog } = await supabase.from("event_email_log")
-    .select("email_type, recipient, ok")
-    .eq("event_id", event.id)
-    .eq("recipient", testEmail);
-  assert.ok((emailLog ?? []).some((e) => e.email_type === "qr_pass" && e.ok === true));
+  // Capa real de entrega: Meta reporta delivered y se actualiza metadata del
+  // mismo outbound, sin crear una fila vacía adicional.
+  const { data: outboundRow } = await supabase.from("lead_whatsapp_conversations")
+    .select("whatsapp_message_id")
+    .eq("lead_id", lead.id)
+    .eq("direction", "outbound")
+    .not("whatsapp_message_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  assert.ok(outboundRow?.whatsapp_message_id, "debe persistirse el id del outbound");
+  const statusPayload = {
+    object: "whatsapp_business_account",
+    entry: [{ changes: [{ value: { statuses: [{
+      id: outboundRow.whatsapp_message_id,
+      status: "delivered",
+      recipient_id: testPhone.replace(/^\+/, ""),
+      timestamp: String(Math.floor(Date.now() / 1000)),
+    }] } }] }],
+  };
+  const statusResponse = await whatsappWebhook(signedMetaRequest(statusPayload, whatsappSecret));
+  const statusBody = await statusResponse.json();
+  assert.equal(statusResponse.status, 200);
+  assert.equal(statusBody.statusUpdates, 1);
+  const { data: deliveredRow } = await supabase.from("lead_whatsapp_conversations")
+    .select("metadata, body, message_type")
+    .eq("whatsapp_message_id", outboundRow.whatsapp_message_id)
+    .maybeSingle();
+  assert.equal(deliveredRow?.metadata?.status, "delivered");
+  assert.ok(deliveredRow?.body);
+  assert.notEqual(deliveredRow?.message_type, "status_update");
 
   const sessionId = `cs_test_${runId}`;
   const paymentIntentId = `pi_test_${runId}`;
@@ -248,6 +325,15 @@ test("funnel completo con Stripe test y webhook firmado", async () => {
   const webhookBody = await webhookResponse.json();
   assert.equal(webhookResponse.status, 200, JSON.stringify(webhookBody));
 
+  // Stripe también puede reentregar el mismo evento. La segunda entrega debe
+  // ser idempotente y no duplicar pago, acceso, QR ni correo.
+  const duplicateStripeResponse = await POST(new Request("http://localhost/api/webhooks/stripe", {
+    method: "POST",
+    headers: { "content-type": "application/json", "stripe-signature": signature },
+    body: rawPayload,
+  }));
+  assert.equal(duplicateStripeResponse.status, 200);
+
   const { data: payment, error: paymentError } = await supabase.from("event_payments")
     .select("id, status, amount_mxn, currency, stripe_mode, stripe_session_id, stripe_payment_intent_id")
     .eq("stripe_session_id", sessionId).single();
@@ -271,12 +357,33 @@ test("funnel completo con Stripe test y webhook firmado", async () => {
   assert.equal(access.payment_id, payment.id);
   created.userId = access.user_id;
 
+  const { data: emailLog } = await supabase.from("event_email_log")
+    .select("email_type, recipient, ok")
+    .eq("event_id", event.id)
+    .eq("recipient", testEmail);
+  assert.ok(capturedEmails.some((e) => e.to === testEmail),
+    "debe simularse email al lead después del pago");
+  assert.ok((emailLog ?? []).some((e) => e.email_type === "qr_pass" && e.ok === true));
+  const { data: paidQr } = await supabase.from("event_qr_tokens")
+    .select("id, token, revoked_at")
+    .eq("event_id", event.id)
+    .eq("confirmation_id", confirmation.id)
+    .maybeSingle();
+  assert.ok(paidQr && !paidQr.revoked_at, "debe existir un QR activo después del pago");
+  const { count: accessCount } = await supabase.from("event_access")
+    .select("id", { count: "exact", head: true })
+    .eq("confirmation_id", confirmation.id);
+  assert.equal(accessCount, 1, "una reentrega de Stripe no debe duplicar el acceso");
+
   console.log(JSON.stringify({
     ok: true,
     event: { slug: event.slug, price_mxn: event.price_mxn, payment_mode: "test" },
     conversation: { inbound: (messages ?? []).filter((m) => m.direction === "inbound").length, outbound: (messages ?? []).filter((m) => m.direction === "outbound").length },
     email: { mock_sends: capturedEmails.length, qr_log: (emailLog ?? []).some((e) => e.email_type === "qr_pass" && e.ok === true) },
+    qr: { active: Boolean(paidQr && !paidQr.revoked_at) },
     payment: { status: payment.status, amount_mxn: payment.amount_mxn, stripe_mode: payment.stripe_mode },
     access: { status: access.access_status, source: access.access_source },
   }, null, 2));
+
+  delete process.env.WHATSAPP_WEBHOOK_SECRET;
 });

@@ -96,18 +96,20 @@ import {
   type LeadLifecycleInput,
 } from "./lead-lifecycle";
 import {
-  getPendingRegistrationField,
+  normalizePendingRegistrationField,
   isInfoRescuePending,
   hasTransactionalRegistrationSignal,
   hasCompletedRegistrationSignal,
   LEAD_REGISTRATION_COMPLETE_TAG,
 } from "./lead-followup";
+export { normalizePendingRegistrationField } from "./lead-followup";
 import { syncLeadEventJourneyForBotTurn } from "./lead-event-journey-server";
 import { resolveEventContext } from "./event-context-resolver";
 import { buildContextualAck } from "./ack-policy";
 import {
   hasInternalReasoningLeak,
   isVerifiedNameCandidate,
+  hasVerifiedNameTag,
   trustedLeadName,
   validateGeneratedReply,
   buildSafeReply,
@@ -388,6 +390,33 @@ function joinSpanishList(items: string[]): string {
 }
 
 /**
+ * La descripción publicada puede contener una sede más precisa que la
+ * columna `events.location` (por ejemplo, `CANACO`). Cuando existe esa línea
+ * factual, prevalece sobre reglas históricas que digan que la dirección está
+ * pendiente. Nunca usamos una línea cuyo valor siga siendo "por confirmar".
+ */
+function extractConcreteLocationFromDescription(description: string): string | null {
+  for (const rawLine of description.split(/\r?\n/)) {
+    const line = rawLine
+      .replace(/[\*_]/g, "")
+      .replace(/^\s*[📍-]\s*/u, "")
+      .trim();
+    const match = line.match(/^(?:lugar|ubicaci[oó]n|direcci[oó]n)\s*:\s*(.+)$/i);
+    const value = match?.[1]?.trim();
+    if (value && !/por confirmar/i.test(value)) return value;
+  }
+  return null;
+}
+
+function eventLocationForDisplay(event: ActiveEventContext): string | null {
+  return (
+    extractConcreteLocationFromDescription(event.description?.trim() ?? "") ??
+    event.location?.trim() ??
+    null
+  );
+}
+
+/**
  * Resumen factual y corto para WhatsApp. Se construye desde el evento
  * publicado y su descripción, así el bot puede responder "info" sin
  * depender de una respuesta libre del LLM ni inventar datos.
@@ -422,11 +451,7 @@ export function buildEventInfoCopy(event: ActiveEventContext): string {
     const exactAddressPending =
       /direcci[oó]n exacta/i.test(eventRulesText) &&
       /por confirmar/i.test(eventRulesText);
-    const location =
-      /4\s+patas.*negocio.*vende/i.test(event.title) &&
-      !/av\.|obreg[oó]n/i.test(event.location ?? "")
-        ? "CANACO, Av. Álvaro Obregón 14-15, San Luis Río Colorado, Sonora"
-        : event.location;
+    const location = eventLocationForDisplay(event);
     const factLines: string[] = [];
     const commercialLines: string[] = [];
 
@@ -472,12 +497,12 @@ export function buildEventInfoCopy(event: ActiveEventContext): string {
       .join("\n\n");
   }
 
-  // Fallback factual para el evento CANACO "Las 4 Patas..." cuando la fila
+  // Fallback factual para el evento CANACO "Los 4 Pilares..." cuando la fila
   // aún no tiene description. El copy fue proporcionado por el negocio y
   // usa únicamente los datos dinámicos del evento para fecha, duración y
   // precio. El mensaje se envía como texto separado del menú interactivo
   // porque Meta limita el body de botones a 1024 caracteres.
-  if (/4\s+patas.*negocio.*vende/i.test(event.title)) {
+  if (/4\s+(?:patas|pilares).*negocio.*vende/i.test(event.title)) {
     const reservation = getReservationTerms(event);
     const total = event.priceMxn && event.priceMxn > 0
       ? `$${event.priceMxn.toLocaleString("es-MX")} MXN`
@@ -508,9 +533,8 @@ export function buildEventInfoCopy(event: ActiveEventContext): string {
           hour12: true
         }).format(event.endsAt)
       : null;
-    const location = /av\.|obreg[oó]n/i.test(event.location)
-      ? event.location
-      : "CANACO, Av. Álvaro Obregón 14-15, San Luis Río Colorado, Sonora";
+    const location =
+      eventLocationForDisplay(event) ?? "Lugar por confirmar";
     return [
       `📌 *${event.title.toUpperCase()}*`,
       "",
@@ -617,7 +641,7 @@ export function buildCompactEventInfoCopy(event: ActiveEventContext): string {
     topics.push("seguimiento de clientes por WhatsApp");
   }
 
-  const isFourPawsEvent = /4\s+patas.*negocio.*vende/i.test(event.title);
+  const isFourPawsEvent = /4\s+(?:patas|pilares).*negocio.*vende/i.test(event.title);
   const focusLine = topics.length > 0
     ? `Incluye ${joinSpanishList(topics)}.`
     : isFourPawsEvent
@@ -625,10 +649,11 @@ export function buildCompactEventInfoCopy(event: ActiveEventContext): string {
       : description
         ? `Tema: ${description.replace(/\s+/g, " ").slice(0, 180)}${description.length > 180 ? "…" : ""}`
         : "Evento presencial de Qlick Marketing Digital.";
-  const location = isFourPawsEvent && !/av\.|obreg[oó]n/i.test(event.location ?? "")
-    ? "CANACO, Av. Álvaro Obregón 14-15, San Luis Río Colorado, Sonora"
-    : event.location?.trim();
-  const exactAddressPending = /direcci[oó]n exacta/i.test(event.eventRules.rules.join(" ")) &&
+  const describedLocation = extractConcreteLocationFromDescription(description);
+  const location = describedLocation ?? event.location?.trim();
+  const exactAddressPending =
+    !describedLocation &&
+    /direcci[oó]n exacta/i.test(event.eventRules.rules.join(" ")) &&
     /por confirmar/i.test(event.eventRules.rules.join(" "));
   const lines = [`📌 *${event.title}*`, focusLine];
   if (event.humanStartsAt) lines.push(`📅 ${event.humanStartsAt}`);
@@ -718,6 +743,43 @@ export const PLACEHOLDER_NAMES_UI = new Set([
 export function isPlaceholderNameUI(rawName: string | null | undefined): boolean {
   if (!rawName) return true;
   return PLACEHOLDER_NAMES_UI.has(String(rawName).trim().toLowerCase());
+}
+
+/**
+ * Recupera un nombre capturado en el turno inmediatamente anterior cuando la
+ * lectura del lead quedó desfasada. Solo acepta el mensaje inbound que fue
+ * seguido por un outbound que explícitamente esperaba el email; así no se
+ * convierten frases comerciales, ubicaciones o respuestas generales en
+ * nombres. El fragmento debe ser exactamente el cuerpo del mensaje y pasar
+ * la misma validación que la captura normal.
+ */
+export function recoverNameFromRegistrationHistory(
+  messages: Array<{
+    direction?: string | null;
+    body?: string | null;
+    metadata?: Record<string, unknown> | null;
+  }>,
+): string | null {
+  for (let index = messages.length - 2; index >= 0; index -= 1) {
+    const inbound = messages[index];
+    const following = messages[index + 1];
+    if (inbound?.direction !== "inbound" || following?.direction !== "outbound") {
+      continue;
+    }
+    const awaitingField = following.metadata?.awaiting_field;
+    const askedForEmail =
+      awaitingField === "email" || /\bemail\b|correo/i.test(following.body ?? "");
+    const candidate = inbound.body?.trim() ?? "";
+    if (
+      askedForEmail &&
+      candidate.length <= 100 &&
+      candidate.split(/\s+/).filter(Boolean).length >= 2 &&
+      isVerifiedNameCandidate(candidate)
+    ) {
+      return candidate;
+    }
+  }
+  return null;
 }
 
 /**
@@ -1730,7 +1792,43 @@ function buildPaymentPendingCopy(args: {
   const balanceLine = terms.enabled
     ? ` El saldo de $${terms.balance.toLocaleString("es-MX")} MXN se liquida ${terms.note.toLowerCase()}.`
     : "";
-  return `${saludo} Recibimos tus datos para *${args.event.title}*. Para confirmar tu asistencia y recibir tu QR, ${terms.enabled ? "aparta" : "completa el pago de"} $${amount.toLocaleString("es-MX")} MXN aquí:\n${paymentUrl}.${balanceLine}`;
+  return `${saludo} Recibimos tus datos para *${args.event.title}*. Te enviaremos un QR provisional por correo. Para habilitar tu acceso, ${terms.enabled ? "aparta" : "completa el pago de"} $${amount.toLocaleString("es-MX")} MXN aquí:\n${paymentUrl}.${balanceLine}`;
+}
+
+/**
+ * Reconoce una respuesta al recordatorio de pago. El texto "explícame" es
+ * ambiguo fuera de contexto, pero después de un follow-up `payment_pending`
+ * significa "explícame cómo pagar/apartar". Mantenerlo determinista evita
+ * que el LLM cambie de dominio y vuelva a describir todo el evento.
+ */
+export function isPaymentHelpRequest(body: string): boolean {
+  const normalized = (body ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+  if (!normalized) return false;
+  return /\b(?:explicame|explica|como\s+(?:pago|aparto|reservo|confirmo)|donde\s+(?:pago|pagar)|link\s+(?:de\s+)?pago|enlace\s+(?:de\s+)?pago|datos\s+(?:para\s+)?pagar|quiero\s+pagar|no\s+(?:se|sé)\s+como\s+pagar)\b/i.test(normalized);
+}
+
+/** Respuesta factual para explicar el apartado, sin delegar el pago al LLM. */
+export function buildPaymentHelpCopy(args: {
+  attendeeName?: string | null;
+  event: ActiveEventContext;
+  confirmationId?: string | null;
+}): string {
+  const clean = cleanFirstName(args.attendeeName);
+  const saludo = clean ? `Claro, ${clean}.` : "Claro.";
+  const terms = getReservationTerms(args.event);
+  const amount = terms.enabled ? terms.amount : args.event.priceMxn ?? 0;
+  const paymentUrl = `${appBaseUrl()}/pagar/evento/${args.event.slug}${args.confirmationId ? `?confirmation=${args.confirmationId}${terms.enabled ? "&payment_option=reservation" : ""}` : terms.enabled ? "?payment_option=reservation" : ""}`;
+  const paymentStep = terms.enabled
+    ? `1) Abre el enlace.\n2) Selecciona el apartado de $${amount.toLocaleString("es-MX")} MXN y completa el pago.\n3) Al verificarse, tu asistencia queda confirmada y te enviamos el pase.`
+    : `1) Abre el enlace.\n2) Completa el pago de $${amount.toLocaleString("es-MX")} MXN.\n3) Al verificarse, tu asistencia queda confirmada y te enviamos el pase.`;
+  const balance = terms.enabled
+    ? ` El saldo de $${terms.balance.toLocaleString("es-MX")} MXN se liquida ${terms.note.toLowerCase()}.`
+    : "";
+  return `${saludo} Para apartar tu lugar en *${args.event.title}*:\n${paymentStep}${balance}\n\nEnlace oficial de pago:\n${paymentUrl}`;
 }
 
 /**
@@ -1783,15 +1881,45 @@ async function markLeadRegistrationComplete(
   });
 }
 
+/**
+ * El estado comercial `payment_pending` todavía requiere seguimiento. Solo
+ * cerramos el follow-up cuando la confirmación ya está respaldada por un pago
+ * o por un apartado verificado (o cuando el evento es gratuito).
+ */
+export function shouldCloseRegistrationFollowup(
+  confirmation: {
+    registrationStatus?: string | null;
+    paymentStatus?: string | null;
+  } | null | undefined,
+): boolean {
+  if (!confirmation) return false;
+  return (
+    confirmation.registrationStatus === "confirmed" &&
+    confirmation.paymentStatus !== "pending" &&
+    confirmation.paymentStatus !== "pending_verification"
+  );
+}
+
 function eventSlugFromConversation(
-  messages: Array<{ direction: "inbound" | "outbound"; metadata: Record<string, unknown> | null }>,
+  messages: Array<{
+    direction: "inbound" | "outbound";
+    body?: string | null;
+    metadata: Record<string, unknown> | null;
+  }>,
 ): string | null {
   for (const message of [...messages].reverse()) {
-    if (message.direction !== "inbound") continue;
-    const buttonId = message.metadata?.buttonId;
-    if (typeof buttonId !== "string") continue;
-    const match = buttonId.match(/^evt_(?:info|inscribir)_(.+)$/);
-    if (match?.[1]) return match[1];
+    if (message.direction === "inbound") {
+      const buttonId = message.metadata?.buttonId;
+      if (typeof buttonId === "string") {
+        const match = buttonId.match(/^evt_(?:info|inscribir)_(.+)$/);
+        if (match?.[1]) return match[1];
+      }
+    }
+    // Si el último turno fue la respuesta de registro, el enlace oficial es
+    // una señal contextual inequívoca incluso cuando Meta no conservó el
+    // buttonId del mensaje inicial.
+    const paymentLink = message.body?.match(/\/pagar\/evento\/([^?\s]+)/i);
+    if (paymentLink?.[1]) return decodeURIComponent(paymentLink[1]);
   }
   return null;
 }
@@ -1899,7 +2027,7 @@ async function findActiveQrTokenForLead(
   //    si hay datos legacy.
   const { data: byPhone } = await supabase
     .from("event_qr_tokens" as never)
-    .select("token, confirmation_id")
+    .select("token, confirmation_id, revoked_at, revoked_reason")
     .eq("event_id" as never, eventId)
     .eq("attendee_phone_normalized" as never, phoneNormalized)
     .gt("expires_at" as never, new Date().toISOString())
@@ -2023,6 +2151,12 @@ async function generateQrToken(
   if (existing) {
     const existingToken = (existing as { token: string }).token;
     let existingConfirmationId = (existing as { confirmation_id: string | null }).confirmation_id ?? null;
+    if ((existing as { revoked_reason?: string | null }).revoked_reason === "payment_pending_registration") {
+      await supabase
+        .from("event_qr_tokens" as never)
+        .update({ revoked_at: null, revoked_reason: null } as never)
+        .eq("token" as never, existingToken);
+    }
     // FIX 2026-07-19: si el token existe pero NO tiene confirmation_id
     // (caso David: registros previos al fix) y el caller pasa uno,
     // actualizamos el token para que el panel admin muestre el link.
@@ -2312,6 +2446,34 @@ function findEventInConversation(
     allEvents.length === 0
   ) {
     return null;
+  }
+
+  // El texto de una pregunta puede desaparecer del contexto útil después de
+  // varios turnos. Cuando un turno de registro ya resolvió el evento, su
+  // slug queda en metadata y es una señal más fuerte y estable que volver a
+  // inferirlo desde el copy generado.
+  const eventSlugKeys = [
+    "registration_event_slug",
+    "pending_event_slug",
+    "event_slug",
+    "awaiting_confirmation_for_event_slug",
+  ] as const;
+  const outboundWithMetadata = [...conversationWindow.messages]
+    .reverse()
+    .filter((m) => m.direction === "outbound" && m.metadata);
+  for (const message of outboundWithMetadata) {
+    for (const key of eventSlugKeys) {
+      const value = message.metadata?.[key];
+      if (typeof value !== "string" || !value.trim()) continue;
+      const event = allEvents.find((candidate) => candidate.slug === value.trim());
+      if (event) {
+        debugLog("[whatsapp/bot] findEventInConversation: match en metadata", {
+          key,
+          slug: event.slug,
+        });
+        return event;
+      }
+    }
   }
 
   // P0-2 (auditoria 2026-07-02): el ULTIMO INBOUND del lead tiene
@@ -2615,10 +2777,9 @@ async function buildOpenerPlan(args: {
   const eventLine =
     realActiveEvent && realActiveEvent.source === "db"
       ? `\n\n📅 ${realActiveEvent.humanStartsAt}` +
-        (realActiveEvent.location &&
-        realActiveEvent.location.trim().length > 0 &&
-        realActiveEvent.location.trim() !== "—"
-          ? `\n📍 ${realActiveEvent.location.trim()}`
+        (eventLocationForDisplay(realActiveEvent) &&
+        eventLocationForDisplay(realActiveEvent) !== "—"
+          ? `\n📍 ${eventLocationForDisplay(realActiveEvent)}`
           : "") +
         (realActiveEvent.priceMxn && realActiveEvent.priceMxn > 0
           ? `\n💰 Inversión: $${realActiveEvent.priceMxn.toLocaleString("es-MX")} MXN`
@@ -2772,6 +2933,7 @@ async function buildResponsePlan(args: {
    * o híbrido y mande el link streaming en vez del QR pass.
    */
   registrationEvent?: import("../ai/event-context-loader").ActiveEventContext | null;
+  eventRegistrationContext?: boolean;
   /**
    * FIX 2026-07-07 (sesion David "captura desordenada"): si el último
    * outbound del bot tenía metadata.awaiting_field='name' o 'email',
@@ -3267,7 +3429,12 @@ case "interactive_event_inscribir": {
       });
 
       // FIX 2026-07-02: filtrar firstName de placeholders.
-      const clean = cleanFirstName(firstName);
+      // Los leads históricos pueden traer placeholders UI ("Pendiente",
+      // "Asistente") que `cleanFirstName` no filtra porque su lista canónica
+      // se conserva por compatibilidad. Para decidir el siguiente campo del
+      // wizard usamos la lista extendida y no tratamos esos valores como un
+      // nombre capturado.
+      const clean = isPlaceholderNameUI(firstName) ? "" : cleanFirstName(firstName);
       const saludo = clean ? `¡Excelente ${clean}!` : "¡Excelente!";
       // FIX 2026-07-09 noche (sesión David "fricción UX"): si el lead YA
       // tiene nombre válido (no placeholder), saltamos directo a email.
@@ -4347,7 +4514,7 @@ case "interactive_event_inscribir": {
         // Respondemos recordándole que primero necesitamos el nombre.
         const bodyText =
           `Gracias por el email, pero primero necesito tu nombre completo ` +
-          `(nombre y apellido). Después te paso el QR.`;
+          `(nombre y apellido). Después continuamos con el siguiente paso.`;
         return {
           kind: "text",
           body: bodyText,
@@ -4455,14 +4622,15 @@ case "interactive_event_inscribir": {
         const bodyText = regEvtIsPaidIc
           ? `${saludoIc} Recibimos tus datos para el evento.${paymentLineIc}`
           : `${saludoIc} Ya te tengo registrado. Te enviamos tu QR al correo ${implicitEmail}.${accessLineIc}`;
-        return {
-          kind: "text",
-          body: bodyText,
-          metadata: {
-            awaiting_field: null,
-            implicit_capture: {
-              name: name.trim(),
-              email: implicitEmail
+      return {
+        kind: "text",
+        body: bodyText,
+        metadata: {
+          awaiting_field: null,
+          registration_event_slug: regEvtSlugIc,
+          implicit_capture: {
+            name: name.trim(),
+            email: implicitEmail
             }
           },
           send: () =>
@@ -4470,14 +4638,23 @@ case "interactive_event_inscribir": {
         };
       }
       const saludo = clean ? `Gracias ${clean}.` : "Gracias.";
-      const bodyText =
-        `${saludo} Ahora mándame tu email y te paso tu QR de entrada.`;
+      const registrationEvent = args.registrationEvent;
+      const paidRegistration =
+        registrationEvent?.source === "db" &&
+        typeof registrationEvent.priceMxn === "number" &&
+        registrationEvent.priceMxn > 0;
+      const bodyText = paidRegistration
+        ? `${saludo} Ahora mándame tu email. Después te comparto el enlace para apartar o pagar; tu QR se envía al verificar el pago.`
+        : `${saludo} Ahora mándame tu email y te paso tu QR de entrada.`;
       return {
         kind: "text",
         body: bodyText,
         // FIX 2026-07-02 (Commit A): siguiente paso es email. Marcamos
         // el outbound para que el bot sepa que ahora awaiting_field='email'.
-        metadata: { awaiting_field: "email" },
+        metadata: {
+          awaiting_field: "email",
+          registration_event_slug: registrationEvent?.slug ?? null,
+        },
         send: () =>
           provider.send({ to: phoneNormalized, body: bodyText })
       };
@@ -4697,6 +4874,76 @@ case "interactive_event_inscribir": {
         allEvents.length > 1
           ? formatEventsListBlock(allEvents)
           : undefined;
+
+      // Respuesta determinista al follow-up de pago. Después de que el cron
+      // pregunta "¿te explico cómo apartar?", respuestas como "explícame"
+      // deben conservar ese dominio; el LLM no debe sustituirlo por una
+      // descripción general del evento.
+      const lastOutboundForQuestion = conversationWindow?.messages
+        ?.filter((message) => message.direction === "outbound")
+        .slice(-1)[0];
+      const lastFollowupStage =
+        typeof lastOutboundForQuestion?.metadata?.followup_stage === "string"
+          ? lastOutboundForQuestion.metadata.followup_stage
+          : null;
+      const explicitPaymentHelp = isPaymentHelpRequest(body);
+      const lastOutboundHasPaymentLink = /\/pagar\/evento\//i.test(
+        lastOutboundForQuestion?.body ?? "",
+      );
+      const contextualPaymentHelp =
+        explicitPaymentHelp &&
+        (lead.status === "payment_pending" ||
+          lastFollowupStage === "payment_pending" ||
+          lastOutboundHasPaymentLink);
+      if (
+        contextualPaymentHelp &&
+        supabase &&
+        lead.id
+      ) {
+        const historyEventSlug = eventSlugFromConversation(
+          conversationWindow?.messages ?? [],
+        );
+        const paymentEvent =
+          (historyEventSlug
+            ? allEvents.find((event) => event.slug === historyEventSlug)
+            : null) ?? activeEvent;
+        if (paymentEvent?.source === "db" && paymentEvent.id) {
+          const { data: confirmationRow } = await supabase
+            .from("event_confirmations" as never)
+            .select("id, registration_status, payment_status, created_at")
+            .eq("lead_id" as never, lead.id)
+            .eq("event_id" as never, paymentEvent.id)
+            .order("created_at" as never, { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          const confirmation = confirmationRow as {
+            id?: string;
+            registration_status?: string | null;
+            payment_status?: string | null;
+          } | null;
+          const isPending =
+            confirmation?.registration_status === "payment_pending" ||
+            confirmation?.payment_status === "pending" ||
+            confirmation?.payment_status === "pending_verification";
+          if (isPending || !confirmation) {
+            const paymentHelpBody = buildPaymentHelpCopy({
+              attendeeName: lead.name,
+              event: paymentEvent,
+              confirmationId: confirmation?.id ?? null,
+            });
+            return {
+              kind: "text",
+              body: paymentHelpBody,
+              metadata: {
+                payment_help_context: true,
+                awaiting_field: null,
+                registration_event_slug: paymentEvent.slug,
+              },
+              send: () => provider.send({ to: phoneNormalized, body: paymentHelpBody }),
+            };
+          }
+        }
+      }
       // FIX 2026-07-02 (sesion David): filtrar placeholders en el leadName
       // que pasamos al LLM. Si el lead tiene name="Por" (data legacy de
       // pruebas iniciales) o "test" / "Test Number", no se lo pasamos
@@ -5183,8 +5430,22 @@ case "interactive_event_inscribir": {
             slug: activeEvent.slug,
             title: activeEvent.title,
           },
+          eventRegistrationContext: Boolean(
+            args.eventRegistrationContext ||
+            args.requestedEventSlug ||
+            registrationEvent?.slug,
+          ),
         });
       }
+      const outboundAwaitingField = pendingAwaitingField
+        ? normalizePendingRegistrationField([
+            {
+              direction: "outbound",
+              body: content,
+              metadata: { awaiting_field: pendingAwaitingField },
+            },
+          ])
+        : null;
       return {
         kind: "text",
         body: content,
@@ -5193,8 +5454,8 @@ case "interactive_event_inscribir": {
         // hizo una pregunta intermedia, preservamos el awaiting_field
         // para que el proximo turno entre como provide_name/email otra
         // vez (no como question libre).
-        metadata: pendingAwaitingField
-          ? { awaiting_field: pendingAwaitingField }
+        metadata: outboundAwaitingField
+          ? { awaiting_field: outboundAwaitingField }
           : closedQuestion.isClosed
           ? { awaiting_confirmation_for_event_slug: closedQuestion.eventSlug }
           : undefined,
@@ -5260,11 +5521,20 @@ const EMAIL_ONLY_RE = /^([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})$/i;
 const EMAIL_AND_NAME_RE =
   /^([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})[\s,]+([A-ZÁÉÍÓÚÑa-záéíóúñ][A-ZÁÉÍÓÚÑa-záéíóúñ'.-]+(?:\s+[A-ZÁÉÍÓÚÑa-záéíóúñ'.-]+){0,4})$/i;
 
+/** El contexto explícito de evento prevalece sobre intereses de servicios históricos. */
+export function hasEventRegistrationContext(
+  registrationEventSlugFromHistory: string | null | undefined,
+  requestedEventSlug: string | null | undefined,
+): boolean {
+  return Boolean(registrationEventSlugFromHistory || requestedEventSlug);
+}
+
 interface RegistrationSafetyNetArgs {
   supabase: SupabaseClient<Database> | null;
   lead: { id: string; name?: string | null; email?: string | null; phone_normalized?: string | null };
   body: string;
   activeEvent: { id: string; slug?: string; title?: string } | undefined;
+  eventRegistrationContext?: boolean;
 }
 
 async function registrationSafetyNet(args: RegistrationSafetyNetArgs): Promise<void> {
@@ -5273,7 +5543,11 @@ async function registrationSafetyNet(args: RegistrationSafetyNetArgs): Promise<v
       infoLog("[bot/safety-net] skip: supabase null", { leadId: args.lead?.id });
       return;
     }
-    if (args.lead?.id && (await readBotServicesEnabled())) {
+    if (
+      args.lead?.id &&
+      !args.eventRegistrationContext &&
+      (await readBotServicesEnabled())
+    ) {
       const isServiceFlow = await hasActiveServiceInterest(args.lead.id);
       if (isServiceFlow) {
         infoLog("[bot/safety-net] skip: lead en flujo activo de servicios", { leadId: args.lead.id });
@@ -5489,11 +5763,13 @@ async function registrationSafetyNet(args: RegistrationSafetyNetArgs): Promise<v
       if (isPaid) {
         await args.supabase
           .from("event_confirmations")
-          .update({ payment_status: "pending" } as never)
+          .update({ payment_status: "pending", registration_status: "payment_pending" } as never)
           .eq("id", result.confirmation.id);
       }
 
-      // Mandar el email con QR pass.
+      // Mandar el email con QR pass. En eventos pagados el QR es provisional:
+      // identifica el registro, pero el scanner sigue bloqueando el acceso
+      // hasta que el ledger verifique el pago.
       await sendEventQrPassEmail(
         {
           attendeeName: extractedName,
@@ -5515,6 +5791,11 @@ async function registrationSafetyNet(args: RegistrationSafetyNetArgs): Promise<v
           format: ((evtRow as { format?: string } | null)?.format ?? "in_person") as "in_person" | "virtual" | "hybrid",
           gateUrl: undefined,
           streamingAccessNote: undefined,
+          priceMXN: isPaid ? Number((evtRow as { price_mxn?: number } | null)?.price_mxn ?? 0) : undefined,
+          paymentUrl: isPaid
+            ? `${appBaseUrl()}/pagar/evento/${args.activeEvent.slug}?confirmation=${result.confirmation.id}`
+            : undefined,
+          paymentStatus: isPaid ? "pending" : undefined,
         },
         { eventId: args.activeEvent.id, eventQrTokenId: null }
       );
@@ -6173,7 +6454,7 @@ export async function processInboundMessage(
       survey_questions?: SurveyQuestion[] | null;
     } | null) ?? null;
 
-  const pendingRegistrationField = getPendingRegistrationField(
+  const pendingRegistrationField = normalizePendingRegistrationField(
     earlyWindowGlobal?.messages ?? [],
   );
   const registrationEventSlugFromHistory = eventSlugFromConversation(
@@ -6270,7 +6551,6 @@ export async function processInboundMessage(
         whatsapp_message_id: ackSend.externalId ?? null,
           metadata: {
             trigger: "ack_only_handler",
-            source_input: body,
             ack_reason: ack.reason,
             ...(registrationField ? { awaiting_field: registrationField } : {}),
           },
@@ -6418,9 +6698,21 @@ export async function processInboundMessage(
     // esté disponible para el override 3.0 también).
     const earlyWindow = earlyWindowGlobal;
     const lastOutbound = lastOutboundGlobal;
-    const awaitingField =
-      (lastOutbound?.metadata as { awaiting_field?: string | null } | null)
-        ?.awaiting_field ?? null;
+    // `pendingRegistrationField` ya reconcilia metadata histórica con el
+    // texto real del último outbound. No volver a priorizar el valor crudo:
+    // cuando una respuesta pidió el correo pero conservó
+    // `awaiting_field=name`, ese valor stale hacía que el siguiente email
+    // regresara al prompt del nombre.
+    const awaitingField = pendingRegistrationField;
+    debugLog("[whatsapp/bot] registration state resolved", {
+      leadId: lead.id,
+      pendingRegistrationField,
+      awaitingField,
+      hasLastOutbound: Boolean(lastOutbound),
+      lastOutboundAwaitingField:
+        (lastOutbound?.metadata as { awaiting_field?: string | null } | null)
+          ?.awaiting_field ?? null,
+    });
     // FIX 2026-07-05 (feat/survey-wizard-native): reutilizamos el
     // wizardState hoisted (computed arriba).
     const wizardStep =
@@ -6550,7 +6842,10 @@ export async function processInboundMessage(
     const looksLikeNamePrompt =
       /tu\s+nombre\s+completo/i.test(lastOutboundBody) ||
       /dime\s+tu\s+nombre/i.test(lastOutboundBody) ||
-      /indica\s+tu\s+nombre/i.test(lastOutboundBody);
+      /indica\s+tu\s+nombre/i.test(lastOutboundBody) ||
+      /m[aá]ndame\s+(?:tu\s+)?nombre(?:\s+y\s+(?:tu\s+)?(?:correo|email))?/i.test(
+        lastOutboundBody,
+      );
     if (infoRescuePending && !wizardStep && nameEmailTogether) {
       // El rescate pide un cierre, no vuelve a presentar la campana. La ruta
       // provide_name ya captura tambien el email embebido y completa ambos
@@ -6936,7 +7231,18 @@ export async function processInboundMessage(
   // e intereses, y FORZAMOS intent = "question" para que el LLM procese la respuesta
   // de servicios sin desviarlo al flujo de inscripción de eventos ni generar QR.
   if (await readBotServicesEnabled()) {
-    const isServiceFlow = await hasActiveServiceInterest(lead.id);
+    // Un interés histórico de servicios no debe secuestrar una inscripción
+    // explícita al evento. El contexto del evento tiene prioridad.
+      const eventRegistrationContext =
+        hasEventRegistrationContext(
+          registrationEventSlugFromHistory,
+          requestedEventSlug,
+        ) ||
+        intent === "interactive_event_inscribir" ||
+        message.buttonId?.startsWith("confirm_inscription_") === true ||
+        message.buttonId?.startsWith("evt_inscribir_") === true;
+    const isServiceFlow =
+      !eventRegistrationContext && (await hasActiveServiceInterest(lead.id));
     if (isServiceFlow) {
       const trimmed = body.trim();
       const mNameEmail = trimmed.match(NAME_AND_EMAIL_RE);
@@ -7051,7 +7357,13 @@ export async function processInboundMessage(
       const nextTags = Array.from(new Set([...(lead.tags ?? []), "name:user_verified"]));
       const { error: nameUpdateErr } = await supabase
         .from("leads")
-        .update({ name, tags: nextTags })
+        .update({
+          name,
+          tags: nextTags,
+          name_status: "user_verified",
+          name_source_message_id: message.messageId,
+          name_verified_at: new Date().toISOString(),
+        } as never)
         .eq("id", lead.id);
       if (nameUpdateErr) {
         errorLog("[whatsapp/bot] provide_name: update lead.name falló", {
@@ -7305,6 +7617,23 @@ export async function processInboundMessage(
               })
             : `${saludo} Recibimos tus datos para *${evtName}*${evtCodeLabel}. ` +
               `Completa el pago de ${priceDisplay} aquí cuando tengas el enlace.`;
+          if (lead.email && evt && existing.confirmationId) {
+            void (async () => {
+              try {
+                const { sendQrPassForConfirmation } = await import("../email/event-qr-pass");
+                await sendQrPassForConfirmation({
+                  confirmationId: existing.confirmationId as string,
+                  event: evt as unknown as Parameters<typeof sendQrPassForConfirmation>[0]["event"],
+                  skipIfAlreadySent: true,
+                });
+              } catch (err) {
+                errorLog("[whatsapp/bot] already_registered (paid): provisional QR email fallo", {
+                  leadId: lead.id,
+                  error: err instanceof Error ? err.message : String(err),
+                });
+              }
+            })();
+          }
           const provider = getActiveWhatsAppProvider();
           let sendResult: { ok: boolean; externalId?: string; demo?: boolean } = {
             ok: false
@@ -7499,7 +7828,9 @@ export async function processInboundMessage(
       // 4.8.0 FIX: validar que el lead tenga nombre y email validos
       // ANTES de crear la confirmation. Si falta, redirigir al
       // flow de captura (igual que en eventos gratis).
-      const cleanLeadName = cleanFirstName(lead.name);
+      const cleanLeadName = isPlaceholderNameUI(lead.name)
+        ? ""
+        : cleanFirstName(lead.name);
       const leadEmailRaw = lead.email?.trim().toLowerCase() ?? null;
       const isPlaceholderEmail =
         !leadEmailRaw || /@placeholder\.local$/i.test(leadEmailRaw);
@@ -7670,7 +8001,11 @@ export async function processInboundMessage(
             //      createConfirmation pone el default 'not_required';
             //      nosotros lo sobreescribimos para que el admin de
             //      pagos manuales pueda registrar el pago despues.
-            if (confirmResult?.ok && confirmResult.confirmation) {
+            if (
+              confirmResult?.ok &&
+              confirmResult.confirmation &&
+              shouldCloseRegistrationFollowup(confirmResult.confirmation)
+            ) {
               try {
                 await supabase
                   .from("event_confirmations")
@@ -7766,12 +8101,10 @@ export async function processInboundMessage(
 
             const confirmationId = confirmResult.confirmation.id;
 
-            // 2. Mandar email de bienvenida con bloque de pago (vía el
-            //    helper sendQrPassForConfirmation que ya usa el form
-            //    publico). Fire-and-forget: no bloquea el response.
-            // Conservamos el helper de pase para eventos gratuitos, pero un
-            // evento pagado no recibe QR ni email hasta verificar el pago.
-            if (lead.email && evtForPayment && (evtForPayment.priceMxn ?? 0) <= 0) {
+            // 2. Mandar email con QR. En eventos pagados el pase es
+            // provisional e incluye el enlace de pago; el acceso seguirá
+            // bloqueado por los endpoints de check-in hasta verificarlo.
+            if (lead.email && evtForPayment) {
               void (async () => {
                 try {
                   const { sendQrPassForConfirmation } = await import(
@@ -7805,7 +8138,7 @@ export async function processInboundMessage(
                 `El saldo de $${paymentTerms.balance.toLocaleString("es-MX")} MXN se liquida ${paymentTerms.note.toLowerCase()}`
               : `${saludo} Recibimos tus datos para *${evtName}*${evtCodeLabel} (${priceDisplay}).\n\n` +
                 `Para confirmar tu asistencia, completa el pago aquí:\n${checkoutUrl}\n\n` +
-                `Aceptamos tarjeta, OXXO y SPEI. Cuando se verifique, te enviamos tu QR.`;
+                `Aceptamos tarjeta, OXXO y SPEI. Tu QR provisional ya va en el correo y el acceso se habilita al verificar el pago.`;
 
             const provider = getActiveWhatsAppProvider();
             let sendResult: { ok: boolean; externalId?: string; demo?: boolean } = {
@@ -7864,6 +8197,7 @@ export async function processInboundMessage(
   // primer evento published (comportamiento historico).
   let qrUrl: string | null = null;
   let registrationPendingPayment = false;
+  let registrationConfirmationId: string | null = null;
   let registrationEventSlug: string | null = null;
   let registrationEventTitle: string | null = null;
   let registrationEventRequiresName: boolean = false;
@@ -7906,11 +8240,138 @@ export async function processInboundMessage(
     matchedEvent = findEventInConversation(convWindowForEvent, allEvents);
     registrationEventSlug = matchedEvent?.slug ?? null;
     registrationEventTitle = matchedEvent?.title ?? null;
-    registrationEventRequiresName = matchedEvent?.requiresName === true;
+    // La inscripción del bot siempre captura nombre completo para constancia,
+    // aunque un evento histórico tenga `requires_name=false`.
+    registrationEventRequiresName = Boolean(matchedEvent);
+
+    // El nombre normalmente ya vive en `leads.name`. Si la primera captura
+    // ocurrió durante un timeout/fallback o una lectura desfasada, el historial
+    // conserva la prueba inequívoca: el mensaje exacto del lead seguido por el
+    // outbound que pidió su email. Recuperarlo aquí evita pedir el nombre otra
+    // vez y mantiene la captura segura sin confiar en el perfil de Meta.
+    if (convWindowForEvent?.messages) {
+      // El nombre pudo haberse guardado correctamente, pero una escritura
+      // concurrente de estado dejó atrás la etiqueta de verificación. Si el
+      // historial prueba que el usuario escribió exactamente ese nombre
+      // antes de que el bot pidiera el correo, rehidratamos la etiqueta y no
+      // volvemos a pedir el nombre.
+      const recoveredName = recoverNameFromRegistrationHistory(
+        convWindowForEvent.messages,
+      );
+      if (
+        recoveredName &&
+        isVerifiedNameCandidate(recoveredName) &&
+        (!hasVerifiedNameTag(lead.tags) || lead.name?.trim() !== recoveredName)
+      ) {
+        const nextTags = Array.from(new Set([...(lead.tags ?? []), "name:user_verified"]));
+        lead.name = recoveredName;
+        lead.tags = nextTags;
+        await supabase
+          .from("leads")
+          .update({
+            name: recoveredName,
+            tags: nextTags,
+            name_status: "user_verified",
+            name_verified_at: new Date().toISOString(),
+          } as never)
+          .eq("id", lead.id)
+          .then(({ error }) => {
+            if (error) {
+              errorLog("[whatsapp/bot] nombre recuperado: persistencia falló", {
+                leadId: lead.id,
+                code: (error as { code?: string }).code,
+              });
+            }
+          });
+      }
+    }
+    // Defensa contra una lectura desfasada del lead: en el flujo Human el
+    // turno anterior puede haber persistido el nombre después de que este
+    // request cargó el objeto en memoria. Antes de pedirlo otra vez, hacemos
+    // una lectura puntual por id y usamos únicamente un nombre no-placeholder.
+    // Esto mantiene la captura verificable sin aceptar el nombre del perfil de
+    // Meta ni cualquier texto inferido por el modelo.
+    let effectiveRegistrationName = isPlaceholderNameUI(lead.name)
+      ? ""
+      : (lead.name?.trim() ?? "");
+    if (
+      registrationEventRequiresName &&
+      !effectiveRegistrationName &&
+      supabase &&
+      lead.id
+    ) {
+      const { data: freshLead, error: freshLeadError } = await supabase
+        .from("leads")
+        .select("name, tags")
+        .eq("id", lead.id)
+        .maybeSingle();
+      const persistedName =
+        typeof (freshLead as { name?: unknown } | null)?.name === "string"
+          ? (freshLead as { name: string }).name.trim()
+          : "";
+      if (persistedName && !isPlaceholderNameUI(persistedName)) {
+        effectiveRegistrationName = persistedName;
+        lead.name = persistedName;
+        const persistedTags = (freshLead as { tags?: unknown } | null)?.tags;
+        if (Array.isArray(persistedTags)) {
+          lead.tags = persistedTags.filter((tag): tag is string => typeof tag === "string");
+        }
+        debugLog("[whatsapp/bot] provide_email: nombre recuperado desde lead actualizado", {
+          leadId: lead.id,
+        });
+      } else if (freshLeadError) {
+        errorLog("[whatsapp/bot] provide_email: lectura fresca del nombre falló", {
+          leadId: lead.id,
+          code: (freshLeadError as { code?: string }).code,
+        });
+      }
+    }
+    // Último rescate seguro para réplicas/lecturas atrasadas: el historial
+    // contiene el fragmento exacto que escribió la persona. Buscamos el más
+    // reciente que sea nombre válido, no sea un correo y no contenga una
+    // intención comercial. Nunca usamos el nombre del perfil de Meta ni una
+    // respuesta generada por el modelo.
+    if (
+      registrationEventRequiresName &&
+      !effectiveRegistrationName &&
+      convWindowForEvent?.messages
+    ) {
+      const recoveredFromAnyInbound = [...convWindowForEvent.messages]
+        .reverse()
+        .map((item) => item.direction === "inbound" ? (item.body ?? "").trim() : "")
+        .find((candidate) =>
+          candidate &&
+          !extractEmailFromText(candidate) &&
+          !hasIntentVerb(candidate) &&
+          candidate.split(/\s+/).filter(Boolean).length >= 2 &&
+          isVerifiedNameCandidate(candidate),
+        );
+      if (recoveredFromAnyInbound) {
+        effectiveRegistrationName = recoveredFromAnyInbound;
+        lead.name = recoveredFromAnyInbound;
+        const nextTags = Array.from(new Set([...(lead.tags ?? []), "name:user_verified"]));
+        lead.tags = nextTags;
+        await supabase
+          .from("leads")
+          .update({ name: recoveredFromAnyInbound, tags: nextTags })
+          .eq("id", lead.id)
+          .then(({ error }) => {
+            if (error) {
+              errorLog("[whatsapp/bot] nombre recuperado del inbound: persistencia falló", {
+                leadId: lead.id,
+                code: (error as { code?: string }).code,
+              });
+            }
+          });
+        debugLog("[whatsapp/bot] provide_email: nombre recuperado del inbound exacto", {
+          leadId: lead.id,
+        });
+      }
+    }
     if (
       intent === "provide_email" &&
       registrationEventRequiresName &&
-      !lead.name?.trim()
+      !effectiveRegistrationName
     ) {
       // FIX 2026-07-18 (audit David, regresion test 985/986): este
       // guard SOLO se aplica a provide_email. Para provide_name
@@ -7922,7 +8383,7 @@ export async function processInboundMessage(
       const bodyText =
         `Antes del email necesito tu nombre completo (es para el ` +
         `certificado). Por favor mándamelo así: "Juan Pérez". Después ` +
-        `te paso tu email para el QR.`;
+        `continuamos con el pago o apartado.`;
       // FIX 2026-07-02 (Commit A): persistir el outbound con
       // metadata.awaiting_field='name' para que el próximo turno
       // sea provide_name.
@@ -8105,7 +8566,7 @@ export async function processInboundMessage(
     // confirmation (single + multi event), porque el LLM ya valido
     // que el lead quiere registrarse. El safety-net del `case "question"`
     // es el que debe validar el contexto (slug/titulo en el body).
-    if (qr) {
+    if (qr || registrationEventSlug) {
       try {
         // FIX 2026-07-19 (sprint bot comprehensive matrix): el bloque
         // original requeria `registrationEventSlug` (del findEventInConversation).
@@ -8156,6 +8617,7 @@ export async function processInboundMessage(
           // setear el FK. Best-effort: si falla, el admin igual ve el
           // confirmation pero el link del QR queda null.
           if (confResult?.ok && confResult.confirmation && qr) {
+            registrationConfirmationId = confResult.confirmation.id;
             try {
               const { error: linkErr } = await supabase
                 .from("event_qr_tokens" as never)
@@ -8225,22 +8687,17 @@ export async function processInboundMessage(
                 error: payUpdEx instanceof Error ? payUpdEx.message : String(payUpdEx),
               });
             }
-            if (registrationPendingPayment && qr) {
-              await supabase
-                .from("event_qr_tokens" as never)
-                .update({
-                  revoked_at: new Date().toISOString(),
-                  revoked_reason: "payment_pending_registration",
-                } as never)
-                .eq("token" as never, qr.token);
-            }
           }
 
           // La confirmación ya existe aunque el pago quede pendiente. En ese
           // punto el QR y el lugar están resueltos: no debemos dejar que el
           // cron vuelva a tratar a la persona como registro incompleto o
           // insistirle automáticamente con el mismo enlace.
-          if (confResult?.ok && confResult.confirmation) {
+          if (
+            confResult?.ok &&
+            confResult.confirmation &&
+            shouldCloseRegistrationFollowup(confResult.confirmation)
+          ) {
             await markLeadRegistrationComplete(
               supabase,
               lead,
@@ -8269,7 +8726,7 @@ export async function processInboundMessage(
     // REGISTRO (registrationEventSlug), no loadActiveEventContext() que
     // siempre retorna el primero. Asi el email coincide con el QR y la
     // pagina de check-in.
-    if (qrUrl && qr && !registrationPendingPayment) {
+    if (qrUrl && qr) {
       void (async () => {
         try {
           const event = registrationEventSlug
@@ -8302,6 +8759,12 @@ export async function processInboundMessage(
               format: event?.format ?? "in_person",
               gateUrl,
               streamingAccessNote: event?.streamingAccessNote ?? undefined,
+              priceMXN: registrationPendingPayment ? (event?.priceMxn ?? undefined) : undefined,
+              paymentUrl:
+                registrationPendingPayment && registrationConfirmationId && event?.slug
+                  ? `${appBaseUrl()}/pagar/evento/${event.slug}?confirmation=${registrationConfirmationId}${getReservationTerms(event).enabled ? "&payment_option=reservation" : ""}`
+                  : undefined,
+              paymentStatus: registrationPendingPayment ? "pending" : undefined,
             },
             {
               eventId: event?.id ?? null,
@@ -8361,6 +8824,14 @@ export async function processInboundMessage(
     // QR pass. El matchedEvent ya incluye format/streamingUrl/nota porque
     // ActiveEventContext se actualizó con esos campos en esta sesión.
     registrationEvent: matchedEvent ?? null,
+    eventRegistrationContext:
+      hasEventRegistrationContext(
+        registrationEventSlugFromHistory,
+        requestedEventSlug,
+      ) ||
+      intent === "interactive_event_inscribir" ||
+      message.buttonId?.startsWith("confirm_inscription_") === true ||
+      message.buttonId?.startsWith("evt_inscribir_") === true,
     // FIX 2026-07-02 (sesion David, "Ver eventos muestra los 3"): pasamos
     // el buttonId para que handlers como interactive_event_yes puedan
     // extraer el slug del evento cuando el lead selecciona uno especifico
@@ -8409,13 +8880,7 @@ export async function processInboundMessage(
     // el lead hace una pregunta intermedia en vez de entregar el campo
     // esperado.
     pendingAwaitingField:
-      (earlyWindowGlobal
-        ? (
-            earlyWindowGlobal.messages
-              .filter((m) => m.direction === "outbound")
-              .slice(-1)[0]?.metadata as { awaiting_field?: string | null } | null
-          )?.awaiting_field ?? null
-        : null),
+      pendingRegistrationField,
     supabase
   });
 
@@ -8525,6 +8990,7 @@ export async function processInboundMessage(
       ? capturedName
       : null;
     let implicitPaymentPending = false;
+    let implicitConfirmationId: string | null = null;
     try {
       // a) Update lead con email + nombre + consent.
       const { error: leadUpdateErr } = await supabase
@@ -8589,30 +9055,33 @@ export async function processInboundMessage(
         icEventSlug = fallbackEvent?.slug ?? null;
         icEventTitle = icEventTitle ?? fallbackEvent?.title ?? null;
       }
-      // d) Generate QR token.
-      const qr = await generateQrToken(
-        supabase,
-        phoneNormalized,
-        capturedName,
-        capturedEmail,
-        icEventSlug
-        // FIX 2026-07-19: el confirmationId se setea via UPDATE
-        // retroactivo despues del createConfirmation (orden logico
-        // del flow: QR primero, confirmation despues).
-      ).catch((qrErr) => {
-        errorLog("[whatsapp/bot] implicit_capture: generateQrToken threw", {
-          leadId: lead.id,
-          error: qrErr instanceof Error ? qrErr.message : String(qrErr)
-        });
-        return null;
-      });
+      const regEvt = icEventSlug
+        ? await loadActiveEventContext(icEventSlug).catch(() => null)
+        : null;
+      const isPaidEvent = typeof regEvt?.priceMxn === "number" && regEvt.priceMxn > 0;
+      // Never mint a usable QR before payment for paid events. The
+      // confirmation is still created below as payment_pending so the lead
+      // remains in the commercial limbo and can receive a checkout link.
+      const qr = icEventSlug
+        ? await generateQrToken(
+          supabase,
+          phoneNormalized,
+          capturedName,
+          capturedEmail,
+          icEventSlug
+        ).catch((qrErr) => {
+          errorLog("[whatsapp/bot] implicit_capture: generateQrToken threw", {
+            leadId: lead.id,
+            error: qrErr instanceof Error ? qrErr.message : String(qrErr)
+          });
+          return null;
+        })
+        : null;
       const icQrUrl = qr?.url ?? null;
       // e) Create confirmation en event_confirmations.
-      if (qr && icEventSlug) {
+      if (icEventSlug && regEvt?.id) {
         try {
-          const regEvt = await loadActiveEventContext(icEventSlug).catch(() => null);
-          if (regEvt?.id) {
-            const confResult = await createConfirmation({
+          const confResult = await createConfirmation({
               eventId: regEvt.id,
               name: capturedName || "Asistente",
               email: capturedEmail,
@@ -8620,7 +9089,7 @@ export async function processInboundMessage(
               phoneNormalized,
               leadId: lead.id,
               source: "whatsapp_bot"
-            });
+          });
             debugLog("[whatsapp/bot] implicit_capture: confirmation registrada", {
               leadId: lead.id,
               eventId: regEvt.id,
@@ -8631,6 +9100,7 @@ export async function processInboundMessage(
             // FIX 2026-07-19: vincular QR a la confirmation
             // (mismo fix que en case "provide_email" + safety-net).
             if (confResult?.ok && confResult.confirmation && qr) {
+              implicitConfirmationId = confResult.confirmation.id;
               try {
                 await supabase
                   .from("event_qr_tokens" as never)
@@ -8672,23 +9142,17 @@ export async function processInboundMessage(
                       : String(paymentStatusErr),
                 });
               }
-              if (implicitPaymentPending && qr) {
-                await supabase
-                  .from("event_qr_tokens" as never)
-                  .update({
-                    revoked_at: new Date().toISOString(),
-                    revoked_reason: "payment_pending_registration",
-                  } as never)
-                  .eq("token" as never, qr.token);
-              }
             }
-            if (confResult?.ok && confResult.confirmation) {
-              await markLeadRegistrationComplete(
-                supabase,
-                lead,
-                icEventSlug,
-              );
-            }
+          if (
+            confResult?.ok &&
+            confResult.confirmation &&
+            shouldCloseRegistrationFollowup(confResult.confirmation)
+          ) {
+            await markLeadRegistrationComplete(
+              supabase,
+              lead,
+              icEventSlug,
+            );
           }
         } catch (confErr) {
           errorLog("[whatsapp/bot] implicit_capture: createConfirmation falló", {
@@ -8698,7 +9162,7 @@ export async function processInboundMessage(
         }
       }
       // f) Send event QR pass email (best-effort).
-      if (qr && !implicitPaymentPending) {
+      if (qr) {
         void (async () => {
           try {
             const event = icEventSlug
@@ -8722,7 +9186,13 @@ export async function processInboundMessage(
                 checkInUrl: icQrUrl ?? qr.url,
                 format: event?.format ?? "in_person",
                 gateUrl,
-                streamingAccessNote: event?.streamingAccessNote ?? undefined
+                streamingAccessNote: event?.streamingAccessNote ?? undefined,
+                priceMXN: implicitPaymentPending ? (event?.priceMxn ?? undefined) : undefined,
+                paymentUrl:
+                  implicitPaymentPending && implicitConfirmationId && event?.slug
+                    ? `${appBaseUrl()}/pagar/evento/${event.slug}?confirmation=${implicitConfirmationId}${getReservationTerms(event).enabled ? "&payment_option=reservation" : ""}`
+                    : undefined,
+                paymentStatus: implicitPaymentPending ? "pending" : undefined,
               },
               {
                 eventId: event?.id ?? null,
@@ -8833,7 +9303,11 @@ export async function processInboundMessage(
         eventId: conversationEventId,
         intent,
         source: "inbound",
-        inboundMessageId: message.messageId ?? null,
+        // La transición referencia el UUID interno de
+        // lead_whatsapp_conversations, no el wamid externo de Meta (texto).
+        // Así se respeta la FK source_message_id y no se intenta convertir un
+        // ID como `wamid...` en UUID.
+        inboundMessageId: inboundConvId ?? null,
         outboundMessageId: sendResult.externalId ?? null,
         outboundSent: sendResult.ok,
         outboundMetadata: plan.metadata ?? null,

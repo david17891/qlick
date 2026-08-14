@@ -406,10 +406,12 @@ export async function executeExtractAndSaveContact(
   if (validatedName) patch.name = validatedName;
   if (validatedEmail) patch.email = validatedEmail;
 
-  const { error } = await ctx.supabase
+  const { data: updatedLead, error } = await ctx.supabase
     .from("leads")
     .update(patch)
-    .eq("id", ctx.leadId);
+    .eq("id", ctx.leadId)
+    .select("id")
+    .maybeSingle();
 
   if (error) {
     // eslint-disable-next-line no-console
@@ -429,6 +431,21 @@ export async function executeExtractAndSaveContact(
       persisted: false,
       demo: false,
       note: `Error al persistir en Supabase (${(error as { code?: string }).code ?? "unknown"}).`
+    };
+  }
+
+  // Supabase puede devolver error=null cuando el UPDATE no coincide con
+  // ninguna fila (por ejemplo, leadId inexistente o una política que no
+  // permite ver la fila). Nunca debemos decirle al prospecto que guardamos
+  // sus datos si no recibimos la fila afectada.
+  if (!updatedLead?.id) {
+    return {
+      ok: false,
+      error_name: nameError,
+      error_email: emailError,
+      persisted: false,
+      demo: false,
+      note: "No se encontró el lead para confirmar el guardado."
     };
   }
 

@@ -426,27 +426,42 @@ function pickFallback(activeEvent: ActiveEventContext | undefined): string {
   return "Se me fue el hilo un momento. Cuéntame en qué te puedo ayudar y con gusto te echo la mano.";
 }
 
-/**
- * Construye el mensaje que el bot le manda al lead cuando el tool ejecutó
- * OK pero la 2ª llamada a DeepSeek falló (Escenario C del diseño).
- * El lead YA quedó registrado en DB; solo falta el copy de cierre.
- */
-function buildToolOkFallback(toolResult: ExtractOkMessage | null): string {
-  if (!toolResult) {
-    return "Listo, ya te tengo registrado. En un momento te paso los detalles.";
+/** Mensaje determinista posterior a una captura realmente persistida. */
+function buildToolOkFallback(
+  toolResult: ToolContactResult,
+  context: AgentContext,
+): string {
+  const first = toolResult.saved_name?.split(/\s+/)[0];
+  const prefix = first ? `${first}, ` : "";
+  if (context.isPaidEvent) {
+    return `Tus datos quedaron guardados correctamente. ${prefix}Para confirmar tu asistencia, completa el pago indicado por el bot.`;
   }
-  const first = toolResult.savedName?.split(/\s+/)[0];
-  if (first) {
-    return `Listo ${first}, ya te tengo registrado. En un momento te paso los detalles.`;
+  if (context.isPaidEvent === false) {
+    return `Tus datos quedaron guardados correctamente. ${prefix}Te comparto los siguientes detalles.`;
   }
-  return "Listo, ya te tengo registrado. En un momento te paso los detalles.";
+  return `Tus datos quedaron guardados correctamente. ${prefix}Un asesor dará seguimiento.`;
 }
 
-/** Forma mínima del resultado del tool que usa `buildToolOkFallback`. */
-interface ExtractOkMessage {
-  savedName?: string;
-  savedEmail?: string;
+/** Nunca afirma guardado cuando Supabase no lo confirmó. */
+function buildToolNotPersistedFallback(toolResult: ToolContactResult): string {
+  if (toolResult.status === "needs_domain_confirmation" && toolResult.suggested_domain) {
+    return `Necesito confirmar el dominio de tu correo antes de guardarlo. ¿Tu correo termina en ${toolResult.suggested_domain}?`;
+  }
+  return "Recibí tus datos, pero todavía no pude confirmar el guardado. No voy a marcarte como registrado; un asesor revisará el caso.";
+}
+
+interface ToolContactResult {
   ok: boolean;
+  persisted: boolean;
+  demo: boolean;
+  note: string;
+  saved_name?: string;
+  saved_email?: string;
+  error_name?: string;
+  error_email?: string;
+  status?: "needs_domain_confirmation";
+  suggested_domain?: string;
+  raw_domain?: string;
 }
 
 /** Contrato read-only del motor nuevo: nunca expone tools que escriban datos. */
@@ -791,10 +806,9 @@ async function runWithToolLoop(
   // de `add_event_guest`. Los campos `error_name`/`error_email` los
   // usan ambas. El código downstream solo consume `ok`/`persisted`/
   // `demo`/`note` (comunes), así que el resto son opcionales.
-  let toolResult: { ok: boolean; persisted: boolean; demo: boolean; note: string;
-                     saved_name?: string; saved_email?: string;
-                     error_name?: string; error_email?: string;
-                     guest?: { id: string; name: string; email: string | null } };
+  let toolResult: ToolContactResult & {
+    guest?: { id: string; name: string; email: string | null };
+  };
   if (!parseOk) {
     toolResult = {
       ok: false,
@@ -904,8 +918,52 @@ async function runWithToolLoop(
     timeoutMs: TOOL_LOOP_TIMEOUT_MS
   });
 
-  // Si 2ª llamada OK → devolver su content.
+  const isContactCapture = tc.function.name === "extract_and_save_contact_info";
+  const isGuestCapture = tc.function.name === "add_event_guest";
+
+  // Una captura solo se considera exitosa si Supabase confirmó la fila y no
+  // estamos en modo demo. La respuesta del LLM nunca puede convertir una
+  // validación local en una escritura real.
+  if ((isContactCapture || isGuestCapture) && (!toolResult.persisted || toolResult.demo)) {
+    return {
+      ok: true,
+      task,
+      provider: "deepseek",
+      content: isGuestCapture
+        ? "Recibí los datos del acompañante, pero todavía no pude confirmar el guardado en la base. No voy a decir que quedó registrado; un asesor revisará el caso."
+        : buildToolNotPersistedFallback(toolResult),
+      confidence: 0,
+      needsReview: true,
+      demo: toolResult.demo,
+      note: `[2C capture not persisted] tool=${tc.function.name} ok=${toolResult.ok} persisted=${toolResult.persisted}; ${toolResult.note}`,
+    };
+  }
+
+  // Si 2ª llamada OK → devolver su content, pero nunca si contradice las
+  // reglas comerciales del evento.
   if (second.ok && second.content) {
+    const secondValidation = validateGeneratedReply(second.content, {
+      isPaidEvent: context.isPaidEvent,
+      isFreeEvent: context.isPaidEvent === false,
+      paymentPending: context.registrationStatus === "payment_pending",
+      hasVerifiedPayment: context.registrationStatus !== "payment_pending",
+    });
+    if (!secondValidation.ok) {
+      return {
+        ok: true,
+        task,
+        provider: "deepseek",
+        content: isContactCapture
+          ? buildToolOkFallback(toolResult, context)
+          : isGuestCapture
+            ? "El acompañante quedó guardado en la base de datos."
+            : pickFallback(context.activeEvent),
+        confidence: 0,
+        needsReview: true,
+        demo: false,
+        note: `[2C reply blocked] ${secondValidation.reasons.join(",")}`,
+      };
+    }
     return {
       ok: true,
       task,
@@ -919,17 +977,23 @@ async function runWithToolLoop(
   }
 
   // 2ª llamada falló. Escenario C: ensamblar fallback desde el tool result.
-  if (toolResult.ok && (toolResult.saved_name || toolResult.saved_email)) {
+  if (
+    (isContactCapture || isGuestCapture) &&
+    toolResult.ok &&
+    toolResult.persisted &&
+    !toolResult.demo &&
+    (isGuestCapture
+      ? !!toolResult.guest?.id
+      : !!(toolResult.saved_name || toolResult.saved_email))
+  ) {
     // Tool se ejecutó OK y la 2ª falló: el lead YA está guardado.
-    const firstName = toolResult.saved_name?.split(/\s+/)[0];
-    const fallbackCopy = firstName
-      ? `Listo ${firstName}, ya te tengo registrado. En un momento te paso los detalles.`
-      : "Listo, ya te tengo registrado. En un momento te paso los detalles.";
     return {
       ok: true,
       task,
       provider: "deepseek",
-      content: fallbackCopy,
+      content: isGuestCapture
+        ? "El acompañante quedó guardado en la base de datos."
+        : buildToolOkFallback(toolResult, context),
       confidence: 0.6,
       needsReview: false,
       demo: false,
@@ -1022,8 +1086,13 @@ async function applyHumanFirstSaleGuard(
     const event = context.activeEvent;
     if (!event || event.source === "no_events") return result;
 
-    // 2.5 Desactivar en flujos de servicios B2B (evita inyectar cierre de eventos en chats de servicios)
-    if (context.servicesCatalogBlock && context.servicesCatalogBlock.trim().length > 0) {
+    // 2.5 Desactivar en flujos de servicios B2B. La existencia del catálogo
+    // de servicios no basta para inferir que el lead está hablando de ellos:
+    // ese catálogo también se carga en conversaciones de eventos.
+    if (
+      context.activeDomain === "service" ||
+      context.eventOfferType === "b2b_service"
+    ) {
       return result;
     }
 
@@ -1053,7 +1122,13 @@ async function applyHumanFirstSaleGuard(
     if (!interestRe.test(body)) return result;
 
     // 6. Si llegamos aquí, agregar el cierre.
-    const closingLine = "Si quieres tu lugar, mándame tu nombre y correo y te lo aparto.";
+    const paidEvent =
+      context.isPaidEvent === true ||
+      context.eventOfferType === "paid_workshop" ||
+      (typeof event.priceMxn === "number" && event.priceMxn > 0);
+    const closingLine = paidEvent
+      ? "Si quieres asistir, mándame tu nombre y correo y te comparto el enlace oficial de pago."
+      : "Si quieres asistir, mándame tu nombre y correo y te registro en el evento gratuito.";
     return {
       ...result,
       content: `${result.content.trim()}\n\n${closingLine}`,

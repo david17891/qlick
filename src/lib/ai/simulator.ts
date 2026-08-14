@@ -63,6 +63,13 @@ export type BotMode =
   | "human_first"
   // FIX 2026-07-19 (sprint bot v2): sync con BotGlobalMode.
   | "super_executive_v2";
+
+export type SimulationDecisionEngineMode =
+  | "legacy"
+  | "shadow"
+  | "canary"
+  | "live"
+  | "safe";
 // FIXME: la SSOT vive en `src/lib/admin/system-settings-server.ts` (`BotGlobalMode`).
 // Esta declaración está duplicada en `BotConfigTab.tsx` y `BotSimulatorTab.tsx`.
 // Refactor pendiente: unificar en `src/lib/ai/bot-mode.ts` (solo types, sin imports runtime).
@@ -111,6 +118,16 @@ export interface SimulateRequest {
    * que el provider deepseek respeta estrictamente.
    */
   tierOverride?: "flash" | "pro" | null;
+  /**
+   * Override aislado del motor de decisión. Solo aplica al simulador; el
+   * webhook real nunca recibe este campo desde el cliente.
+   */
+  decisionEngineMode?: SimulationDecisionEngineMode;
+  /** Contexto estructurado opcional para comparar decisiones en el laboratorio. */
+  activeDomain?: "event" | "service" | "support" | "general";
+  expectedReply?: "none" | "event_choice" | "name" | "email" | "payment_action" | "service_goal";
+  registrationStatus?: "payment_pending" | "confirmed" | null;
+  isPaidEvent?: boolean;
 }
 
 export interface InjectedRule {
@@ -425,6 +442,13 @@ export async function simulateConversationTurn(
     ...(req.tierOverride === "flash" || req.tierOverride === "pro"
       ? { tierOverride: req.tierOverride }
       : {}),
+    ...(req.decisionEngineMode ? { botDecisionMode: req.decisionEngineMode } : {}),
+    ...(req.activeDomain ? { activeDomain: req.activeDomain } : {}),
+    ...(req.expectedReply ? { expectedReply: req.expectedReply } : {}),
+    ...(req.registrationStatus !== undefined
+      ? { registrationStatus: req.registrationStatus }
+      : {}),
+    ...(req.isPaidEvent !== undefined ? { isPaidEvent: req.isPaidEvent } : {}),
     // NO pasamos supabase. Esto evita que el provider grabe en
     // `bot_usage_daily` y que las tools intenten persistir en Supabase.
     // (El path 2C con tools tiene su propio flujo; ver nota abajo.)

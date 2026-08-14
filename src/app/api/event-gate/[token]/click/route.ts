@@ -59,7 +59,7 @@ export async function GET(
   const { data: tokenRow, error: tokenErr } = await supabase
     .from("event_qr_tokens")
     .select(
-      "id, event_id, confirmation_id, revoked_at, attendee_name, attendee_email, attendee_phone_normalized, expires_at, checked_in_at, events:event_id (id, slug, format, streaming_url)",
+      "id, event_id, confirmation_id, revoked_at, attendee_name, attendee_email, attendee_phone_normalized, expires_at, checked_in_at, events:event_id (id, slug, format, streaming_url, price_mxn)",
     )
     .eq("token", token)
     .maybeSingle();
@@ -86,6 +86,7 @@ export async function GET(
       slug: string;
       format: "in_person" | "virtual" | "hybrid";
       streaming_url: string | null;
+      price_mxn: number | null;
     } | null;
   };
 
@@ -114,6 +115,10 @@ export async function GET(
       || confirmationRow?.payment_status === "revoked") {
       return NextResponse.redirect(new URL(`/eventos/${encodeURIComponent(event.slug)}?payment_pending=1`, appBaseUrl()));
     }
+  } else if (Number(event.price_mxn ?? 0) > 0) {
+    // A paid event must have a verified confirmation. Orphan/legacy QR
+    // tokens are retained for audit but can never open the event gate.
+    return NextResponse.redirect(new URL(`/eventos/${encodeURIComponent(event.slug)}?payment_pending=1`, appBaseUrl()));
   }
 
   // 5) Si el evento NO es virtual/hybrid (legacy in_person), el gate no

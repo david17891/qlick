@@ -87,6 +87,7 @@ interface TokenRow {
   expires_at: string;
   revoked_at: string | null;
   revoked_reason: string | null;
+  confirmation_id: string | null;
 }
 
 interface EventJoinRow {
@@ -96,6 +97,7 @@ interface EventJoinRow {
   ends_at: string | null;
   location: string | null;
   slug: string;
+  price_mxn: number | null;
 }
 
 async function fetchToken(
@@ -121,7 +123,8 @@ async function fetchToken(
       expires_at,
       revoked_at,
       revoked_reason,
-      event:events ( id, title, starts_at, ends_at, location, slug )
+      confirmation_id,
+      event:events ( id, title, starts_at, ends_at, location, slug, price_mxn )
     `,
     )
     .eq("token" as never, token)
@@ -255,11 +258,17 @@ export async function POST(
   // que ya está implementado. Si no hay, el token NO está linkeado a
   // una confirmation (caso raro, no deberia pasar), pero el check-in
   // sigue siendo valido (evento gratis, walk-in, etc).
-  const resolvedConfId = await resolveConfirmationIdForCheckIn(
+  const resolvedConfId = found.row.confirmation_id ?? await resolveConfirmationIdForCheckIn(
     supabase,
     found.row.event_id,
     found.row.attendee_phone_normalized,
   ).catch(() => null);
+  if (!resolvedConfId && Number(found.event.price_mxn ?? 0) > 0) {
+    return NextResponse.json(
+      { ok: false, error: "Pago pendiente. Este pase no está habilitado para entrar." },
+      { status: 403 },
+    );
+  }
   if (resolvedConfId) {
     const { data: confRow, error: confErr } = await supabase
       .from("event_confirmations")

@@ -46,6 +46,7 @@ interface Candidate {
   registration_status: string | null;
   payment_reminder_eligible_at: string | null;
   payment_priority_expires_at: string | null;
+  lead_id: string | null;
 }
 
 interface EventRow {
@@ -147,7 +148,7 @@ export async function runEventPaymentFollowupsJob(
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase
     .from("event_confirmations" as never)
-    .select("id, event_id, name, phone_normalized, confirmed_at, payment_status, registration_status, payment_reminder_eligible_at, payment_priority_expires_at" as never)
+    .select("id, event_id, name, phone_normalized, confirmed_at, payment_status, registration_status, payment_reminder_eligible_at, payment_priority_expires_at, lead_id" as never)
     .eq("registration_status" as never, "payment_pending" as never)
     .in("payment_status" as never, ["pending", "pending_verification"] as never)
     .limit(BATCH_SIZE);
@@ -177,31 +178,85 @@ export async function runEventPaymentFollowupsJob(
     if (!candidate.phone_normalized) { result.skipped++; continue; }
     if (!isWithinProactiveContactWindow(now)) continue;
 
+    // Commercial follow-ups never override consent, a human handoff or an
+    // explicit pause. These checks are intentionally server-side and run on
+    // every attempt, not only when the confirmation was first selected.
+    if (candidate.lead_id) {
+      const [{ data: lead }, { data: handoff }] = await Promise.all([
+        supabase.from("leads" as never).select("bot_paused, consent_to_contact, tags" as never)
+          .eq("id" as never, candidate.lead_id as never).maybeSingle(),
+        supabase.from("handoff_requests" as never).select("id" as never)
+          .eq("lead_id" as never, candidate.lead_id as never).eq("status" as never, "pending" as never).limit(1),
+      ]);
+      const leadRow = lead as { bot_paused?: boolean; consent_to_contact?: boolean; tags?: string[] } | null;
+      if (leadRow?.bot_paused || leadRow?.consent_to_contact === false || (leadRow?.tags ?? []).includes("whatsapp:opt_out") || (handoff ?? []).length > 0) {
+        result.skipped++;
+        continue;
+      }
+      const { data: journey } = await supabase.from("lead_event_journeys" as never)
+        .select("conversation_control" as never).eq("lead_id" as never, candidate.lead_id as never)
+        .eq("event_id" as never, candidate.event_id as never).maybeSingle();
+      const journeyRow = journey as unknown as { conversation_control?: string } | null;
+      if (journeyRow?.conversation_control !== undefined && journeyRow.conversation_control !== "bot") {
+        result.skipped++;
+        continue;
+      }
+    }
+
+    // A free-text 4h nudge is allowed only while the service window is active
+    // and after a recent inbound. Template stages remain eligible outside the
+    // window and are handled by Meta's approved template.
+    if (kind === PAYMENT_NUDGE_4H && candidate.lead_id) {
+      const { data: recentInbound } = await supabase.from("lead_whatsapp_conversations" as never)
+        .select("id" as never).eq("lead_id" as never, candidate.lead_id as never)
+        .eq("direction" as never, "inbound" as never)
+        .gte("created_at" as never, new Date(now.getTime() - DAY_MS).toISOString())
+        .limit(1);
+      if (!recentInbound || recentInbound.length === 0) { result.skipped++; continue; }
+    }
+
     const { data: existing } = await supabase
       .from("event_payment_reminder_log" as never)
-      .select("id" as never)
+      .select("id, status" as never)
       .eq("confirmation_id" as never, candidate.id)
       .eq("reminder_kind" as never, kind)
       .maybeSingle();
-    if (existing) continue;
+    const existingRow = existing as { id?: string; status?: string } | null;
+    // Shadow observations must not consume the real send when live is
+    // enabled later. Sent/sending/failed/skipped rows remain terminal.
+    if (existingRow && existingRow.status !== "shadow") continue;
 
-    if (mode === "shadow") {
-      result.shadow++;
+    // Re-read immediately before claiming so a webhook-approved payment wins
+    // a race with this cron and no payment message is sent afterwards.
+    const { data: fresh } = await supabase.from("event_confirmations" as never)
+      .select("registration_status, payment_status" as never).eq("id" as never, candidate.id as never).maybeSingle();
+    if ((fresh as { registration_status?: string; payment_status?: string } | null)?.registration_status !== "payment_pending"
+      || !["pending", "pending_verification"].includes((fresh as { payment_status?: string } | null)?.payment_status ?? "")) {
+      result.skipped++;
       continue;
     }
 
-    const { data: claim, error: claimError } = await supabase
-      .from("event_payment_reminder_log" as never)
-      .insert({
+    if (mode === "shadow") {
+      const { error: shadowError } = await supabase.from("event_payment_reminder_log" as never).insert({
         confirmation_id: candidate.id,
         reminder_kind: kind,
-        status: "sending",
+        status: "shadow",
         scheduled_for: now.toISOString(),
-        attempt_count: 1,
-        last_attempt_at: now.toISOString(),
-      } as never)
-      .select("id" as never)
-      .maybeSingle();
+        attempt_count: 0,
+      } as never);
+      if (!shadowError || (shadowError as { code?: string }).code === "23505") result.shadow++;
+      continue;
+    }
+
+    const claimResult = existingRow?.id
+      ? await supabase.from("event_payment_reminder_log" as never)
+        .update({ status: "sending", scheduled_for: now.toISOString(), attempt_count: 1, last_attempt_at: now.toISOString() } as never)
+        .eq("id" as never, existingRow.id as never).select("id" as never).maybeSingle()
+      : await supabase.from("event_payment_reminder_log" as never)
+        .insert({ confirmation_id: candidate.id, reminder_kind: kind, status: "sending", scheduled_for: now.toISOString(), attempt_count: 1, last_attempt_at: now.toISOString() } as never)
+        .select("id" as never).maybeSingle();
+    const claim = claimResult.data;
+    const claimError = claimResult.error;
     if (claimError || !claim) {
       if ((claimError as { code?: string } | null)?.code !== "23505") result.failed++;
       continue;

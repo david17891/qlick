@@ -8,6 +8,9 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
+  // This scheduler runs from GitHub Actions with its dedicated secret. Do not
+  // fall back to CRON_SECRET: that made the workflow appear configured while
+  // production rejected every invocation with 401.
   const authResult = checkStrictCronAuth(req, "LEAD_FOLLOWUP_CRON_SECRET");
   if (!authResult.ok) {
     return NextResponse.json(

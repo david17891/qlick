@@ -67,6 +67,12 @@ const NON_NAME_WORDS = new Set([
 ]);
 
 const LEADING_PREPOSITION = /^(?:en|desde|por|para|a|hacia|cerca\s+de|de)\b/i;
+// Una ubicación o dirección nunca es una captura de nombre. La coma y los
+// indicadores de sede aparecen con frecuencia cuando el lead responde a una
+// pregunta de registro copiando el lugar del evento (ej. "CANACO, San Luis
+// Río Colorado"). Se rechaza antes de normalizar tokens para no convertirla
+// accidentalmente en nombre válido.
+const LOCATION_LIKE_NAME_RE = /[,\n]|\b(?:canaco|avenida|av\.?|calle|colonia|c\.p\.?|c[oó]digo\s+postal)\b/i;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const URL_RE = /(?:https?:\/\/|www\.)\S+/i;
 const INTERNAL_REASONING_RE = /(?:<\/?think\b|\b(?:pensamiento|razonamiento|análisis|analysis|reasoning|diagnóstico)\s*:|\b(?:el\s+lead|el\s+usuario|el\s+prospecto)\s+(?:escribió|pregunta|dijo|quiere)|\b(?:voy\s+a|debo\s+responder|respondo|aplico\s+(?:la|el)\s+regla|analizando|internamente|no\s+debo\s+inventar)\b)/iu;
@@ -88,6 +94,7 @@ export function isVerifiedNameCandidate(
   if (text.length < 2 || text.length > 100) return false;
   if (EMAIL_RE.test(text) || URL_RE.test(text) || /\d/.test(text)) return false;
   if (LEADING_PREPOSITION.test(text)) return false;
+  if (LOCATION_LIKE_NAME_RE.test(text)) return false;
 
   const words = text.split(/\s+/).filter(Boolean);
   if (words.length < 2 || words.length > 6) return false;

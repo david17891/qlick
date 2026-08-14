@@ -32,8 +32,50 @@ import assert from "node:assert/strict";
 import {
   PLACEHOLDER_NAMES,
   cleanFirstName,
-  matchInscriptionIntent
+  hasEventRegistrationContext,
+  matchInscriptionIntent,
+  normalizePendingRegistrationField,
+  recoverNameFromRegistrationHistory
 } from "../src/lib/whatsapp/bot-engine.ts";
+
+test("normaliza awaiting_field=name cuando el outbound ya pide correo", () => {
+  const field = normalizePendingRegistrationField([
+    {
+      direction: "outbound",
+      body: "¡Perfecto! Ya quedó registrado tu nombre. Solo falta tu mejor correo.",
+      metadata: { awaiting_field: "name" }
+    }
+  ]);
+  assert.equal(field, "email");
+});
+
+test("conserva awaiting_field=name cuando el outbound todavía pide nombre", () => {
+  const field = normalizePendingRegistrationField([
+    {
+      direction: "outbound",
+      body: "Antes de registrarte, necesito tu nombre completo.",
+      metadata: { awaiting_field: "name" }
+    }
+  ]);
+  assert.equal(field, "name");
+});
+
+test("infiere awaiting_field=name si el outbound perdió metadata", () => {
+  const field = normalizePendingRegistrationField([
+    {
+      direction: "outbound",
+      body: "Antes de registrarte, necesito tu nombre completo.",
+      metadata: null
+    }
+  ]);
+  assert.equal(field, "name");
+});
+
+test("el contexto explícito de evento gana sobre un interés de servicios histórico", () => {
+  assert.equal(hasEventRegistrationContext("desarrollo-estructura-curso-canaco", null), true);
+  assert.equal(hasEventRegistrationContext(null, "desarrollo-estructura-curso-canaco"), true);
+  assert.equal(hasEventRegistrationContext(null, null), false);
+});
 
 /* ─────────────────────────────────────────────────────────────
  * 1. PLACEHOLDER_NAMES contiene los placeholders criticos
@@ -121,6 +163,36 @@ test("cleanFirstName devuelve 'María José' (con acentos y espacios)", () => {
 
 test("cleanFirstName devuelve 'Juan Pérez' (nombre completo)", () => {
   assert.equal(cleanFirstName("Juan Pérez"), "Juan Pérez");
+});
+
+test("recupera el nombre exacto del turno previo cuando el lead ya respondió el nombre", () => {
+  const recovered = recoverNameFromRegistrationHistory([
+    {
+      direction: "outbound",
+      body: "Para inscribirte necesito tu nombre completo.",
+      metadata: { awaiting_field: "name" }
+    },
+    { direction: "inbound", body: "David Martinez", metadata: null },
+    {
+      direction: "outbound",
+      body: "Gracias David. Ahora mándame tu email.",
+      metadata: { awaiting_field: "email" }
+    },
+    { direction: "inbound", body: "david@example.com", metadata: null }
+  ]);
+  assert.equal(recovered, "David Martinez");
+});
+
+test("no convierte una ubicación o una frase comercial en nombre recuperado", () => {
+  const recovered = recoverNameFromRegistrationHistory([
+    { direction: "inbound", body: "en Canaco San Luis", metadata: null },
+    {
+      direction: "outbound",
+      body: "Ahora mándame tu email.",
+      metadata: { awaiting_field: "email" }
+    }
+  ]);
+  assert.equal(recovered, null);
 });
 
 test("cleanFirstName devuelve 'David Esparza' (caso real del proyecto)", () => {

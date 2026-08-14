@@ -14,7 +14,7 @@ const current = {
   id: "event-current",
   slug: "desarrollo-estructura-curso-canaco",
   shortCode: "CN26",
-  title: "Las 4 Patas de un Negocio que Vende",
+  title: "Los 4 Pilares de un Negocio que Vende",
   location: "CANACO",
 };
 
@@ -36,7 +36,7 @@ test("resolver: código identifica el evento anterior sin contaminar el actual",
 
 test("resolver: texto de título identifica el evento actual con contexto", () => {
   const result = resolveEventContext({
-    body: "Me interesa el taller Las 4 Patas de un Negocio que Vende",
+    body: "Me interesa el taller Los 4 Pilares de un Negocio que Vende",
     events: [previous, current],
   });
   assert.equal(result?.event.id, current.id);
@@ -47,7 +47,7 @@ test("resolver: una conversación puede heredar el evento de un outbound previo"
   const result = resolveEventContext({
     body: "Sí, quiero inscribirme",
     messages: [
-      { direction: "outbound", body: "Evento CN26: Las 4 Patas de un Negocio que Vende" },
+      { direction: "outbound", body: "Evento CN26: Los 4 Pilares de un Negocio que Vende" },
       { direction: "inbound", body: "Sí" },
     ],
     events: [previous, current],

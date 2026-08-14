@@ -219,22 +219,49 @@ export async function sendQrPassForConfirmation(args: {
     conf.phone_normalized ||
     `+1manual${(conf.email ?? "").replace(/[^a-z0-9]/g, "").slice(0, 12)}`;
 
-  const { data: existingToken } = await supabase
+  const { data: existingTokenByConfirmation } = await supabase
     .from("event_qr_tokens")
-    .select("token")
+    .select("id, token, revoked_at, revoked_reason")
     .eq("event_id", args.event.id)
+    .eq("confirmation_id", conf.id)
+    .gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  // Compatibilidad con tokens históricos creados antes de que la relación
+  // con event_confirmations fuera obligatoria.
+  const { data: existingTokenByPhone } = existingTokenByConfirmation
+    ? { data: null }
+    : await supabase
+      .from("event_qr_tokens")
+      .select("id, token, revoked_at, revoked_reason")
+      .eq("event_id", args.event.id)
     .eq("attendee_phone_normalized", phoneSentinel)
     .gt("expires_at", new Date().toISOString())
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
 
+  const existingToken = existingTokenByConfirmation ?? existingTokenByPhone;
+
   const baseUrl = appBaseUrl();
   let qrToken: string | null = null;
   let eventQrTokenId: string | null = null;
 
-  if (existingToken && (existingToken as { token: string }).token) {
-    qrToken = (existingToken as { token: string }).token;
+  if (existingToken && (existingToken as unknown as { token: string }).token) {
+    qrToken = (existingToken as unknown as { token: string }).token;
+    const legacyPendingRevocation = existingToken as unknown as {
+      id?: string;
+      revoked_at?: string | null;
+      revoked_reason?: string | null;
+    };
+    if (legacyPendingRevocation.revoked_reason === "payment_pending_registration") {
+      await supabase
+        .from("event_qr_tokens")
+        .update({ revoked_at: null, revoked_reason: null } as never)
+        .eq("token", qrToken);
+    }
   } else {
     const token = randomBytes(24).toString("base64url").slice(0, 32);
     const endsAt = args.event.endsAt ? new Date(args.event.endsAt) : new Date();
@@ -246,6 +273,7 @@ export async function sendQrPassForConfirmation(args: {
         attendee_phone_normalized: phoneSentinel,
         attendee_name: conf.name,
         attendee_email: conf.email,
+        confirmation_id: conf.id,
         token,
         expires_at: expiresAt,
       } as never)

@@ -307,7 +307,10 @@ test("meta-cloud-api: send() reintenta en 5xx y luego falla", async () => {
  * 3. bot-engine — detección de intents
  * ───────────────────────────────────────────────────────────── */
 
-import { detectIntent } from "../src/lib/whatsapp/bot-engine.ts";
+import {
+  detectIntent,
+  isValidHumanName,
+} from "../src/lib/whatsapp/bot-engine.ts";
 import { _findEventInConversationForTest } from "../src/lib/whatsapp/bot-engine.ts";
 // FIX 2026-07-05: short_code match para desambiguar eventos con título similar.
 import { _matchShortCodeForTest } from "../src/lib/whatsapp/bot-engine.ts";
@@ -348,6 +351,14 @@ test("detectIntent: si quiero inscribirme (con palabras adicionales) → registe
   // del botón correctamente. Ver tests/whatsapp-bot-opener.test.mjs
   // para la cobertura del mapeo label→intent.
   assert.equal(detectIntent("inscribirme al evento", false), "register");
+  assert.equal(detectIntent("Quiero presenciar el taller", false), "register");
+  assert.equal(detectIntent("Me gustaría asistir al curso", false), "register");
+});
+
+test("isValidHumanName: no captura saludos abreviados como nombres", () => {
+  assert.equal(isValidHumanName("Bns días"), false);
+  assert.equal(isValidHumanName("Buenos días"), false);
+  assert.equal(isValidHumanName("Ana López"), true);
 });
 
 test("detectIntent: no/cancelar/baja → opt_out", () => {

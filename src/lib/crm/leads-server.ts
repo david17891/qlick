@@ -362,7 +362,7 @@ export async function _findLeadByPhoneRaw(
           // flag de "pausa por conversación" antes de procesar el inbound.
           // Cast a `never` para silenciar typegen hasta regenerar
           // (`supabase gen types`) post-migration.
-          "id, name, email, phone, phone_normalized, status, source, intent, consent_to_contact, summary, course_of_interest, created_at, updated_at, bot_paused, bot_paused_at, bot_paused_by_email",
+          "id, name, email, phone, phone_normalized, status, source, intent, consent_to_contact, summary, course_of_interest, created_at, updated_at, tags, bot_paused, bot_paused_at, bot_paused_by_email",
         )
         .eq("phone_normalized", normalized)
         .abortSignal(controller.signal)

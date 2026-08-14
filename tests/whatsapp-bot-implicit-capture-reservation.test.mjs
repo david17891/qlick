@@ -54,7 +54,7 @@ const FAKE_EVENT_CANACO_RESERVATION = {
   id: "00000000-0000-0000-0000-000000000C42",
   slug: "desarrollo-estructura-curso-canaco",
   short_code: "CN26",
-  title: "Las 4 Patas de un Negocio que Vende",
+  title: "Los 4 Pilares de un Negocio que Vende",
   description: "Curso presencial en CANACO.",
   // FIX 2026-07-18: starts_at en el FUTURO para que el filtro
   // `gte(now - 6h)` de `loadAllActiveEvents` no lo excluya.
@@ -580,7 +580,7 @@ test("CANACO: la respuesta corta de info resume contenido, fecha, pago y ubicaci
   assert.match(copy, /\$1,?000/);
   assert.match(copy, /\$500/);
   assert.match(copy, /20 de agosto de 2026/);
-  assert.match(copy, /dirección exacta está por confirmar/i);
+  assert.doesNotMatch(copy, /dirección exacta está por confirmar/i);
   assert.doesNotMatch(copy, /respond[eé]s|escrib[ií]s|mand[aá]s/i);
 });
 

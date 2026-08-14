@@ -12,6 +12,8 @@ import {
 
 test("nombres: rechaza ubicación, paquete y placeholders", () => {
   assert.equal(isVerifiedNameCandidate("En Mexicali"), false);
+  assert.equal(isVerifiedNameCandidate("CANACO, San Luis Río Colorado"), false);
+  assert.equal(isVerifiedNameCandidate("Av. Álvaro Obregón 14-15"), false);
   assert.equal(isVerifiedNameCandidate("Paquete Premium"), false);
   assert.equal(isVerifiedNameCandidate("WhatsApp Lead"), false);
   assert.equal(isVerifiedNameCandidate("María Fernanda"), true);

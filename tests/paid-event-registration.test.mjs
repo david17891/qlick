@@ -21,6 +21,33 @@ test("event registration state: only verified payment confirms", async () => {
   assert.equal(registrationStatusForPayment("pending"), "payment_pending");
 });
 
+test("payment_pending keeps commercial follow-up open", async () => {
+  const { shouldCloseRegistrationFollowup } = await import(
+    "../src/lib/whatsapp/bot-engine.ts"
+  );
+  assert.equal(
+    shouldCloseRegistrationFollowup({
+      registrationStatus: "payment_pending",
+      paymentStatus: "pending",
+    }),
+    false,
+  );
+  assert.equal(
+    shouldCloseRegistrationFollowup({
+      registrationStatus: "confirmed",
+      paymentStatus: "partial",
+    }),
+    true,
+  );
+  assert.equal(
+    shouldCloseRegistrationFollowup({
+      registrationStatus: "confirmed",
+      paymentStatus: "not_required",
+    }),
+    true,
+  );
+});
+
 test("payment follow-up copy never promises confirmation before payment", async () => {
   const { buildPaymentFollowupBody, PAYMENT_NUDGE_4H, PAYMENT_LAST_DAY } =
     await import("../src/lib/cron/event-payment-followups.ts");

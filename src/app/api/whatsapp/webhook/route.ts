@@ -22,6 +22,7 @@
  */
 
 import { NextResponse, type NextRequest } from "next/server";
+import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
 
@@ -309,9 +310,19 @@ async function persistInboundIfPossible(
     return { kind: "errored", wamid: msg.messageId };
   }
   // data presente → row insertada (nueva). data null → row ya existia (duplicate).
-  return data
-    ? { kind: "new", wamid: msg.messageId }
-    : { kind: "duplicate", wamid: msg.messageId };
+  if (!data) return { kind: "duplicate", wamid: msg.messageId };
+
+  // Durable operational marker without copying message body or PII. The
+  // inline processor remains the fast path; the row gives operations a
+  // retry/review surface when a serverless invocation times out.
+  await supabase.from("whatsapp_inbound_jobs" as never).upsert({
+    whatsapp_message_id: msg.messageId,
+    phone_hash: createHash("sha256").update(phone).digest("hex"),
+    status: "processing",
+    attempt_count: 1,
+    metadata: { message_type: msg.type, has_button: Boolean(msg.buttonId), has_media: Boolean(msg.image || msg.audio || msg.document) },
+  } as never, { onConflict: "whatsapp_message_id" } as never);
+  return { kind: "new", wamid: msg.messageId };
 }
 
 /**
@@ -443,11 +454,37 @@ async function processInboundSafely(
     from: msg.from
   });
   try {
-    await processInboundMessage(msg);
+    const result = await processInboundMessage(msg);
+    const supabase = await getSupabase();
+    if (supabase && msg.messageId) {
+      await supabase.from("whatsapp_inbound_jobs" as never).update({
+        status: "completed",
+        processed_at: new Date().toISOString(),
+      } as never).eq("whatsapp_message_id" as never, msg.messageId as never);
+      await supabase.from("bot_turns" as never).insert({
+        inbound_job_id: null,
+        lead_id: result.leadId,
+        domain: null,
+        intent: result.intent,
+        validation_status: result.ok ? "accepted" : "fallback",
+        delivery_status: result.responseKind === "none" ? "none" : result.outboundMessageId ? "sent" : "unknown",
+        engine_mode: process.env.BOT_DECISION_ENGINE_MODE?.trim().toLowerCase() || "legacy",
+        bot_version: process.env.BOT_VERSION ?? "unknown",
+        prompt_version: process.env.BOT_PROMPT_VERSION ?? "unknown",
+      } as never);
+    }
     infoLog("[whatsapp/webhook] processInboundSafely END OK", {
       messageId: msg.messageId
     });
   } catch (err) {
+    const supabase = await getSupabase();
+    if (supabase && msg.messageId) {
+      await supabase.from("whatsapp_inbound_jobs" as never).update({
+        status: "review",
+        last_error_type: "processor_exception",
+        next_attempt_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+      } as never).eq("whatsapp_message_id" as never, msg.messageId as never);
+    }
     errorLog("[whatsapp/webhook] processInboundMessage lanzó excepción", {
       messageId: msg.messageId,
       from: msg.from,

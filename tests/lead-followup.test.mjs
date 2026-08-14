@@ -247,3 +247,10 @@ test("followup: el copy de segundo intento no es idéntico al primero", () => {
   assert.notEqual(first, second);
   assert.match(second, /inscripción/);
 });
+
+test("followup: registro incompleto sin campo explícito pide nombre y correo", () => {
+  const body = buildLeadFollowupBody("registration_incomplete", "Ana Pérez", 1, null);
+  assert.match(body, /nombre completo/i);
+  assert.match(body, /correo/i);
+  assert.match(body, /lo terminamos/i);
+});

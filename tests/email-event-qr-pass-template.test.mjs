@@ -221,6 +221,28 @@ test("renderEventQrPassEmail: badge PENDIENTE cuando paymentStatus=pending y man
   assert.match(result.html, /Pagar entrada/);
 });
 
+test("renderEventQrPassEmail: pendiente incluye QR provisional, pago y bloquea promesa de acceso", async () => {
+  const { renderEventQrPassEmail } = await import(
+    "../src/lib/email/templates/event-qr-pass.ts"
+  );
+  const result = renderEventQrPassEmail({
+    attendeeName: "David",
+    attendeeEmail: "d@example.com",
+    eventTitle: "Evento Pago",
+    eventStartsAt: "2026-07-17T18:00:00.000Z",
+    eventLocation: "CANACO",
+    qrImageUrl: "https://qlick.digital/api/event-qr/provisional.png",
+    checkInUrl: "https://qlick.digital/check-in/provisional",
+    priceMXN: 1000,
+    paymentUrl: "https://qlick.digital/pagar/evento/foo?confirmation=abc",
+    paymentStatus: "pending",
+  });
+  assert.match(result.html, /Tu QR provisional/);
+  assert.match(result.html, /pagar\/evento\/foo\?confirmation=abc/);
+  assert.match(result.html, /acceso se habilita/);
+  assert.doesNotMatch(result.html, /pagar en efectivo en puerta/);
+});
+
 test("renderEventQrPassEmail: badge EN VERIFICACIÓN cuando paymentStatus=pending_verification", async () => {
   const { renderEventQrPassEmail } = await import(
     "../src/lib/email/templates/event-qr-pass.ts"

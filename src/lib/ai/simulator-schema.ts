@@ -21,7 +21,8 @@
 import type {
   SimulateRequest,
   SimulateHistoryMessage,
-  BotMode
+  BotMode,
+  SimulationDecisionEngineMode
 } from "./simulator";
 
 const VALID_MODES: ReadonlySet<BotMode> = new Set<BotMode>([
@@ -36,6 +37,13 @@ const VALID_MODES: ReadonlySet<BotMode> = new Set<BotMode>([
 
 const MAX_MESSAGE_LEN = 4_000;
 const MAX_HISTORY_LEN = 50;
+const VALID_DECISION_ENGINE_MODES: ReadonlySet<SimulationDecisionEngineMode> = new Set([
+  "legacy",
+  "shadow",
+  "canary",
+  "live",
+  "safe"
+]);
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -119,6 +127,44 @@ export function parseSimulateRequest(raw: unknown):
     modeOverride = body.modeOverride as BotMode;
   }
 
+  let decisionEngineMode: SimulationDecisionEngineMode | undefined;
+  if (body.decisionEngineMode !== undefined && body.decisionEngineMode !== null) {
+    if (!VALID_DECISION_ENGINE_MODES.has(body.decisionEngineMode as SimulationDecisionEngineMode)) {
+      return {
+        ok: false,
+        error: `'decisionEngineMode' debe ser uno de: ${[...VALID_DECISION_ENGINE_MODES].join(", ")}.`
+      };
+    }
+    decisionEngineMode = body.decisionEngineMode as SimulationDecisionEngineMode;
+  }
+
+  const validDomains = new Set(["event", "service", "support", "general"]);
+  const validExpectedReplies = new Set([
+    "none",
+    "event_choice",
+    "name",
+    "email",
+    "payment_action",
+    "service_goal"
+  ]);
+  if (body.activeDomain !== undefined && !validDomains.has(String(body.activeDomain))) {
+    return { ok: false, error: "'activeDomain' no es válido." };
+  }
+  if (body.expectedReply !== undefined && !validExpectedReplies.has(String(body.expectedReply))) {
+    return { ok: false, error: "'expectedReply' no es válido." };
+  }
+  if (
+    body.registrationStatus !== undefined &&
+    body.registrationStatus !== null &&
+    body.registrationStatus !== "payment_pending" &&
+    body.registrationStatus !== "confirmed"
+  ) {
+    return { ok: false, error: "'registrationStatus' no es válido." };
+  }
+  if (body.isPaidEvent !== undefined && typeof body.isPaidEvent !== "boolean") {
+    return { ok: false, error: "'isPaidEvent' debe ser booleano." };
+  }
+
   // leadContext
   let leadContext: SimulateRequest["leadContext"] = null;
   if (body.leadContext !== undefined && body.leadContext !== null) {
@@ -152,7 +198,18 @@ export function parseSimulateRequest(raw: unknown):
       tierOverride:
         body.tierOverride === "flash" || body.tierOverride === "pro"
           ? body.tierOverride
-          : null
+          : null,
+      ...(decisionEngineMode ? { decisionEngineMode } : {}),
+      ...(validDomains.has(String(body.activeDomain))
+        ? { activeDomain: body.activeDomain as SimulateRequest["activeDomain"] }
+        : {}),
+      ...(validExpectedReplies.has(String(body.expectedReply))
+        ? { expectedReply: body.expectedReply as SimulateRequest["expectedReply"] }
+        : {}),
+      ...(body.registrationStatus !== undefined
+        ? { registrationStatus: body.registrationStatus as SimulateRequest["registrationStatus"] }
+        : {}),
+      ...(typeof body.isPaidEvent === "boolean" ? { isPaidEvent: body.isPaidEvent } : {})
     }
   };
 }

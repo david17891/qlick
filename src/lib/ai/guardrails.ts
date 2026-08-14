@@ -79,9 +79,21 @@ export function mustEscalateToHuman(message: string): {
 } {
   const t = message.toLowerCase();
 
+  // Las preguntas operativas de preventa como "¿cómo pago?" o "¿dónde
+  // aparto?" deben ser contestadas por el flujo determinista de pago cuando
+  // existe un evento pendiente. No son, por sí solas, una incidencia humana.
+  // Las quejas, rechazos, cobros no reconocidos y reembolsos siguen pasando
+  // por handoff aunque contengan la palabra "pago".
+  const routinePaymentHelp =
+    /(?:\b(?:como|cómo)\s+(?:pago|aparto|reservo|confirmo)\b|\b(?:donde|dónde)\s+(?:pago|pagar)\b|\b(?:link|enlace)\s+(?:de\s+)?pago\b|\b(?:quiero|necesito)\s+pagar\b|\bexpl[ií]came\b)/i.test(t) &&
+    !/(?:reembolso|devoluci[oó]n|rechaz|no aparece|no recib[ií]|no se reflej|cobro no|cargo no|duplicad|error|problema)/i.test(t);
+
   if (/reembolso|devoluci[oó]n|queja|denuncia|demand|abogad/.test(t))
     return { escalate: true, reason: "Queja/reembolso/jurídico" };
-  if (/pago|transferencia|spei|oxxo|tarjeta|rechaz/.test(t))
+  if (
+    !routinePaymentHelp &&
+    /pago|pagu[eé]|transferencia|spei|oxxo|tarjeta|rechaz|deposit[eé]|cobr[ée]|cargo/.test(t)
+  )
     return { escalate: true, reason: "Pagos: requiere validación humana" };
   if (/no me funciona|error|bug|no puedo|soporte/.test(t))
     return { escalate: true, reason: "Soporte técnico de plataforma" };
