@@ -1,5 +1,19 @@
 # Project Status — Snapshot vivo
 
+> **Addendum 2026-08-14 — landing CANACO optimizada:** la página del evento
+> ahora presenta el temario en cuatro bloques, la promoción de cierre de dos
+> personas ($1,500 MXN, apartado $200), la opción individual de $1,000, los
+> beneficios y la logística sin párrafo amontonado. El botón de eventos de
+> pago dice “Apartar mi lugar” y ya no afirma que el registro es gratis.
+> La descripción fuente se compactó mediante la migración aditiva
+> `20260813235000_optimize_canaco_event_description.sql`; se conservaron
+> `price_mxn=1000`, apartado normal de $500, reglas, pagos, registros y QR.
+> Deploy productivo `dpl_C1sStDbz3R8uQPyPnDNFfQQirxin`, estado `READY`, con
+> `https://qlick.digital` y `https://www.qlick.digital` respondiendo HTTP 200.
+> Se verificaron `/eventos/desarrollo-estructura-curso-canaco` y `/promo`:
+> aparecen los bloques nuevos, no aparece el Markdown antiguo y el checkout
+> promocional sigue separado del flujo normal.
+
 > **Addendum 2026-08-14 — promoción para pendientes:** se cerró el hueco de
 > reactivación de los inscritos con `payment_pending`. En el tab **Pagos** del
 > evento, el admin puede preparar enlaces individuales de WhatsApp con la
