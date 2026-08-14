@@ -283,11 +283,17 @@ test("CASO D: lead da nombre+email en 1 mensaje → 1 tool call, guardado en DB"
       return {
         update(patch) {
           updateCalls.push({ table, patch });
+          const persisted = { data: { id: "L-acceptance-caso-d" }, error: null };
           return {
             eq(_col, _val) {
               return {
+                select() {
+                  return {
+                    maybeSingle: async () => persisted
+                  };
+                },
                 then(onFulfilled) {
-                  return Promise.resolve({ data: null, error: null }).then(onFulfilled);
+                  return Promise.resolve(persisted).then(onFulfilled);
                 }
               };
             }
