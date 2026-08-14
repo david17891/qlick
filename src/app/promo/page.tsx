@@ -27,7 +27,7 @@ export default async function PromoPage() {
         <Container size="wide">
           <div className="mx-auto max-w-5xl grid gap-6 lg:grid-cols-[.85fr_1.15fr]">
             <Card className="p-7 self-start">
-              <Badge tone="info">Promoción especial</Badge>
+              <Badge tone="info">Promoción de cierre</Badge>
               <h1 className="mt-3 text-3xl font-bold text-ink">{event.title}</h1>
               <EventMarketingSummary event={event} showPromoLink={false} />
               <ul className="mt-5 space-y-2 text-sm text-ink-soft">
