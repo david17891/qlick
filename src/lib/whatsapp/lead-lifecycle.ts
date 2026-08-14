@@ -1,5 +1,6 @@
 import type { LeadIntent, LeadStatus } from "@/types/crm";
 import { LEAD_REGISTRATION_COMPLETE_TAG } from "./lead-followup";
+import { extractEmailFromText } from "./email-extract";
 
 /** Señal mínima que el bot puede convertir en una etapa comercial. */
 export interface LeadLifecycleInput {
@@ -89,7 +90,7 @@ export function decideLeadLifecycle(input: LeadLifecycleInput): LeadLifecycleDec
 
   const isPaymentStep =
     input.botIntent === "provide_email" ||
-    (input.botIntent === "provide_name" && EMAIL_RE.test(body)) ||
+    (input.botIntent === "provide_name" && Boolean(extractEmailFromText(body))) ||
     PAYMENT_SIGNAL_RE.test(body);
   const isEnrollment =
     input.botIntent === "interactive_event_inscribir" ||

@@ -22,7 +22,10 @@ import assert from "node:assert/strict";
 
 // @ts-check
 
-import { extractEmailFromText } from "../src/lib/whatsapp/email-extract.ts";
+import {
+  extractEmailFromText,
+  normalizeEmailCandidate,
+} from "../src/lib/whatsapp/email-extract.ts";
 
 /* ─────────────────────────────────────────────────────────────
  * Casos felices: email extraido correctamente
@@ -34,6 +37,22 @@ test("extractEmailFromText: email puro (caso limpio)", () => {
 
 test("extractEmailFromText: email con espacios alrededor", () => {
   assert.equal(extractEmailFromText("  david17891@gmail.com  "), "david17891@gmail.com");
+});
+
+test("extractEmailFromText: repara espacio obvio antes de com", () => {
+  assert.equal(
+    extractEmailFromText("Oscarignaciolopezbennett@gmail com"),
+    "oscarignaciolopezbennett@gmail.com",
+  );
+});
+
+test("normalizeEmailCandidate: solo repara proveedores comunes", () => {
+  assert.equal(
+    normalizeEmailCandidate("Oscarignaciolopezbennett@gmail com"),
+    "oscarignaciolopezbennett@gmail.com",
+  );
+  assert.equal(normalizeEmailCandidate("persona@empresa com"), null);
+  assert.equal(normalizeEmailCandidate("persona@gmai.com"), "persona@gmai.com");
 });
 
 test("extractEmailFromText: email al final de frase con contexto (caso del bug)", () => {

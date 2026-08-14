@@ -1612,7 +1612,10 @@ export function detectIntent(
   if (AFFIRMATIVE_RE.test(text)) return "question";
   if (REGISTER_RE.test(text)) return "register";
   if (REGISTER_PHRASE_RE.test(text)) return "register";
-  if (EMAIL_RE.test(text)) return "provide_email";
+  // Captura determinista también correcciones inequívocas como
+  // `persona@gmail com`; así el flujo no cae al LLM ni vuelve a pedir
+  // el correo cuando solo faltó el punto del dominio.
+  if (extractEmailFromText(text)) return "provide_email";
   // Greeting: primer mensaje → welcome; posteriores → greeting.
   if (GREETING_RE.test(text)) {
     return isFirstMessage ? "welcome" : "greeting";
@@ -1662,7 +1665,7 @@ export function resolveIntent(
   const text = body?.trim() ?? "";
   if (!text) return "question";
   if (OPT_OUT_RE.test(text)) return "opt_out";
-  if (EMAIL_RE.test(text)) return "provide_email";
+  if (extractEmailFromText(text)) return "provide_email";
   // Cualquier otra cosa (incluyendo "Hola", "Sí quiero inscribirme",
   // "Qué incluye?") va al LLM con el prompt `human_first`.
   return "question";

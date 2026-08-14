@@ -40,6 +40,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
 import { isVerifiedNameCandidate } from "@/lib/whatsapp/bot-quality";
+import { normalizeEmailCandidate } from "@/lib/whatsapp/email-extract";
 
 /* ------------------------------------------------------------------ */
 /* Inputs / Outputs                                                   */
@@ -206,9 +207,8 @@ export function isValidHumanNameLocal(text: string | null | undefined): boolean 
 export function validateAndNormalizeEmail(
   raw: string | null | undefined
 ): string | null {
-  if (!raw) return null;
-  const normalized = raw.trim().toLowerCase();
-  if (!EMAIL_RE.test(normalized)) return null;
+  const normalized = normalizeEmailCandidate(raw);
+  if (!normalized || !EMAIL_RE.test(normalized)) return null;
   return normalized;
 }
 
