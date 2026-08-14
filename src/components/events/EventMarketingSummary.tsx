@@ -69,7 +69,31 @@ export function EventMarketingSummary({ event, showPromoLink = true }: Props) {
   }
 
   return (
-    <div className="mt-8 max-w-4xl space-y-5">
+    <div className="mt-6 max-w-4xl">
+      <div className="sm:hidden rounded-2xl border-2 border-brand-300 bg-gradient-to-br from-brand-50 via-white to-amber-50 p-4 shadow-sm">
+        <p className="text-xs font-extrabold uppercase tracking-wide text-brand-700">
+          Promoción de cierre
+        </p>
+        <p className="mt-1 text-2xl font-black leading-tight text-brand-950">
+          2 personas por $1,500 MXN
+        </p>
+        <p className="mt-1 text-sm font-semibold text-amber-800">
+          Aparta ambas con $200 · ¿Vas solo? $1,000
+        </p>
+        <p className="mt-2 text-xs leading-5 text-ink-soft">
+          Publicidad · Facebook Ads · IA · seguimiento de prospectos · constancia incluida.
+        </p>
+        {showPromoLink && (
+          <Link
+            href="/promo"
+            className="mt-3 inline-flex w-full items-center justify-center rounded-full bg-amber-500 px-4 py-2.5 text-sm font-extrabold text-amber-950 shadow-sm transition hover:bg-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
+          >
+            Ver promoción y registrarme →
+          </Link>
+        )}
+      </div>
+
+      <div className="mt-5 hidden space-y-5 sm:block">
       <section aria-labelledby="event-aprendizajes">
         <div className="mb-3 flex items-center gap-2">
           <Sparkles className="h-5 w-5 text-brand-600" aria-hidden="true" />
@@ -157,6 +181,7 @@ export function EventMarketingSummary({ event, showPromoLink = true }: Props) {
           <Users className="h-4 w-4" aria-hidden="true" /> Promoción de cierre: registra a tu acompañante y asegura el precio para dos.
         </p>
       )}
+      </div>
     </div>
   );
 }
