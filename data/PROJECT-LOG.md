@@ -1004,3 +1004,23 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 - Se excluyeron `private-data/`, respaldos y salidas de pruebas de los paquetes
   de Vercel mediante `.vercelignore`.
 - Validación: type-check, lint, build, audit:voseo y CI de los PR 79/80 verdes.
+### 2026-08-14 — Auditoría funcional de promoción CANACO
+
+- Se auditó producción, Supabase, RLS, migraciones, landing, `/promo`, pagos, webhooks, QR, correo y herramienta de promoción para pendientes sin modificar datos reales ni generar cargos.
+- Evidencia: 32/32 pruebas promocionales, `test:ci` 1,708/1,708 y simulación de funnel 3/3 con 34 aserciones. Smoke público: landing y `/promo` 200, cron sin secreto 401, webhook sin firma 400 y QR inexistente 404.
+- Se documentó la discrepancia de la E2E histórica: espera cero QR antes del pago, pero producción mantiene el flujo híbrido de QR provisional con check-in bloqueado.
+- Hallazgos abiertos: restringir el slug promocional, decidir la política QR, reenviar correo al liquidar una orden parcial, reconciliar 3 QR sin confirmación y 1 pago pendiente. Reporte completo: `docs/AUDIT_PROMO_CANACO_2026-08-14.md`.
+
+### 2026-08-14 — Política confirmada de entrega promocional
+
+- La promoción solo considera confirmada a la orden después de verificar $200 MXN de apartado o el pago completo; antes se entrega únicamente el enlace de pago.
+- La atribución canónica es `promo_order_id` + `confirmation_id` en metadata de Stripe y la validación de monto del webhook; el correo del Checkout no es la llave de conciliación.
+- Pendiente antes de campaña: E2E Stripe test completa, restricción de slug, pase para segunda persona y comprobante de pago explícito.
+## 2026-08-14 — conciliación Stripe diferida y comprobantes promoción CANACO
+
+- Se restringió `/api/promo/checkout` al evento `desarrollo-estructura-curso-canaco` sin alterar el checkout normal.
+- Se añadió reconciliación idempotente cada 15 minutos dentro de `/api/cron/event-payment-followups`, reutilizando el webhook Stripe firmado para recuperar OXXO/SPEI retrasados.
+- Al confirmar una orden promo se envía el pase QR compartido y un comprobante Qlick a cada participante con correo válido; Stripe recibe `receipt_email` para el recibo automático.
+- Migración aditiva aplicada: `20260814123000_promo_receipt_email_type.sql`.
+- Producción: `dpl_8kaPJbZXGQ12ejNmQqLzsP6Dpucp`; smoke `/promo`, evento y cron sin credencial verificados (200, 200, 401).
+- Validación: type-check, lint, build, focused promo/Stripe tests y E2E sintética de dos participantes pasaron. La suite global mantiene 5 fallas históricas/no relacionadas (human_first y funnel híbrido previo).

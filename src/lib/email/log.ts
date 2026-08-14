@@ -25,6 +25,7 @@ import { checkSupabaseConfig } from "../supabase/health";
 
 export type EventEmailType =
   | "qr_pass"
+  | "promo_receipt"
   | "reminder_24h"
   | "reminder_2h"
   | "certificate";

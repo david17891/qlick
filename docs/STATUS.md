@@ -1,5 +1,28 @@
 # Project Status — Snapshot vivo
 
+> **Addendum 2026-08-14 — auditoría funcional de promoción:** se verificaron
+> producción, Supabase, RLS, migraciones, `/promo`, checkout normal, webhooks,
+> QR, correo y continuidad de pendientes. La landing y `/promo` responden 200;
+> cron sin secreto responde 401; webhook sin firma responde 400; QR inexistente
+> responde 404. Producción tiene 19 confirmaciones (1 pagada y 18 pendientes),
+> 0 órdenes promocionales y 7 intentos en el ledger (1 aprobado, 1 pendiente,
+> 4 cancelados y 1 fallido). Las pruebas promocionales pasan 32/32, `test:ci`
+> pasa 1,708/1,708 y la simulación de tres escenarios pasa 34/34. La E2E
+> histórica que exige cero QR antes del pago falla porque el despliegue vigente
+> es híbrido: puede enviar QR provisional, pero el check-in sigue bloqueado hasta
+> pago/apartado verificado. Hallazgos y puertas de salida quedan en
+> `docs/AUDIT_PROMO_CANACO_2026-08-14.md`; no se hicieron cargos, envíos ni
+> cambios destructivos.
+
+> **Addendum 2026-08-14 — política confirmada para la promoción:** para la
+> promoción de dos plazas, el QR y la confirmación se envían únicamente después
+> de que Stripe verifique el apartado de $200 MXN o el pago completo. El correo
+> y el WhatsApp de captura solo entregan el enlace de pago; no habilitan acceso.
+> La atribución del cobro usa `promo_order_id` y `confirmation_id` firmados en la
+> metadata de Checkout, no una búsqueda por correo. Antes de lanzar la campaña
+> faltan restringir el slug promocional, entregar el pase a la segunda persona
+> cuando haya correo, definir el comprobante y completar una E2E Stripe test.
+
 > **Addendum 2026-08-14 — landing CANACO optimizada:** la página del evento
 > ahora presenta el temario en cuatro bloques, la promoción de cierre de dos
 > personas ($1,500 MXN, apartado $200), la opción individual de $1,000, los
@@ -1038,3 +1061,11 @@ con information_schema.columns + pg_constraint antes de culpar al fix."
 - Validación del checkout: type-check, lint, build y `audit:voseo` correctos;
   suite completa 1708/1715. Los 7 restantes son escenarios históricos/E2E que
   requieren Supabase/Stripe o fixtures antiguas y quedan como deuda explícita.
+## Addendum 2026-08-14 — conciliación OXXO/SPEI y comprobantes de promoción
+
+- Producción desplegada en Vercel: `dpl_8kaPJbZXGQ12ejNmQqLzsP6Dpucp` (`qlick.digital` / `www.qlick.digital`).
+- La promoción está restringida en servidor al slug `desarrollo-estructura-curso-canaco`; el checkout normal de una persona permanece disponible.
+- El cron de Supabase `event-payment-followups-every-15m` sigue activo y ahora ejecuta primero una reconciliación de sesiones Stripe pendientes. OXXO/SPEI se confirma solo cuando Stripe devuelve `payment_status=paid`; no se otorga QR por crear el voucher.
+- Tras el pago/apartado verificado, la orden promocional entrega un QR compartido de dos accesos y envía a cada participante con correo válido: pase QR + comprobante propio Qlick. Stripe también recibe `receipt_email` para su recibo automático.
+- Migración aditiva aplicada por Management API: `20260814123000_promo_receipt_email_type.sql`.
+- E2E sintética pasada: dos participantes, webhook firmado de apartado $200, dos confirmaciones `partial/confirmed`, QR `max_check_ins=2`, cuatro correos y webhook duplicado sin reenvíos. No creó cargos reales y limpió sus datos.

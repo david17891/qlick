@@ -2536,3 +2536,23 @@ El commit `9c606de` ("captura universal de nombre humano en cualquier turno", me
 - `node scripts/_preview-survey-invite-email.mjs` → ✓ genera preview HTML
 - `git log --oneline -8` muestra todos los commits del sprint mergeados a main + origin/main.
 
+## Auditoría de promoción CANACO — 2026-08-14
+
+- **Alta:** restringir `/api/promo/checkout` al evento autorizado; hoy acepta un `eventSlug` enviado por el cliente si el evento también cuesta $1,000.
+- **Resuelto como decisión de producto:** la promoción solo envía QR/confirmación después de verificar el apartado de $200 o el pago completo. El flujo híbrido histórico de otros registros queda fuera de la promoción.
+- **Alta:** completar una E2E Stripe test con apartado, duplicado, liquidación, reembolso y dos check-ins antes de lanzar la campaña.
+- **Media:** permitir un correo de actualización cuando una orden promocional pasa de `partial` a `paid`; la deduplicación actual puede conservar el mensaje de apartado.
+- **Media:** enviar el mismo pase unificado a la segunda persona cuando se haya capturado su correo.
+- **Media:** reconciliar 3 tokens QR activos sin `confirmation_id` y 1 intento de pago `pending` del evento CANACO.
+- **Media:** considerar un token de invitación firmado para que los pendientes abran `/promo` sin volver a capturar todos sus datos.
+
+Reporte y evidencias: `docs/AUDIT_PROMO_CANACO_2026-08-14.md`.
+
+### Cierre operativo 2026-08-14
+
+- **Cerrado:** restricción del checkout promo al evento CANACO.
+- **Cerrado:** reconciliación Stripe OXXO/SPEI cada 15 minutos, integrada al job durable existente y protegida con la misma credencial de cron.
+- **Cerrado:** pase QR compartido y comprobante Qlick para cada participante con email válido; recibo automático Stripe solicitado con `receipt_email`.
+- **Cerrado:** E2E sintética de dos personas, apartado $200, webhook duplicado e idempotencia; no crea cargos reales.
+- **Pendiente no bloqueante:** completar y verificar el correo de actualización cuando una orden `partial` se liquide a `paid` (el pase/comprobante inicial ya se envía correctamente).
+- **Pendiente operativo:** registrar un pago OXXO/SPEI real controlado y confirmar entrega de recibo Stripe en producción; no se requiere para activar el reconciliador.

@@ -62,7 +62,7 @@ import { findConfirmationIdForEvent } from "@/lib/events/find-confirmation-id";
 import { ensureEventConfirmation } from "@/lib/events/ensure-event-confirmation";
 import { setEventConfirmationPaymentState } from "@/lib/events/event-registration-state";
 import { settlePromoOrder, revokePromoOrder } from "@/lib/events/promo-orders-server";
-import { sendPromoPassEmail } from "@/lib/email/event-promo";
+import { sendPromoPassEmail, sendPromoPaymentReceiptEmail } from "@/lib/email/event-promo";
 import { getEventById } from "@/lib/events/events-server";
 import { logAdminAction } from "@/lib/crm/audit-server";
 import {
@@ -367,11 +367,32 @@ async function handlePromoCheckoutCompleted(
   if (!settled.ok) return { status: 200, body: { ok: false, mode: "promo_settlement_failed", order_id: promoOrderId, error: settled.error } };
   const event = await getEventById(orderRow.event_id);
   if (event && settled.qr) {
-    const { data: participantRows } = await supabase.from("event_promo_order_participants" as never).select("name").eq("promo_order_id" as never, promoOrderId).order("slot_number", { ascending: true });
-    const names = ((participantRows ?? []) as unknown as Array<{ name: string | null }>).map((row) => row.name).filter((name): name is string => Boolean(name));
-    const { data: primary } = await supabase.from("event_promo_order_participants" as never).select("email").eq("promo_order_id" as never, promoOrderId).eq("slot_number" as never, 1).maybeSingle();
-    const recipient = (primary as { email?: string | null } | null)?.email ?? null;
-    await sendPromoPassEmail({ event, recipient, participantNames: names, qrImageUrl: settled.qr.qrImageUrl, checkInUrl: settled.qr.checkInUrl, paymentStatus: paymentOption === "reservation" ? "partial" : "paid", eventQrTokenId: settled.qr.id });
+    const { data: participantRows } = await supabase
+      .from("event_promo_order_participants" as never)
+      .select("name, email")
+      .eq("promo_order_id" as never, promoOrderId)
+      .order("slot_number", { ascending: true });
+    const rows = (participantRows ?? []) as unknown as Array<{ name: string | null; email: string | null }>;
+    const names = rows.map((row) => row.name).filter((name): name is string => Boolean(name));
+    const recipients = Array.from(new Set(rows
+      .map((row) => row.email?.trim().toLowerCase() ?? "")
+      .filter(Boolean)));
+    const paymentStatus = paymentOption === "reservation" ? "partial" : "paid";
+    // En una promoción las dos personas reciben el mismo pase compartido y
+    // su comprobante Qlick. Cada helper es idempotente por destinatario.
+    for (const recipient of recipients) {
+      await sendPromoPassEmail({ event, recipient, participantNames: names, qrImageUrl: settled.qr.qrImageUrl, checkInUrl: settled.qr.checkInUrl, paymentStatus, eventQrTokenId: settled.qr.id });
+      await sendPromoPaymentReceiptEmail({
+        event,
+        recipient,
+        participantNames: names,
+        orderId: promoOrderId,
+        amountPaidMxn: paymentStatus === "partial" ? amountMxn : Number(orderRow.total_amount_mxn),
+        totalAmountMxn: Number(orderRow.total_amount_mxn),
+        paymentStatus,
+        paymentReference: session.id,
+      });
+    }
   }
   return { status: 200, body: { ok: true, mode: "promo_checkout_completed", order_id: promoOrderId, payment_id: paymentId, payment_status: paymentOption === "reservation" ? "partial" : "paid", confirmation_ids: settled.confirmationIds } };
 }

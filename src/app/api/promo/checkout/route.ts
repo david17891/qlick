@@ -38,7 +38,14 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ ok: false, error: "Body inválido." }, { status: 400 });
   }
-  const eventSlug = text(body.eventSlug) ?? PROMO_EVENT_SLUG;
+  const requestedEventSlug = text(body.eventSlug);
+  // La oferta no es un cupón genérico: solo puede crear órdenes para el
+  // evento CANACO. Ignorarlo y resolver otro slug permitiría aplicar $1,500
+  // a cualquier evento publicado con precio de $1,000.
+  if (requestedEventSlug && requestedEventSlug !== PROMO_EVENT_SLUG) {
+    return NextResponse.json({ ok: false, error: "La promoción no está disponible para este evento." }, { status: 404 });
+  }
+  const eventSlug = PROMO_EVENT_SLUG;
   const mode = body.mode === "single" ? "single" : "promo";
   const paymentOption = body.paymentOption === "full" ? "full" : "reservation";
   const method = METHODS.includes(body.method as PaymentMethod) ? body.method as PaymentMethod : "card";

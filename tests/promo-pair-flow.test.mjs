@@ -12,6 +12,9 @@ const promoServer = read("src/lib/events/promo-orders-server.ts");
 const webhook = read("src/app/api/webhooks/stripe/route.ts");
 const checkIn = read("src/app/api/check-in/[token]/route.ts");
 const staffCheckIn = read("src/app/api/staff/check-in/route.ts");
+const reconciliation = read("src/lib/cron/event-payment-reconciliation.ts");
+const stripeProvider = read("src/lib/payments/stripe-provider.ts");
+const emailPromo = read("src/lib/email/event-promo.ts");
 
 test("promo es aditiva y conserva un solo ledger promocional", () => {
   assert.match(migration, /create table if not exists public\.event_promo_orders/);
@@ -51,4 +54,23 @@ test("el QR compartido permite exactamente dos accesos y funciona con staff", ()
   assert.match(checkIn, /dos accesos permitidos/);
   assert.match(staffCheckIn, /claim_event_promo_qr_checkin/);
   assert.match(staffCheckIn, /maxCheckIns: 2/);
+});
+
+test("la promoción queda restringida a CANACO y no es un descuento genérico", () => {
+  assert.match(promoRoute, /requestedEventSlug && requestedEventSlug !== PROMO_EVENT_SLUG/);
+  assert.match(promoRoute, /const eventSlug = PROMO_EVENT_SLUG/);
+});
+
+test("Stripe solicita su recibo y Qlick emite comprobante propio", () => {
+  assert.match(stripeProvider, /payment_intent_data: \{ receipt_email: input\.userEmail \}/);
+  assert.match(emailPromo, /sendPromoPaymentReceiptEmail/);
+  assert.match(emailPromo, /emailType: "promo_receipt"/);
+  assert.match(webhook, /for \(const recipient of recipients\)/);
+});
+
+test("la reconciliación recupera OXXO/SPEI mediante el webhook firmado", () => {
+  assert.match(reconciliation, /stripe\.checkout\.sessions\.retrieve/);
+  assert.match(reconciliation, /stripeWebhookPost/);
+  assert.match(reconciliation, /checkout\.session\.async_payment_succeeded/);
+  assert.match(reconciliation, /event_payments/);
 });

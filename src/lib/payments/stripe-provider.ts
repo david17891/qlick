@@ -260,6 +260,12 @@ export const stripeProvider: PaymentProvider = {
         // En guest checkout, input.userEmail es vacío → omitimos el campo y
         // Stripe recolecta el email en el Checkout hosted.
         ...(input.userEmail ? { customer_email: input.userEmail } : {}),
+        // Solicitar también el recibo automático de Stripe. Esto no sustituye
+        // al comprobante propio de Qlick: Stripe lo envía cuando el pago se
+        // confirma, incluyendo pagos diferidos como OXXO/SPEI.
+        ...(input.userEmail
+          ? { payment_intent_data: { receipt_email: input.userEmail } }
+          : {}),
         // billing_address_collection por defecto en MX para Conekta/SPEI;
         // útil para CFDI futuro. Stripe lo recomienda para LATAM.
         // Para Fase 1 lo dejamos en 'auto' (Stripe decide).
