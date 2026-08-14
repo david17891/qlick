@@ -13,3 +13,10 @@
 - **Cómo revertir:** Desactivar el enlace `/promo` y dejar de ofrecer la
   opción promocional; el checkout normal, el ledger y los registros existentes
   permanecen intactos.
+
+## Extensión operativa — inscritos pendientes
+
+El panel de pagos ofrece enlaces individuales para los registros
+`payment_pending`. La herramienta no envía automáticamente ni crea órdenes:
+solo prepara el mensaje para revisión humana, conserva el estado comercial y
+dirige a `/promo`.

@@ -975,3 +975,15 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 - Validación: `test:ci` 1706/1706, type-check, lint, build y prueba focalizada
   de promoción 5/5.
 - No se enviaron mensajes masivos ni video automáticamente.
+## 2026-08-14 — Reactivación de inscritos pendientes con promoción
+
+- Se detectó que `/promo` funcionaba para nuevos prospectos, pero no había una
+  herramienta para ofrecerla a las confirmaciones existentes en
+  `payment_pending`.
+- El tab **Pagos** ahora prepara links `wa.me` uno por uno con el copy de
+  cierre, la URL pública y ambas opciones de precio. Los pendientes sin
+  teléfono quedan visibles como omitidos.
+- No hay envío masivo automático, no se toca el ledger ni se cambia el estado
+  del registro; el admin revisa cada conversación y puede adjuntar el video.
+- Pruebas nuevas: 2 casos de copy, filtrado por teléfono y ausencia de claims
+  de pago/QR antes de verificación.

@@ -501,3 +501,60 @@ export function buildEventBroadcast(input: {
     messagePreview: baseMessage.replace("{nombre}", "[nombre del confirmado]"),
   };
 }
+
+/**
+ * Construye invitaciones manuales para la promoción de cierre.
+ *
+ * Solo recibe confirmaciones que el caller ya filtró como
+ * `registration_status=payment_pending`; la función no consulta DB ni cambia
+ * estados. Cada enlace apunta al teléfono del prospecto para que el admin
+ * pueda revisar y enviar uno por uno. Esto permite ofrecer la promoción a los
+ * inscritos históricos sin activar un envío masivo ni saltarse opt-out,
+ * intervención humana o las plantillas oficiales de WhatsApp.
+ */
+export function buildPromoPendingBroadcast(input: {
+  confirmations: Array<{
+    id: string;
+    name: string;
+    phoneNormalized?: string | null;
+    phoneRaw?: string | null;
+  }>;
+  eventTitle: string;
+  eventDate?: string;
+  eventLocation?: string;
+  promoUrl: string;
+}): BroadcastResult {
+  const configured = Boolean(getSalesNumber());
+  const baseMessage = [
+    "Hola {nombre},",
+    `recibimos tus datos para \"${input.eventTitle}\"${input.eventDate ? `, el ${input.eventDate}` : ""}${input.eventLocation ? ` en ${input.eventLocation}` : ""}.`,
+    "Tu pago todavía está pendiente, así que te compartimos una promoción de cierre:",
+    "• 2 personas por $1,500 MXN",
+    "• Apartado de $200 MXN para las dos plazas",
+    "• También puedes pagar una sola persona por $1,000 MXN",
+    `Consulta las opciones aquí: ${input.promoUrl}`,
+    "El QR y el acceso se envían al verificar el pago. Si ya pagaste, ignora este mensaje.",
+    "— Equipo Qlick",
+  ].join("\n");
+  const items: BroadcastItem[] = [];
+  const skipped: BroadcastSkip[] = [];
+  for (const confirmation of input.confirmations) {
+    const phone = (confirmation.phoneNormalized ?? confirmation.phoneRaw ?? "").replace(/[^\d]/g, "");
+    if (phone.length < 10) {
+      skipped.push({ confirmationId: confirmation.id, name: confirmation.name, reason: "no_phone" });
+      continue;
+    }
+    items.push({
+      confirmationId: confirmation.id,
+      name: confirmation.name,
+      phone,
+      waLink: buildWaLink(phone, baseMessage.replace("{nombre}", confirmation.name.trim() || "ahí")),
+    });
+  }
+  return {
+    items,
+    skipped,
+    configured,
+    messagePreview: baseMessage.replace("{nombre}", "[nombre del pendiente]"),
+  };
+}

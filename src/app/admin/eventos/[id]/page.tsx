@@ -30,7 +30,7 @@ import {
   promoteSurveyAction,
 } from "./_actions";
 import { WHATSAPP_STATUSES, WHATSAPP_STATUS_LABEL, WHATSAPP_STATUS_TONE, type WhatsAppStatus } from "@/lib/leads/whatsapp-status";
-import { buildEventBroadcast } from "@/lib/contact/whatsapp";
+import { buildEventBroadcast, buildPromoPendingBroadcast } from "@/lib/contact/whatsapp";
 import { buildDirectWhatsAppLink, buildLeadOutreachMessage, buildEventReminderMessage } from "@/lib/contact/whatsapp";
 import { calculateEventMetrics } from "@/lib/events/event-metrics";
 import { CampaignsTab } from "./_components/CampaignsTab";
@@ -62,6 +62,8 @@ interface Props {
     view?: string;
     /** Broadcast de WhatsApp abierto: "1" muestra el panel en Confirmados. */
     broadcast?: string;
+    /** Invitaciones manuales de promoción para pendientes de pago. */
+    promo_broadcast?: string;
     /** Período del dashboard de campañas Meta. */
     campaign_period?: string;
   };
@@ -1359,6 +1361,19 @@ export default async function AdminEventoDetailPage({
             (() => {
               const { stats, payments, pendingConfirmations, promoOrders } =
                 paymentsSnapshot;
+              const showPromoBroadcast = searchParams.promo_broadcast === "1";
+              const promoBroadcast = buildPromoPendingBroadcast({
+                confirmations: pendingConfirmations.map((confirmation) => ({
+                  id: confirmation.id,
+                  name: confirmation.name,
+                  phoneNormalized: confirmation.phoneNormalized,
+                  phoneRaw: confirmation.phoneRaw,
+                })),
+                eventTitle: event.title,
+                eventDate: formatDate(event.startsAt),
+                eventLocation: event.location,
+                promoUrl: `${appBaseUrl()}/promo`,
+              });
               const fmtMoney = (centavos: number) =>
                 `$${(centavos / 100).toFixed(2)} MXN`;
               return (
@@ -1391,6 +1406,60 @@ export default async function AdminEventoDetailPage({
                       tone={stats.totalRevoked > 0 ? "amber" : "neutral"}
                     />
                   </div>
+
+                  <div className="p-5 border-b border-brand-50 flex flex-wrap items-center justify-between gap-3 bg-amber-50/40">
+                    <div>
+                      <p className="text-sm font-semibold text-ink">Promoción para inscritos pendientes</p>
+                      <p className="mt-1 text-xs text-ink-muted">Prepara mensajes individuales para quienes todavía no han pagado. No se envían automáticamente.</p>
+                    </div>
+                    {showPromoBroadcast ? (
+                      <Link
+                        href={`/admin/eventos/${params.id}?tab=payments`}
+                        scroll={false}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold border border-amber-200 text-ink-soft hover:bg-white transition"
+                      >
+                        ← Ocultar invitaciones
+                      </Link>
+                    ) : (
+                      <Link
+                        href={`/admin/eventos/${params.id}?tab=payments&promo_broadcast=1`}
+                        scroll={false}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 transition shadow-sm"
+                      >
+                        🎁 Preparar promoción
+                      </Link>
+                    )}
+                  </div>
+
+                  {showPromoBroadcast && (
+                    <div className="p-5 border-b border-brand-50 bg-amber-50/20">
+                      <div className="mb-4 p-3 rounded-lg bg-white border border-amber-200">
+                        <p className="text-xs font-semibold text-ink-muted mb-1">Vista previa del mensaje</p>
+                        <pre className="text-xs text-ink-soft whitespace-pre-wrap font-sans">{promoBroadcast.messagePreview}</pre>
+                      </div>
+                      {promoBroadcast.items.length === 0 ? (
+                        <p className="text-sm text-ink-muted italic">No hay pendientes con teléfono válido para contactar.</p>
+                      ) : (
+                        <ul className="space-y-2">
+                          {promoBroadcast.items.map((item) => (
+                            <li key={item.confirmationId} className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg border border-amber-100 bg-white">
+                              <div className="min-w-0">
+                                <p className="font-semibold text-sm text-ink truncate">{item.name}</p>
+                                <p className="text-xs text-ink-muted">+{item.phone}</p>
+                              </div>
+                              <a href={item.waLink} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-500 text-white hover:bg-emerald-600 transition shrink-0">
+                                📱 Abrir WhatsApp
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {promoBroadcast.skipped.length > 0 && (
+                        <p className="mt-3 text-xs text-ink-muted">Sin teléfono: {promoBroadcast.skipped.map((item) => item.name).join(", ")}</p>
+                      )}
+                      <p className="mt-4 text-xs text-ink-muted">Revisa cada conversación antes de enviarla. Si usarás video, adjúntalo manualmente en WhatsApp; esta herramienta no dispara una campaña masiva.</p>
+                    </div>
+                  )}
 
                   {/* Breakdown por metodo. Mini-barras con count + monto. */}
                   {Object.keys(stats.byMethod).length > 0 && (
