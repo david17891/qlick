@@ -90,13 +90,13 @@ export function mustEscalateToHuman(message: string): {
 
   if (/reembolso|devoluci[oó]n|queja|denuncia|demand|abogad/.test(t))
     return { escalate: true, reason: "Queja/reembolso/jurídico" };
+  if (/no me funciona|error|bug|no puedo|soporte/.test(t))
+    return { escalate: true, reason: "Soporte técnico de plataforma" };
   if (
     !routinePaymentHelp &&
     /pago|pagu[eé]|transferencia|spei|oxxo|tarjeta|rechaz|deposit[eé]|cobr[ée]|cargo/.test(t)
   )
     return { escalate: true, reason: "Pagos: requiere validación humana" };
-  if (/no me funciona|error|bug|no puedo|soporte/.test(t))
-    return { escalate: true, reason: "Soporte técnico de plataforma" };
   if (/datos personales|privacidad|baja|eliminar mis datos/.test(t))
     return { escalate: true, reason: "Datos personales / privacidad" };
 
