@@ -3,6 +3,7 @@ import { Navbar, Footer } from "@/components/layout";
 import { Card, Container, Badge } from "@/components/ui";
 import { getPublishedEventBySlug } from "@/lib/events/events-server";
 import { PromoForm } from "./PromoForm";
+import { EventMarketingSummary } from "@/components/events/EventMarketingSummary";
 
 const EVENT_SLUG = "desarrollo-estructura-curso-canaco";
 
@@ -28,7 +29,7 @@ export default async function PromoPage() {
             <Card className="p-7 self-start">
               <Badge tone="info">Promoción especial</Badge>
               <h1 className="mt-3 text-3xl font-bold text-ink">{event.title}</h1>
-              <p className="mt-3 text-sm leading-6 text-ink-soft">{event.description}</p>
+              <EventMarketingSummary event={event} showPromoLink={false} />
               <ul className="mt-5 space-y-2 text-sm text-ink-soft">
                 <li>📍 {event.location}</li>
                 <li>📅 {new Date(event.startsAt).toLocaleString("es-MX", { dateStyle: "long", timeStyle: "short", timeZone: "America/Phoenix" })}</li>

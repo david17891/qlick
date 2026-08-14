@@ -35,6 +35,7 @@ import type { Event } from "@/types/events";
 import { submitEventRegistration } from "./actions";
 import { EVENT_TIMEZONE } from "@/lib/datetime";
 import { cleanEventTitle } from "@/lib/utils";
+import { EventMarketingSummary } from "@/components/events/EventMarketingSummary";
 
 type Status = "idle" | "success" | "already-registered" | "error";
 
@@ -198,11 +199,7 @@ export function EventView({ event, pastEvent }: Props) {
             reactiva, ver OPEN_ITEMS.md → B-5. El campo cover_image_url
             en DB se conserva (no se borra) por compat.
           */}
-          {event.description && (
-            <p className="mt-8 max-w-3xl whitespace-pre-line text-lg leading-relaxed text-ink-soft">
-              {event.description.replace(/\*\*/g, "")}
-            </p>
-          )}
+          <EventMarketingSummary event={event} />
           {showHeroCta && (
             <div className="mt-10">
               <a
@@ -210,11 +207,13 @@ export function EventView({ event, pastEvent }: Props) {
                 className="inline-block focus:outline-none"
               >
                 <Button size="lg" variant="primary">
-                  Confirmar asistencia ↓
+                  {paidEvent ? "Apartar mi lugar ↓" : "Confirmar asistencia ↓"}
                 </Button>
               </a>
               <p className="mt-3 text-xs text-ink-muted">
-                El registro es gratis y te toma menos de un minuto.
+                {paidEvent
+                  ? "El pago se verifica antes de confirmar tu lugar y enviar tu pase."
+                  : "El registro es gratis y te toma menos de un minuto."}
               </p>
             </div>
           )}
