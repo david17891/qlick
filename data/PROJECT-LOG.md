@@ -1045,3 +1045,5 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 - Validación: 9/9 pruebas promocionales, type-check y lint correctos; migración
   aplicada en Supabase. Pendientes históricos (QR sin confirmación y pago
   pendiente) permanecen sin cambios para revisión administrativa.
+- Producción: `dpl_5BGvY6Vsp6yEo665zjtoWcuatSPC`; aliases `qlick.digital` y
+  `www.qlick.digital` verificados; smoke webhook 400 y cron 401 sin credenciales.

@@ -1096,3 +1096,6 @@ con information_schema.columns + pg_constraint antes de culpar al fix."
   `20260814150000_event_email_dedupe_key.sql`.
 - Validación: E2E sintética apartado → duplicado → liquidación → duplicado,
   9/9 pruebas promocionales, type-check y lint correctos.
+- Producción: `dpl_5BGvY6Vsp6yEo665zjtoWcuatSPC`, aliases `qlick.digital` y
+  `www.qlick.digital` activos; smoke landing/promo 200, webhook sin firma 400
+  y cron sin secreto 401.
