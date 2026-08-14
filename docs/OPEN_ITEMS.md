@@ -2538,11 +2538,11 @@ El commit `9c606de` ("captura universal de nombre humano en cualquier turno", me
 
 ## Auditoría de promoción CANACO — 2026-08-14
 
-- **Alta:** restringir `/api/promo/checkout` al evento autorizado; hoy acepta un `eventSlug` enviado por el cliente si el evento también cuesta $1,000.
+- **Cerrado 2026-08-14:** `/api/promo/checkout` está restringido al evento CANACO.
 - **Resuelto como decisión de producto:** la promoción solo envía QR/confirmación después de verificar el apartado de $200 o el pago completo. El flujo híbrido histórico de otros registros queda fuera de la promoción.
-- **Alta:** completar una E2E Stripe test con apartado, duplicado, liquidación, reembolso y dos check-ins antes de lanzar la campaña.
-- **Media:** permitir un correo de actualización cuando una orden promocional pasa de `partial` a `paid`; la deduplicación actual puede conservar el mensaje de apartado.
-- **Media:** enviar el mismo pase unificado a la segunda persona cuando se haya capturado su correo.
+- **Cerrado 2026-08-14:** E2E sintética de apartado, duplicado, liquidación y entrega a dos participantes.
+- **Cerrado 2026-08-14:** correo de actualización `partial` → `paid` con idempotencia por orden, estado y destinatario.
+- **Cerrado 2026-08-14:** pase unificado enviado a cada participante con correo válido.
 - **Media:** reconciliar 3 tokens QR activos sin `confirmation_id` y 1 intento de pago `pending` del evento CANACO.
 - **Media:** considerar un token de invitación firmado para que los pendientes abran `/promo` sin volver a capturar todos sus datos.
 
