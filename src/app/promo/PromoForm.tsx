@@ -65,7 +65,8 @@ export function PromoForm({ eventSlug }: { eventSlug: string }) {
     <form onSubmit={submit} className="space-y-5">
       <div>
         <h2 className="text-xl font-bold text-ink">Reserva tu inscripción</h2>
-        <p className="mt-1 text-sm text-ink-muted">Primero capturamos los datos. El acceso y el QR se habilitan después de verificar el pago o apartado.</p>
+        <p className="mt-1 text-sm text-ink-muted">Elige una opción, deja tus datos y continúa al pago.</p>
+        <p className="mt-1 hidden text-xs text-ink-muted sm:block">El acceso y el QR se habilitan después de verificar el pago o apartado.</p>
       </div>
       <fieldset className="space-y-2">
         <legend className="text-sm font-semibold text-ink">Elige tu opción</legend>
@@ -85,15 +86,17 @@ export function PromoForm({ eventSlug }: { eventSlug: string }) {
         <label className="text-sm font-medium text-ink">Teléfono (opcional)<input name="primaryPhone" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="+52..." /></label>
       </div>
 
-      {mode === "promo" && <div className="rounded-xl border border-slate-200 p-4">
-        <p className="text-sm font-semibold text-ink">Segunda persona (opcional)</p>
-        <p className="mt-1 text-xs text-ink-muted">Puedes dejarla pendiente y asignarla después. Si usa el mismo correo, indícalo o déjalo vacío.</p>
+      {mode === "promo" && <details className="rounded-xl border border-slate-200 p-4">
+        <summary className="cursor-pointer list-none text-sm font-semibold text-ink marker:hidden">
+          Agregar segunda persona <span className="font-normal text-ink-muted">(opcional)</span>
+        </summary>
+        <p className="mt-2 text-xs text-ink-muted">Puedes dejarla pendiente y asignarla después. Si usa el mismo correo, indícalo o déjalo vacío.</p>
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
           <label className="text-sm font-medium text-ink">Nombre<input name="secondaryName" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Pendiente de asignar" /></label>
           <label className="text-sm font-medium text-ink">Correo (opcional)<input name="secondaryEmail" type="email" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Puede ser el mismo" /></label>
           <label className="text-sm font-medium text-ink">Teléfono (opcional)<input name="secondaryPhone" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="+52..." /></label>
         </div>
-      </div>}
+      </details>}
 
       {mode === "promo" && <fieldset className="space-y-2">
         <legend className="text-sm font-semibold text-ink">Forma de pago</legend>

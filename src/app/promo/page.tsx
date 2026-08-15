@@ -23,10 +23,10 @@ export default async function PromoPage() {
   return (
     <>
       <Navbar />
-      <main className="min-h-screen bg-brand-50/30 py-10">
+      <main className="min-h-screen bg-brand-50/30 py-5 sm:py-10">
         <Container size="wide">
           <div className="mx-auto max-w-5xl grid gap-6 lg:grid-cols-[.85fr_1.15fr]">
-            <Card className="p-7 self-start">
+            <Card className="order-2 self-start p-4 sm:p-7 lg:order-1">
               <Badge tone="info">Promoción de cierre</Badge>
               <h1 className="mt-3 text-3xl font-bold text-ink">{event.title}</h1>
               <EventMarketingSummary event={event} showPromoLink={false} />
@@ -44,7 +44,7 @@ export default async function PromoPage() {
                 <p className="mt-1 text-sm text-ink-soft">También puedes registrarte como una persona por el precio normal de $1,000 MXN.</p>
               </div>
             </Card>
-            <Card className="p-7">
+            <Card className="order-1 p-4 sm:p-7 lg:order-2">
               <PromoForm eventSlug={event.slug} />
             </Card>
           </div>
