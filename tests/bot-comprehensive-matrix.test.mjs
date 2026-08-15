@@ -196,7 +196,7 @@ async function restoreBotMode() {
   await supabase.from("system_settings").upsert(
     {
       key: "bot_global_mode",
-      value: "super_executive_v2",
+      value: previousBotMode,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "key" }
@@ -286,8 +286,17 @@ async function getEmailLogForRecipient(email) {
 // ────────────────────────────────────────────────────────────
 let paidEvent = null;
 let freeEvent = null;
+let previousBotMode = "super_executive_v2";
 
 before(async () => {
+  const { data: currentMode } = await supabase
+    .from("system_settings")
+    .select("value")
+    .eq("key", "bot_global_mode")
+    .maybeSingle();
+  if (currentMode?.value !== null && currentMode?.value !== undefined) {
+    previousBotMode = currentMode.value;
+  }
   paidEvent = await findEventByType(1);
   freeEvent = await findEventByType(0);
   if (!paidEvent) {
@@ -312,7 +321,7 @@ after(async () => {
     }
   }
   await restoreBotMode();
-  console.log("[CLEANUP] Mode restaurado a super_executive_v2");
+  console.log("[CLEANUP] Mode restaurado al valor previo");
 });
 
 // ────────────────────────────────────────────────────────────

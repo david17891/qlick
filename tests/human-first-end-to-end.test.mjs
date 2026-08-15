@@ -252,6 +252,7 @@ async function getEmailLogForRecipient(email) {
 const cleanupLeads = [];
 let activeEvent = null;
 let testPhoneSequence = 0;
+let previousBotMode = JSON.stringify("super_executive_v2");
 
 function makeTestPhone() {
   const entropy = Date.now() + testPhoneSequence++;
@@ -259,6 +260,14 @@ function makeTestPhone() {
 }
 
 before(async () => {
+  const { data: currentMode } = await supabase
+    .from("system_settings")
+    .select("value")
+    .eq("key", "bot_global_mode")
+    .maybeSingle();
+  if (currentMode?.value !== null && currentMode?.value !== undefined) {
+    previousBotMode = currentMode.value;
+  }
   await ensureHumanFirstMode();
   activeEvent = await findActiveEvent();
   if (!activeEvent) {
@@ -281,16 +290,16 @@ after(async () => {
       console.error(`  [WARN] cleanup lead ${lead.id} fallo:`, e.message);
     }
   }
-  // Restaurar mode a v2 (default actual).
+  // Restaurar exactamente el modo que tenía producción antes de la prueba.
   await supabase.from("system_settings").upsert(
     {
       key: "bot_global_mode",
-      value: JSON.stringify("super_executive_v2"),
+      value: previousBotMode,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "key" }
   );
-  console.log(`[CLEANUP] Mode restaurado a super_executive_v2`);
+  console.log(`[CLEANUP] Mode restaurado al valor previo`);
 });
 
 // ────────────────────────────────────────────────────────────

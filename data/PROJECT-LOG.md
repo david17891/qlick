@@ -1086,3 +1086,11 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
   401 y el webhook sin firma respondió 403.
 - No se cambió el modo global ni se enviaron mensajes reales durante el
   despliegue.
+
+### 2026-08-15 — Teardown de pruebas sin cambio de modo
+
+- Se corrigieron los E2E de human-first, matriz del bot, funnel Stripe y
+  reproducción de captura para conservar el valor original de
+  `system_settings.bot_global_mode` y restaurarlo al cerrar.
+- La suite ya no debe dejar `super_executive_v2` por un cleanup hardcoded cuando
+  una corrida controlada parta de `human_first`.

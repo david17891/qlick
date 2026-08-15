@@ -40,6 +40,9 @@
 - ⚪ **Modo global:** producción está en `super_executive_v2`; cambiar a
   `human_first` queda pendiente de confirmación explícita y debe hacerse con
   verificación posterior del panel y de un contacto sintético.
+- ✅ **Teardown de E2E:** las pruebas que cambian `bot_global_mode` ahora
+  restauran el valor que encontraron; no vuelven a imponer v2 por defecto.
+  Evitar corridas contra producción sin una ventana controlada.
 
 ## Auditoría segura 2026-08-13
 

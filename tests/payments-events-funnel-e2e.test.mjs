@@ -111,6 +111,18 @@ const created = {
 const runId = `funnel-e2e-${Date.now()}`;
 const testEmail = `${runId}@example.com`;
 const testPhone = `+525599${String(Date.now()).slice(-6)}`;
+let previousBotMode = JSON.stringify("super_executive_v2");
+
+before(async () => {
+  const { data: currentMode } = await supabase
+    .from("system_settings")
+    .select("value")
+    .eq("key", "bot_global_mode")
+    .maybeSingle();
+  if (currentMode?.value !== null && currentMode?.value !== undefined) {
+    previousBotMode = currentMode.value;
+  }
+});
 
 async function cleanup() {
   if (created.eventId) {
@@ -130,7 +142,7 @@ async function cleanup() {
   if (created.eventId) await supabase.from("events").delete().eq("id", created.eventId);
   await supabase.from("system_settings").upsert({
     key: "bot_global_mode",
-    value: JSON.stringify("super_executive_v2"),
+    value: previousBotMode,
     updated_at: new Date().toISOString(),
   }, { onConflict: "key" });
 }

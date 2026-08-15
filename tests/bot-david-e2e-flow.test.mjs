@@ -79,6 +79,18 @@ before(() => {
 });
 
 const cleanupLeads = [];
+let previousBotMode = "super_executive_v2";
+
+before(async () => {
+  const { data: currentMode } = await supabase
+    .from("system_settings")
+    .select("value")
+    .eq("key", "bot_global_mode")
+    .maybeSingle();
+  if (currentMode?.value !== null && currentMode?.value !== undefined) {
+    previousBotMode = currentMode.value;
+  }
+});
 
 async function createPreRegisteredLead(phone) {
   const ts = Date.now();
@@ -114,6 +126,14 @@ async function cleanupTestLead(leadId, phone) {
   await supabase.from("leads").delete().eq("id", leadId);
 }
 
+async function restoreBotMode() {
+  await supabase.from("system_settings").upsert({
+    key: "bot_global_mode",
+    value: previousBotMode,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "key" });
+}
+
 after(async () => {
   for (const lead of cleanupLeads) {
     try {
@@ -122,6 +142,7 @@ after(async () => {
       console.error(`  [WARN] cleanup lead ${lead.id} fallo:`, e.message);
     }
   }
+  await restoreBotMode();
 });
 
 test("David E2E: body 'David Martinez david@x.com' crea confirmation con name real + LINK", async () => {

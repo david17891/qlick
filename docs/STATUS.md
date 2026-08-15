@@ -26,6 +26,12 @@
 > `qlick`, con `qlick.digital` y `www.qlick.digital` activos. Smoke posterior:
 > `/` y `/promo` 200, cron sin credencial 401 y webhook sin firma 403.
 
+> **Ajuste posterior de seguridad de pruebas 2026-08-15:** los E2E que
+> escriben `system_settings.bot_global_mode` ahora capturan y restauran el
+> valor previo; ya no fuerzan `super_executive_v2` al terminar. La suite no
+> debe ejecutarse contra datos de producción salvo una corrida explícita y
+> controlada.
+
 > **Addendum 2026-08-14 — formulario móvil de `/promo`:** se priorizó el
 > formulario en teléfonos, se redujo el texto inicial y la segunda persona
 > quedó dentro de un desplegable opcional. Se conservaron intactos los campos
