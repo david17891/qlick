@@ -1,5 +1,13 @@
 # Project Status — Snapshot vivo
 
+> **Addendum 2026-08-14 — formulario móvil de `/promo`:** se priorizó el
+> formulario en teléfonos, se redujo el texto inicial y la segunda persona
+> quedó dentro de un desplegable opcional. Se conservaron intactos los campos
+> principales, la selección de promoción/registro individual y el flujo de
+> pago. Deploy productivo `dpl_6Nn6qSvk9vxo65njicknzCdL8AgU`, estado `READY`,
+> alias `https://www.qlick.digital/promo` verificado en viewport móvil 390×844:
+> el formulario aparece primero y el `<details>` permanece cerrado.
+
 > **Addendum 2026-08-14 — auditoría funcional de promoción:** se verificaron
 > producción, Supabase, RLS, migraciones, `/promo`, checkout normal, webhooks,
 > QR, correo y continuidad de pendientes. La landing y `/promo` responden 200;

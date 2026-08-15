@@ -1047,3 +1047,13 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
   pendiente) permanecen sin cambios para revisión administrativa.
 - Producción: `dpl_5BGvY6Vsp6yEo665zjtoWcuatSPC`; aliases `qlick.digital` y
   `www.qlick.digital` verificados; smoke webhook 400 y cron 401 sin credenciales.
+
+### 2026-08-14 — simplificación móvil de `/promo`
+
+- En teléfonos, el formulario de promoción aparece antes de la información
+  ampliada y usa menos espacio vertical; la segunda persona queda en un
+  desplegable opcional. No se modificaron precios, captura, órdenes ni pagos.
+- Validación: type-check, lint y build correctos; viewport 390×844 verificado
+  en producción con el desplegable cerrado.
+- Producción: `dpl_6Nn6qSvk9vxo65njicknzCdL8AgU`; alias `www.qlick.digital`
+  activo y ruta `/promo` HTTP 200.
