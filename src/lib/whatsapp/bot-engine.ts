@@ -6488,9 +6488,9 @@ export async function processInboundMessage(
             ? "tu solicitud de privacidad"
             : "tu solicitud";
       const handoffBody = handoffResult.persisted
-        ? `Tu solicitud quedó registrada para que un asesor de Qlick revise ${handoffTopic}. Te responderá por este mismo WhatsApp.${handoffResult.emailSent ? " Ya enviamos el aviso al equipo." : " El registro está guardado; si es urgente, escríbenos a hola@qlick.marketing."}`
+        ? `Tu solicitud quedó registrada para que un asesor de Qlick revise ${handoffTopic}. Te responderá por este mismo WhatsApp.${handoffResult.emailSent ? " El aviso fue aceptado para envío por correo; si no aparece, revisa spam." : " El registro está guardado; si es urgente, escríbenos a hola@qlick.marketing."}`
         : handoffResult.emailSent
-          ? `Recibí tu mensaje y ya enviamos el aviso a un asesor para revisar ${handoffTopic}. Te responderá por este mismo WhatsApp.`
+          ? `Recibí tu mensaje y el aviso fue aceptado para envío a un asesor para revisar ${handoffTopic}. Te responderá por este mismo WhatsApp.`
           : `Recibí tu mensaje, pero no pude completar el aviso automático. Para que revisemos ${handoffTopic}, escríbenos a hola@qlick.marketing.`;
 
       const provider = getActiveWhatsAppProvider();
@@ -6538,6 +6538,7 @@ export async function processInboundMessage(
             handoff_notified: handoffResult.ok,
             handoff_db_persisted: handoffResult.persisted,
             handoff_email_sent: handoffResult.emailSent,
+            handoff_email_accepted: handoffResult.emailSent,
           }
         }).catch((err) => {
           // eslint-disable-next-line no-console
@@ -6571,7 +6572,7 @@ export async function processInboundMessage(
         note:
           `Escalación a humano (${escalation.reason ?? "sin razón"}). ` +
           `Handoff ${handoffResult.ok ? "registrado" : "falló, ver log"}; ` +
-          `correo ${handoffResult.emailSent ? "enviado" : "no confirmado"}. ` +
+          `correo ${handoffResult.emailSent ? "aceptado para envío" : "no confirmado"}. ` +
           `Respuesta al lead ${handoffSend.ok ? "enviada" : "falló"}.`
       };
     }

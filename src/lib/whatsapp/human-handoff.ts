@@ -35,7 +35,7 @@ export interface HumanHandoffResult {
   ok: boolean;
   /** El registro operativo existe en `handoff_requests`. */
   persisted: boolean;
-  /** Brevo confirmó la entrega de la alerta al correo administrativo. */
+  /** Brevo aceptó la solicitud de envío; no confirma llegada al buzón. */
   emailSent: boolean;
   requestId?: string;
   error?: string;
@@ -113,12 +113,25 @@ async function markHandoffNotification(
   if (!requestId) return;
   try {
     const supabase = createSupabaseAdminClient();
+    const { data: current } = await supabase
+      .from("handoff_requests" as never)
+      .select("notes")
+      .eq("id", requestId)
+      .maybeSingle();
+    const currentNotes = (current as { notes?: unknown } | null)?.notes;
+    const previousNotes = typeof currentNotes === "string" ? currentNotes.trim() : "";
+    const notificationNote = emailSent
+      ? "notification_email_accepted"
+      : "notification_email_unavailable_or_failed";
+    const nextNotes = previousNotes
+      ? previousNotes.includes(notificationNote)
+        ? previousNotes
+        : `${previousNotes}; ${notificationNote}`
+      : notificationNote;
     await supabase
       .from("handoff_requests" as never)
       .update({
-        notes: emailSent
-          ? "notification_email_sent"
-          : "notification_email_unavailable_or_failed",
+        notes: nextNotes,
       } as never)
       .eq("id", requestId);
   } catch {
