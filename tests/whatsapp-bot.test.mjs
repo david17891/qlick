@@ -1132,7 +1132,7 @@ test("processInboundMessage: 'quiero un reembolso' → intent=human_handoff + te
     assert.doesNotMatch(result.responsePreview ?? "", /reembolso/i);
     assert.match(
       result.responsePreview ?? "",
-      /asesor de Qlick te contactará pronto/i
+      /aviso autom[aá]tico|asesor de Qlick/i
     );
     assert.match(result.note, /Escalación a humano/i);
     assert.match(result.note, /Reembolso/i);

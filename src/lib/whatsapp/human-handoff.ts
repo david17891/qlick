@@ -30,6 +30,17 @@ interface HandoffInsertResult {
   error?: string;
 }
 
+export interface HumanHandoffResult {
+  /** La solicitud quedó persistida o se envió la alerta por correo. */
+  ok: boolean;
+  /** El registro operativo existe en `handoff_requests`. */
+  persisted: boolean;
+  /** Brevo confirmó la entrega de la alerta al correo administrativo. */
+  emailSent: boolean;
+  requestId?: string;
+  error?: string;
+}
+
 /**
  * Persiste el handoff a Supabase. Best-effort: si falla, no lanza.
  */
@@ -95,23 +106,60 @@ async function sendHandoffEmailIfPossible(args: HumanHandoffArgs): Promise<boole
   }
 }
 
+async function markHandoffNotification(
+  requestId: string | undefined,
+  emailSent: boolean,
+): Promise<void> {
+  if (!requestId) return;
+  try {
+    const supabase = createSupabaseAdminClient();
+    await supabase
+      .from("handoff_requests" as never)
+      .update({
+        notes: emailSent
+          ? "notification_email_sent"
+          : "notification_email_unavailable_or_failed",
+      } as never)
+      .eq("id", requestId);
+  } catch {
+    // La solicitud ya está guardada; no convertir una falla de telemetría en
+    // una segunda falla visible al lead.
+  }
+}
+
+/**
+ * Variante detallada para el bot. Antes un booleano mezclaba persistencia en
+ * DB y correo enviado, por lo que `handoff_notified=true` podía significar
+ * únicamente que el registro existía. Se conserva el wrapper booleano abajo
+ * para callers legacy.
+ */
+export async function sendHumanHandoffDetailed(
+  args: HumanHandoffArgs,
+): Promise<HumanHandoffResult> {
+  const dbResult = await persistHandoffToDb(args);
+  const emailSent = await sendHandoffEmailIfPossible(args);
+  await markHandoffNotification(dbResult.id, emailSent);
+  if (!dbResult.ok) {
+    // eslint-disable-next-line no-console
+    console.warn("[human-handoff] persist failed", dbResult.error);
+  }
+  return {
+    ok: dbResult.ok || emailSent,
+    persisted: dbResult.ok,
+    emailSent,
+    requestId: dbResult.id,
+    error: dbResult.error,
+  };
+}
+
 /**
  * Punto de entrada principal. Persiste a DB y, si está configurado, manda
  * email también. Nunca lanza. Devuelve `true` si al menos uno de los dos
  * se procesó OK.
  */
 export async function sendHumanHandoff(args: HumanHandoffArgs): Promise<boolean> {
-  const dbResult = await persistHandoffToDb(args);
-  const emailResult = await sendHandoffEmailIfPossible(args);
-  // Log para debugging en prod
-  if (!dbResult.ok) {
-    // eslint-disable-next-line no-console
-    console.warn(
-      "[human-handoff] persist failed",
-      dbResult.error
-    );
-  }
-  return dbResult.ok || emailResult;
+  const result = await sendHumanHandoffDetailed(args);
+  return result.ok;
 }
 
 function escapeHtml(s: string): string {

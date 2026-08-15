@@ -259,7 +259,16 @@ export const metaCloudApiProvider: WhatsAppProvider = {
 
         const errMsg =
           data.error?.message ?? `HTTP ${res.status} ${res.statusText}`;
-          const isRetryable = res.status >= 500;
+        const errorContext = [
+          data.error?.code !== undefined ? `code=${data.error.code}` : null,
+          data.error?.error_subcode !== undefined
+            ? `subcode=${data.error.error_subcode}`
+            : null,
+          data.error?.type ? `type=${data.error.type}` : null,
+        ]
+          .filter(Boolean)
+          .join(" ");
+        const isRetryable = res.status >= 500;
 
         // Meta puede rechazar un interactive con 131009 aun cuando el
         // contenido textual sea válido (por ejemplo, por restricciones de
@@ -325,7 +334,6 @@ export const metaCloudApiProvider: WhatsAppProvider = {
           errorType: data.error?.type,
           message: errMsg,
           url,
-          to: request.to,
           templateName: request.templateName,
           interactiveType: request.interactive?.type
         });
@@ -333,7 +341,7 @@ export const metaCloudApiProvider: WhatsAppProvider = {
         lastResult = {
           ok: false,
           provider: "meta_cloud_api",
-          note: `Cloud API error: ${errMsg}${ctxSuffix}`
+          note: `Cloud API error${errorContext ? ` (${errorContext})` : ""}: ${errMsg}${ctxSuffix}`
         };
 
         if (!isRetryable || attempt === MAX_ATTEMPTS) {

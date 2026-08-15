@@ -21,6 +21,26 @@
 
 ## Snapshot operativo 2026-08-13 — housekeeping
 
+## Auditoría de entregas y handoff 2026-08-15
+
+- ✅ **Pregunta de equipo:** celular/laptop ya no escala al handoff genérico;
+  responde desde contexto conocido del evento y conserva la opción de apoyo
+  humano para incidencias reales.
+- ✅ **Diagnóstico de entregas:** los próximos fallos de Meta conservarán
+  código, subcódigo, tipo y mensaje acotado en `whatsapp_outbound_actions` y
+  en el status webhook. Los fallos anteriores no pueden reconstruirse porque
+  Meta no devolvió esos campos a la base histórica.
+- ✅ **Handoff verificable:** `handoff_requests` sigue siendo la fuente del
+  registro; la nota separa solicitud guardada de aviso de correo aceptado por
+  Brevo. “Aceptado” no equivale a entrega en bandeja y se revisará el buzón o
+  el proveedor cuando sea necesario.
+- 🟡 **Suite heredada:** 6 fallos quedan separados (QR previo al pago,
+  fixtures sin lead, y matcher móvil obsoleto). No bloquean esta reparación,
+  pero requieren actualizar las pruebas en una pasada específica.
+- ⚪ **Modo global:** producción está en `super_executive_v2`; cambiar a
+  `human_first` queda pendiente de confirmación explícita y debe hacerse con
+  verificación posterior del panel y de un contacto sintético.
+
 ## Auditoría segura 2026-08-13
 
 - **CI:** el fixture de persistencia fue corregido; `npm run test:ci` local

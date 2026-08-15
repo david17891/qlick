@@ -34,7 +34,7 @@
  * @server
  */
 
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { debugLog, errorLog, infoLog } from "../log";
@@ -60,7 +60,7 @@ import {
   SUMMARY_EVERY,
   recordAndCheckRateLimit
 } from "../ai";
-import { sendHumanHandoff } from "./human-handoff";
+import { sendHumanHandoffDetailed } from "./human-handoff";
 import { mustEscalateToHuman, stripEscalateFlag, sanitizeLLMOutput } from "../ai/guardrails";
 // FIX 2026-07-12 (Sprint v16 PR #2.4, M4): helpers puros de matriz de
 // pausa y helpers de system_settings para leer los switches clave
@@ -128,6 +128,10 @@ import type { ConversationWindow } from "../ai/conversation-window";
 
 import type { IncomingWhatsAppMessage } from "./webhooks/types";
 import { getActiveWhatsAppProvider } from ".";
+import {
+  buildEventDeviceReply,
+  isEventDeviceQuestion,
+} from "./known-event-answers";
 // FIX 2026-07-03 (sesion David, "no aparece en confirmados"): el bot debe
 // SIEMPRE registrar la confirmacion en event_confirmations cuando un lead
 // completa el flow de inscripcion (provide_email) o re-envia un QR existente
@@ -1956,6 +1960,53 @@ async function resolveConversationEventId(input: {
     });
   }
   return match?.event.id ?? null;
+}
+
+/**
+ * Registra un intento outbound fallido sin crear una respuesta fantasma en
+ * `lead_whatsapp_conversations`. La tabla operativa es la superficie de
+ * reintento/revisión; el CRM solo muestra mensajes que Meta aceptó.
+ */
+async function recordFailedOutboundAction(input: {
+  supabase: SupabaseAdmin | null;
+  leadId?: string | null;
+  phone: string;
+  inboundMessageId?: string | null;
+  actionType: string;
+  intent?: string | null;
+  templateName?: string | null;
+  note?: string | null;
+}): Promise<void> {
+  if (!input.supabase) return;
+  const seed = `${input.inboundMessageId ?? "no-wamid"}:${input.actionType}`;
+  const dedupeKey = `wa-failure:${createHash("sha256").update(seed).digest("hex")}`;
+  const errorCode = input.note?.match(/(?:error(?:Code)?|code|HTTP)\D+(\d{3,})/i)?.[1] ?? null;
+  const errorSubcode = input.note?.match(/(?:subcode|error_subcode)\D+(\d{3,})/i)?.[1] ?? null;
+  try {
+    await input.supabase.from("whatsapp_outbound_actions" as never).upsert(
+      {
+        dedupe_key: dedupeKey,
+        lead_id: input.leadId ?? null,
+        phone_hash: createHash("sha256").update(input.phone).digest("hex"),
+        action_type: input.actionType,
+        status: "failed",
+        error_code: errorCode,
+        error_subcode: errorSubcode,
+        error_type: "provider_send_failure",
+        metadata: {
+          intent: input.intent ?? null,
+          template_name: input.templateName ?? null,
+          note: input.note?.slice(0, 500) ?? null,
+        },
+      } as never,
+      { onConflict: "dedupe_key", ignoreDuplicates: true } as never,
+    );
+  } catch (err) {
+    errorLog("[whatsapp/bot] failed outbound action persist failed", {
+      leadId: input.leadId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 /**
@@ -6318,12 +6369,89 @@ export async function processInboundMessage(
   });
 
   if (body && !OPT_OUT_RE.test(body)) {
+    // Duda comercial de bajo riesgo: se responde con contexto conocido antes
+    // de la escalación y del LLM. Así "¿llevo laptop?" no termina en un
+    // handoff genérico ni se clasifica como privacidad/soporte.
+    if (isEventDeviceQuestion(body)) {
+      const deviceReply = buildEventDeviceReply();
+      const provider = getActiveWhatsAppProvider();
+      let deviceSend: {
+        ok: boolean;
+        externalId?: string;
+        demo?: boolean;
+        note?: string;
+      } = { ok: false };
+      try {
+        const result = await provider.send({ to: phoneNormalized, body: deviceReply });
+        deviceSend = {
+          ok: result.ok,
+          externalId: result.externalId,
+          demo: result.demo,
+          note: result.note,
+        };
+      } catch (err) {
+        errorLog("[whatsapp/bot] device answer send failed", {
+          leadId: lead.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      if (!deviceSend.ok) {
+        await recordFailedOutboundAction({
+          supabase,
+          leadId: lead.id,
+          phone: phoneNormalized,
+          inboundMessageId: message.messageId,
+          actionType: "event_device_answer",
+          intent: "question",
+          note: deviceSend.note,
+        });
+      }
+      let deviceConvId: string | null = null;
+      if (supabase && deviceSend.ok) {
+        deviceConvId = await persistConversation(supabase, {
+          lead_id: lead.id,
+          phone_normalized: phoneNormalized,
+          direction: "outbound",
+          message_type: "text",
+          body: deviceReply,
+          whatsapp_message_id: deviceSend.externalId ?? null,
+          related_event_id: conversationEventId,
+          metadata: {
+            intent: "question",
+            answer_key: "event_device_requirements",
+            auto_sent: true,
+            auto_sent_source: "bot",
+            demo: deviceSend.demo ?? false,
+          },
+        }).catch((err) => {
+          errorLog("[whatsapp/bot] device answer persist failed", {
+            leadId: lead.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          return null;
+        });
+      }
+      return {
+        ok: deviceSend.ok,
+        intent: "question",
+        leadId: lead.id,
+        conversationId: deviceConvId ?? inboundConvId ?? undefined,
+        outboundMessageId: deviceSend.externalId,
+        responseKind: "text",
+        responsePreview: deviceReply,
+        demo: deviceSend.demo,
+        note: deviceSend.ok
+          ? "Duda de equipo respondida con contexto del evento."
+          : `No se pudo responder la duda de equipo: ${deviceSend.note ?? "send falló"}`,
+      };
+    }
+
     const escalation = mustEscalateToHuman(body);
     if (escalation.escalate) {
       const leadNameForHandoff = lead.name?.trim() || "Lead sin nombre";
 
       // 1) Persistir handoff (best-effort, nunca lanza).
-      const handoffOk = await sendHumanHandoff({
+      const handoffResult = await sendHumanHandoffDetailed({
         leadId: lead.id ?? null,
         leadName: leadNameForHandoff,
         leadPhone: phoneNormalized,
@@ -6341,17 +6469,29 @@ export async function processInboundMessage(
           leadId: lead.id,
           error: err instanceof Error ? err.message : String(err)
         });
-        return false;
+        return {
+          ok: false,
+          persisted: false,
+          emailSent: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
       });
 
-      // 2) Respuesta segura al lead (sin inventar copy).
-      // Texto generico: NO prometemos tiempos especificos ni acciones
-      // que no podamos cumplir (ej. "te hago el reembolso ahora"). Solo
-      // confirmamos recepcion y redirigimos a canales pasivos si urge.
-      const handoffBody =
-        "Recibí tu mensaje. Un asesor de Qlick te contactará pronto " +
-        "por este medio para ayudarte con tu caso. " +
-        "Si es urgente, escríbenos a hola@qlick.marketing.";
+      // 2) Respuesta específica y honesta. El booleano anterior mezclaba
+      // persistencia en DB con email enviado y hacía creer que siempre había
+      // una alerta operativa. Aquí distinguimos ambos resultados.
+      const handoffTopic = escalation.reason?.startsWith("Pagos")
+        ? "tu pago"
+        : escalation.reason?.startsWith("Soporte")
+          ? "el acceso o el problema técnico"
+          : escalation.reason?.startsWith("Datos personales")
+            ? "tu solicitud de privacidad"
+            : "tu solicitud";
+      const handoffBody = handoffResult.persisted
+        ? `Tu solicitud quedó registrada para que un asesor de Qlick revise ${handoffTopic}. Te responderá por este mismo WhatsApp.${handoffResult.emailSent ? " Ya enviamos el aviso al equipo." : " El registro está guardado; si es urgente, escríbenos a hola@qlick.marketing."}`
+        : handoffResult.emailSent
+          ? `Recibí tu mensaje y ya enviamos el aviso a un asesor para revisar ${handoffTopic}. Te responderá por este mismo WhatsApp.`
+          : `Recibí tu mensaje, pero no pude completar el aviso automático. Para que revisemos ${handoffTopic}, escríbenos a hola@qlick.marketing.`;
 
       const provider = getActiveWhatsAppProvider();
       let handoffSend: {
@@ -6369,6 +6509,17 @@ export async function processInboundMessage(
           error: err instanceof Error ? err.message : String(err)
         });
       }
+      if (!handoffSend.ok) {
+        await recordFailedOutboundAction({
+          supabase,
+          leadId: lead.id,
+          phone: phoneNormalized,
+          inboundMessageId: message.messageId,
+          actionType: "human_handoff_reply",
+          intent: "human_handoff",
+          note: "handoff response send failed",
+        });
+      }
 
       // 3) Persistir outbound para mantener la conversación completa
       //    en lead_whatsapp_conversations.
@@ -6384,7 +6535,9 @@ export async function processInboundMessage(
           metadata: {
             trigger: "must_escalate_human",
             escalation_reason: escalation.reason ?? "unknown",
-            handoff_notified: handoffOk
+            handoff_notified: handoffResult.ok,
+            handoff_db_persisted: handoffResult.persisted,
+            handoff_email_sent: handoffResult.emailSent,
           }
         }).catch((err) => {
           // eslint-disable-next-line no-console
@@ -6400,7 +6553,9 @@ export async function processInboundMessage(
       debugLog("[whatsapp/bot] escalation triggered", {
         leadId: lead.id,
         reason: escalation.reason,
-        handoffOk,
+        handoffOk: handoffResult.ok,
+        handoffDbPersisted: handoffResult.persisted,
+        handoffEmailSent: handoffResult.emailSent,
         responseSent: handoffSend.ok
       });
 
@@ -6415,7 +6570,8 @@ export async function processInboundMessage(
         demo: handoffSend.demo,
         note:
           `Escalación a humano (${escalation.reason ?? "sin razón"}). ` +
-          `Handoff ${handoffOk ? "notificado OK" : "falló, ver log"}. ` +
+          `Handoff ${handoffResult.ok ? "registrado" : "falló, ver log"}; ` +
+          `correo ${handoffResult.emailSent ? "enviado" : "no confirmado"}. ` +
           `Respuesta al lead ${handoffSend.ok ? "enviada" : "falló"}.`
       };
     }
@@ -9291,6 +9447,16 @@ export async function processInboundMessage(
         (plan.metadata as { awaiting_field?: string | null } | null)
           ?.awaiting_field ?? null,
       note: sendResult.note
+    });
+    await recordFailedOutboundAction({
+      supabase,
+      leadId: lead.id,
+      phone: phoneNormalized,
+      inboundMessageId: message.messageId,
+      actionType: "bot_reply",
+      intent,
+      templateName: plan.templateName ?? null,
+      note: sendResult.note,
     });
   }
 

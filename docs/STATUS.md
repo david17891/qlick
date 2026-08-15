@@ -1,5 +1,31 @@
 # Project Status — Snapshot vivo
 
+> **Addendum 2026-08-15 — reparación de entregas y handoff:** se corrigió el
+> caso en que una pregunta operativa del evento (por ejemplo, si se puede
+> trabajar con celular o llevar laptop) terminaba en el handoff genérico. Esa
+> pregunta ahora responde con una regla determinista y no promete que Qlick
+> entregue equipo. Los handoffs distinguen el registro guardado en
+> `handoff_requests` de la aceptación del aviso por Brevo; el bot ya no afirma
+> que el correo llegó si solo se guardó la solicitud. Los fallos outbound se
+> registran una sola vez en `whatsapp_outbound_actions` y los estados fallidos
+> de Meta conservan `code`, `subcode`, `type` y mensaje acotado para poder
+> diagnosticar el próximo fallo sin guardar el teléfono ni el cuerpo del
+> mensaje. El contacto que originó esta revisión quedó en `interested`, sin
+> `event_confirmation` ni pago; no se perdió una inscripción ni corresponde
+> enviar QR.
+
+> El modo global verificado en producción sigue siendo
+> `super_executive_v2` (no se cambió durante esta reparación). El cambio a
+> `human_first` requiere una decisión explícita porque altera el comportamiento
+> global. Validación local de este cambio: type-check, lint y build correctos;
+> suite completa 1,727/1,733. Los 6 restantes son históricos o dependen de
+> datos/secretos externos: E2E antigua que exige QR antes del pago (2 casos),
+> 3 pruebas de notificación con lead nulo y un matcher estático antiguo de
+> `/promo`; se mantienen visibles y no se borraron. Deploy productivo
+> `dpl_9LXHKtq38QhVTQjfBJHEtwaDeSb3` quedó `READY` en el proyecto Vercel
+> `qlick`, con `qlick.digital` y `www.qlick.digital` activos. Smoke posterior:
+> `/` y `/promo` 200, cron sin credencial 401 y webhook sin firma 403.
+
 > **Addendum 2026-08-14 — formulario móvil de `/promo`:** se priorizó el
 > formulario en teléfonos, se redujo el texto inicial y la segunda persona
 > quedó dentro de un desplegable opcional. Se conservaron intactos los campos

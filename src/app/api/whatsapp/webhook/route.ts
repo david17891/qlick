@@ -35,6 +35,9 @@ import type {
   IncomingWhatsAppMessage,
   WhatsAppMessageStatus
 } from "../../../../lib/whatsapp/webhooks/types";
+import {
+  extractStatuses,
+} from "../../../../lib/whatsapp/webhooks/statuses";
 import { normalizePhone } from "../../../../lib/crm/phone-utils";
 import { processInboundMessage } from "../../../../lib/whatsapp/bot-engine";
 import { debugLog, errorLog, infoLog } from "../../../../lib/log";
@@ -372,6 +375,7 @@ async function persistStatusUpdatesIfAny(
             ...existingMd,
             status: s.status,
             status_timestamp: s.timestamp,
+            ...(s.error ? { meta_error: s.error } : {}),
           } as never,
         } as never)
         .eq("id", (existing as { id: string }).id);
@@ -393,56 +397,13 @@ async function persistStatusUpdatesIfAny(
             status: s.status,
             timestamp: s.timestamp,
             orphan: true,
+            ...(s.error ? { meta_error: s.error } : {}),
           },
         } as never);
       if (!error) count++;
     }
   }
   return count;
-}
-
-interface MetaStatus {
-  id: string;
-  status: WhatsAppMessageStatus;
-  recipientId?: string;
-  timestamp?: string;
-}
-
-/** Extrae el array de statuses del payload (silencioso ante shapes raros). */
-function extractStatuses(payload: unknown): MetaStatus[] {
-  try {
-    const p = payload as {
-      entry?: Array<{
-        changes?: Array<{
-          value?: {
-            statuses?: Array<{
-              id?: string;
-              status?: string;
-              recipient_id?: string;
-              timestamp?: string;
-            }>;
-          };
-        }>;
-      }>;
-    };
-    const out: MetaStatus[] = [];
-    for (const entry of p.entry ?? []) {
-      for (const change of entry.changes ?? []) {
-        for (const st of change.value?.statuses ?? []) {
-          if (!st.id || !st.status) continue;
-          out.push({
-            id: st.id,
-            status: st.status as WhatsAppMessageStatus,
-            recipientId: st.recipient_id,
-            timestamp: st.timestamp
-          });
-        }
-      }
-    }
-    return out;
-  } catch {
-    return [];
-  }
 }
 
 /** Envoltorio del bot que captura errores para no romper el webhook. */

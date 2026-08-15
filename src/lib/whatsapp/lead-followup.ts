@@ -345,7 +345,7 @@ export function buildLeadFollowupBody(
   }
 
   if (stage === "info_requested") {
-    return `${prefix}\n\nSi ya quieres avanzar, puedo ayudarte a inscribirte por aquí. Respóndeme “sí” y te pido solo tu nombre y correo para dejar tu registro listo.`;
+    return `${prefix}\n\nSi ya quieres inscribirte, capturo tus datos y te envío el enlace oficial de pago. Respóndeme “sí” y te pido solo tu nombre y correo.`;
   }
 
   if (followupNumber === 1) {

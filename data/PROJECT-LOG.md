@@ -1057,3 +1057,32 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
   en producción con el desplegable cerrado.
 - Producción: `dpl_6Nn6qSvk9vxo65njicknzCdL8AgU`; alias `www.qlick.digital`
   activo y ruta `/promo` HTTP 200.
+### 2026-08-15 — Reparación de entregas y handoff contextual
+
+- Se agregó una respuesta determinista para la duda de equipo del evento:
+  el taller puede realizarse con celular y quien quiera puede llevar su propia
+  laptop; no se afirma que Qlick proporcione equipo ni se escala una pregunta
+  comercial de bajo riesgo a un handoff genérico.
+- `sendHumanHandoffDetailed` separa solicitud persistida y aviso de correo
+  aceptado por Brevo. La respuesta al lead ya no asegura que un asesor fue
+  notificado cuando solo existe el registro en base de datos.
+- Los estados de Meta ahora conservan `code`, `subcode`, `type` y mensaje
+  acotado; cada fallo outbound se registra idempotentemente en
+  `whatsapp_outbound_actions` sin crear mensajes enviados fantasma ni guardar
+  el cuerpo/PII en la telemetría.
+- Se verificó que el contacto que preguntó por laptop no tiene confirmación de
+  evento ni pago; no se envió QR ni se inventó registro.
+- Validación: type-check, lint, build y 1,727/1,733 pruebas de la suite; los
+  6 restantes son fallos históricos o de integración externa documentados en
+  `docs/STATUS.md`. El modo global productivo permanece
+  `super_executive_v2` hasta decisión explícita.
+
+### 2026-08-15 — Deploy productivo de la reparación
+
+- Se publicó el artefacto en el proyecto Vercel `qlick` como
+  `dpl_9LXHKtq38QhVTQjfBJHEtwaDeSb3` (`READY`), con los aliases
+  `qlick.digital` y `www.qlick.digital`.
+- Smoke real: `/` y `/promo` respondieron 200; el cron sin secreto respondió
+  401 y el webhook sin firma respondió 403.
+- No se cambió el modo global ni se enviaron mensajes reales durante el
+  despliegue.

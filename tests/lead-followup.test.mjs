@@ -254,3 +254,10 @@ test("followup: registro incompleto sin campo explícito pide nombre y correo", 
   assert.match(body, /correo/i);
   assert.match(body, /lo terminamos/i);
 });
+
+test("followup de información dirige al pago sin afirmar registro confirmado", () => {
+  const body = buildLeadFollowupBody("info_requested", "Ana Pérez", 1, null);
+  assert.match(body, /enlace oficial de pago/i);
+  assert.doesNotMatch(body, /dejar tu registro listo/i);
+  assert.doesNotMatch(body, /tu lugar está confirmado/i);
+});
