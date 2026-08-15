@@ -1103,3 +1103,10 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
   presenta como prueba de entrega al buzón.
 - Smoke real: `/` y `/promo` 200, cron sin credencial 401 y webhook sin firma
   403. El modo global permaneció en `super_executive_v2`.
+
+### 2026-08-15 — Pausa reversible de handoffs pendientes
+
+- Se publicó `dpl_B3a2kTR7jq5hZhdZjuqaf1EWNVP2` con pausa automática por lead
+  cuando el handoff queda persistido.
+- El contacto revisado se pausó de forma explícita porque su handoff sigue en
+  `pending`; no tiene confirmación ni pago y no se enviará QR automáticamente.

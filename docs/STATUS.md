@@ -32,6 +32,12 @@
 > entrega al buzón. Smoke posterior: `/` y `/promo` 200, cron sin credencial
 > 401 y webhook sin firma 403. El modo global sigue en `super_executive_v2`.
 
+> **Auto-pause de handoff 2026-08-15:** `dpl_B3a2kTR7jq5hZhdZjuqaf1EWNVP2`
+> quedó `READY`. Un handoff persistido pausa el lead de forma reversible para
+> impedir respuestas o seguimientos automáticos mientras espera al asesor. El
+> contacto revisado quedó pausado con estado comercial `interested`, sin
+> confirmación ni pago; no se alteraron sus mensajes.
+
 > **Ajuste posterior de seguridad de pruebas 2026-08-15:** los E2E que
 > escriben `system_settings.bot_global_mode` ahora capturan y restauran el
 > valor previo; ya no fuerzan `super_executive_v2` al terminar. La suite no
