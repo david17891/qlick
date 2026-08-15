@@ -1094,3 +1094,12 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
   `system_settings.bot_global_mode` y restaurarlo al cerrar.
 - La suite ya no debe dejar `super_executive_v2` por un cleanup hardcoded cuando
   una corrida controlada parta de `human_first`.
+
+### 2026-08-15 — Deploy final de handoff y diagnóstico de entregas
+
+- Se publicó `dpl_GqL9aXYQ8TDahQeF7UDBNNqyR2vi` en el proyecto Vercel `qlick`.
+- El aviso de handoff conserva notas administrativas existentes y registra
+  `notification_email_accepted` cuando Brevo acepta el envío; eso no se
+  presenta como prueba de entrega al buzón.
+- Smoke real: `/` y `/promo` 200, cron sin credencial 401 y webhook sin firma
+  403. El modo global permaneció en `super_executive_v2`.

@@ -26,6 +26,12 @@
 > `qlick`, con `qlick.digital` y `www.qlick.digital` activos. Smoke posterior:
 > `/` y `/promo` 200, cron sin credencial 401 y webhook sin firma 403.
 
+> **Deploy final 2026-08-15:** `dpl_GqL9aXYQ8TDahQeF7UDBNNqyR2vi` quedó
+> `READY` en producción. Incluye la respuesta contextual de equipo y el
+> handoff que conserva notas previas y distingue aceptación de correo de
+> entrega al buzón. Smoke posterior: `/` y `/promo` 200, cron sin credencial
+> 401 y webhook sin firma 403. El modo global sigue en `super_executive_v2`.
+
 > **Ajuste posterior de seguridad de pruebas 2026-08-15:** los E2E que
 > escriben `system_settings.bot_global_mode` ahora capturan y restauran el
 > valor previo; ya no fuerzan `super_executive_v2` al terminar. La suite no
