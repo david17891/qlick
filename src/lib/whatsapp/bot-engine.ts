@@ -6477,6 +6477,31 @@ export async function processInboundMessage(
         };
       });
 
+      // Un handoff pendiente es control humano explícito: pausamos solamente
+      // este lead para evitar que el bot o los seguimientos automáticos
+      // contaminen la conversación mientras espera al asesor. El panel puede
+      // reactivarlo de forma reversible; una falla de esta telemetría no
+      // impide responder al lead.
+      let handoffLeadPaused = false;
+      if (handoffResult.persisted && supabase && lead.id) {
+        const { error: pauseError } = await supabase
+          .from("leads" as never)
+          .update({
+            bot_paused: true,
+            bot_paused_at: new Date().toISOString(),
+            bot_paused_reason: "manual",
+          } as never)
+          .eq("id", lead.id);
+        handoffLeadPaused = !pauseError;
+        if (pauseError) {
+          // eslint-disable-next-line no-console
+          errorLog("[whatsapp/bot] no se pudo pausar lead tras handoff", {
+            leadId: lead.id,
+            error: pauseError.message,
+          });
+        }
+      }
+
       // 2) Respuesta específica y honesta. El booleano anterior mezclaba
       // persistencia en DB con email enviado y hacía creer que siempre había
       // una alerta operativa. Aquí distinguimos ambos resultados.
@@ -6539,6 +6564,7 @@ export async function processInboundMessage(
             handoff_db_persisted: handoffResult.persisted,
             handoff_email_sent: handoffResult.emailSent,
             handoff_email_accepted: handoffResult.emailSent,
+            handoff_lead_paused: handoffLeadPaused,
           }
         }).catch((err) => {
           // eslint-disable-next-line no-console
@@ -6557,6 +6583,7 @@ export async function processInboundMessage(
         handoffOk: handoffResult.ok,
         handoffDbPersisted: handoffResult.persisted,
         handoffEmailSent: handoffResult.emailSent,
+        handoffLeadPaused,
         responseSent: handoffSend.ok
       });
 
@@ -6572,6 +6599,7 @@ export async function processInboundMessage(
         note:
           `Escalación a humano (${escalation.reason ?? "sin razón"}). ` +
           `Handoff ${handoffResult.ok ? "registrado" : "falló, ver log"}; ` +
+          `lead ${handoffLeadPaused ? "pausado" : "no pausado"}; ` +
           `correo ${handoffResult.emailSent ? "aceptado para envío" : "no confirmado"}. ` +
           `Respuesta al lead ${handoffSend.ok ? "enviada" : "falló"}.`
       };
