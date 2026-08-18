@@ -456,7 +456,7 @@ test("REGRESION implicit_capture CANACO: confirmation con payment_status='pendin
   }
 });
 
-test("REGRESION implicit_capture CANACO: genera QR + outbound con copy de apartado", async () => {
+test("REGRESION implicit_capture CANACO: apartado pendiente no genera QR ni acceso", async () => {
   currentEventVariant = FAKE_EVENT_CANACO_RESERVATION;
   const restoreEnv = setSupabaseEnv();
   const restoreFetch = mockFetch();
@@ -475,14 +475,13 @@ test("REGRESION implicit_capture CANACO: genera QR + outbound con copy de aparta
       timestamp: "1700000000"
     });
 
-    // Debe haber al menos 1 insert en event_qr_tokens.
+    // El apartado declarado por el prospecto todavía no está verificado.
+    // Desde el flujo payment-gated no se debe emitir QR ni acceso hasta que
+    // Stripe (o una verificación manual) confirme el pago.
     const qrInserts = insertCalls.filter(
       (c) => c.table === "event_qr_tokens"
     );
-    assert.ok(
-      qrInserts.length >= 1,
-      "implicit_capture CANACO debe crear event_qr_token"
-    );
+    assert.equal(qrInserts.length, 0, "no debe crear event_qr_token antes de verificar el pago");
 
     // Debe haber un fetch a Brevo para el email del QR pass.
     const brevoCalls = fetchCalls.filter(
