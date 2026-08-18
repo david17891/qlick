@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildManualPaymentInstructions,
+  buildManualPaymentClaimResponse,
   formatManualPaymentCardNumber,
   isManualPaymentEvidence,
   isManualPaymentMethodRequest,
@@ -33,4 +34,19 @@ test("las instrucciones manuales incluyen los datos públicos de depósito", () 
   assert.match(copy, /5579 0701 5551 7512/);
   assert.equal(formatManualPaymentCardNumber("5579 0701 5551 7512"), "5579 0701 5551 7512");
   if (previous) process.env.MANUAL_PAYMENT_CARD_NUMBER = previous;
+});
+
+test("el aviso sin comprobante no afirma que recibió un comprobante", () => {
+  const textOnly = { messageId: "wamid.ready", from: "+5210000000000", type: "text" };
+  const response = buildManualPaymentClaimResponse(textOnly, "LISTO");
+  assert.match(response, /aviso de pago/i);
+  assert.match(response, /env[ií]ame una foto clara/i);
+  assert.doesNotMatch(response, /recibí tu aviso y tu comprobante/i);
+});
+
+test("un comprobante adjunto sí usa el acuse de comprobante", () => {
+  const image = { messageId: "wamid.image", from: "+5210000000000", type: "image", image: { id: "media_1" } };
+  const response = buildManualPaymentClaimResponse(image, "");
+  assert.match(response, /recibí tu aviso y tu comprobante/i);
+  assert.match(response, /no se considera confirmado/i);
 });
