@@ -3061,6 +3061,38 @@ async function buildOpenerPlan(args: {
   body?: string;
 }): Promise<OutboundPlan> {
   const { provider, phoneNormalized, firstName, body } = args;
+
+  // El clasificador histórico puede dirigir un saludo puro a este abridor
+  // antes de llegar al bloque principal del modo cierre. En campaña, esa
+  // ruta también debe mostrar todas las formas de pago; de lo contrario el
+  // primer "Hola" omite transferencia/OXXO aunque las preguntas posteriores
+  // sí las conozcan.
+  const globalMode = await readSystemSetting(KEY_BOT_GLOBAL_MODE).catch(() => null);
+  if (isClosingBotMode(globalMode)) {
+    const closingEvent = await loadActiveEventContext(CLOSING_EVENT_SLUG).catch(() => null);
+    const bodyText = closingEvent && closingEvent.source === "db"
+      ? buildClosingWelcomeCopy(closingEvent)
+      : buildClosingFallbackCopy();
+    const interactive = {
+      type: "button" as const,
+      body: { text: bodyText },
+      action: {
+        buttons: [
+          { type: "reply" as const, reply: { id: "closing_open_promo", title: "Pagar con tarjeta" } },
+          { type: "reply" as const, reply: { id: "closing_manual_payment", title: "Transferencia/OXXO" } },
+          { type: "reply" as const, reply: { id: "closing_human", title: "Hablar con asesor" } },
+        ],
+      },
+    };
+    return {
+      kind: "interactive",
+      body: bodyText,
+      interactive,
+      metadata: { closing_mode: true, no_data_capture: true },
+      send: () => provider.send({ to: phoneNormalized, body: bodyText, interactive }),
+    };
+  }
+
   // FIX 2026-07-02 (sesion David): cargamos el activeEvent REAL de DB
   // (no el placeholder de env vars que mostraba eventos que no
   // existian). Si no hay evento en DB, mostramos solo el saludo
