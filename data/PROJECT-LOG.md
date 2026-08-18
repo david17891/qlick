@@ -1307,3 +1307,9 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 - `/promo` ahora permite seleccionar apartado o pago completo para 1 persona y para la promoción de 2 personas. El flujo individual conserva el checkout normal y pasa `payment_option` explícitamente.
 - Se actualizó el contexto del bot de cierre y sus copys para comunicar $200 en ambas modalidades.
 - Validación: 20 pruebas focalizadas, type-check, lint y build correctos.
+
+# 2026-08-18 — Saludo de cierre con pagos manuales
+
+- El abridor histórico de saludos ahora respeta `bot_global_mode=closing` y muestra desde el primer `Hola` tarjeta (`/promo`), transferencia/OXXO, los datos de depósito configurados en servidor y botones de pago/asesor.
+- Se verificó en WhatsApp Web producción el saludo, el botón `Transferencia/OXXO`, `LISTO` y `Ya pagué por OXXO`; sin comprobante adjunto el bot pide la foto y no confirma ni habilita QR.
+- PR #89 quedó integrado en `main` (`0bf567e1211d95d2801f50461f1858fb70bc3500`), deployment `dpl_5vrEhZLYSnMBMThaqYrAqA7YVcrU` `READY`. No se borraron datos ni se modificaron cambios locales ajenos.
