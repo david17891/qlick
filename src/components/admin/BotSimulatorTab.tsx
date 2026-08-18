@@ -40,7 +40,8 @@ type BotMode =
   | "super_executive"
   | "human_first"
   // FIX 2026-07-19 (sprint bot v2): sync con BotGlobalMode.
-  | "super_executive_v2";
+  | "super_executive_v2"
+  | "closing";
 // FIXME: SSOT vive en `src/lib/admin/system-settings-server.ts` (`BotGlobalMode`).
 // Refactor pendiente: unificar en un solo archivo de types.
 
@@ -97,6 +98,7 @@ const MODE_LABELS: Record<BotMode, string> = {
   human_first: "🧪 Estilo Humano (Conversacional)",
   // FIX 2026-07-19 (sprint bot v2): agregado al selector del simulador.
   super_executive_v2: "🚀 Súper Ejecutivo v2 (default)",
+  closing: "🎯 Cierre de campaña",
 };
 
 const MODE_EMOJI: Record<BotMode, string> = {
@@ -105,6 +107,7 @@ const MODE_EMOJI: Record<BotMode, string> = {
   super_executive: "🚀",
   human_first: "🧪",
   super_executive_v2: "🚀",
+  closing: "🎯",
 };
 
 /* ------------------------------------------------------------------ */
@@ -739,6 +742,7 @@ export function BotSimulatorTab({ currentMode }: BotSimulatorTabProps) {
                   <option value="socratic_autopilot_v2">🟢 Socrático v2 (override)</option>
                   <option value="socratic_no_tools_v1">🔵 Socrático v1 (override)</option>
                   <option value="human_first">🧪 Estilo Humano (override)</option>
+                  <option value="closing">🎯 Cierre de campaña (override)</option>
                 </optgroup>
               </select>
               {modeChoice !== "db" && (
