@@ -76,7 +76,7 @@ export function PromoForm({ eventSlug }: { eventSlug: string }) {
         </label>
         <label className="flex gap-3 rounded-lg border border-slate-200 p-3 text-sm">
           <input type="radio" checked={mode === "single"} onChange={() => setMode("single")} />
-          <span><strong>1 persona · $1,000 MXN</strong><br /><span className="text-xs text-ink-muted">Usa el checkout normal del evento.</span></span>
+          <span><strong>1 persona · $1,000 MXN</strong><br /><span className="text-xs text-ink-muted">Apartado de $200 MXN o pago completo.</span></span>
         </label>
       </fieldset>
 
@@ -98,19 +98,19 @@ export function PromoForm({ eventSlug }: { eventSlug: string }) {
         </div>
       </details>}
 
-      {mode === "promo" && <fieldset className="space-y-2">
+      <fieldset className="space-y-2">
         <legend className="text-sm font-semibold text-ink">Forma de pago</legend>
         <div className="grid gap-2 sm:grid-cols-2">
           <label className="flex gap-2 rounded-lg border border-slate-200 p-3 text-sm"><input type="radio" checked={paymentOption === "reservation"} onChange={() => setPaymentOption("reservation")} /> Apartar con $200 MXN</label>
-          <label className="flex gap-2 rounded-lg border border-slate-200 p-3 text-sm"><input type="radio" checked={paymentOption === "full"} onChange={() => setPaymentOption("full")} /> Pagar $1,500 MXN</label>
+          <label className="flex gap-2 rounded-lg border border-slate-200 p-3 text-sm"><input type="radio" checked={paymentOption === "full"} onChange={() => setPaymentOption("full")} /> Pagar {mode === "promo" ? "$1,500" : "$1,000"} MXN</label>
         </div>
-        <div className="flex gap-2 pt-1">
+        {mode === "promo" && <div className="flex gap-2 pt-1">
           {(["card", "oxxo", "spei"] as Method[]).map((item) => <label key={item} className="flex items-center gap-1 text-xs text-ink-muted"><input type="radio" checked={method === item} onChange={() => setMethod(item)} />{item === "card" ? "Tarjeta" : item.toUpperCase()}</label>)}
-        </div>
-      </fieldset>}
+        </div>}
+      </fieldset>
 
       <button disabled={loading} className="w-full rounded-lg bg-brand-600 px-5 py-3 font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
-        {loading ? "Preparando..." : mode === "promo" ? paymentOption === "reservation" ? "Apartar las 2 plazas" : "Pagar promoción" : "Continuar con pago normal"}
+        {loading ? "Preparando..." : mode === "promo" ? paymentOption === "reservation" ? "Apartar las 2 plazas" : "Pagar promoción" : paymentOption === "reservation" ? "Apartar mi lugar" : "Pagar $1,000 MXN"}
       </button>
       {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>}
     </form>

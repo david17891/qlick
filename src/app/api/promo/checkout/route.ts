@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
     if (!result.ok || !result.confirmation) {
       return NextResponse.json({ ok: false, error: result.note }, { status: 400 });
     }
-    const redirectUrl = `${appBaseUrl()}/pagar/evento/${encodeURIComponent(event.slug)}?confirmation=${encodeURIComponent(result.confirmation.id)}`;
+    const redirectUrl = `${appBaseUrl()}/pagar/evento/${encodeURIComponent(event.slug)}?confirmation=${encodeURIComponent(result.confirmation.id)}&payment_option=${paymentOption}`;
     return NextResponse.json({ ok: true, mode: "single", confirmationId: result.confirmation.id, redirectUrl });
   }
 

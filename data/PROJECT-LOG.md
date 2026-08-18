@@ -1301,3 +1301,9 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 
 - Las solicitudes equivalentes de depósito, transferencia, SPEI, OXXO y número
   de tarjeta para depositar convergen al mismo instructivo manual.
+# 2026-08-18 — Apartado CANACO unificado en $200
+
+- Se aplicó la migración aditiva `20260818090000_canaco_reservation_two_hundred.sql` en Supabase Production para el evento `desarrollo-estructura-curso-canaco`: apartado $200, saldo $800 y descripción/reglas coherentes. No se eliminaron ni modificaron pagos, confirmaciones, QR u órdenes existentes.
+- `/promo` ahora permite seleccionar apartado o pago completo para 1 persona y para la promoción de 2 personas. El flujo individual conserva el checkout normal y pasa `payment_option` explícitamente.
+- Se actualizó el contexto del bot de cierre y sus copys para comunicar $200 en ambas modalidades.
+- Validación: 20 pruebas focalizadas, type-check, lint y build correctos.

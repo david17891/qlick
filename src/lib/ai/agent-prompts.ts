@@ -842,7 +842,7 @@ export function buildClosingPrompt(context: AgentContext): string {
         "",
         "=== PROMOCIÓN DE CIERRE VIGENTE (PRIORIDAD COMERCIAL) ===",
         "- Dos personas: $1,500 MXN en total; apartado de $200 MXN para las dos personas.",
-        "- Una persona: $1,000 MXN; apartado de $500 MXN.",
+        "- Una persona: $1,000 MXN; apartado de $200 MXN (saldo de $800 MXN).",
         `- Enlace oficial: https://www.qlick.digital/promo`,
         `- Apartado estructurado del evento: ${typeof reservationAmount === "number" ? `$${reservationAmount} MXN` : "no usar para sustituir la promoción de cierre"}.`,
         `- Saldo estructurado: ${typeof balanceAmount === "number" && balanceAmount >= 0 ? `$${balanceAmount} MXN` : "consultar la promoción vigente"}.`,
