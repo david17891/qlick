@@ -5,6 +5,7 @@ import {
   buildClosingEventCopy,
   buildClosingServiceCopy,
   buildServiceDirectContactCopy,
+  detectIntent,
   isDirectServiceRequest,
   isClosingBotMode,
   isClosingHumanRequest,
@@ -81,6 +82,11 @@ test("una duda de precio por persona no abre handoff; una petición explícita s
   assert.equal(isClosingHumanRequest("¿Cuánto cuesta para dos personas?"), false);
   assert.equal(isClosingHumanRequest("Quiero hablar con un asesor"), true);
   assert.equal(isClosingHumanRequest("Necesito hablar con una persona"), true);
+});
+
+test("rechazar el registro sin pedir baja conserva la conversación informativa", () => {
+  assert.equal(detectIntent("No quiero registrarme, solo necesito información", false), "question");
+  assert.equal(detectIntent("No me interesa", false), "opt_out");
 });
 
 test("el prompt de cierre prohíbe captura, tools y confirmación de pago", () => {
