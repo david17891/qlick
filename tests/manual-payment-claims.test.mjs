@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildManualPaymentInstructions,
+  formatManualPaymentCardNumber,
   isManualPaymentEvidence,
   isManualPaymentMethodRequest,
 } from "../src/lib/whatsapp/manual-payment-claims.ts";
@@ -13,6 +14,7 @@ test("detecta comprobante o aviso de pago manual sin confirmar el pago", () => {
   assert.equal(isManualPaymentEvidence({ messageId: "wamid.question", from: "+5210000000000", type: "text" }, "¿Puedo pagar por OXXO o transferencia?"), false);
   assert.equal(isManualPaymentEvidence({ messageId: "wamid.question", from: "+5210000000000", type: "text" }, "¿Cuándo recibo el QR después de pagar?"), false);
   assert.equal(isManualPaymentEvidence({ messageId: "wamid.receipt", from: "+5210000000000", type: "text" }, "Aquí está mi comprobante"), true);
+  assert.equal(isManualPaymentEvidence({ messageId: "wamid.ready", from: "+5210000000000", type: "text" }, "LISTO"), true);
   assert.equal(isManualPaymentEvidence({ messageId: "wamid.question", from: "+5210000000000", type: "text" }, "¿qué incluye?"), false);
 });
 
@@ -28,6 +30,7 @@ test("las instrucciones manuales incluyen los datos públicos de depósito", () 
   delete process.env.MANUAL_PAYMENT_CARD_NUMBER;
   const copy = buildManualPaymentInstructions();
   assert.match(copy, /Santander/);
-  assert.match(copy, /5579/);
+  assert.match(copy, /5579 0701 5551 7512/);
+  assert.equal(formatManualPaymentCardNumber("5579 0701 5551 7512"), "5579 0701 5551 7512");
   if (previous) process.env.MANUAL_PAYMENT_CARD_NUMBER = previous;
 });

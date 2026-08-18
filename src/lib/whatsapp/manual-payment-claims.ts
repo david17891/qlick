@@ -9,6 +9,11 @@ const ADVISOR_PHONE = "5216532935492";
 // reemplazarse mediante MANUAL_PAYMENT_CARD_NUMBER sin tocar el código.
 const DEFAULT_MANUAL_PAYMENT_CARD_NUMBER = "5579070155517512";
 
+export function formatManualPaymentCardNumber(value: string): string {
+  const digits = value.replace(/\D/g, "");
+  return digits.replace(/(\d{4})(?=\d)/g, "$1 ").trim();
+}
+
 export function isManualPaymentEvidence(message: IncomingWhatsAppMessage, body: string): boolean {
   if (Boolean(message.image?.id || message.document?.id)) return true;
   // Mencionar un método (“¿puedo pagar por OXXO?”) no es evidencia de pago.
@@ -16,12 +21,12 @@ export function isManualPaymentEvidence(message: IncomingWhatsAppMessage, body: 
   // explícitamente un comprobante/recibo.
   const normalizedBody = body.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   const trimmedBody = normalizedBody.trim().replace(/^[¿¡]+|[?!.,]+$/g, "");
-  if (/^(?:comprobante|recibo)$/i.test(trimmedBody)) return true;
+  if (/^(?:comprobante|recibo|listo)$/i.test(trimmedBody)) return true;
   return /(?:^|[^a-z0-9])(?:ya\s+(?:pague|deposite|transferi)|(?:hice|realice)\s+(?:el\s+)?(?:pago|deposito|transferencia)|pago\s+realizado|(?:aqui\s+(?:esta|tienes?)|te\s+(?:mando|envio)|(?:este|aqui)\s+es|adjunto)\s+(?:mi\s+)?(?:comprobante|recibo)|deposito\s+(?:realizado|hecho)|transferencia\s+(?:realizada|hecha)|listo\s+con\s+el\s+pago)(?=$|[^a-z0-9])/i.test(normalizedBody);
 }
 
 export function buildManualPaymentInstructions(): string {
-  const card = process.env.MANUAL_PAYMENT_CARD_NUMBER?.trim() || DEFAULT_MANUAL_PAYMENT_CARD_NUMBER;
+  const card = formatManualPaymentCardNumber(process.env.MANUAL_PAYMENT_CARD_NUMBER?.trim() || DEFAULT_MANUAL_PAYMENT_CARD_NUMBER);
   const holder = process.env.MANUAL_PAYMENT_BENEFICIARY?.trim() || "Paul Velásquez";
   const bank = process.env.MANUAL_PAYMENT_BANK?.trim() || "Santander";
   if (!card) {

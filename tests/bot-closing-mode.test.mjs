@@ -5,6 +5,7 @@ import {
   buildClosingEventCopy,
   buildClosingQrTimingCopy,
   buildClosingServiceCopy,
+  buildClosingWelcomeCopy,
   buildServiceDirectContactCopy,
   detectIntent,
   isDirectServiceRequest,
@@ -54,6 +55,15 @@ test("el copy de cierre conserva contexto factual y dirige a /promo", () => {
   assert.match(copy, /https:\/\/www\.qlick\.digital\/promo/);
   assert.doesNotMatch(copy, /\+52 686 233 0617/);
   assert.doesNotMatch(copy, /reembolso|devolvemos|nombre completo|correo electrónico/i);
+});
+
+test("el primer mensaje de cierre prioriza la oferta y es más corto", () => {
+  const welcome = buildClosingWelcomeCopy(event);
+  const full = buildClosingEventCopy(event);
+  assert.match(welcome, /2 personas por \*\$1,500 MXN\*/);
+  assert.match(welcome, /apartado de \*\$200 MXN\*/);
+  assert.match(welcome, /qlick\.digital\/promo/);
+  assert.ok(welcome.length < full.length);
 });
 
 test("las consultas de servicios derivan directamente al asesor", () => {

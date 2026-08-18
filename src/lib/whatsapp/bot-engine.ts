@@ -2073,6 +2073,19 @@ export function buildClosingQrTimingCopy(): string {
   return `El QR se envía después de verificar tu pago. Antes de esa verificación no se habilita el acceso. Puedes pagar aquí: ${CLOSING_PROMO_URL}`;
 }
 
+export function buildClosingWelcomeCopy(event: ActiveEventContext): string {
+  const location = eventLocationForDisplay(event) ?? event.location ?? "CANACO, San Luis Río Colorado";
+  return [
+    `📌 *${event.title}*`,
+    "Taller práctico para atraer y convertir más clientes con publicidad, Facebook Ads, IA y seguimiento por WhatsApp.",
+    `📅 ${event.humanStartsAt} · 📍 ${location}`,
+    "",
+    `${CLOSING_FIRE_EMOJI} *Promoción de cierre:* 2 personas por *$1,500 MXN* y apartado de *$200 MXN* para ambas.`,
+    "• Opción individual: $1,000 MXN (apartado de $500 MXN)",
+    `👉 Aparta o paga aquí: ${CLOSING_PROMO_URL}`,
+  ].join("\n");
+}
+
 export function buildClosingEventCopy(event: ActiveEventContext): string {
   const location = eventLocationForDisplay(event) ?? event.location ?? "CANACO, San Luis Río Colorado";
   return [
@@ -6849,7 +6862,7 @@ export async function processInboundMessage(
       : isWelcomeTemplate
         ? {
             body: welcomeEvent && welcomeEvent.source === "db"
-              ? buildClosingEventCopy(welcomeEvent)
+              ? buildClosingWelcomeCopy(welcomeEvent)
               : `Conoce la promoción del evento aquí: https://www.qlick.digital/promo\n\nSi necesitas ayuda, habla con un asesor: https://wa.me/${CLOSING_HUMAN_PHONE}`,
             source: "template" as const,
           }
