@@ -37,7 +37,8 @@ type BotMode =
   | "super_executive"
   | "human_first"
   // FIX 2026-07-19 (sprint bot v2): sync con BotGlobalMode.
-  | "super_executive_v2";
+  | "super_executive_v2"
+  | "closing";
 // FIXME: SSOT vive en `src/lib/admin/system-settings-server.ts` (`BotGlobalMode`).
 // Refactor pendiente: unificar en un solo archivo de types.
 
@@ -525,6 +526,15 @@ export function BotConfigTab() {
                 disabled={modeSaving}
                 badge="🧪 EXPERIMENTO"
                 onClick={() => void onSelectMode("human_first")}
+              />
+              <ModeTarjeta
+                icon="🎯"
+                titulo="Modo Cierre de Campaña"
+                descripcion="Solo informa el evento, muestra la promoción y dirige a /promo. No pide nombre, correo ni registra desde WhatsApp."
+                activo={mode === "closing"}
+                disabled={modeSaving}
+                badge="CAMPAÑA"
+                onClick={() => void onSelectMode("closing")}
               />
             </div>
           )}

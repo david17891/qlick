@@ -5,7 +5,7 @@
  *   (caller decide fallback a env var o default).
  *
  * POST /api/admin/bot/mode
- *   Body: { mode: "socratic_autopilot_v2" | "socratic_no_tools_v1" | "super_executive" | "human_first" }
+ *   Body: { mode: "socratic_autopilot_v2" | "socratic_no_tools_v1" | "super_executive" | "human_first" | "closing" }
  *   UPSERT en system_settings. Idempotente. Invalida la caché in-memory del
  *   provider deepseek (TTL 30s) al escribir.
  *
@@ -34,6 +34,7 @@ import {
   type BotGlobalMode,
   isBotGlobalMode,
 } from "@/lib/admin/system-settings-server";
+import { logAdminAction } from "@/lib/crm/audit-server";
 
 export const dynamic = "force-dynamic";
 
@@ -82,12 +83,13 @@ export async function POST(req: NextRequest) {
         // en system-settings-server.ts es la SSOT; este mensaje solo
         // es legible para el admin.
         error:
-          "'mode' debe ser uno de: socratic_autopilot_v2, socratic_no_tools_v1, super_executive, human_first.",
+          "'mode' debe ser uno de: socratic_autopilot_v2, socratic_no_tools_v1, super_executive, human_first, closing.",
       },
       { status: 400 }
     );
   }
-  // Tercer arg = actorEmail (audit trail del UPSERT en system_settings).
+  const previous = await readSystemSetting(KEY_BOT_GLOBAL_MODE);
+  // Tercer arg = actorEmail (actor de la escritura en system_settings).
   const result = await setSystemSetting(KEY_BOT_GLOBAL_MODE, candidate, admin.email);
   if (!result.ok) {
     return NextResponse.json(
@@ -95,5 +97,17 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+  // La fila de system_settings no ofrece un historial legible de cambios.
+  // Guardamos el antes/después para poder detectar cambios accidentales
+  // causados por pruebas, scripts o una sesión administrativa distinta.
+  await logAdminAction({
+    actor_email: admin.email,
+    action: "bot_global_mode_changed",
+    entity_type: "system_setting",
+    entity_id: KEY_BOT_GLOBAL_MODE,
+    before: { mode: isBotGlobalMode(previous) ? previous : null },
+    after: { mode: candidate },
+    metadata: { source: "admin_bot_mode_route" },
+  });
   return NextResponse.json({ ok: true, mode: candidate });
 }
