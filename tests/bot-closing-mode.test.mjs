@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildClosingEventCopy,
+  buildClosingCardPaymentCopy,
   buildClosingFallbackCopy,
   buildClosingQrTimingCopy,
   buildClosingServiceCopy,
@@ -65,19 +66,21 @@ test("el primer mensaje de cierre prioriza la oferta y es más corto", () => {
   assert.match(welcome, /2 personas por \*\$1,500 MXN\*/);
   assert.match(welcome, /apartado de \*\$200 MXN\*/);
   assert.match(welcome, /individual: \$1,000 MXN \(apartado de \$200 MXN\)/);
-  assert.match(welcome, /qlick\.digital\/promo/);
-  assert.match(welcome, /Transferencia\/OXXO/);
-  assert.match(welcome, /5579 0701 5551 7512/);
-  assert.match(welcome, /Paul Velásquez/);
+  assert.match(welcome, /Elige cómo pagar en los botones/);
+  assert.doesNotMatch(welcome, /Tarjeta|Transferencia\/OXXO|Santander|Número para depósito|Paul Velásquez|qlick\.digital\/promo/i);
   assert.ok(welcome.length < 700);
 });
 
-test("el fallback de bienvenida también muestra las tres rutas de pago", () => {
+test("el fallback de bienvenida no expone datos de pago antes de pulsar", () => {
   const fallback = buildClosingFallbackCopy();
-  assert.match(fallback, /Tarjeta/);
-  assert.match(fallback, /Transferencia\/OXXO/);
-  assert.match(fallback, /5579 0701 5551 7512/);
-  assert.match(fallback, /habla con un asesor/i);
+  assert.match(fallback, /elige cómo pagar en los botones/i);
+  assert.doesNotMatch(fallback, /Tarjeta|Transferencia\/OXXO|Santander|Número para depósito|Paul Velásquez|qlick\.digital\/promo/i);
+});
+
+test("el botón de tarjeta usa un solo enlace y no promete Zoom", () => {
+  const copy = buildClosingCardPaymentCopy();
+  assert.equal((copy.match(/https:\/\/www\.qlick\.digital\/promo/g) ?? []).length, 1);
+  assert.doesNotMatch(copy, /Zoom|sesi[oó]n de/i);
 });
 
 test("las consultas de servicios derivan directamente al asesor", () => {
