@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildClosingEventCopy,
+  buildClosingFallbackCopy,
   buildClosingQrTimingCopy,
   buildClosingServiceCopy,
   buildClosingWelcomeCopy,
@@ -65,7 +66,18 @@ test("el primer mensaje de cierre prioriza la oferta y es más corto", () => {
   assert.match(welcome, /apartado de \*\$200 MXN\*/);
   assert.match(welcome, /individual: \$1,000 MXN \(apartado de \$200 MXN\)/);
   assert.match(welcome, /qlick\.digital\/promo/);
-  assert.ok(welcome.length < full.length);
+  assert.match(welcome, /Transferencia\/OXXO/);
+  assert.match(welcome, /5579 0701 5551 7512/);
+  assert.match(welcome, /Paul Velásquez/);
+  assert.ok(welcome.length < 700);
+});
+
+test("el fallback de bienvenida también muestra las tres rutas de pago", () => {
+  const fallback = buildClosingFallbackCopy();
+  assert.match(fallback, /Tarjeta/);
+  assert.match(fallback, /Transferencia\/OXXO/);
+  assert.match(fallback, /5579 0701 5551 7512/);
+  assert.match(fallback, /habla con un asesor/i);
 });
 
 test("las consultas de servicios derivan directamente al asesor", () => {

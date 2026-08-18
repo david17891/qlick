@@ -130,6 +130,7 @@ import type { IncomingWhatsAppMessage } from "./webhooks/types";
 import { getActiveWhatsAppProvider } from ".";
 import {
   buildManualPaymentInstructions,
+  buildManualPaymentShortCopy,
   createManualPaymentClaim,
   isManualPaymentEvidence,
   isManualPaymentMethodRequest,
@@ -2082,7 +2083,22 @@ export function buildClosingWelcomeCopy(event: ActiveEventContext): string {
     "",
     `${CLOSING_FIRE_EMOJI} *Promoción de cierre:* 2 personas por *$1,500 MXN* y apartado de *$200 MXN* para ambas.`,
     "• Opción individual: $1,000 MXN (apartado de $200 MXN)",
-    `👉 Aparta o paga aquí: ${CLOSING_PROMO_URL}`,
+    `💳 Tarjeta: ${CLOSING_PROMO_URL}`,
+    "🏦 Transferencia/OXXO:",
+    buildManualPaymentShortCopy(),
+    "Después de pagar por transferencia/OXXO, responde LISTO y envía tu comprobante para revisión manual.",
+  ].join("\n");
+}
+
+export function buildClosingFallbackCopy(): string {
+  return [
+    "📌 *Los 4 Pilares de un Negocio que Vende*",
+    "Consulta la promoción y elige cómo pagar:",
+    `💳 Tarjeta: ${CLOSING_PROMO_URL}`,
+    "🏦 Transferencia/OXXO:",
+    buildManualPaymentShortCopy(),
+    "Después de pagar por transferencia/OXXO, responde LISTO y envía tu comprobante para revisión manual.",
+    `Si tienes dudas, habla con un asesor: https://wa.me/${CLOSING_HUMAN_PHONE}`,
   ].join("\n");
 }
 
@@ -3310,13 +3326,14 @@ async function buildResponsePlan(args: {
         ? buildClosingHumanCopy()
         : event && event.source === "db"
           ? buildClosingEventCopy(event)
-          : `Consulta la promoción oficial del evento aquí: https://www.qlick.digital/promo\n\nSi tienes dudas, habla con un asesor: https://wa.me/${CLOSING_HUMAN_PHONE}`;
+          : buildClosingFallbackCopy();
       const interactive = intent === "closing_human" ? undefined : {
         type: "button" as const,
         body: { text: bodyText },
         action: {
           buttons: [
-            { type: "reply" as const, reply: { id: "closing_open_promo", title: "Ver promoción" } },
+            { type: "reply" as const, reply: { id: "closing_open_promo", title: "Pagar con tarjeta" } },
+            { type: "reply" as const, reply: { id: "closing_manual_payment", title: "Transferencia/OXXO" } },
             { type: "reply" as const, reply: { id: "closing_human", title: "Hablar con asesor" } },
           ],
         },
@@ -6843,7 +6860,8 @@ export async function processInboundMessage(
       ? "closing_human"
       : "closing";
     const closingServiceRequest = closingIntent === "closing" && isClosingServiceRequest(body);
-    const manualPaymentRequest = closingIntent === "closing" && isManualPaymentMethodRequest(body);
+    const manualPaymentRequest = closingIntent === "closing" &&
+      (buttonId === "closing_manual_payment" || isManualPaymentMethodRequest(body));
     const isWelcomeTemplate =
       closingIntent === "closing" &&
       !buttonId &&
@@ -6863,7 +6881,7 @@ export async function processInboundMessage(
         ? {
             body: welcomeEvent && welcomeEvent.source === "db"
               ? buildClosingWelcomeCopy(welcomeEvent)
-              : `Conoce la promoción del evento aquí: https://www.qlick.digital/promo\n\nSi necesitas ayuda, habla con un asesor: https://wa.me/${CLOSING_HUMAN_PHONE}`,
+              : buildClosingFallbackCopy(),
             source: "template" as const,
           }
         : await buildClosingLlmReply({
@@ -6910,8 +6928,11 @@ export async function processInboundMessage(
           action: {
             buttons: [
               ...(isWelcomeTemplate
-                ? [{ type: "reply" as const, reply: { id: "closing_open_promo", title: "Ver promoción" } }]
+                ? [{ type: "reply" as const, reply: { id: "closing_open_promo", title: "Pagar con tarjeta" } }]
                 : [{ type: "reply" as const, reply: { id: "closing_continue", title: "Seguir aquí" } }]),
+              ...(isWelcomeTemplate
+                ? [{ type: "reply" as const, reply: { id: "closing_manual_payment", title: "Transferencia/OXXO" } }]
+                : []),
               { type: "reply" as const, reply: { id: "closing_human", title: "Hablar con asesor" } },
             ],
           },
