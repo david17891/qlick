@@ -8413,23 +8413,6 @@ export async function processInboundMessage(
               })
             : `${saludo} Recibimos tus datos para *${evtName}*${evtCodeLabel}. ` +
               `Completa el pago de ${priceDisplay} aquí cuando tengas el enlace.`;
-          if (lead.email && evt && existing.confirmationId) {
-            void (async () => {
-              try {
-                const { sendQrPassForConfirmation } = await import("../email/event-qr-pass");
-                await sendQrPassForConfirmation({
-                  confirmationId: existing.confirmationId as string,
-                  event: evt as unknown as Parameters<typeof sendQrPassForConfirmation>[0]["event"],
-                  skipIfAlreadySent: true,
-                });
-              } catch (err) {
-                errorLog("[whatsapp/bot] already_registered (paid): provisional QR email fallo", {
-                  leadId: lead.id,
-                  error: err instanceof Error ? err.message : String(err),
-                });
-              }
-            })();
-          }
           const provider = getActiveWhatsAppProvider();
           let sendResult: { ok: boolean; externalId?: string; demo?: boolean } = {
             ok: false
@@ -8821,43 +8804,9 @@ export async function processInboundMessage(
                 );
               }
 
-              // FIX sprint 2026-07-15d + 2026-07-15f: crear event_access al
-              // confirmar la inscripcion (no al pagar). El QR da
-              // acceso al evento independiente del estado de pago
-              // (David: 50-80% paga en puerta). El staff cobra en
-              // caja si `payment_status` sigue en `pending` al hacer
-              // check-in. `event_pay_at_door` es el source nuevo en
-              // `event-entitlements.ts` para distinguir esto del
-              // acceso por Stripe.
-              //
-              // FIX 2026-07-15f: userId es null (lead no es auth user)
-              // y pasamos confirmationId para que la idempotencia del
-              // grant funcione (sino GRANT no encuentra el access
-              // existente si se llama 2 veces).
-              try {
-                const { grantEventAccess } = await import(
-                  "../lms/event-entitlements"
-                );
-                await grantEventAccess({
-                  userId: null,
-                  confirmationId: confirmResult.confirmation.id,
-                  eventId: evtForPayment?.id ?? "",
-                  source: "event_pay_at_door",
-                  grantedReason: "confirmation_whatsapp_bot",
-                });
-              } catch (accErr) {
-                errorLog(
-                  "[whatsapp/bot] pending_payment: grantEventAccess fallo (no fatal)",
-                  {
-                    leadId: lead.id,
-                    confirmationId: confirmResult.confirmation.id,
-                    error:
-                      accErr instanceof Error
-                        ? accErr.message
-                        : String(accErr),
-                  },
-                );
-              }
+              // Un preregistro pendiente conserva seguimiento comercial, pero
+              // no recibe acceso, QR ni entitlement. El webhook de Stripe o
+              // la verificación manual son los únicos que pueden habilitarlo.
             }
 
             if (confirmResult?.ok && confirmResult.confirmation) {
@@ -8897,31 +8846,6 @@ export async function processInboundMessage(
 
             const confirmationId = confirmResult.confirmation.id;
 
-            // 2. Mandar email con QR. En eventos pagados el pase es
-            // provisional e incluye el enlace de pago; el acceso seguirá
-            // bloqueado por los endpoints de check-in hasta verificarlo.
-            if (lead.email && evtForPayment) {
-              void (async () => {
-                try {
-                  const { sendQrPassForConfirmation } = await import(
-                    "../email/event-qr-pass"
-                  );
-                  await sendQrPassForConfirmation({
-                    confirmationId,
-                    event: evtForPayment as unknown as Parameters<
-                      typeof sendQrPassForConfirmation
-                    >[0]["event"],
-                  });
-                } catch (err) {
-                  errorLog("[whatsapp/bot] pending_payment: email fallo", {
-                    leadId: lead.id,
-                    confirmationId,
-                    error: err instanceof Error ? err.message : String(err),
-                  });
-                }
-              })();
-            }
-
             // 3. Responder al lead con copy HONESTO + link al checkout.
             const baseUrl = appBaseUrl();
             const paymentTerms = getReservationTerms(evtForPayment);
@@ -8934,7 +8858,7 @@ export async function processInboundMessage(
                 `El saldo de $${paymentTerms.balance.toLocaleString("es-MX")} MXN se liquida ${paymentTerms.note.toLowerCase()}`
               : `${saludo} Recibimos tus datos para *${evtName}*${evtCodeLabel} (${priceDisplay}).\n\n` +
                 `Para confirmar tu asistencia, completa el pago aquí:\n${checkoutUrl}\n\n` +
-                `Aceptamos tarjeta, OXXO y SPEI. Tu QR provisional ya va en el correo y el acceso se habilita al verificar el pago.`;
+                `Aceptamos tarjeta, OXXO y SPEI. En cuanto verifiquemos el pago te enviaremos tu QR y habilitaremos el acceso.`;
 
             const provider = getActiveWhatsAppProvider();
             let sendResult: { ok: boolean; externalId?: string; demo?: boolean } = {
@@ -9316,16 +9240,29 @@ export async function processInboundMessage(
         eventTitle: registrationEventTitle
       }
     });
-    const qr = await generateQrToken(
-      supabase,
-      phoneNormalized,
-      lead.name,
-      email,
+    // El QR/pase solo se crea para eventos gratuitos. En los eventos de pago
+    // el registro queda en `payment_pending` y el webhook de pago es el que
+    // habilita la creación/envío del pase; esto evita enviar un QR por correo
+    // durante la captura del email.
+    const eventForQrGate = matchedEvent ?? (
       registrationEventSlug
-      // FIX 2026-07-19: el confirmationId se setea en un UPDATE
-      // posterior (despues de createConfirmation). Ver bloque
-      // "FIX 2026-07-19: vincular QR a confirmation" abajo.
+        ? await loadActiveEventContext(registrationEventSlug).catch(() => null)
+        : await loadActiveEventContext().catch(() => null)
     );
+    const registrationIsPaid =
+      typeof eventForQrGate?.priceMxn === "number" && eventForQrGate.priceMxn > 0;
+    const qr = registrationIsPaid
+      ? null
+      : await generateQrToken(
+          supabase,
+          phoneNormalized,
+          lead.name,
+          email,
+          registrationEventSlug
+          // FIX 2026-07-19: el confirmationId se setea en un UPDATE
+          // posterior (despues de createConfirmation). Ver bloque
+          // "FIX 2026-07-19: vincular QR a confirmation" abajo.
+        );
     qrUrl = qr?.url ?? null;
 
     // REGLA 2026-07-03 (sesion David): el bot SIEMPRE registra al lead en
@@ -9412,25 +9349,27 @@ export async function processInboundMessage(
           // confirmation_id. Aqui hacemos un UPDATE retroactivo para
           // setear el FK. Best-effort: si falla, el admin igual ve el
           // confirmation pero el link del QR queda null.
-          if (confResult?.ok && confResult.confirmation && qr) {
+          if (confResult?.ok && confResult.confirmation) {
             registrationConfirmationId = confResult.confirmation.id;
-            try {
-              const { error: linkErr } = await supabase
-                .from("event_qr_tokens" as never)
-                .update({ confirmation_id: confResult.confirmation.id } as never)
-                .eq("token" as never, qr.token);
-              if (linkErr) {
-                infoLog("[whatsapp/bot] provide_email: QR<->confirmation link fallo (no fatal)", {
-                  leadId: lead.id,
-                  confirmationId: confResult.confirmation.id,
-                  token: qr.token.slice(0, 8),
-                  error: linkErr.message,
+            if (qr) {
+              try {
+                const { error: linkErr } = await supabase
+                  .from("event_qr_tokens" as never)
+                  .update({ confirmation_id: confResult.confirmation.id } as never)
+                  .eq("token" as never, qr.token);
+                if (linkErr) {
+                  infoLog("[whatsapp/bot] provide_email: QR<->confirmation link fallo (no fatal)", {
+                    leadId: lead.id,
+                    confirmationId: confResult.confirmation.id,
+                    token: qr.token.slice(0, 8),
+                    error: linkErr.message,
+                  });
+                }
+              } catch (linkEx) {
+                infoLog("[whatsapp/bot] provide_email: QR<->confirmation link threw (no fatal)", {
+                  error: linkEx instanceof Error ? linkEx.message : String(linkEx),
                 });
               }
-            } catch (linkEx) {
-              infoLog("[whatsapp/bot] provide_email: QR<->confirmation link threw (no fatal)", {
-                error: linkEx instanceof Error ? linkEx.message : String(linkEx),
-              });
             }
           }
 
@@ -9866,20 +9805,20 @@ export async function processInboundMessage(
       // Never mint a usable QR before payment for paid events. The
       // confirmation is still created below as payment_pending so the lead
       // remains in the commercial limbo and can receive a checkout link.
-      const qr = icEventSlug
+      const qr = !isPaidEvent && icEventSlug
         ? await generateQrToken(
-          supabase,
-          phoneNormalized,
-          capturedName,
-          capturedEmail,
-          icEventSlug
-        ).catch((qrErr) => {
-          errorLog("[whatsapp/bot] implicit_capture: generateQrToken threw", {
-            leadId: lead.id,
-            error: qrErr instanceof Error ? qrErr.message : String(qrErr)
-          });
-          return null;
-        })
+            supabase,
+            phoneNormalized,
+            capturedName,
+            capturedEmail,
+            icEventSlug
+          ).catch((qrErr) => {
+            errorLog("[whatsapp/bot] implicit_capture: generateQrToken threw", {
+              leadId: lead.id,
+              error: qrErr instanceof Error ? qrErr.message : String(qrErr)
+            });
+            return null;
+          })
         : null;
       const icQrUrl = qr?.url ?? null;
       // e) Create confirmation en event_confirmations.
@@ -9903,17 +9842,19 @@ export async function processInboundMessage(
             });
             // FIX 2026-07-19: vincular QR a la confirmation
             // (mismo fix que en case "provide_email" + safety-net).
-            if (confResult?.ok && confResult.confirmation && qr) {
+            if (confResult?.ok && confResult.confirmation) {
               implicitConfirmationId = confResult.confirmation.id;
-              try {
-                await supabase
-                  .from("event_qr_tokens" as never)
-                  .update({ confirmation_id: confResult.confirmation.id } as never)
-                  .eq("token" as never, qr.token);
-              } catch (linkEx) {
-                infoLog("[whatsapp/bot] implicit_capture: QR<->confirmation link threw (no fatal)", {
-                  error: linkEx instanceof Error ? linkEx.message : String(linkEx),
-                });
+              if (qr) {
+                try {
+                  await supabase
+                    .from("event_qr_tokens" as never)
+                    .update({ confirmation_id: confResult.confirmation.id } as never)
+                    .eq("token" as never, qr.token);
+                } catch (linkEx) {
+                  infoLog("[whatsapp/bot] implicit_capture: QR<->confirmation link threw (no fatal)", {
+                    error: linkEx instanceof Error ? linkEx.message : String(linkEx),
+                  });
+                }
               }
             }
             // createConfirmation conserva un default histórico de
