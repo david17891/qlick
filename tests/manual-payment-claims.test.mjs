@@ -11,6 +11,8 @@ test("detecta comprobante o aviso de pago manual sin confirmar el pago", () => {
   assert.equal(isManualPaymentEvidence({ messageId: "wamid.image", from: "+5210000000000", type: "image", image: { id: "media_1" } }, ""), true);
   assert.equal(isManualPaymentEvidence({ messageId: "wamid.text", from: "+5210000000000", type: "text" }, "ya pagué por OXXO"), true);
   assert.equal(isManualPaymentEvidence({ messageId: "wamid.question", from: "+5210000000000", type: "text" }, "¿Puedo pagar por OXXO o transferencia?"), false);
+  assert.equal(isManualPaymentEvidence({ messageId: "wamid.question", from: "+5210000000000", type: "text" }, "¿Cuándo recibo el QR después de pagar?"), false);
+  assert.equal(isManualPaymentEvidence({ messageId: "wamid.receipt", from: "+5210000000000", type: "text" }, "Aquí está mi comprobante"), true);
   assert.equal(isManualPaymentEvidence({ messageId: "wamid.question", from: "+5210000000000", type: "text" }, "¿qué incluye?"), false);
 });
 

@@ -131,6 +131,7 @@ import { getActiveWhatsAppProvider } from ".";
 import {
   buildManualPaymentInstructions,
   createManualPaymentClaim,
+  isManualPaymentEvidence,
   isManualPaymentMethodRequest,
 } from "./manual-payment-claims";
 import {
@@ -6408,7 +6409,7 @@ export async function processInboundMessage(
   // Manual OXXO/transfer evidence is a separate, human-reviewed path. It
   // must run before mode-specific LLM logic so a receipt can never be
   // mistaken for a normal closing question or trigger a premature QR.
-  if (supabase && lead.id && (message.image?.id || message.document?.id || /\b(?:ya\s+(?:pagu[eé]|deposit[eé]|transfer[ií])|comprobante|recibo|dep[oó]sito|transferencia|oxxo)\b/i.test(body))) {
+  if (supabase && lead.id && isManualPaymentEvidence(message, body)) {
     let claim: Awaited<ReturnType<typeof createManualPaymentClaim>>;
     try {
       claim = await createManualPaymentClaim({

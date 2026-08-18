@@ -15,7 +15,9 @@ export function isManualPaymentEvidence(message: IncomingWhatsAppMessage, body: 
   // Solo se crea un reclamo cuando la persona afirma haber pagado o menciona
   // explícitamente un comprobante/recibo.
   const normalizedBody = body.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  return /(?:^|[^a-z0-9])(?:ya\s+(?:pague|deposite|transferi)|(?:hice|realice)\s+(?:el\s+)?(?:pago|deposito|transferencia)|pago\s+realizado|comprobante|recibo|deposito\s+(?:realizado|hecho)|transferencia\s+(?:realizada|hecha)|listo\s+con\s+el\s+pago)(?=$|[^a-z0-9])/i.test(normalizedBody);
+  const trimmedBody = normalizedBody.trim().replace(/^[¿¡]+|[?!.,]+$/g, "");
+  if (/^(?:comprobante|recibo)$/i.test(trimmedBody)) return true;
+  return /(?:^|[^a-z0-9])(?:ya\s+(?:pague|deposite|transferi)|(?:hice|realice)\s+(?:el\s+)?(?:pago|deposito|transferencia)|pago\s+realizado|(?:aqui\s+(?:esta|tienes?)|te\s+(?:mando|envio)|(?:este|aqui)\s+es|adjunto)\s+(?:mi\s+)?(?:comprobante|recibo)|deposito\s+(?:realizado|hecho)|transferencia\s+(?:realizada|hecha)|listo\s+con\s+el\s+pago)(?=$|[^a-z0-9])/i.test(normalizedBody);
 }
 
 export function buildManualPaymentInstructions(): string {
