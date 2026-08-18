@@ -130,7 +130,6 @@ import type { IncomingWhatsAppMessage } from "./webhooks/types";
 import { getActiveWhatsAppProvider } from ".";
 import {
   buildManualPaymentInstructions,
-  buildManualPaymentShortCopy,
   createManualPaymentClaim,
   isManualPaymentEvidence,
   isManualPaymentMethodRequest,
@@ -2083,23 +2082,19 @@ export function buildClosingWelcomeCopy(event: ActiveEventContext): string {
     "",
     `${CLOSING_FIRE_EMOJI} *Promoción de cierre:* 2 personas por *$1,500 MXN* y apartado de *$200 MXN* para ambas.`,
     "• Opción individual: $1,000 MXN (apartado de $200 MXN)",
-    `💳 Tarjeta: ${CLOSING_PROMO_URL}`,
-    "🏦 Transferencia/OXXO:",
-    buildManualPaymentShortCopy(),
-    "Después de pagar por transferencia/OXXO, responde LISTO y envía tu comprobante para revisión manual.",
+    "Elige cómo pagar en los botones de abajo.",
   ].join("\n");
 }
 
 export function buildClosingFallbackCopy(): string {
   return [
     "📌 *Los 4 Pilares de un Negocio que Vende*",
-    "Consulta la promoción y elige cómo pagar:",
-    `💳 Tarjeta: ${CLOSING_PROMO_URL}`,
-    "🏦 Transferencia/OXXO:",
-    buildManualPaymentShortCopy(),
-    "Después de pagar por transferencia/OXXO, responde LISTO y envía tu comprobante para revisión manual.",
-    `Si tienes dudas, habla con un asesor: https://wa.me/${CLOSING_HUMAN_PHONE}`,
+    "Consulta la promoción y elige cómo pagar en los botones de abajo.",
   ].join("\n");
+}
+
+export function buildClosingCardPaymentCopy(): string {
+  return `Puedes pagar con tarjeta aquí: ${CLOSING_PROMO_URL}. Al validarse el pago recibirás tu confirmación y QR.`;
 }
 
 export function buildClosingEventCopy(event: ActiveEventContext): string {
@@ -6862,6 +6857,7 @@ export async function processInboundMessage(
     const closingServiceRequest = closingIntent === "closing" && isClosingServiceRequest(body);
     const manualPaymentRequest = closingIntent === "closing" &&
       (buttonId === "closing_manual_payment" || isManualPaymentMethodRequest(body));
+    const cardPaymentRequest = closingIntent === "closing" && buttonId === "closing_open_promo";
     const isWelcomeTemplate =
       closingIntent === "closing" &&
       !buttonId &&
@@ -6877,6 +6873,8 @@ export async function processInboundMessage(
         ? { body: buildClosingQrTimingCopy(), source: "deterministic" as const }
       : manualPaymentRequest
         ? { body: buildManualPaymentInstructions(), source: "deterministic" as const }
+      : cardPaymentRequest
+        ? { body: buildClosingCardPaymentCopy(), source: "deterministic" as const }
       : isWelcomeTemplate
         ? {
             body: welcomeEvent && welcomeEvent.source === "db"
