@@ -2065,6 +2065,14 @@ export function buildClosingServiceCopy(): string {
   return `Para servicios de publicidad, marketing o apoyo para tu negocio, habla directamente con un asesor de Qlick por WhatsApp: https://wa.me/${CLOSING_HUMAN_PHONE}\n\nEsta línea está enfocada en la promoción del curso *Los 4 Pilares de un Negocio que Vende*.`;
 }
 
+export function isClosingQrTimingQuestion(body: string): boolean {
+  return /(?:cu[aá]ndo|despu[eé]s|tiempo).{0,45}\bqr\b|\bqr\b.{0,45}(?:pago|verific(?:ar|ado|aci[oó]n))/i.test(body);
+}
+
+export function buildClosingQrTimingCopy(): string {
+  return `El QR se envía después de verificar tu pago. Antes de esa verificación no se habilita el acceso. Puedes pagar aquí: ${CLOSING_PROMO_URL}`;
+}
+
 export function buildClosingEventCopy(event: ActiveEventContext): string {
   const location = eventLocationForDisplay(event) ?? event.location ?? "CANACO, San Luis Río Colorado";
   return [
@@ -6834,6 +6842,8 @@ export async function processInboundMessage(
       ? { body: buildClosingHumanCopy(), source: "deterministic" as const }
       : closingServiceRequest
         ? { body: buildClosingServiceCopy(), source: "deterministic" as const }
+      : isClosingQrTimingQuestion(body)
+        ? { body: buildClosingQrTimingCopy(), source: "deterministic" as const }
       : manualPaymentRequest
         ? { body: buildManualPaymentInstructions(), source: "deterministic" as const }
       : isWelcomeTemplate

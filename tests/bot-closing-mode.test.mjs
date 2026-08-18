@@ -3,12 +3,14 @@ import assert from "node:assert/strict";
 
 import {
   buildClosingEventCopy,
+  buildClosingQrTimingCopy,
   buildClosingServiceCopy,
   buildServiceDirectContactCopy,
   detectIntent,
   isDirectServiceRequest,
   isClosingBotMode,
   isClosingHumanRequest,
+  isClosingQrTimingQuestion,
 } from "../src/lib/whatsapp/bot-engine.ts";
 import { buildClosingPrompt, buildTaskPrompt } from "../src/lib/ai/agent-prompts.ts";
 
@@ -87,6 +89,13 @@ test("una duda de precio por persona no abre handoff; una petición explícita s
 test("rechazar el registro sin pedir baja conserva la conversación informativa", () => {
   assert.equal(detectIntent("No quiero registrarme, solo necesito información", false), "question");
   assert.equal(detectIntent("No me interesa", false), "opt_out");
+});
+
+test("la duda sobre cuándo llega el QR responde después de verificar el pago", () => {
+  assert.equal(isClosingQrTimingQuestion("¿Cuándo recibo el QR después de pagar?"), true);
+  assert.match(buildClosingQrTimingCopy(), /después de verificar tu pago/i);
+  assert.match(buildClosingQrTimingCopy(), /qlick\.digital\/promo/);
+  assert.equal(isClosingQrTimingQuestion("¿Me puedes mandar el QR sin pagar?"), false);
 });
 
 test("el prompt de cierre prohíbe captura, tools y confirmación de pago", () => {
