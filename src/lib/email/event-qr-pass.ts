@@ -164,7 +164,7 @@ export async function sendQrPassForConfirmation(args: {
     // muestre el badge visual correcto. El typegen de event_confirmations
     // no incluye payment_status todavia (migration 20260715014706 +
     // typegen stale), asi que casteamos via `as never`.
-    payment_status?: "not_required" | "pending" | "paid" | "paid_manual" | "pending_verification" | "revoked" | null;
+    payment_status?: "not_required" | "pending" | "partial" | "paid" | "paid_manual" | "pending_verification" | "revoked" | null;
   };
   const { data: confRaw } = await supabase
     .from("event_confirmations")

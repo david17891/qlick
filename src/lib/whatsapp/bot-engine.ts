@@ -129,6 +129,11 @@ import type { ConversationWindow } from "../ai/conversation-window";
 import type { IncomingWhatsAppMessage } from "./webhooks/types";
 import { getActiveWhatsAppProvider } from ".";
 import {
+  buildManualPaymentInstructions,
+  createManualPaymentClaim,
+  isManualPaymentMethodRequest,
+} from "./manual-payment-claims";
+import {
   buildEventDeviceReply,
   isEventDeviceQuestion,
 } from "./known-event-answers";
@@ -205,6 +210,8 @@ export type BotIntent =
   | "provide_name"
   | "interactive_event_yes"
   | "interactive_event_inscribir"
+  | "closing"
+  | "closing_human"
   | "interactive_show_events"
   | "interactive_talk_human"
   | "survey_offer"
@@ -1495,6 +1502,22 @@ const REGISTER_PHRASE_RE = /\b(quiero\s+inscribirme|me\s+interesa\s+(inscribirme
 const SERVICE_INQUIRY_RE = /\b(servicios?|agencia|dise[nñ]o\s+web|sitio\s+web|p[aá]ginas?\s+web|publicidad(?:\s+pagada)?|meta\s+ads|facebook\s+ads|google\s+(?:ads|business)|consultor[ií]a|desarrollo\s+web|embudos?|cotiza(?:ci[oó]n|r)?)\b/i;
 
 /**
+ * Por ahora las solicitudes de servicios se atienden por contacto humano en
+ * cualquier modo del bot. Las preguntas explícitas sobre el contenido del
+ * curso siguen pasando al contexto del evento.
+ */
+export function isDirectServiceRequest(body: string): boolean {
+  const text = body.trim();
+  const asksAboutCourse =
+    /\b(?:curso|taller|evento)\b/i.test(text) &&
+    /(?:incluye|contenido|temario|aprend(?:e|er)|enseñ(?:a|an|an)|qu[eé]\s+se\s+ve|de\s+qu[eé]\s+trata|pilares)/i.test(text);
+  if (!text || asksAboutCourse) {
+    return false;
+  }
+  return SERVICE_INQUIRY_RE.test(text) || CLOSING_SERVICE_REQUEST_RE.test(text);
+}
+
+/**
  * FIX 2026-07-02 (sesion David, "Si tras pregunta cerrada"): heurística
  * para detectar si el bot acaba de hacer una pregunta CERRADA de
  * inscripción (sí/no). Si matchea, marcamos el outbound con metadata
@@ -1730,6 +1753,56 @@ async function persistConversation(
   return (data as { id?: string } | null)?.id ?? null;
 }
 
+/**
+ * Comprueba el estado real del preregistro, sin depender de `leads.status`.
+ * Históricamente algunos leads quedaron como `interested` aunque su
+ * confirmation ya era `payment_pending`; el evento es la fuente de verdad.
+ */
+async function hasPendingEventConfirmation(
+  supabase: SupabaseAdmin,
+  leadId: string | null | undefined,
+  phoneNormalized: string,
+  eventId?: string | null,
+): Promise<boolean> {
+  const queryRows = async (column: "lead_id" | "phone_normalized", value: string) => {
+    let query = supabase
+      .from("event_confirmations" as never)
+      .select("registration_status, payment_status, event_id")
+      .eq(column as never, value as never)
+      .limit(20);
+    if (eventId) query = query.eq("event_id" as never, eventId as never);
+    const { data } = await query;
+    return (data as Array<{ registration_status?: string | null; payment_status?: string | null }> | null) ?? [];
+  };
+
+  const rows = leadId
+    ? await queryRows("lead_id", leadId)
+    : await queryRows("phone_normalized", phoneNormalized);
+  return rows.some(
+    (row) =>
+      row.registration_status === "payment_pending" ||
+      row.payment_status === "pending" ||
+      row.payment_status === "pending_verification",
+  );
+}
+
+/** Evita mandar el mismo aviso interno repetidamente mientras el bot sigue activo. */
+async function hasRecentPendingHandoff(
+  supabase: SupabaseAdmin,
+  leadId: string,
+  windowHours = 24,
+): Promise<boolean> {
+  const since = new Date(Date.now() - windowHours * 60 * 60 * 1000).toISOString();
+  const { data } = await supabase
+    .from("handoff_requests" as never)
+    .select("id")
+    .eq("lead_id" as never, leadId as never)
+    .eq("status" as never, "pending" as never)
+    .gte("created_at" as never, since as never)
+    .limit(1);
+  return Array.isArray(data) && data.length > 0;
+}
+
 /** Sincroniza la etapa CRM para todos los caminos que reciben un inbound. */
 async function syncLeadLifecycle(
   supabase: SupabaseAdmin,
@@ -1960,6 +2033,202 @@ async function resolveConversationEventId(input: {
     });
   }
   return match?.event.id ?? null;
+}
+
+const CLOSING_HUMAN_PHONE = "5216532935492";
+const CLOSING_HUMAN_DISPLAY = "+52 653 293 5492";
+const CLOSING_PROMO_URL = "https://www.qlick.digital/promo";
+const CLOSING_EVENT_SLUG = "desarrollo-estructura-curso-canaco";
+const CLOSING_FIRE_EMOJI = String.fromCodePoint(0x1f525);
+const CLOSING_SERVICE_REQUEST_RE = /(?:contratar|cotizar|busc(?:o|amos|ando)|necesit(?:o|amos)|manejan|lleven|llevar)[^\n]{0,80}(?:publicidad|marketing|redes|anuncios|facebook\s*ads|agencia|restaurante|negocio)/i;
+
+/** Modo cierre: solo información factual y CTA a la landing promocional. */
+export function isClosingBotMode(value: unknown): boolean {
+  return value === "closing";
+}
+
+/** El WhatsApp de cierre no atiende cotizaciones de servicios. */
+function isClosingServiceRequest(body: string): boolean {
+  return CLOSING_SERVICE_REQUEST_RE.test(body);
+}
+
+/** Todo turno informativo de cierre termina en la promoción, sin pregunta. */
+function ensureClosingPromoCta(body: string): string {
+  const text = body.trim();
+  return text.includes(CLOSING_PROMO_URL)
+    ? text
+    : `${text}\n\n👉 Aparta o paga aquí: ${CLOSING_PROMO_URL}`;
+}
+
+export function buildClosingServiceCopy(): string {
+  return `Para servicios de publicidad, marketing o apoyo para tu negocio, habla directamente con un asesor de Qlick por WhatsApp: https://wa.me/${CLOSING_HUMAN_PHONE}\n\nEsta línea está enfocada en la promoción del curso *Los 4 Pilares de un Negocio que Vende*.`;
+}
+
+export function buildClosingEventCopy(event: ActiveEventContext): string {
+  const location = eventLocationForDisplay(event) ?? event.location ?? "CANACO, San Luis Río Colorado";
+  return [
+    `📌 *${event.title}*`,
+    "Curso presencial para atraer y convertir más clientes con publicidad, Facebook Ads, inteligencia artificial y seguimiento de prospectos.",
+    `📅 ${event.humanStartsAt} · ⏱ ${event.humanDuration}`,
+    `📍 ${location}`,
+    "Incluye constancia de participación.",
+    "",
+    `${CLOSING_FIRE_EMOJI} *Promoción de cierre*`,
+    "• 2 personas por *$1,500 MXN*",
+    "• Apartado de *$200 MXN* para las dos personas",
+    "• Opción individual por *$1,000 MXN*",
+    "• Apartado individual de *$500 MXN*",
+    "• Pago seguro con tarjeta, OXXO o SPEI",
+    "• OXXO/SPEI: confirmación y QR al verificarse el pago",
+    "",
+    `👉 Aparta o paga aquí: ${CLOSING_PROMO_URL}`,
+  ].join("\n");
+}
+
+function buildClosingHumanCopy(): string {
+  return `Claro. Puedes hablar directamente con un asesor de Qlick por WhatsApp: https://wa.me/${CLOSING_HUMAN_PHONE}`;
+}
+
+export function buildServiceDirectContactCopy(): string {
+  return `Para servicios de publicidad, marketing o apoyo para tu negocio, habla directamente con un asesor de Qlick por WhatsApp: https://wa.me/${CLOSING_HUMAN_PHONE}`;
+}
+
+function isClosingHumanRequest(body: string, buttonId?: string | null): boolean {
+  if (buttonId === "closing_human") return true;
+  // `persona` debe ser una palabra completa: "dos personas" es una duda de
+  // la promoción, no una solicitud de handoff.
+  return /\b(?:asesor(?:a)?|humano|persona)\b|\bhablar con alguien\b|\bhablar con un asesor\b|\bcontactar a alguien\b/i.test(body);
+}
+
+function closingReplyCoversQuestion(reply: string, incoming: string): boolean {
+  const question = incoming.toLowerCase();
+  const answer = reply.toLowerCase();
+  const asksPromotion = /promoci[oó]n|dos\s+personas|dos\s+lugares|\$\s*200|apart(?:ar|ado).{0,30}200/.test(question);
+  if (asksPromotion && !(/1[,.]500|1,500|1 500|200\s*mxn|dos\s+personas/.test(answer) && answer.includes(CLOSING_PROMO_URL))) {
+    return false;
+  }
+
+  const asksPayment = /\b(?:pagar|pago|apart(?:ar|ado)|precio|costo|inversi[oó]n)\b/.test(question);
+  if (asksPayment && !/(?:1[,.]500|1,500|1 500|\$\s*200|\$\s*500|pago|apart)/.test(answer)) {
+    return false;
+  }
+
+  const asksPaymentMethod = /(?:tarjeta|oxxo|spei|transferencia|m[eé]todo(?:s)?\s+de\s+pago)/.test(question);
+  if (asksPaymentMethod && !/(?:tarjeta|oxxo|spei)/.test(answer)) {
+    return false;
+  }
+
+  if (/(?:asesor|persona|equipo).{0,35}\bconfirm(?:a|ar[aá]|[oó])\b.{0,25}\b(?:lugar|pago|apartado)\b/i.test(answer)) {
+    return false;
+  }
+
+  const asksPlaceOrDate = /(?:d[oó]nde|cu[aá]ndo|fecha|horario|sede|lugar|direcci[oó]n)/.test(question);
+  if (asksPlaceOrDate && !/(?:canaco|20\s+de\s+agosto|4:00|16:00|[áa]lvaro\s+obreg[oó]n)/.test(answer)) {
+    return false;
+  }
+
+  const asksDevice = /laptop|computadora|celular|tel[eé]fono/.test(question);
+  if (asksDevice && !/(?:laptop|celular|tel[eé]fono|computadora)/.test(answer)) {
+    return false;
+  }
+
+  const asksContent = /(?:incluye|consiste|temario|aprend(?:e|er)|qu[eé]\s+se\s+ve)/.test(question);
+  if (asksContent && !/(?:publicidad|facebook\s*ads|inteligencia\s+artificial|seguimiento)/.test(answer)) {
+    return false;
+  }
+
+  return true;
+}
+
+function normalizeClosingLlmReply(value: string | null | undefined, event: ActiveEventContext, incoming: string): string | null {
+  if (!value) return null;
+  // Algunos modelos devuelven el escape literal del emoji en vez del carácter.
+  let text = value.replace(/\\uD83D\\uDD25/gi, CLOSING_FIRE_EMOJI);
+  text = sanitizeLLMOutput(stripEscalateFlag(text).replace(/^INTENT:\s*\w+.*$/gim, "")).trim();
+  if (!text || hasInternalReasoningLeak(text)) return null;
+  const genericValidation = validateAgentReply(text, { eventStartsAt: event.startsAt });
+  if (!genericValidation.ok) return null;
+  const lower = text.toLowerCase();
+  // En modo cierre la LLM puede aclarar precios, pero no puede convertir la
+  // conversación en registro ni afirmar pago/acceso/QR.
+  if (/\b(?:pago\s+aprobado|confirmo\s+tu\s+pago|ya\s+est[aá]s\s+(?:registrad[oa]|confirmad[oa])|tu\s+qr|tu\s+pase|acceso\s+listo)\b/i.test(lower)) return null;
+  if (/\b(?:pago\s+en\s+puerta|pagar\s+en\s+puerta|en\s+puerta|efectivo\s+el\s+d[ií]a\s+del\s+evento)\b/i.test(lower)) return null;
+  if (/\b(?:apartado|pago|lugar)\b.{0,35}\bconfirmad[oa]\b/i.test(lower) || /\bconfirmad[oa]\s+con\s+el\s+cobro\b/i.test(lower)) return null;
+  if (/\b(?:tu|el|su)\s+lugar\b.{0,35}\b(?:asegurad[oa]|reservad[oa]|apartad[oa]|confirmad[oa])\b/i.test(lower)) return null;
+  if (text.includes("**") || (text.match(/\*/g)?.length ?? 0) % 2 !== 0) return null;
+  if (/\b(?:dame|p[aá]same|comp[aá]rteme|m[aá]ndame|env[ií]ame)\b.{0,70}\b(?:nombre|correo|email|tel[eé]fono)\b/i.test(lower)) return null;
+  // El bot cierre no negocia ni pregunta si la persona está interesada:
+  // resuelve la duda y deja el enlace directo en el mismo turno.
+  if (/[¿?]/.test(text) || /\b(?:te interesa|quieres que|te paso|deseas apartar|me compartes)\b/i.test(lower)) return null;
+  // La LLM conserva la libertad de redactar, pero no puede omitir la respuesta
+  // a la categoría explícita de la pregunta (promoción, pago, sede, equipo o
+  // temario) ni sustituirla por un handoff genérico.
+  if (!closingReplyCoversQuestion(text, incoming)) return null;
+  return text.length > 700 ? text.slice(0, 697).trimEnd() + "..." : text;
+}
+
+async function buildClosingLlmReply(args: {
+  body: string;
+  phoneNormalized: string;
+  lead: Lead;
+  leadProfile: import("../ai").LeadProfile | null;
+  isFirstMessage: boolean;
+  supabase: SupabaseAdmin | null;
+}): Promise<{ body: string; event: ActiveEventContext | null; source: "llm" | "fallback" }> {
+  const [eventRaw, conversationWindow, manualContext] = await Promise.all([
+    loadActiveEventContext(CLOSING_EVENT_SLUG).catch(() => null),
+    loadConversationWindow(args.phoneNormalized, 8).catch(() => undefined),
+    loadManualContext("qlick-bot").catch(() => null),
+  ]);
+  const event = eventRaw && manualContext
+    ? applyEventOverrides(eventRaw, manualContext)
+    : eventRaw;
+  if (!event || event.source !== "db") {
+    return {
+      body: `Consulta la promoción oficial del evento aquí: https://www.qlick.digital/promo\n\nSi tienes dudas, habla con un asesor: https://wa.me/${CLOSING_HUMAN_PHONE}`,
+      event,
+      source: "fallback",
+    };
+  }
+
+  const rateLimit = recordAndCheckRateLimit(`qlick-closing:${args.phoneNormalized}`);
+  if (!rateLimit.allowed) {
+    return { body: buildClosingEventCopy(event), event, source: "fallback" };
+  }
+
+  const agent = getActiveAgentProvider();
+  let result: Awaited<ReturnType<typeof agent.run>>;
+  try {
+    result = await agent.run("suggest_reply", {
+      profile: getAIAgentProfile(),
+      leadName: "",
+      lastIncomingMessage: args.body,
+      activeEvent: event,
+      conversationWindow,
+      leadProfile: args.leadProfile ?? undefined,
+      conversationSummary: manualContext?.promptBlock || undefined,
+      isFirstMessage: args.isFirstMessage,
+      phoneNormalized: args.phoneNormalized,
+      activeDomain: "event",
+      expectedReply: "none",
+      eventOfferType: "paid_workshop",
+      eventRules: event.eventRules?.rules ?? [],
+      isPaidEvent: true,
+      closingMode: true,
+      allowTools: false,
+      supabase: args.supabase,
+    });
+  } catch (error) {
+    errorLog("[whatsapp/bot] closing LLM failed", {
+      leadId: args.lead.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { body: buildClosingEventCopy(event), event, source: "fallback" };
+  }
+  const safeReply = normalizeClosingLlmReply(result.content, event, args.body);
+  return safeReply
+    ? { body: safeReply, event, source: "llm" }
+    : { body: buildClosingEventCopy(event), event, source: "fallback" };
 }
 
 /**
@@ -3011,6 +3280,32 @@ async function buildResponsePlan(args: {
   });
 
   switch (intent) {
+    case "closing":
+    case "closing_human": {
+      const event = await loadActiveEventContext(CLOSING_EVENT_SLUG).catch(() => null);
+      const bodyText = intent === "closing_human"
+        ? buildClosingHumanCopy()
+        : event && event.source === "db"
+          ? buildClosingEventCopy(event)
+          : `Consulta la promoción oficial del evento aquí: https://www.qlick.digital/promo\n\nSi tienes dudas, habla con un asesor: https://wa.me/${CLOSING_HUMAN_PHONE}`;
+      const interactive = intent === "closing_human" ? undefined : {
+        type: "button" as const,
+        body: { text: bodyText },
+        action: {
+          buttons: [
+            { type: "reply" as const, reply: { id: "closing_open_promo", title: "Ver promoción" } },
+            { type: "reply" as const, reply: { id: "closing_human", title: "Hablar con asesor" } },
+          ],
+        },
+      };
+      return {
+        kind: interactive ? "interactive" : "text",
+        body: bodyText,
+        ...(interactive ? { interactive } : {}),
+        metadata: { closing_mode: true, no_data_capture: true },
+        send: () => provider.send({ to: phoneNormalized, body: bodyText, ...(interactive ? { interactive } : {}) }),
+      };
+    }
     case "welcome":
     case "greeting": {
       // Fase 7a: Reply Buttons en welcome. Más conversión que texto abierto.
@@ -6109,6 +6404,66 @@ export async function processInboundMessage(
     });
   }
 
+  // Manual OXXO/transfer evidence is a separate, human-reviewed path. It
+  // must run before mode-specific LLM logic so a receipt can never be
+  // mistaken for a normal closing question or trigger a premature QR.
+  if (supabase && lead.id && (message.image?.id || message.document?.id || /\b(?:ya\s+(?:pagu[eé]|deposit[eé]|transfer[ií])|comprobante|recibo|dep[oó]sito|transferencia|oxxo)\b/i.test(body))) {
+    let claim: Awaited<ReturnType<typeof createManualPaymentClaim>>;
+    try {
+      claim = await createManualPaymentClaim({
+        supabase,
+        message,
+        body,
+        phoneNormalized,
+        leadId: lead.id,
+        leadName: lead.name,
+      });
+    } catch {
+      claim = { handled: false, created: false };
+    }
+    if (claim.handled && claim.responseBody) {
+      const provider = getActiveWhatsAppProvider();
+      let sent: { ok: boolean; externalId?: string; demo?: boolean; note?: string } = { ok: false };
+      try {
+        const result = await provider.send({ to: phoneNormalized, body: claim.responseBody });
+        sent = { ok: result.ok, externalId: result.externalId, demo: result.demo, note: result.note };
+      } catch (error) {
+        errorLog("[whatsapp/bot] manual payment claim acknowledgement failed", {
+          leadId: lead.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      if (sent.ok) {
+        await persistConversation(supabase, {
+          lead_id: lead.id,
+          phone_normalized: phoneNormalized,
+          direction: "outbound",
+          message_type: "text",
+          body: claim.responseBody,
+          whatsapp_message_id: sent.externalId ?? null,
+          related_event_id: conversationEventId,
+          metadata: {
+            intent: "manual_payment_claim",
+            claim_id: claim.claimId ?? null,
+            claim_created: claim.created,
+            auto_sent: true,
+          },
+        }).catch(() => null);
+      }
+      return {
+        ok: sent.ok,
+        intent: "question",
+        leadId: lead.id,
+        conversationId: inboundConvId ?? undefined,
+        outboundMessageId: sent.externalId,
+        responseKind: "text",
+        responsePreview: claim.responseBody,
+        demo: sent.demo,
+        note: "Comprobante/pago manual enviado a revisión humana.",
+      };
+    }
+  }
+
   // 2.5 Escalación a humano (FIX 2026-07-07, sesion David, opcion B del
   // handoff): si el mensaje del lead matchea una de las 5 categorías duras
   // de mustEscalateToHuman (reembolso, queja, soporte técnico, descuento
@@ -6354,21 +6709,240 @@ export async function processInboundMessage(
   // previos (`bot_paused_*`, `mustEscalateToHuman`) para que esos se
   // respeten siempre, y ANTES de `detectIntent` para que `human_first`
   // pueda bypasear la capa de intents rígida.
-  const isHumanFirstMode = await (async (): Promise<boolean> => {
+  const botGlobalMode = await (async (): Promise<string | null> => {
     try {
       const v = await readSystemSetting(KEY_BOT_GLOBAL_MODE);
-      return v === "human_first";
+      return typeof v === "string" ? v : null;
     } catch {
       // Si la DB falla, default = false (comportamiento actual).
-      return false;
+      return null;
     }
   })();
+  const isHumanFirstMode = botGlobalMode === "human_first";
+  const isClosingMode = isClosingBotMode(botGlobalMode);
+  // Este caso tiene prioridad incluso cuando el modo global es `closing`:
+  // un preinscrito que vuelve con una duda debe recibir el contacto oficial
+  // y generar handoff, no otra respuesta informativa de la LLM.
+  const pendingRegistrationInfo =
+    isEventInfoRequest(body) &&
+    !isPaymentHelpRequest(body) &&
+    (lead.status === "payment_pending" ||
+      (supabase
+        ? await hasPendingEventConfirmation(
+            supabase,
+            lead.id,
+            phoneNormalized,
+            conversationEventId,
+          )
+        : false));
   debugLog("[whatsapp/bot] mode for this message", {
     leadId: lead.id,
-    isHumanFirstMode
+    botGlobalMode,
+    isHumanFirstMode,
+    isClosingMode,
+    pendingRegistrationInfo,
   });
 
-  if (body && !OPT_OUT_RE.test(body)) {
+  // Regla operativa temporal: las consultas de servicios no se contestan con
+  // el catálogo automático. Se entrega directamente el contacto humano,
+  // independientemente del modo global activo. Las preguntas sobre el
+  // contenido del curso quedan fuera mediante isDirectServiceRequest().
+  if (isDirectServiceRequest(body) && !OPT_OUT_RE.test(body)) {
+    const serviceContactBody = buildServiceDirectContactCopy();
+    const provider = getActiveWhatsAppProvider();
+    let serviceSend: { ok: boolean; externalId?: string; demo?: boolean; note?: string } = { ok: false };
+    try {
+      const sent = await provider.send({ to: phoneNormalized, body: serviceContactBody });
+      serviceSend = { ok: sent.ok, externalId: sent.externalId, demo: sent.demo, note: sent.note };
+    } catch (error) {
+      errorLog("[whatsapp/bot] direct service contact send failed", {
+        leadId: lead.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    if (!serviceSend.ok) {
+      await recordFailedOutboundAction({
+        supabase,
+        leadId: lead.id,
+        phone: phoneNormalized,
+        inboundMessageId: message.messageId,
+        actionType: "direct_service_contact",
+        intent: "question",
+        note: serviceSend.note,
+      });
+    }
+    let serviceConvId: string | null = null;
+    if (supabase && serviceSend.ok) {
+      serviceConvId = await persistConversation(supabase, {
+        lead_id: lead.id,
+        phone_normalized: phoneNormalized,
+        direction: "outbound",
+        message_type: "text",
+        body: serviceContactBody,
+        whatsapp_message_id: serviceSend.externalId ?? null,
+        related_event_id: conversationEventId,
+        metadata: {
+          intent: "question",
+          answer_key: "direct_service_contact",
+          auto_sent: true,
+          auto_sent_source: "service_contact_guard",
+          demo: serviceSend.demo ?? false,
+        },
+      }).catch((error) => {
+        errorLog("[whatsapp/bot] direct service contact persist failed", {
+          leadId: lead.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return null;
+      });
+    }
+    return {
+      ok: serviceSend.ok,
+      intent: "question",
+      leadId: lead.id,
+      conversationId: serviceConvId ?? inboundConvId ?? undefined,
+      outboundMessageId: serviceSend.externalId,
+      responseKind: "text",
+      responsePreview: serviceContactBody,
+      demo: serviceSend.demo,
+      note: serviceSend.ok
+        ? "Consulta de servicios derivada directamente al asesor."
+        : `No se pudo enviar el contacto de servicios: ${serviceSend.note ?? "send falló"}`,
+    };
+  }
+
+  // El modo cierre es un flujo aislado: no pasa por intents de registro,
+  // captura de nombre/correo, QR, pagos ni encuestas. Sí usa la LLM con la
+  // ventana de conversación y el contexto factual del evento para resolver
+  // dudas; las reglas de salida impiden que capture datos o prometa acceso.
+  if (isClosingMode && !OPT_OUT_RE.test(body)) {
+    const closingIntent: BotIntent = isClosingHumanRequest(body, buttonId)
+      ? "closing_human"
+      : "closing";
+    const closingServiceRequest = closingIntent === "closing" && isClosingServiceRequest(body);
+    const manualPaymentRequest = closingIntent === "closing" && isManualPaymentMethodRequest(body);
+    const isWelcomeTemplate =
+      closingIntent === "closing" &&
+      !buttonId &&
+      (isFirstMessage || OPENER_RE.test(body.trim()));
+    const welcomeEvent = isWelcomeTemplate
+      ? await loadActiveEventContext(CLOSING_EVENT_SLUG).catch(() => null)
+      : null;
+    const baseClosingReply = closingIntent === "closing_human"
+      ? { body: buildClosingHumanCopy(), source: "deterministic" as const }
+      : closingServiceRequest
+        ? { body: buildClosingServiceCopy(), source: "deterministic" as const }
+      : manualPaymentRequest
+        ? { body: buildManualPaymentInstructions(), source: "deterministic" as const }
+      : isWelcomeTemplate
+        ? {
+            body: welcomeEvent && welcomeEvent.source === "db"
+              ? buildClosingEventCopy(welcomeEvent)
+              : `Conoce la promoción del evento aquí: https://www.qlick.digital/promo\n\nSi necesitas ayuda, habla con un asesor: https://wa.me/${CLOSING_HUMAN_PHONE}`,
+            source: "template" as const,
+          }
+        : await buildClosingLlmReply({
+            body,
+            phoneNormalized,
+            lead,
+            leadProfile,
+            isFirstMessage,
+            supabase,
+          });
+    // Cuando un preinscrito pregunta algo, sí respondemos con la memoria y
+    // contexto del evento. Además ofrecemos contacto humano sin detener el
+    // bot; la alerta interna se deduplica a una por contacto cada 24 horas.
+    let pendingHandoffEmailSent = false;
+    const shouldNotifyHuman = pendingRegistrationInfo || closingIntent === "closing_human";
+    if (shouldNotifyHuman && supabase && lead.id) {
+      const alreadyNotified = await hasRecentPendingHandoff(supabase, lead.id);
+      if (!alreadyNotified) {
+        const handoffResult = await sendHumanHandoffDetailed({
+          leadId: lead.id,
+          leadName: lead.name?.trim() || "Lead sin nombre",
+          leadPhone: phoneNormalized,
+          leadEmail: lead.email ?? undefined,
+          lastMessages: [{ direction: "inbound", body, timestamp: message.timestamp }],
+        }).catch((error) => ({
+          ok: false,
+          persisted: false,
+          emailSent: false,
+          error: error instanceof Error ? error.message : String(error),
+        }));
+        pendingHandoffEmailSent = handoffResult.emailSent;
+      }
+    }
+    const closingBody = pendingRegistrationInfo
+      ? `${ensureClosingPromoCta(baseClosingReply.body)}\n\nSi quieres apoyo para el cierre o el registro final, puedes hablar con un asesor aquí: https://wa.me/${CLOSING_HUMAN_PHONE}`
+      : closingIntent === "closing_human" || closingServiceRequest
+        ? baseClosingReply.body
+        : ensureClosingPromoCta(baseClosingReply.body);
+    const provider = getActiveWhatsAppProvider();
+    const interactive = (isWelcomeTemplate || pendingRegistrationInfo || (closingIntent === "closing" && !closingServiceRequest))
+      ? {
+          type: "button" as const,
+          body: { text: closingBody },
+          action: {
+            buttons: [
+              ...(isWelcomeTemplate
+                ? [{ type: "reply" as const, reply: { id: "closing_open_promo", title: "Ver promoción" } }]
+                : [{ type: "reply" as const, reply: { id: "closing_continue", title: "Seguir aquí" } }]),
+              { type: "reply" as const, reply: { id: "closing_human", title: "Hablar con asesor" } },
+            ],
+          },
+        }
+      : undefined;
+    let sendResult: { ok: boolean; externalId?: string; demo?: boolean; note?: string } = { ok: false };
+    try {
+      const sent = await provider.send({
+        to: phoneNormalized,
+        body: closingBody,
+        ...(interactive ? { interactive } : {}),
+      });
+      sendResult = { ok: sent.ok, externalId: sent.externalId, demo: sent.demo, note: sent.note };
+    } catch (err) {
+      errorLog("[whatsapp/bot] closing mode send failed", {
+        leadId: lead.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    if (supabase && sendResult.ok) {
+      await persistConversation(supabase, {
+        lead_id: lead.id,
+        phone_normalized: phoneNormalized,
+        direction: "outbound",
+        message_type: interactive ? "interactive" : "text",
+        body: closingBody,
+        whatsapp_message_id: sendResult.externalId ?? null,
+        related_event_id: conversationEventId,
+        metadata: {
+          intent: closingIntent,
+          auto_sent: true,
+          auto_sent_source: "bot_closing",
+          closing_mode: true,
+          no_data_capture: true,
+          reply_source: baseClosingReply.source,
+          ...(shouldNotifyHuman ? { pending_registration_contact: pendingRegistrationInfo, handoff_email_sent: pendingHandoffEmailSent } : {}),
+          demo: sendResult.demo ?? false,
+        },
+      });
+    }
+    return {
+      ok: sendResult.ok,
+      intent: closingIntent,
+      leadId: lead.id,
+      conversationId: inboundConvId ?? undefined,
+      outboundMessageId: sendResult.externalId,
+      responseKind: interactive ? "interactive" : "text",
+      responsePreview: closingBody,
+      demo: sendResult.demo,
+      note: sendResult.ok
+        ? "Modo cierre: información y promoción enviados sin captura ni registro."
+        : `Modo cierre: no se pudo enviar la respuesta (${sendResult.note ?? "send falló"}).`,
+    };
+  }
+
+  if (body && !OPT_OUT_RE.test(body) && (!isClosingMode || pendingRegistrationInfo)) {
     // Duda comercial de bajo riesgo: se responde con contexto conocido antes
     // de la escalación y del LLM. Así "¿llevo laptop?" no termina en un
     // handoff genérico ni se clasifica como privacidad/soporte.
@@ -6446,44 +7020,56 @@ export async function processInboundMessage(
       };
     }
 
-    const escalation = mustEscalateToHuman(body);
+    // Un preinscrito que vuelve a pedir información ya entregó sus datos.
+    // No debemos reabrir la captura ni dejar que el LLM improvise otro cierre:
+    // derivamos directamente al contacto oficial y generamos el handoff.
+    // `payment_pending` es el estado comercial del preregistro; no implica
+    // confirmación ni acceso.
+    const escalation = pendingRegistrationInfo
+      ? { escalate: true, reason: "Preinscrito: dudas de cierre/registro final" }
+      : mustEscalateToHuman(body);
     if (escalation.escalate) {
       const leadNameForHandoff = lead.name?.trim() || "Lead sin nombre";
+      const pendingRegistrationHandoff = escalation.reason?.startsWith("Preinscrito") ?? false;
 
       // 1) Persistir handoff (best-effort, nunca lanza).
-      const handoffResult = await sendHumanHandoffDetailed({
-        leadId: lead.id ?? null,
-        leadName: leadNameForHandoff,
-        leadPhone: phoneNormalized,
-        leadEmail: lead.email ?? undefined,
-        lastMessages: [
-          {
-            direction: "inbound",
-            body,
-            timestamp: message.timestamp
-          }
-        ]
-      }).catch((err) => {
-        // eslint-disable-next-line no-console
-        errorLog("[whatsapp/bot] sendHumanHandoff threw", {
-          leadId: lead.id,
-          error: err instanceof Error ? err.message : String(err)
-        });
-        return {
-          ok: false,
-          persisted: false,
-          emailSent: false,
-          error: err instanceof Error ? err.message : String(err),
-        };
-      });
-
+      const recentPendingHandoff = pendingRegistrationHandoff && supabase && lead.id
+        ? await hasRecentPendingHandoff(supabase, lead.id)
+        : false;
+      const handoffResult = recentPendingHandoff
+        ? { ok: true, persisted: false, emailSent: false, error: "handoff reciente" }
+        : await sendHumanHandoffDetailed({
+            leadId: lead.id ?? null,
+            leadName: leadNameForHandoff,
+            leadPhone: phoneNormalized,
+            leadEmail: lead.email ?? undefined,
+            lastMessages: [
+              {
+                direction: "inbound",
+                body,
+                timestamp: message.timestamp
+              }
+            ]
+          }).catch((err) => {
+            // eslint-disable-next-line no-console
+            errorLog("[whatsapp/bot] sendHumanHandoff threw", {
+              leadId: lead.id,
+              error: err instanceof Error ? err.message : String(err)
+            });
+            return {
+              ok: false,
+              persisted: false,
+              emailSent: false,
+              error: err instanceof Error ? err.message : String(err),
+            };
+          });
       // Un handoff pendiente es control humano explícito: pausamos solamente
       // este lead para evitar que el bot o los seguimientos automáticos
       // contaminen la conversación mientras espera al asesor. El panel puede
       // reactivarlo de forma reversible; una falla de esta telemetría no
       // impide responder al lead.
       let handoffLeadPaused = false;
-      if (handoffResult.persisted && supabase && lead.id) {
+      if (handoffResult.persisted && supabase && lead.id && !pendingRegistrationHandoff) {
         const { error: pauseError } = await supabase
           .from("leads" as never)
           .update({
@@ -6505,27 +7091,48 @@ export async function processInboundMessage(
       // 2) Respuesta específica y honesta. El booleano anterior mezclaba
       // persistencia en DB con email enviado y hacía creer que siempre había
       // una alerta operativa. Aquí distinguimos ambos resultados.
-      const handoffTopic = escalation.reason?.startsWith("Pagos")
+      const handoffTopic = pendingRegistrationHandoff
+        ? "las dudas de cierre y el registro final"
+        : escalation.reason?.startsWith("Pagos")
         ? "tu pago"
         : escalation.reason?.startsWith("Soporte")
           ? "el acceso o el problema técnico"
           : escalation.reason?.startsWith("Datos personales")
             ? "tu solicitud de privacidad"
             : "tu solicitud";
-      const handoffBody = handoffResult.persisted
+      const officialContact = `https://wa.me/${CLOSING_HUMAN_PHONE}`;
+      const handoffBody = pendingRegistrationHandoff
+        ? `Como ya nos compartiste tus datos para el curso, para resolver ${handoffTopic} puedes contactar al equipo de Qlick por este número oficial: ${officialContact}. Te atenderemos para completar tu proceso.${handoffResult.emailSent ? " También enviamos el aviso al equipo." : ""}`
+        : handoffResult.persisted
         ? `Tu solicitud quedó registrada para que un asesor de Qlick revise ${handoffTopic}. Te responderá por este mismo WhatsApp.${handoffResult.emailSent ? " El aviso fue aceptado para envío por correo; si no aparece, revisa spam." : " El registro está guardado; si es urgente, escríbenos a hola@qlick.marketing."}`
         : handoffResult.emailSent
           ? `Recibí tu mensaje y el aviso fue aceptado para envío a un asesor para revisar ${handoffTopic}. Te responderá por este mismo WhatsApp.`
           : `Recibí tu mensaje, pero no pude completar el aviso automático. Para que revisemos ${handoffTopic}, escríbenos a hola@qlick.marketing.`;
 
       const provider = getActiveWhatsAppProvider();
+      const pendingInteractive = pendingRegistrationHandoff
+        ? {
+            type: "button" as const,
+            body: { text: handoffBody },
+            action: {
+              buttons: [
+                { type: "reply" as const, reply: { id: "closing_continue", title: "Seguir aquí" } },
+                { type: "reply" as const, reply: { id: "closing_human", title: "Hablar con asesor" } },
+              ],
+            },
+          }
+        : undefined;
       let handoffSend: {
         ok: boolean;
         externalId?: string;
         demo?: boolean;
       } = { ok: false };
       try {
-        const r = await provider.send({ to: phoneNormalized, body: handoffBody });
+        const r = await provider.send({
+          to: phoneNormalized,
+          body: handoffBody,
+          ...(pendingInteractive ? { interactive: pendingInteractive } : {}),
+        });
         handoffSend = { ok: r.ok, externalId: r.externalId, demo: r.demo };
       } catch (err) {
         // eslint-disable-next-line no-console
@@ -6554,7 +7161,7 @@ export async function processInboundMessage(
           lead_id: lead.id,
           phone_normalized: phoneNormalized,
           direction: "outbound",
-          message_type: "text",
+          message_type: pendingInteractive ? "interactive" : "text",
           body: handoffBody,
           whatsapp_message_id: handoffSend.externalId ?? null,
           metadata: {
@@ -6565,6 +7172,7 @@ export async function processInboundMessage(
             handoff_email_sent: handoffResult.emailSent,
             handoff_email_accepted: handoffResult.emailSent,
             handoff_lead_paused: handoffLeadPaused,
+            ...(pendingInteractive ? { pending_registration_contact: true } : {}),
           }
         }).catch((err) => {
           // eslint-disable-next-line no-console
@@ -6593,7 +7201,7 @@ export async function processInboundMessage(
         leadId: lead.id,
         conversationId: handoffConvId ?? inboundConvId ?? undefined,
         outboundMessageId: handoffSend.externalId,
-        responseKind: "text",
+        responseKind: pendingInteractive ? "interactive" : "text",
         responsePreview: handoffBody,
         demo: handoffSend.demo,
         note:
@@ -8991,6 +9599,14 @@ export async function processInboundMessage(
         consentBasis: "inbound_service_request",
       });
     }
+  }
+
+  // Modo cierre: después de los gates legales (opt-out), no se ejecuta
+  // ningún flujo de captura, registro, QR, pago ni herramienta. Todas las
+  // entradas reciben información factual y el enlace /promo; una petición
+  // explícita de asesor recibe únicamente el contacto humano.
+  if (isClosingMode && !OPT_OUT_RE.test(body)) {
+    intent = isClosingHumanRequest(body, message.buttonId) ? "closing_human" : "closing";
   }
 
   // 6. Construir plan de respuesta y enviar.

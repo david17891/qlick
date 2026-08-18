@@ -1,3 +1,10 @@
+## 2026-08-16 — cierre con promoción y aviso de asesor
+
+- El modo `closing` conserva respuestas factuales del evento, pero cada respuesta informativa dirige directamente a `/promo` y ofrece `Hablar con asesor` sin pedir permiso para enviar el enlace ni usar lenguaje de confirmación anticipada.
+- Las solicitudes de publicidad, marketing u otros servicios se mantienen fuera de este WhatsApp y reciben una respuesta de alcance seguro.
+- El handoff interno prioriza `WHATSAPP_HANDOFF_NOTIFICATION_EMAILS`, usa `ADMIN_NOTIFICATION_EMAILS` ya existente como fallback y conserva `hola@qlick.digital` como último recurso. El correo del asesor solo aparece como acción interactiva al cliente.
+- Validación: build remoto, type-check, lint y 69 pruebas focalizadas; producción `dpl_9D4SU7evj67YJ2gWpUhTNwYbkUQG` (`READY`). Smoke `/` y `/promo` 200; webhook sin firma 403. No se tocaron conversaciones, pagos, leads ni configuración global del bot.
+
 ## 2026-08-13 — Auditoría segura de integración
 
 - Se reprodujo el único fallo del CI del PR #76 en `CASO D`: el mock de
@@ -1110,3 +1117,187 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
   cuando el handoff queda persistido.
 - El contacto revisado se pausó de forma explícita porque su handoff sigue en
   `pending`; no tiene confirmación ni pago y no se enviará QR automáticamente.
+### 2026-08-15 — Bot cierre para rescate de información
+
+- Se corrigió la discrepancia entre el copy del seguimiento `info_requested`
+  y el estado persistido: el outbound ahora deja `awaiting_field=name`.
+- El “sí” posterior ya puede continuar de forma determinista por nombre,
+  correo y enlace de pago, sin volver a presentar el evento ni caer en el
+  ack genérico. Se mantuvo la confirmación condicionada a pago/apartado
+  verificado y no se reactivaron contactos pausados.
+- Prueba focalizada 24/24; type-check, lint y build correctos.
+- Deploy Vercel producción: `dpl_A83VdJWbtyrkyiLohnDTUr6uBSUt` (`READY`).
+
+### 2026-08-15 — Auditoría de promo y reconciliación diferida
+
+- `/promo` respondió 200 en `www.qlick.digital`; la base productiva no tiene
+  todavía órdenes, pagos ni QR de promoción, así que no se simuló un cargo real.
+- Se añadió localmente la promoción de `event_payments` pendiente a aprobada
+  cuando llega `checkout.session.async_payment_succeeded` de OXXO/SPEI. La
+  misma fila se reutiliza para conservar idempotencia y evitar que el panel
+  muestre pendiente después de liquidar el pedido.
+- La E2E sintética cubrió voucher, éxito diferido, QR compartido, dos pases,
+  dos recibos Qlick y webhook duplicado (17/17 pruebas focalizadas). El
+  despliegue de esta corrección quedó bloqueado porque Vercel rechazó el token
+  local; no se borraron ni modificaron datos de clientes.
+
+### 2026-08-15 — Modo Cierre activado en producción
+
+- Despliegue `dpl_2sQgshEAjdatpE9erxNiUDKuBLEF` en `qlick.digital` y
+  `www.qlick.digital`, estado `READY`.
+- Activada la configuración `system_settings.bot_global_mode = "closing"`.
+- El modo dirige a `/promo`, conserva la información factual del evento y evita
+  captura de datos, registro, pago, QR o afirmaciones de confirmación en el chat.
+- Smoke público de `/` y `/promo`: 200. Rollback disponible restaurando
+  `bot_global_mode = "super_executive_v2"`.
+
+### 2026-08-15 — Memoria conversacional del modo Cierre
+
+- Despliegue `dpl_FxkLMv5YhBQU57h5rAyiMn7iW642` (`READY`) con aliases de
+  producción intactos.
+- El modo `closing` usa ahora la LLM con ventana conversacional y contexto
+  estructurado del evento; `allowTools=false` impide cualquier captura o tool.
+- Se añadió fallback factual seguro, validación anti-razonamiento/anti-registro
+  y corrección del escape Unicode literal del emoji de promoción.
+
+### 2026-08-15 — Plantilla inicial restaurada
+
+- Producción `dpl_GrX22E7kE5KNejhPxTQa3ZfXwuuG` (`READY`) conserva los aliases
+  públicos.
+- El primer mensaje del modo `closing` vuelve a ser interactivo con botones
+  `Ver promoción` y `Hablar con asesor`; las dudas posteriores usan memoria y
+  contexto LLM. El emoji de promoción se genera sin escapes literales.
+
+### 2026-08-15 — Contacto humano solo mediante botón
+
+- Despliegue `dpl_BqHb64HAvJ55qKAFWjkt9LRjyVRU` (`READY`).
+- Se retiró el número del asesor del texto de la plantilla inicial; se conserva
+  únicamente el botón `Hablar con asesor`.
+### 2026-08-16 — Deploy de contacto para preinscritos
+
+- Se publicó `dpl_2ZCXnmUZQVYMuXwKPnYPNUnxyMWk` en producción.
+- El modo global `closing` quedó sin cambios. Los preinscritos que preguntan
+  reciben respuesta contextual, botones `Seguir aquí` y `Hablar con asesor`,
+  y una alerta interna deduplicada por contacto durante 24 horas.
+- Smoke público: `/` y `/promo` respondieron `200`; webhook sin firma `403`.
+### 2026-08-16 — Cierre directo sin pregunta comercial
+
+- Se publicó `dpl_5kEV9MWoimNjKifsd3kB71DmKS4z` en producción.
+- El modo `closing` conserva su contexto, pero ya no pregunta si la persona
+  está interesada ni pide permiso para enviar el enlace: dirige directamente a
+  `/promo` y no cotiza publicidad u otros servicios en este WhatsApp.
+- Smoke público: `/` y `/promo` `200`; webhook sin firma `403`.
+### 2026-08-16 — Corrección final de alcance del bot cierre
+
+- Se publicó `dpl_Gpi3AvrbzNUFw5JXgtL97eSgJZGm` en producción.
+- Se amplió la detección de solicitudes de publicidad/servicios para no
+  convertirlas en una venta equivocada del curso. El modo `closing` mantiene
+  el alcance exclusivo del evento y el enlace directo `/promo`.
+- Smoke público: `/` y `/promo` `200`; webhook sin firma `403`.
+
+### 2026-08-17 — Batería real y blindaje de clasificación del modo Cierre
+
+- Se eliminó únicamente el contexto del número de prueba autorizado y se
+  ejecutó una batería real en WhatsApp contra Qlick Bot.
+- Se corrigió el falso handoff provocado por el match parcial `persona` dentro
+  de `personas`; la pregunta de promoción ahora llega al contexto LLM y
+  responde `$1,500 MXN` con apartado de `$200 MXN` y `/promo`.
+- Se añadió validación de cobertura por categoría (promoción, pago, sede,
+  equipo y temario) y bloqueo de afirmaciones de lugar confirmado/asegurado.
+  El fallback es factual y no reemplaza al LLM como motor principal.
+- Producción: `dpl_Aveywn6YmcAmq1RG9CSEEhasy798` (`READY`), aliases públicos
+  activos. Type-check, lint y pruebas focalizadas correctos; suite completa
+  ejecutada con skips únicamente en E2E que requieren secretos externos.
+
+### 2026-08-17 — Servicios derivados al asesor en todos los modos
+
+- Se añadió un guard global para que `servicios`, publicidad, agencia,
+  cotización y solicitudes equivalentes entreguen directamente
+  `https://wa.me/526862330617`.
+- Las preguntas explícitas sobre el contenido del curso quedan excluidas para
+  no perder contexto del evento.
+- Prueba real en producción con `super_executive_v2`: respuesta directa al
+  asesor, sin catálogo, captura de datos ni pregunta de giro.
+- Producción: `dpl_GZx6ZTiS1CPBcjFvskC437fAksHB` (`READY`).
+
+### 2026-08-17 — Corrección de deriva del modo global
+
+- La consulta de producción mostró `bot_global_mode = super_executive_v2`
+  aunque el flujo esperado era Cierre. El origen fue una carrera entre E2E
+  que hacían upsert directo de `system_settings.bot_global_mode` y luego
+  restauraban valores distintos; no fue un cambio automático del bot.
+- Se fijó el valor de producción a `closing`, se agregó auditoría de cambios
+  desde `/api/admin/bot/mode` y se serializó `npm test` para evitar esa carrera.
+- Validación focalizada: 6/6; type-check y lint correctos.
+- Producción: `dpl_EV85gGjsj5Ee1ZGM1iQh57NG2trr` (`READY`); el panel y la
+  consulta directa de Supabase muestran `closing` en operación.
+
+### 2026-08-17 — E2E promocional con Stripe simulado
+
+- La landing `/promo` se recorrió con datos sintéticos para dos personas y
+  apartado de $200; se creó una sola orden de $1,500.
+- Un webhook Stripe firmado de prueba promovió el mismo pago a aprobado,
+  confirmó a las dos personas, habilitó dos accesos, generó un QR compartido y
+  entregó dos pases y dos recibos por correo.
+- El webhook duplicado fue omitido por el receipt idempotente. Se verificaron
+  el pase `/check-in` y el PNG del QR con respuesta 200.
+- Se limpiaron todos los registros sintéticos; no quedó orden, pago,
+  confirmación, QR, correo ni receipt de prueba en Supabase.
+
+### 2026-08-17 — Batería histórica del bot cierre y métodos de pago
+
+- Se ejecutó una batería real en WhatsApp sobre producción: sede/horario,
+  promoción de dos personas, pago, métodos, laptop/celular, temario, enlace,
+  servicios, asesor, acuse ambiguo, nombre/correo y preinscripción.
+- El único hueco encontrado fue una pregunta de tarjeta/OXXO que recibía
+  información general sin mencionar los métodos. Se añadió al contexto y al
+  fallback `tarjeta, OXXO y SPEI`, y un validador que rechaza respuestas que
+  omitan esos métodos cuando la pregunta los solicita.
+- No hubo captura de datos, QR, confirmación ni cambio de dominio. El modo de
+  producción permaneció `closing`.
+- Deploy: `dpl_3VFuqSueKPsWSTJud7W8bTYsGmTx` (`READY`). La prueba post-deploy
+  confirmó la respuesta de métodos y el enlace `/promo`.
+- La suite completa posterior terminó 1,738/1,742: quedan tres pruebas
+  históricas de notificación con lead nulo y una E2E antigua que exige QR antes
+  del pago; no son regresiones de este ajuste.
+
+### 2026-08-17 — Batería adversarial post-deploy
+
+- Se probaron en WhatsApp de producción preguntas ambiguas, inyección de
+  instrucciones, QR antes de pago, OXXO/SPEI, temario, servicios, ubicación,
+  typos, audio, acuses y preguntas de registro.
+- Se corrigió el desvío de preguntas del curso sobre publicidad/Facebook Ads a
+  servicios y se reforzó el lenguaje de verificación automática para OXXO/SPEI.
+- Deploy: `dpl_5xc8VfDDGPK6wTfuwgEbQSjiTNVe` (`READY`). El modo permaneció
+  `closing`; las dos pruebas de regresión respondieron correctamente en
+  WhatsApp. Smoke `/` y `/promo`: 200.
+
+### 2026-08-17 — Comprobantes manuales y contacto de cierre
+
+- Se actualizó el contacto de cierre a `+52 653 293 5492`; no se cambió el
+  modo global ni se reescribieron conversaciones.
+- Migración aditiva `20260817120000_whatsapp_manual_payment_claims.sql` agrega
+  `whatsapp_media_attachments`, `event_manual_payment_claims` y el bucket
+  privado `whatsapp-media`, con RLS deny para clientes.
+- El webhook conserva primero el inbound y descarga imagen/PDF de Meta a
+  Storage privado con límite de 15 MB y verificación SHA-256. El claim usa
+  `whatsapp_message_id` como clave única.
+- El bot responde a `LISTO`/comprobante sin confirmar pago. Brevo notifica al
+  equipo; aprobación administrativa reutiliza `registerManualPayment`, activa
+  `partial`/`paid_manual`, genera/reutiliza QR y envía el pase idempotente.
+- Pendiente de configuración operativa: cargar `MANUAL_PAYMENT_CARD_NUMBER`
+  solo en Vercel Production y aplicar la migración; nunca incluir el número en
+  código, logs, prompts o documentación pública.
+### 2026-08-17 — Cola administrativa de comprobantes
+
+- La cola de comprobantes ahora liga el adjunto persistido al claim y devuelve
+  una URL firmada temporal para revisión administrativa.
+- Se mantuvo la aprobación por confirmación individual para no activar dos QRs
+  con un solo comprobante sin revisión explícita.
+- Type-check, lint, build y pruebas focalizadas pasan. La publicación Vercel y
+  el secreto de servidor quedan pendientes de autenticación/configuración.
+
+### 2026-08-17 — Variantes de pago manual
+
+- Las solicitudes equivalentes de depósito, transferencia, SPEI, OXXO y número
+  de tarjeta para depositar convergen al mismo instructivo manual.

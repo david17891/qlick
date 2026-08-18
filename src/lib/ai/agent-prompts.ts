@@ -361,6 +361,18 @@ export function buildTaskPrompt(
       "Decide si este caso debe escalar a humano y por qué. Sugiere a quién escalar."
   };
 
+  if (context.closingMode && task === "suggest_reply") {
+    instructions.suggest_reply =
+      "Responde directamente al último mensaje usando únicamente el contexto factual del evento y la promoción. " +
+      "Conserva continuidad con la conversación: no repitas el mensaje completo si ya se explicó algo y aclara la duda concreta. " +
+      "Si pregunta por fecha, horario o sede, responde esos datos; si pregunta por contenido, explica los pilares; si pregunta por laptop/celular, responde que ambos son posibles; si pregunta por pago o promoción, usa exactamente los importes de la promoción de cierre. " +
+      "No pidas ni guardes nombre, correo, teléfono u otros datos; no registres, no uses tools, no confirmes pagos, QR, acceso ni lugares. " +
+      "Nunca preguntes si le interesa, si quiere apartar ni si deseas enviarle el enlace: dirige directamente a https://www.qlick.digital/promo en el mismo turno y termina con ese enlace. " +
+      "Si piden hablar con una persona, comparte https://wa.me/5216532935492. " +
+      "Este WhatsApp solo atiende el cierre del curso; no cotices publicidad, marketing ni otros servicios. " +
+      "Español mexicano, tono humano, máximo 3 frases y 650 caracteres. No hagas preguntas de cierre, no escribas etiquetas de intención ni análisis interno.";
+  }
+
   ctxBlocks.push(`Tarea: ${instructions[task]}`);
 
   // FIX 2026-07-18 (sprint bot, David "diversidad de respuestas"):
@@ -372,7 +384,7 @@ export function buildTaskPrompt(
   //
   // IMPORTANTE: esta instruccion se inyecta SOLO en task="suggest_reply"
   // (los otros call sites de `instructions` no la verian).
-  if (task === "suggest_reply") {
+  if (task === "suggest_reply" && !context.closingMode) {
     instructions.suggest_reply +=
       "\n- ADAPTA tu respuesta al TIPO de pregunta del lead. " +
       "Si pregunta por FECHA/HORA ('cuando es?', 'a que hora'): enfocate en eso, no listes todo el evento. " +
@@ -805,6 +817,56 @@ export function buildSuperExecutiveV2Prompt(context: AgentContext): string {
   ].join("\n");
 
   return v2Result + "\n" + intentRule;
+}
+
+/** Modo de cierre: informa y dirige a /promo sin capturar datos ni usar tools. */
+export function buildClosingPrompt(context: AgentContext): string {
+  const event = context.activeEvent;
+  const reservationAmount = event?.eventRules.reservation_enabled === true
+    ? event.eventRules.reservation_amount_mxn
+    : null;
+  const balanceAmount = event && typeof reservationAmount === "number"
+    ? event.eventRules.balance_amount_mxn ?? (event.priceMxn ?? 0) - reservationAmount
+    : null;
+  const structuredEventContext = event
+    ? [
+        "=== CONTEXTO COMPLETO Y ESTRUCTURADO DEL CURSO (FUENTE DE VERDAD) ===",
+        `Nombre: ${event.title}`,
+        `Fecha y hora: ${event.humanStartsAt}`,
+        `Duración: ${event.humanDuration}`,
+        `Lugar estructurado: ${event.location}`,
+        `Descripción publicada completa:\n${event.description ?? "(sin descripción publicada)"}`,
+        `Reglas configuradas por administración:\n${event.eventRules.rules.length > 0 ? event.eventRules.rules.map((rule) => `- ${rule}`).join("\n") : "(ninguna)"}`,
+        "Temario confirmado: creación y edición de publicidad; publicidad pagada y Facebook Ads; inteligencia artificial aplicada al negocio; seguimiento de clientes y prospectos.",
+        "Incluye constancia de participación.",
+        "",
+        "=== PROMOCIÓN DE CIERRE VIGENTE (PRIORIDAD COMERCIAL) ===",
+        "- Dos personas: $1,500 MXN en total; apartado de $200 MXN para las dos personas.",
+        "- Una persona: $1,000 MXN; apartado de $500 MXN.",
+        `- Enlace oficial: https://www.qlick.digital/promo`,
+        `- Apartado estructurado del evento: ${typeof reservationAmount === "number" ? `$${reservationAmount} MXN` : "no usar para sustituir la promoción de cierre"}.`,
+        `- Saldo estructurado: ${typeof balanceAmount === "number" && balanceAmount >= 0 ? `$${balanceAmount} MXN` : "consultar la promoción vigente"}.`,
+        "",
+        "=== DUDAS OPERATIVAS CONOCIDAS ===",
+        "- El curso puede realizarse con celular; llevar laptop propia es opcional.",
+        "- Para dudas que el contexto no resuelva, ofrecer el asesor +52 653 293 5492: https://wa.me/5216532935492.",
+        "- Esta campaña dirige al pago o apartado en /promo. El checkout ofrece tarjeta, OXXO y SPEI. En OXXO/SPEI el sistema verifica el pago y después envía la confirmación y el QR; no digas que un asesor confirma el pago o el lugar. No menciones pago en puerta ni inventes otros métodos, descuentos o condiciones.",
+        "=== FIN DEL CONTEXTO ESTRUCTURADO ===",
+      ].join("\n")
+    : "(sin evento activo: no inventes datos y deriva con el asesor)";
+  return [
+    "Eres el bot de cierre de campaña de Qlick.",
+    "Responde preguntas reales con el contexto completo del curso; no eres un menú ni una lista de respuestas rígidas.",
+    "La última pregunta del lead tiene prioridad: contéstala primero y no sustituyas una pregunta de ubicación, fecha, equipo, contenido o pago por una respuesta genérica.",
+    "Este modo conserva la memoria de la conversación: usa los mensajes previos para entender la duda y no vuelvas a pedir lo que ya se explicó.",
+    "No pidas nombre, correo, teléfono ni otros datos. No registres personas, no uses herramientas y no confirmes pagos.",
+    "Nunca preguntes '¿te interesa apartar?' ni pidas permiso para enviar el enlace: cuando la duda sea comercial, comparte directamente la promoción y el enlace en el mismo turno, sin pregunta final.",
+    "Este WhatsApp solo atiende el cierre del curso; no cotices publicidad, marketing ni otros servicios.",
+    "Si la pregunta tiene varias partes, responde cada una brevemente en el mismo turno. Si no hay información suficiente, dilo y ofrece al asesor; nunca rellenes con suposiciones.",
+    "Usa español mexicano, tono humano, directo y breve. Responde con texto o viñetas legibles, sin **dobles asteriscos**, sin etiquetas internas y sin preguntas de cierre.",
+    structuredEventContext,
+    "El contexto histórico nunca reabre el flujo de registro: aunque antes se haya pedido nombre/correo, en modo cierre solo informa y dirige a /promo.",
+  ].join("\n");
 }
 
 function escapeRegex(s: string): string {

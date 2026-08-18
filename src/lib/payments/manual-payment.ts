@@ -42,6 +42,8 @@ import { checkSupabaseConfig } from "@/lib/supabase/health";
 import { sendEmail } from "@/lib/email/brevo-client";
 import { renderPaymentConfirmedEmail } from "@/lib/email/templates/payment-confirmed";
 import { setEventConfirmationPaymentState } from "@/lib/events/event-registration-state";
+import { getEventById } from "@/lib/events/events-server";
+import { sendQrPassForConfirmation } from "@/lib/email/event-qr-pass";
 
 /* ------------------------------------------------------------------ */
 /*  Tipos publicos                                                    */
@@ -555,6 +557,25 @@ export async function registerManualPayment(
       eventAccessId,
       error: `Error actualizando payment_status: ${updateErr.message}`,
     };
+  }
+
+  // A paid/manual or approved partial payment is the single gate for access.
+  // Ensure the existing idempotent QR/email path runs here too, including
+  // confirmations created manually immediately before this payment review.
+  if (confirmationPaymentStatus === "paid" || confirmationPaymentStatus === "partial") {
+    try {
+      const event = await getEventById(input.eventId);
+      if (event) {
+        await sendQrPassForConfirmation({
+          confirmationId: input.confirmationId,
+          event,
+          skipIfAlreadySent: true,
+        });
+      }
+    } catch {
+      // Payment state remains authoritative; an email/QR delivery failure is
+      // visible in event_email_log and can be retried from the admin panel.
+    }
   }
 
   // 7. Audit log.

@@ -41,6 +41,7 @@ import {
 import { normalizePhone } from "../../../../lib/crm/phone-utils";
 import { processInboundMessage } from "../../../../lib/whatsapp/bot-engine";
 import { debugLog, errorLog, infoLog } from "../../../../lib/log";
+import { persistWhatsAppMediaAttachment } from "../../../../lib/whatsapp/media-storage";
 
 // Next.js: este endpoint siempre corre en Node runtime (necesita crypto).
 export const runtime = "nodejs";
@@ -325,6 +326,12 @@ async function persistInboundIfPossible(
     attempt_count: 1,
     metadata: { message_type: msg.type, has_button: Boolean(msg.buttonId), has_media: Boolean(msg.image || msg.audio || msg.document) },
   } as never, { onConflict: "whatsapp_message_id" } as never);
+  // Persist media outside the lead/LLM path. The inbound row is already
+  // durable; a temporary Meta download failure is recorded and retriable
+  // without delaying the webhook response or exposing the file publicly.
+  if (msg.image?.id || msg.document?.id) {
+    void persistWhatsAppMediaAttachment({ supabase, message: msg }).catch(() => undefined);
+  }
   return { kind: "new", wamid: msg.messageId };
 }
 
