@@ -49,6 +49,25 @@ export function isManualPaymentMethodRequest(body: string): boolean {
   return channel && action;
 }
 
+/**
+ * A payment claim can arrive as a text-only notice ("LISTO", "ya pagué")
+ * or with an actual receipt attached. Keep the acknowledgement factual: a
+ * text notice must never claim that a receipt was received.
+ */
+export function buildManualPaymentClaimResponse(
+  message: IncomingWhatsAppMessage,
+  body: string
+): string {
+  const hasReceipt = Boolean(message.image?.id || message.document?.id) ||
+    /\b(?:comprobante|recibo)\b/i.test(body);
+
+  if (hasReceipt) {
+    return "Recibí tu aviso y tu comprobante. Lo revisaremos manualmente y te confirmaremos por este medio. Todavía no se considera confirmado ni se habilita el QR hasta validar el depósito.";
+  }
+
+  return "Recibí tu aviso de pago. Envíame una foto clara de tu comprobante para revisarlo. Todavía no se considera confirmado ni se habilita el QR hasta validar el depósito.";
+}
+
 function escapeHtml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
@@ -116,6 +135,6 @@ export async function createManualPaymentClaim(args: {
     handled: true,
     claimId,
     created,
-    responseBody: "Recibí tu aviso y tu comprobante. Lo revisaremos manualmente y te confirmaremos por este medio. Todavía no se considera confirmado ni se habilita el QR hasta validar el depósito.",
+    responseBody: buildManualPaymentClaimResponse(args.message, args.body),
   };
 }
