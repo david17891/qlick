@@ -26,21 +26,24 @@ export function isManualPaymentEvidence(message: IncomingWhatsAppMessage, body: 
 }
 
 export function buildManualPaymentInstructions(): string {
-  const card = formatManualPaymentCardNumber(process.env.MANUAL_PAYMENT_CARD_NUMBER?.trim() || DEFAULT_MANUAL_PAYMENT_CARD_NUMBER);
-  const holder = process.env.MANUAL_PAYMENT_BENEFICIARY?.trim() || "Paul Velásquez";
-  const bank = process.env.MANUAL_PAYMENT_BANK?.trim() || "Santander";
-  if (!card) {
-    return `Puedes pagar por depósito en OXXO o transferencia. Para recibir los datos exactos, habla con un asesor aquí: https://wa.me/${ADVISOR_PHONE}`;
-  }
   return [
     "Para pagar por OXXO o transferencia:",
-    `🏦 ${bank}`,
-    `💳 Número para depósito: ${card}`,
-    `👤 A nombre de: ${holder}`,
+    buildManualPaymentShortCopy(),
     "",
     "Cuando termines, responde *LISTO* y manda una foto clara de tu recibo. Lo revisaremos manualmente y te avisaremos; el pago y el acceso quedan confirmados únicamente después de validarlo.",
     `Si prefieres ayuda, habla con un asesor: https://wa.me/${ADVISOR_PHONE}`,
   ].join("\n");
+}
+
+/** Datos breves para mostrar la opción manual desde el saludo inicial. */
+export function buildManualPaymentShortCopy(): string {
+  const card = formatManualPaymentCardNumber(process.env.MANUAL_PAYMENT_CARD_NUMBER?.trim() || DEFAULT_MANUAL_PAYMENT_CARD_NUMBER);
+  const holder = process.env.MANUAL_PAYMENT_BENEFICIARY?.trim() || "Paul Velásquez";
+  const bank = process.env.MANUAL_PAYMENT_BANK?.trim() || "Santander";
+  if (!card) {
+    return `🏦 OXXO o transferencia: solicita los datos al asesor https://wa.me/${ADVISOR_PHONE}`;
+  }
+  return [`🏦 ${bank}`, `💳 Número para depósito: ${card}`, `👤 A nombre de: ${holder}`].join("\n");
 }
 
 export function isManualPaymentMethodRequest(body: string): boolean {
