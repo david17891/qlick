@@ -1307,3 +1307,11 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 - `/promo` ahora permite seleccionar apartado o pago completo para 1 persona y para la promoción de 2 personas. El flujo individual conserva el checkout normal y pasa `payment_option` explícitamente.
 - Se actualizó el contexto del bot de cierre y sus copys para comunicar $200 en ambas modalidades.
 - Validación: 20 pruebas focalizadas, type-check, lint y build correctos.
+## 2026-08-18 — apartado de $200 publicado y auditoría de producción
+
+- Se promovió el PR #84 a `main` con merge `9e2d394`; Vercel `dpl_EMXsf3MwcTizeNdBrFzbg3RpZapD` quedó `READY` en producción con aliases `qlick.digital` y `www.qlick.digital`.
+- `/promo` y el checkout verifican en producción la opción individual y de pareja, apartado de $200, pago completo, saldo de $800 individual y la sede CANACO.
+- Supabase conserva `bot_global_mode=closing` y `bot_paused_global=false`; la auditoría de estado encontró 2 confirmados, 19 pendientes y 2 órdenes promocionales existentes. No se generaron cobros ni mensajes reales durante la batería.
+- Batería focalizada post-deploy: 272/272 pruebas. Se cubrieron modo cierre, captura nombre/correo, nombres-placeholder, respuestas afirmativas, servicios/handoff, OXXO/SPEI, comprobante manual, QR bloqueado antes de pago, webhook firmado, seguridad y recordatorios.
+- Gmail: 59 mensajes de `noreply@qlick.digital` quedaron marcados como `IMPORTANT` y con etiqueta `Qlick/Alta prioridad`. El conector no puede activar notificaciones/filtros del sistema; queda como ajuste manual en Gmail.
+- El check E2E de reconciliación Supabase fue omitido en el merge administrativo únicamente porque CI carece de credenciales externas; no se alteró la lógica de pagos ni se tocaron datos históricos.
