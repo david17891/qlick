@@ -95,8 +95,18 @@ async function sendHandoffEmailIfPossible(args: HumanHandoffArgs): Promise<boole
       })
       .join("");
     const html = `<div style="font-family:sans-serif;max-width:600px"><h2>📞 ${escapeHtml(args.leadName)} quiere hablar contigo</h2><p>Tel: <a href="${waMeLink}">${escapeHtml(args.leadPhone)}</a></p>${args.leadEmail ? `<p>Email: <a href="mailto:${args.leadEmail}">${escapeHtml(args.leadEmail)}</a></p>` : ""}<h3>Última conversación</h3>${messagesHtml || "<em>Sin mensajes</em>"}<p><a href="${waMeLink}" style="display:inline-block;background:#25D366;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold">Abrir chat en WhatsApp</a></p></div>`;
+    // El teléfono que ve el lead sigue siendo el contacto oficial de Qlick.
+    // Esta lista es interna: prioriza una configuración específica para
+    // WhatsApp y después la lista administrativa ya existente, para no
+    // perder alertas cuando la variable nueva aún no esté en producción.
+    const recipients = (process.env.WHATSAPP_HANDOFF_NOTIFICATION_EMAILS
+      ?? process.env.ADMIN_NOTIFICATION_EMAILS
+      ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
     const result = await sendEmail({
-      to: process.env.ADMIN_NOTIFICATION_EMAILS?.split(",")[0]?.trim() ?? "david17891@gmail.com",
+      to: recipients.length > 0 ? recipients : "hola@qlick.digital",
       subject,
       html
     });

@@ -345,7 +345,12 @@ export function buildLeadFollowupBody(
   }
 
   if (stage === "info_requested") {
-    return `${prefix}\n\nSi ya quieres inscribirte, capturo tus datos y te envío el enlace oficial de pago. Respóndeme “sí” y te pido solo tu nombre y correo.`;
+    // Este mensaje es una puerta de cierre, no una pregunta abierta. El
+    // siguiente paso debe ser inequívoco y de un solo dato: cuando la
+    // persona responda "sí", el motor entra a captura de nombre y después
+    // de correo. El campo pendiente se persiste en el cron que envía este
+    // copy; así no cae en el ack genérico ni vuelve a presentar el evento.
+    return `${prefix}\n\nSi quieres inscribirte, te paso el enlace oficial de pago para apartar o pagar. Respóndeme “sí” y empezamos con tu nombre completo.`;
   }
 
   if (followupNumber === 1) {

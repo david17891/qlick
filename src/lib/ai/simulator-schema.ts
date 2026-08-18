@@ -32,7 +32,8 @@ const VALID_MODES: ReadonlySet<BotMode> = new Set<BotMode>([
   // Sprint v0.9.x (PR #1 modo `human_first`): 4to modo opt-in para
   // experimentar con LLM-first total. Aceptado por el simulador y por
   // el endpoint POST /api/admin/bot/mode.
-  "human_first"
+  "human_first",
+  "closing"
 ]);
 
 const MAX_MESSAGE_LEN = 4_000;

@@ -219,6 +219,10 @@ export interface AgentContext {
   expectedReply?: "none" | "event_choice" | "name" | "email" | "payment_action" | "service_goal";
   registrationStatus?: "payment_pending" | "confirmed" | null;
   isPaidEvent?: boolean;
+  /** Modo cierre: conserva memoria conversacional, pero nunca captura datos. */
+  closingMode?: boolean;
+  /** Permite desactivar tools aunque el switch global esté encendido. */
+  allowTools?: boolean;
 }
 
 export type AgentTask =

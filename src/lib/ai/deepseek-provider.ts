@@ -84,6 +84,7 @@ import {
   buildSuperExecutiveV2Prompt,
   // Sprint v0.9.x PR #1: 4to modo opt-in `human_first` (LLM-first total).
   buildHumanFirstPrompt,
+  buildClosingPrompt,
   buildTaskPrompt
 } from "./agent-prompts";
 import { getAgentTools } from "./agent-tools";
@@ -310,6 +311,14 @@ function chooseTier(
   // decide forzar Pro en alguna task específica (ej. escalación a
   // humano con cálculo de urgencia).
   if (PRO_PRIORITY_TASKS.has(task)) {
+    return "pro";
+  }
+
+  // El cierre responde dudas abiertas sobre un mismo curso y necesita
+  // seguir el contexto completo con precisión. Preferimos el modelo de mayor
+  // calidad en este modo; el override explícito de `flash` sigue permitiendo
+  // rollback operativo si la latencia o el costo lo requieren.
+  if (context?.closingMode && task === "suggest_reply") {
     return "pro";
   }
 
@@ -753,7 +762,7 @@ async function runWithToolLoop(
   // Pro explícitamente (rollback de calidad), setear
   // DEEPSEEK_TOOL_LOOP_TIER=pro en .env.local + Vercel env vars.
   const toolLoopTier =
-    (process.env.DEEPSEEK_TOOL_LOOP_TIER === "pro" ? "pro" : "flash") as
+    (context.closingMode || process.env.DEEPSEEK_TOOL_LOOP_TIER === "pro" ? "pro" : "flash") as
       | "flash"
       | "pro";
   const first = await callDeepSeekChat({
@@ -1266,6 +1275,9 @@ export async function pickSystemPromptForMode(
   if (mode === "human_first") {
     return buildHumanFirstPrompt(context);
   }
+  if (mode === "closing") {
+    return buildClosingPrompt(context);
+  }
   // Modo socrático (cualquier variante).
   const isFirstMessage =
     typeof context.isFirstMessage === "boolean"
@@ -1406,7 +1418,7 @@ export const deepseekAgentProvider: AIAgentProvider = {
     }
 
     // ── Path 2C: tool loop (solo suggest_reply + flag ON) ──
-    if (task === "suggest_reply" && flagEnabled) {
+    if (task === "suggest_reply" && flagEnabled && context.allowTools !== false) {
       const result = await runWithToolLoop(task, context);
       // FIX 2026-07-25 (sprint "activar ai_bot_rules en el bot real"):
       // telemetría de Reglas de Oro (post-respuesta real). Fire-and-forget.

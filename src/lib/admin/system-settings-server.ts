@@ -114,7 +114,10 @@ export type BotGlobalMode =
   // seteando `bot_global_mode = "super_executive_v2"` en
   // `system_settings` (via admin UI o SQL). NO es default — los leads
   // actuales siguen con v1 hasta que validemos.
-  | "super_executive_v2";
+  | "super_executive_v2"
+  // Modo determinista de campaña: informa y dirige a /promo sin capturar
+  // datos ni iniciar registros por WhatsApp.
+  | "closing";
 
 /**
  * Type guard runtime: ¿es `x` un `BotGlobalMode` válido?
@@ -129,7 +132,8 @@ export function isBotGlobalMode(x: unknown): x is BotGlobalMode {
     x === "socratic_no_tools_v1" ||
     x === "super_executive" ||
     x === "human_first" ||
-    x === "super_executive_v2"
+    x === "super_executive_v2" ||
+    x === "closing"
   );
 }
 

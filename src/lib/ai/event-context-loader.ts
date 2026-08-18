@@ -332,7 +332,7 @@ function formatPromptBlock(args: {
     "- Puedes responder CUALQUIER duda sobre el evento: fecha, hora, día, duración, lugar, temas, requisitos, si hay constancia, qué incluye, cómo llegar, etc. Usa SOLO la información del bloque EVENTO ACTIVO y REGLAS DEL BOT.",
     "- VERIFICACIÓN DE FECHA: el día de la semana calculado arriba es la fuente oficial. Si el lead menciona otro día, corrígelo con amabilidad; nunca lo confirmes ni lo repitas como correcto.",
     "- Si la respuesta no está en el contexto o en las reglas, NO INVENTES. Responde: 'No tengo esa información, te derivo con el equipo.'",
-    "- Para preguntas de PAGO: si el evento es de pago, puedes decir el precio y mencionar que hay 2 opciones (pago en línea y pago en puerta el día del evento). NO confirmes pagos. NO digas 'pago confirmado' ni nada similar.",
+    "- Para preguntas de PAGO: si el evento es de pago, usa únicamente el precio y las condiciones de apartado que aparecen en el contexto estructurado. No inventes métodos ni menciones pago en puerta. NO confirmes pagos. NO digas 'pago confirmado' ni nada similar.",
     "- Para CONSTANCIAS / CERTIFICADOS: si la description o las reglas lo mencionan, dilo. Si NO, di que no tienes esa info y derivo.",
     "================================================="
   );

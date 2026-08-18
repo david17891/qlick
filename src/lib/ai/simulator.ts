@@ -62,7 +62,8 @@ export type BotMode =
   | "super_executive"
   | "human_first"
   // FIX 2026-07-19 (sprint bot v2): sync con BotGlobalMode.
-  | "super_executive_v2";
+  | "super_executive_v2"
+  | "closing";
 
 export type SimulationDecisionEngineMode =
   | "legacy"
