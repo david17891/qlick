@@ -6,6 +6,7 @@ const root = new URL("../", import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), "utf8");
 
 const migration = read("supabase/migrations/20260813170000_event_promo_pair_orders.sql");
+const depositMigration = read("supabase/migrations/20260818090000_canaco_reservation_two_hundred.sql");
 const promoRoute = read("src/app/api/promo/checkout/route.ts");
 const promoPage = read("src/app/promo/PromoForm.tsx");
 const promoServer = read("src/lib/events/promo-orders-server.ts");
@@ -30,9 +31,18 @@ test("/promo ofrece pareja, opción normal y segundo participante opcional", () 
   assert.match(promoRoute, /mode === "single"/);
   assert.match(promoRoute, /createOrReusePromoOrder/);
   assert.match(promoRoute, /paymentPurpose: paymentOption === "reservation" \? "promo_pair_reservation"/);
+  assert.match(promoRoute, /payment_option=\$\{paymentOption\}/);
   assert.match(promoPage, /2 personas/);
   assert.match(promoPage, /1 persona/);
-  assert.match(promoPage, /Segunda persona \(opcional\)/);
+  assert.match(promoPage, /Apartado de \$200 MXN o pago completo/);
+  assert.match(promoPage, /mode === "promo" \? "\$1,500" : "\$1,000"/);
+  assert.match(promoPage, /Agregar segunda persona[\s\S]*\(opcional\)/);
+});
+
+test("CANACO usa $200 de apartado para cualquier modalidad y conserva saldo de $800", () => {
+  assert.match(depositMigration, /reservation_amount_mxn[\s\S]*'200'::jsonb/);
+  assert.match(depositMigration, /balance_amount_mxn[\s\S]*'800'::jsonb/);
+  assert.match(depositMigration, /Apartado: \$200 MXN y liquida los \$800 MXN/);
 });
 
 test("el servidor reutiliza pendientes y no transforma pagos existentes", () => {

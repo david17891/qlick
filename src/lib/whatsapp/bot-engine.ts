@@ -521,10 +521,10 @@ export function buildEventInfoCopy(event: ActiveEventContext): string {
       : "por confirmar";
     const reserve = reservation.enabled
       ? `$${reservation.amount.toLocaleString("es-MX")} MXN`
-      : "$500 MXN";
+      : "$200 MXN";
     const balance = reservation.enabled
       ? `$${reservation.balance.toLocaleString("es-MX")} MXN`
-      : "$500 MXN";
+      : "$800 MXN";
     const dateLabel = new Intl.DateTimeFormat("es-MX", {
       timeZone: "America/Phoenix",
       day: "numeric",
@@ -2081,7 +2081,7 @@ export function buildClosingWelcomeCopy(event: ActiveEventContext): string {
     `📅 ${event.humanStartsAt} · 📍 ${location}`,
     "",
     `${CLOSING_FIRE_EMOJI} *Promoción de cierre:* 2 personas por *$1,500 MXN* y apartado de *$200 MXN* para ambas.`,
-    "• Opción individual: $1,000 MXN (apartado de $500 MXN)",
+    "• Opción individual: $1,000 MXN (apartado de $200 MXN)",
     `👉 Aparta o paga aquí: ${CLOSING_PROMO_URL}`,
   ].join("\n");
 }
@@ -2099,7 +2099,7 @@ export function buildClosingEventCopy(event: ActiveEventContext): string {
     "• 2 personas por *$1,500 MXN*",
     "• Apartado de *$200 MXN* para las dos personas",
     "• Opción individual por *$1,000 MXN*",
-    "• Apartado individual de *$500 MXN*",
+    "• Apartado individual de *$200 MXN*",
     "• Pago seguro con tarjeta, OXXO o SPEI",
     "• OXXO/SPEI: confirmación y QR al verificarse el pago",
     "",
@@ -4965,7 +4965,7 @@ case "interactive_event_inscribir": {
         // implicit_capture estaba hardcodeado como "pago completo" y
         // NO respetaba el apartado configurado en event_rules. Para
         // CANACO, el bot decía "pago completo de $1,000" cuando en
-        // realidad el evento tiene apartado de $500. Ahora usamos
+        // realidad el evento tiene apartado de $200. Ahora usamos
         // getReservationTerms(regEvtIc) para detectar si hay apartado
         // y armar el copy correcto:
         //   - reservation_enabled=true → copy de apartado con

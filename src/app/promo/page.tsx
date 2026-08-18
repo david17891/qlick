@@ -41,7 +41,7 @@ export default async function PromoPage() {
               </div>
               <div className="mt-4 rounded-xl border border-slate-200 bg-white p-5">
                 <p className="text-sm font-semibold text-ink">¿Vas solo?</p>
-                <p className="mt-1 text-sm text-ink-soft">También puedes registrarte como una persona por el precio normal de $1,000 MXN.</p>
+                <p className="mt-1 text-sm text-ink-soft">También puedes registrarte como una persona por $1,000 MXN y apartar con $200 MXN. El saldo de $800 MXN se liquida el día del evento.</p>
               </div>
             </Card>
             <Card className="order-1 p-4 sm:p-7 lg:order-2">

@@ -66,7 +66,7 @@ test("followup: rescata una solicitud de información sin pedir consentimiento d
   assert.equal(result.stage, "info_requested");
   assert.equal(result.followupNumber, 1);
   assert.match(result.body ?? "", /inscribirte/);
-  assert.match(result.body ?? "", /nombre y correo/);
+  assert.match(result.body ?? "", /nombre completo/);
 });
 
 test("followup: reconoce el rescate pendiente para enrutar una respuesta al cierre", () => {

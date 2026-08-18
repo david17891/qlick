@@ -51,6 +51,7 @@ test("el copy de cierre conserva contexto factual y dirige a /promo", () => {
   assert.match(copy, /2 personas por \*\$1,500 MXN\*/);
   assert.match(copy, /Apartado de \*\$200 MXN\*/);
   assert.match(copy, /Opción individual por \*\$1,000 MXN\*/);
+  assert.match(copy, /Apartado individual de \*\$200 MXN\*/);
   assert.match(copy, /tarjeta, OXXO o SPEI/i);
   assert.match(copy, /https:\/\/www\.qlick\.digital\/promo/);
   assert.doesNotMatch(copy, /\+52 686 233 0617/);
@@ -62,6 +63,7 @@ test("el primer mensaje de cierre prioriza la oferta y es más corto", () => {
   const full = buildClosingEventCopy(event);
   assert.match(welcome, /2 personas por \*\$1,500 MXN\*/);
   assert.match(welcome, /apartado de \*\$200 MXN\*/);
+  assert.match(welcome, /individual: \$1,000 MXN \(apartado de \$200 MXN\)/);
   assert.match(welcome, /qlick\.digital\/promo/);
   assert.ok(welcome.length < full.length);
 });
@@ -122,6 +124,7 @@ test("el prompt de cierre prohíbe captura, tools y confirmación de pago", () =
   assert.match(prompt, /No menciones pago en puerta/i);
   assert.match(prompt, /checkout ofrece tarjeta, OXXO y SPEI/i);
   assert.match(prompt, /Dos personas: \$1,500 MXN/);
+  assert.match(prompt, /Una persona: \$1,000 MXN; apartado de \$200 MXN/);
 });
 
 test("el turno de cierre inyecta historial y reemplaza la instrucción genérica de captura", () => {
