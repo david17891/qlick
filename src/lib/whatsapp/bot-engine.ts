@@ -2093,11 +2093,12 @@ export function buildServiceDirectContactCopy(): string {
   return `Para servicios de publicidad, marketing o apoyo para tu negocio, habla directamente con un asesor de Qlick por WhatsApp: https://wa.me/${CLOSING_HUMAN_PHONE}`;
 }
 
-function isClosingHumanRequest(body: string, buttonId?: string | null): boolean {
+export function isClosingHumanRequest(body: string, buttonId?: string | null): boolean {
   if (buttonId === "closing_human") return true;
-  // `persona` debe ser una palabra completa: "dos personas" es una duda de
-  // la promoción, no una solicitud de handoff.
-  return /\b(?:asesor(?:a)?|humano|persona)\b|\bhablar con alguien\b|\bhablar con un asesor\b|\bcontactar a alguien\b/i.test(body);
+  // No uses "persona" por sí sola: "una persona", "dos personas" y
+  // "precio por persona" son dudas comerciales de la promoción. Solo una
+  // petición explícita de hablar con alguien debe abrir el handoff.
+  return /\b(?:asesor(?:a)?|humano)\b|\bhablar con (?:alguien|una persona|un asesor)\b|\bcontactar a alguien\b/i.test(body);
 }
 
 function closingReplyCoversQuestion(reply: string, incoming: string): boolean {

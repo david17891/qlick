@@ -11,7 +11,11 @@ const DEFAULT_MANUAL_PAYMENT_CARD_NUMBER = "5579070155517512";
 
 export function isManualPaymentEvidence(message: IncomingWhatsAppMessage, body: string): boolean {
   if (Boolean(message.image?.id || message.document?.id)) return true;
-  return /\b(?:ya\s+(?:pagu[eé]|deposit[eé]|transfer[ií])|pago\s+realizado|comprobante|recibo|dep[oó]sito|transferencia|oxxo|listo\s+con\s+el\s+pago)\b/i.test(body);
+  // Mencionar un método (“¿puedo pagar por OXXO?”) no es evidencia de pago.
+  // Solo se crea un reclamo cuando la persona afirma haber pagado o menciona
+  // explícitamente un comprobante/recibo.
+  const normalizedBody = body.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return /(?:^|[^a-z0-9])(?:ya\s+(?:pague|deposite|transferi)|(?:hice|realice)\s+(?:el\s+)?(?:pago|deposito|transferencia)|pago\s+realizado|comprobante|recibo|deposito\s+(?:realizado|hecho)|transferencia\s+(?:realizada|hecha)|listo\s+con\s+el\s+pago)(?=$|[^a-z0-9])/i.test(normalizedBody);
 }
 
 export function buildManualPaymentInstructions(): string {

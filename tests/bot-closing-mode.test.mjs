@@ -7,6 +7,7 @@ import {
   buildServiceDirectContactCopy,
   isDirectServiceRequest,
   isClosingBotMode,
+  isClosingHumanRequest,
 } from "../src/lib/whatsapp/bot-engine.ts";
 import { buildClosingPrompt, buildTaskPrompt } from "../src/lib/ai/agent-prompts.ts";
 
@@ -73,6 +74,13 @@ test("una pregunta de publicidad dentro del curso no se deriva como servicio", (
     false,
   );
   assert.equal(isDirectServiceRequest("¿Hacen páginas web?"), true);
+});
+
+test("una duda de precio por persona no abre handoff; una petición explícita sí", () => {
+  assert.equal(isClosingHumanRequest("¿Cuánto cuesta una persona y cuánto aparto?"), false);
+  assert.equal(isClosingHumanRequest("¿Cuánto cuesta para dos personas?"), false);
+  assert.equal(isClosingHumanRequest("Quiero hablar con un asesor"), true);
+  assert.equal(isClosingHumanRequest("Necesito hablar con una persona"), true);
 });
 
 test("el prompt de cierre prohíbe captura, tools y confirmación de pago", () => {
