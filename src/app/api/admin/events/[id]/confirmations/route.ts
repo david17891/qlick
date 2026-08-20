@@ -21,8 +21,8 @@
  *
  * Validaciones:
  *   - name requerido.
- *   - Al menos uno de email o phone (igual que _register-attendee-manual.mjs).
- *   - phone se normaliza con `normalizePhone`.
+ *   - email y phone son opcionales para permitir altas rápidas en puerta.
+ *   - phone se normaliza con `normalizePhone` cuando se proporciona.
  *
  * Pasos:
  *   1. Resolver evento (404 si no existe).
@@ -156,83 +156,76 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       { status: 400 },
     );
   }
-  if (!emailRaw && !phoneNormalized) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error:
-          "Falta `email` o `phone`. Se requiere al menos uno (no se puede confirmar sin contacto).",
-      },
-      { status: 400 },
-    );
-  }
-
   const supabase = createSupabaseAdminClient();
   const paidEvent = (event.priceMXN ?? 0) > 0;
 
-  // 1. Crear o actualizar lead (idempotente).
+  // 1. Crear o actualizar lead (idempotente). Una confirmación sin datos de
+  // contacto no crea un lead huérfano: queda registrada directamente en el
+  // evento y puede recibir check-in manual en puerta.
   let lead = null;
-  try {
-    // Buscar primero.
-    let existing = null;
-    if (emailRaw) {
-      const { data } = await supabase
-        .from("leads")
-        .select("id, name, email, phone_normalized")
-        .eq("email", emailRaw)
-        .maybeSingle();
-      existing = data;
-    }
-    if (!existing && phoneNormalized) {
-      const { data } = await supabase
-        .from("leads")
-        .select("id, name, email, phone_normalized")
-        .eq("phone_normalized", phoneNormalized)
-        .maybeSingle();
-      existing = data;
-    }
-
-    if (existing) {
-      // Update nombre + phone si difieren. Tipado explícito para que el
-      // `.update()` acepte el patch sin chocar con el tipo generado.
-      const patch: { name?: string; phone_normalized?: string } = {};
-      if (name && existing.name !== name) patch.name = name;
-      if (phoneNormalized && existing.phone_normalized !== phoneNormalized) {
-        patch.phone_normalized = phoneNormalized;
-      }
-      if (Object.keys(patch).length > 0) {
-        const { error: updErr } = await supabase
+  if (emailRaw || phoneNormalized) {
+    try {
+      // Buscar primero.
+      let existing = null;
+      if (emailRaw) {
+        const { data } = await supabase
           .from("leads")
-          .update(patch as never)
-          .eq("id", existing.id);
-        if (updErr) throw updErr;
+          .select("id, name, email, phone_normalized")
+          .eq("email", emailRaw)
+          .maybeSingle();
+        existing = data;
       }
-      lead = existing;
-    } else {
-      // Crear lead nuevo.
-      const { data: created, error: insErr } = await supabase
-        .from("leads")
-        .insert({
-          name,
-          email: emailRaw,
-          phone_normalized: phoneNormalized ?? undefined,
-          consent_to_contact: true,
-          whatsapp_status: "no_contactado",
-          source: "manual",
-        })
-        .select("id, name, email, phone_normalized")
-        .maybeSingle();
-      if (insErr) throw insErr;
-      lead = created;
+      if (!existing && phoneNormalized) {
+        const { data } = await supabase
+          .from("leads")
+          .select("id, name, email, phone_normalized")
+          .eq("phone_normalized", phoneNormalized)
+          .maybeSingle();
+        existing = data;
+      }
+
+      if (existing) {
+        // Update nombre + phone si difieren. Tipado explícito para que el
+        // `.update()` acepte el patch sin chocar con el tipo generado.
+        const patch: { name?: string; phone_normalized?: string } = {};
+        if (name && existing.name !== name) patch.name = name;
+        if (phoneNormalized && existing.phone_normalized !== phoneNormalized) {
+          patch.phone_normalized = phoneNormalized;
+        }
+        if (Object.keys(patch).length > 0) {
+          const { error: updErr } = await supabase
+            .from("leads")
+            .update(patch as never)
+            .eq("id", existing.id);
+          if (updErr) throw updErr;
+        }
+        lead = existing;
+      } else {
+        // Crear lead nuevo.
+        const { data: created, error: insErr } = await supabase
+          .from("leads")
+          .insert({
+            name,
+            email: emailRaw,
+            phone_normalized: phoneNormalized ?? undefined,
+            consent_to_contact: true,
+            whatsapp_status: "no_contactado",
+            source: "manual",
+          })
+          .select("id, name, email, phone_normalized")
+          .maybeSingle();
+        if (insErr) throw insErr;
+        lead = created;
+      }
+    } catch (leadErr) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Lead upsert falló: ${leadErr instanceof Error ? leadErr.message : String(leadErr)}`,
+        },
+        { status: 500 },
+      );
     }
-  } catch (leadErr) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: `Lead upsert falló: ${leadErr instanceof Error ? leadErr.message : String(leadErr)}`,
-      },
-      { status: 500 },
-    );
   }
 
   // 2. Crear confirmation (idempotente).

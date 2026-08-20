@@ -13,7 +13,8 @@
  *
  * UX:
  *  - Modal centrado, overlay oscuro, ESC para cerrar.
- *  - Validación client-side: nombre requerido, al menos email o phone.
+ *  - Validación client-side: solo el nombre es requerido para agilizar el
+ *    registro en puerta; email y teléfono quedan como datos opcionales.
  *  - Mensaje de éxito: muestra email mode + link al asistente.
  *  - Mensaje de error: muestra el error devuelto.
  *  - Tras éxito: cierra el modal y refresca la página.
@@ -67,13 +68,6 @@ export function AddConfirmationButton({ eventId }: Props) {
     e.preventDefault();
     if (!name.trim()) {
       setState({ kind: "error", message: "Falta el nombre." });
-      return;
-    }
-    if (!email.trim() && !phone.trim()) {
-      setState({
-        kind: "error",
-        message: "Necesito al menos un correo o teléfono.",
-      });
       return;
     }
     setState({ kind: "submitting" });
@@ -211,7 +205,8 @@ export function AddConfirmationButton({ eventId }: Props) {
                   className="w-full px-3 py-2 border border-brand-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-300"
                 />
                 <p className="text-[10px] text-ink-muted mt-1">
-                  Necesito al menos uno: email o teléfono.
+                  Opcional. Puedes agregarlo después si necesitas enviar el QR
+                  o contactar a la persona.
                 </p>
               </div>
 
