@@ -117,11 +117,11 @@ html, body {
   color: #fff;
 }
 .brand-block .q-icon {
-  width: 84px;height: 120px;
+  width: 96px;height: 136px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 18px;
+  margin-bottom: 20px;
 }
 .brand-block .q-icon img {
   width: 100%;
@@ -132,7 +132,7 @@ html, body {
 .brand-block .wordmark {
   font-family: 'Plus Jakarta Sans', sans-serif;
   font-weight: 800;
-  font-size: 36px;
+  font-size: 40px;
   letter-spacing: -1px;
   color: #fff;
   line-height: 1;
@@ -208,7 +208,7 @@ html, body {
 }
 .eyebrow-row .label {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 4px;
   color: var(--purple-700);
   text-transform: uppercase;

@@ -118,14 +118,14 @@ const styles = StyleSheet.create({
     width: PANEL_WIDTH - 90, // deja espacio para la diagonal en el top-right
   },
   qIcon: {
-    width: 70,
-    height: 100,
-    marginBottom: 16,
+    width: 82,
+    height: 116,
+    marginBottom: 18,
   },
   wordmark: {
     fontFamily: FONT_FAMILY.sans,
     fontWeight: 800,
-    fontSize: 32,
+    fontSize: 36,
     letterSpacing: -0.8,
     color: COLORS.white,
     lineHeight: 1,
@@ -324,7 +324,7 @@ const styles = StyleSheet.create({
   },
   instructorTitle: {
     fontFamily: FONT_FAMILY.sans,
-    fontSize: 9,
+    fontSize: 11,
     color: COLORS.slate500,
     marginTop: 3,
   },

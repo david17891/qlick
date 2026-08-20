@@ -20,7 +20,7 @@ const EVENT_SIGNATORIES: Record<string, CertificateSignatory[]> = {
       assetFilename: "paul-event-signature.png",
     },
     {
-      name: "Benny Cepeda",
+      name: "Benny Zepeda",
       title: "Ponente",
       assetFilename: "benny-signature.png",
     },

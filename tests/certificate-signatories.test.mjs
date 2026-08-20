@@ -13,7 +13,7 @@ test("el evento CANACO usa las dos firmas transparentes en orden", () => {
       assetFilename: "paul-event-signature.png",
     },
     {
-      name: "Benny Cepeda",
+      name: "Benny Zepeda",
       title: "Ponente",
       assetFilename: "benny-signature.png",
     },
