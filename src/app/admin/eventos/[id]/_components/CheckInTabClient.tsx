@@ -21,6 +21,8 @@ interface ConfirmationOption {
   email: string | null;
   phone: string | null;
   paymentStatus: string | null;
+  registrationStatus: string | null;
+  hasQr: boolean;
 }
 
 interface Props {
@@ -46,18 +48,18 @@ export function CheckInTabClient({
   const [quickOk, setQuickOk] = useState(false);
   const [name, setName] = useState("");
   const [selectedConfirmationId, setSelectedConfirmationId] = useState("");
+  const [entryMode, setEntryMode] = useState<"search" | "manual">("search");
   const [paid, setPaid] = useState(eventPriceMXN <= 0);
 
   const suggestions = useMemo(() => {
     const query = name.trim().toLocaleLowerCase();
-    if (!query) return confirmations.slice(0, 8);
+    if (!query) return confirmations;
     return confirmations
       .filter((confirmation) =>
         [confirmation.name, confirmation.email, confirmation.phone]
           .filter(Boolean)
           .some((value) => value!.toLocaleLowerCase().includes(query)),
-      )
-      .slice(0, 8);
+      );
   }, [confirmations, name]);
 
   function onGenerateQr(event: React.FormEvent<HTMLFormElement>) {
@@ -88,15 +90,15 @@ export function CheckInTabClient({
   }
 
   function selectConfirmation(confirmation: ConfirmationOption) {
+    setEntryMode("search");
     setName(confirmation.name);
     setSelectedConfirmationId(confirmation.id);
-    if (
+    setPaid(
       confirmation.paymentStatus === "paid" ||
-      confirmation.paymentStatus === "paid_manual" ||
-      confirmation.paymentStatus === "partial"
-    ) {
-      setPaid(true);
-    }
+        confirmation.paymentStatus === "paid_manual" ||
+        confirmation.paymentStatus === "partial" ||
+        confirmation.paymentStatus === "not_required",
+    );
   }
 
   function onQuickCheckIn(event: React.FormEvent<HTMLFormElement>) {
@@ -176,9 +178,29 @@ export function CheckInTabClient({
         </div>
 
         <form onSubmit={onQuickCheckIn} className="space-y-3">
+          <div className="grid grid-cols-2 gap-2 rounded-lg bg-white p-1 border border-emerald-200">
+            <button
+              type="button"
+              onClick={() => setEntryMode("search")}
+              className={`rounded-md px-3 py-2 text-xs font-bold transition ${entryMode === "search" ? "bg-emerald-600 text-white" : "text-emerald-800 hover:bg-emerald-50"}`}
+            >
+              Buscar registrado
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setEntryMode("manual");
+                setSelectedConfirmationId("");
+              }}
+              className={`rounded-md px-3 py-2 text-xs font-bold transition ${entryMode === "manual" ? "bg-emerald-600 text-white" : "text-emerald-800 hover:bg-emerald-50"}`}
+            >
+              Alta manual
+            </button>
+          </div>
+
           <div>
             <label htmlFor="quick-checkin-name" className="block text-xs font-semibold text-ink-muted mb-1">
-              Nombre o búsqueda
+              {entryMode === "manual" ? "Nombre del asistente" : "Buscar por nombre, teléfono o correo"}
             </label>
             <input
               id="quick-checkin-name"
@@ -189,24 +211,32 @@ export function CheckInTabClient({
               value={name}
               onChange={(event) => {
                 setName(event.target.value);
-                setSelectedConfirmationId("");
+                if (entryMode === "search") setSelectedConfirmationId("");
               }}
-              placeholder="Ej. Ana López, teléfono o correo…"
+              placeholder={entryMode === "manual" ? "Ej. Luis Ramírez" : "Ej. Ana López, teléfono o correo…"}
               className="w-full px-3 py-3 border border-emerald-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-300"
             />
           </div>
 
-          {suggestions.length > 0 && (
+          {entryMode === "search" && suggestions.length > 0 && (
             <div className="rounded-lg border border-emerald-200 bg-white divide-y divide-emerald-50 max-h-52 overflow-y-auto">
               <p className="px-3 py-2 text-[10px] uppercase font-semibold text-ink-muted">
-                Registrados encontrados · toca uno para seleccionarlo
+                {suggestions.length} registrados encontrados · confirmados y pendientes de pago
               </p>
               {suggestions.map((confirmation) => {
                 const selected = confirmation.id === selectedConfirmationId;
                 const paidStatus =
+                  confirmation.paymentStatus === "not_required" ||
                   confirmation.paymentStatus === "paid" ||
                   confirmation.paymentStatus === "paid_manual" ||
                   confirmation.paymentStatus === "partial";
+                const registrationLabel = paidStatus
+                  ? "registro confirmado"
+                  : confirmation.registrationStatus === "payment_pending" ||
+                      confirmation.paymentStatus === "pending" ||
+                      confirmation.paymentStatus === "pending_verification"
+                    ? "pago pendiente"
+                    : "por confirmar";
                 return (
                   <button
                     key={confirmation.id}
@@ -217,7 +247,8 @@ export function CheckInTabClient({
                     <span className="font-semibold text-ink">{confirmation.name}</span>
                     <span className="block text-[11px] text-ink-muted">
                       {confirmation.phone ?? confirmation.email ?? "sin contacto"}
-                      {paidStatus ? " · pagado/apartado" : " · pago pendiente"}
+                      {` · ${registrationLabel}`}
+                      {confirmation.hasQr ? " · QR listo" : " · sin QR"}
                     </span>
                   </button>
                 );
