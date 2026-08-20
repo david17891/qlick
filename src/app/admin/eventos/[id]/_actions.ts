@@ -29,6 +29,10 @@ import { markWhatsAppStatus, isValidWhatsAppStatus, type WhatsAppStatus } from "
 import { generateEventQrTokens, getEventQrTokens } from "@/lib/qr/event-tokens";
 import { logAdminAction } from "@/lib/crm/audit-server";
 import { promoteSurveyToLead } from "@/lib/events/promotion";
+import { createConfirmation } from "@/lib/events/confirmations-server";
+import { registerManualPayment } from "@/lib/payments/manual-payment";
+import { getSignatoriesForEvent } from "@/lib/certificates/signatories";
+import type { Json } from "@/types/supabase";
 
 export interface FormState {
   ok: boolean;
@@ -831,12 +835,13 @@ export async function issueCertificateAction(
   // 3. Cargar evento para metadata snapshot.
   const { data: ev } = await supabase
     .from("events")
-    .select("title, location")
+    .select("title, slug, location")
     .eq("id", eventId)
     .maybeSingle();
   const eventTitle = (ev as { title: string } | null)?.title ?? "Evento";
   const eventLocation =
     (ev as { location: string | null } | null)?.location ?? "Por confirmar";
+  const eventSlug = (ev as { slug: string | null } | null)?.slug ?? null;
 
   // 4. Generar folio unico (hasta 5 intentos si colisiona con UNIQUE).
   let folio = "";
@@ -864,7 +869,8 @@ export async function issueCertificateAction(
           eventTitle,
           eventLocation,
           instructorName: "Paul Velasquez",
-          instructorTitle: "CEO & Fundador · Imparte este programa",
+          instructorTitle: "Ponente",
+          signatories: getSignatoriesForEvent(eventSlug),
           reason:
             "por haber completado satisfactoriamente el programa de marketing digital e inteligencia artificial, demostrando dominio de estrategias, herramientas y metodologias de alto impacto.",
         },
@@ -1077,7 +1083,7 @@ export async function sendBatchCertificatesAction(
   // 1. Evento.
   const { data: event } = await supabase
     .from("events")
-    .select("title, starts_at")
+    .select("title, slug, starts_at")
     .eq("id", eventId)
     .maybeSingle();
   if (!event) {
@@ -1117,7 +1123,11 @@ export async function sendBatchCertificatesAction(
             p_attendee_id: row.attendeeId,
             p_folio: candidate,
             p_template_variant: "concept-c",
-            p_metadata: {},
+            p_metadata: {
+              signatories: getSignatoriesForEvent(
+                (event as { slug: string | null } | null)?.slug ?? null,
+              ),
+            } as unknown as Json,
             // p_admin_user_id omitido: AdminSession no expone `id` (solo
             // email). La RPC acepta NULL por default — no bloquea el flujo.
           },

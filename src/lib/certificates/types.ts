@@ -29,6 +29,12 @@ export interface CertificateData {
   eventLocation: string;
   instructorName: string;
   instructorTitle: string;
+  /** Firmas y ponentes que aparecen en el certificado, en el orden visual. */
+  signatories: Array<{
+    name: string;
+    title: string;
+    signatureDataUrl: string;
+  }>;
   /**
    * Folio unico formato QLK-YYYY-XXXXX.
    * Estable entre emisiones para el mismo attendee.
@@ -36,8 +42,6 @@ export interface CertificateData {
   folio: string;
   /** PNG data URL del QR (generado con `qrcode.toDataURL`). */
   qrDataUrl: string;
-  /** PNG data URL de la firma de Paul (vectorizada). */
-  signatureDataUrl: string;
   /** PNG data URL del isotipo Q. */
   qIconDataUrl: string;
   /** Fecha de emision actual, formato "5 de julio de 2026". */
