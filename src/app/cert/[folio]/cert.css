@@ -117,7 +117,7 @@ html, body {
   color: #fff;
 }
 .brand-block .q-icon {
-  width: 96px;height: 136px;
+  width: 130px;height: 184px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -132,14 +132,14 @@ html, body {
 .brand-block .wordmark {
   font-family: 'Plus Jakarta Sans', sans-serif;
   font-weight: 800;
-  font-size: 40px;
+  font-size: 48px;
   letter-spacing: -1px;
   color: #fff;
   line-height: 1;
 }
 .brand-block .tag {
   font-family: 'Inter', sans-serif;
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 3px;
   color: rgba(255, 255, 255, 0.7);
   text-transform: uppercase;
@@ -208,11 +208,20 @@ html, body {
 }
 .eyebrow-row .label {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 12px;
-  letter-spacing: 4px;
+  font-size: 24px;
+  letter-spacing: 5px;
+  line-height: 1;
   color: var(--purple-700);
   text-transform: uppercase;
   font-weight: 600;
+}
+.eyebrow-row .label-date {
+  margin-top: 10px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 2px;
+  color: var(--slate-500);
 }
 .eyebrow-row .folio {
   font-family: 'JetBrains Mono', monospace;
@@ -229,7 +238,7 @@ html, body {
   letter-spacing: 1px;
 }
 
-.hero { position: relative; margin-top: 30px; }
+.hero { position: relative; margin-top: 34px; }
 .hero .small {
   font-family: 'Plus Jakarta Sans', sans-serif;
   font-size: 13px;

@@ -371,7 +371,10 @@ export default async function CertPage({ params }: CertPageProps) {
           {/* RIGHT CONTENT */}
           <div className="right">
             <div className="eyebrow-row">
-              <div className="label">QLICK CERTIFIED · CONSTANCIA</div>
+              <div className="label">
+                CONSTANCIA
+                <div className="label-date">{certData.eventDateLong}</div>
+              </div>
               <div className="folio">
                 FOLIO
                 <div className="num">{certData.folio}</div>
@@ -380,7 +383,6 @@ export default async function CertPage({ params }: CertPageProps) {
 
             {/* HERO NAME */}
             <div className="hero">
-              <div className="small">Certificado Oficial · {certData.issueDateLong}</div>
               <div className="presented-to">Se otorga la presente a</div>
               <div className={nameClass(certData.attendeeName)}>
                 <span className="word">{certData.attendeeNamePlain}</span>

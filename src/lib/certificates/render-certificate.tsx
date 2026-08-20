@@ -118,14 +118,14 @@ const styles = StyleSheet.create({
     width: PANEL_WIDTH - 90, // deja espacio para la diagonal en el top-right
   },
   qIcon: {
-    width: 82,
-    height: 116,
+    width: 123,
+    height: 174,
     marginBottom: 18,
   },
   wordmark: {
     fontFamily: FONT_FAMILY.sans,
     fontWeight: 800,
-    fontSize: 36,
+    fontSize: 43,
     letterSpacing: -0.8,
     color: COLORS.white,
     lineHeight: 1,
@@ -204,11 +204,20 @@ const styles = StyleSheet.create({
   },
   eyebrowLabel: {
     fontFamily: FONT_FAMILY.sans,
-    fontSize: 9,
-    letterSpacing: 3,
+    fontSize: 18,
+    letterSpacing: 4,
+    lineHeight: 1,
     color: COLORS.purple700,
     textTransform: "uppercase",
     fontWeight: 600,
+  },
+  eyebrowDate: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: 9,
+    fontWeight: 500,
+    color: COLORS.slate500,
+    marginTop: 7,
+    letterSpacing: 1.5,
   },
   eyebrowFolioBlock: {
     textAlign: "right",
@@ -466,7 +475,8 @@ export function CertificatePDF({ data }: { data: CertificateData }) {
           {/* Eyebrow row */}
           <View style={styles.eyebrowRow}>
             <Text style={styles.eyebrowLabel}>
-              Certificado de Asistencia
+              CONSTANCIA
+              <Text style={styles.eyebrowDate}>{data.eventDate}</Text>
             </Text>
             <View style={styles.eyebrowFolioBlock}>
               <Text style={styles.eyebrowFolioLabel}>Folio</Text>
