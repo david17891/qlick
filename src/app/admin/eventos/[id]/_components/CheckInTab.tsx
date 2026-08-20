@@ -34,6 +34,7 @@ interface Props {
   eventSlug: string;
   /** ISO. Para calcular el default validUntil del staff link (evento + 4h). */
   eventStartsAt: string;
+  eventPriceMXN: number;
 }
 
 interface RecentCheckInRow {
@@ -71,7 +72,13 @@ async function fetchRecentCheckIns(
   }));
 }
 
-export async function CheckInTab({ eventId, eventTitle, eventSlug, eventStartsAt }: Props) {
+export async function CheckInTab({
+  eventId,
+  eventTitle,
+  eventSlug,
+  eventStartsAt,
+  eventPriceMXN,
+}: Props) {
   // Fetch en paralelo: tokens generados, confirmados, attendees reales
   // (check-ins manuales + QR), log reciente, y staff links (Commit B).
   const [tokensResult, confirmations, attendees, recentCheckIns, staffLinksResult] =
@@ -251,11 +258,13 @@ export async function CheckInTab({ eventId, eventTitle, eventSlug, eventStartsAt
       <CheckInTabClient
         eventId={eventId}
         hasTokens={totalQr > 0}
+        eventPriceMXN={eventPriceMXN}
         confirmations={confirmations.map((c) => ({
           id: c.id,
           name: c.name,
           email: c.email ?? null,
           phone: c.phoneNormalized ?? c.phoneRaw ?? null,
+          paymentStatus: c.paymentStatus ?? null,
         }))}
       />
 

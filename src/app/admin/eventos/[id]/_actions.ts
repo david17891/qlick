@@ -29,6 +29,8 @@ import { markWhatsAppStatus, isValidWhatsAppStatus, type WhatsAppStatus } from "
 import { generateEventQrTokens, getEventQrTokens } from "@/lib/qr/event-tokens";
 import { logAdminAction } from "@/lib/crm/audit-server";
 import { promoteSurveyToLead } from "@/lib/events/promotion";
+import { createConfirmation } from "@/lib/events/confirmations-server";
+import { registerManualPayment } from "@/lib/payments/manual-payment";
 
 export interface FormState {
   ok: boolean;
@@ -509,6 +511,280 @@ export async function manualCheckInAction(
   });
   revalidatePath(`/admin/eventos/${eventId}`);
   return { ok: true, note: `Walk-in "${q}" registrado como asistente.` };
+}
+
+/**
+ * Check-in rapido de puerta: busca un confirmado por nombre/email/telefono,
+ * permite cobrarlo como efectivo en puerta y deja el attendee listo para la
+ * pestaña Asistentes en una sola operacion de staff/admin.
+ *
+ * A diferencia del action historico `manualCheckInAction`, este flujo tambien
+ * acepta un walk-in solo con nombre. En eventos de pago no permite registrar
+ * la entrada si el pago sigue pendiente; marcar "pagado" crea el registro
+ * financiero en `event_payments` y actualiza la confirmation antes de crear
+ * el attendee.
+ */
+export async function quickManualCheckInAction(
+  _prev: FormState | null,
+  formData: FormData,
+): Promise<
+  FormState & {
+    attendeeId?: string;
+    confirmationId?: string;
+    paymentStatus?: string;
+  }
+> {
+  const admin = await requireAdmin();
+  if (!admin) return { ok: false, note: "No autenticado como admin." };
+
+  const eventId = formData.get("eventId");
+  const nameInput = formData.get("name");
+  const confirmationIdInput = formData.get("confirmationId");
+  const paid = formData.get("paid") === "on" || formData.get("paid") === "true";
+  if (typeof eventId !== "string" || !eventId) {
+    return { ok: false, note: "Falta eventId." };
+  }
+  if (typeof nameInput !== "string" || nameInput.trim().length < 2) {
+    return { ok: false, note: "Escribe un nombre de al menos 2 caracteres." };
+  }
+
+  const cleanName = nameInput.trim().replace(/\s+/g, " ");
+  const selectedConfirmationId =
+    typeof confirmationIdInput === "string" && confirmationIdInput
+      ? confirmationIdInput
+      : null;
+  const supabase = (await import("@/lib/supabase/admin")).createSupabaseAdminClient();
+  const nowIso = new Date().toISOString();
+
+  const { data: eventRow, error: eventError } = await supabase
+    .from("events")
+    .select("price_mxn")
+    .eq("id", eventId)
+    .maybeSingle();
+  if (eventError || !eventRow) {
+    return { ok: false, note: "No se encontró el evento." };
+  }
+  const eventPriceMXN = Number(
+    (eventRow as { price_mxn?: number | string | null }).price_mxn ?? 0,
+  );
+  const isPaidEvent = eventPriceMXN > 0;
+
+  type ConfirmationRow = {
+    id: string;
+    event_id: string;
+    name: string;
+    email: string | null;
+    phone_normalized: string | null;
+    payment_status?: string | null;
+  };
+  let confirmation: ConfirmationRow | null = null;
+
+  if (selectedConfirmationId) {
+    const { data, error } = await supabase
+      .from("event_confirmations")
+      .select("id, event_id, name, email, phone_normalized, payment_status")
+      .eq("id", selectedConfirmationId)
+      .eq("event_id", eventId)
+      .maybeSingle();
+    if (error || !data) {
+      return { ok: false, note: "El registrado seleccionado ya no está disponible." };
+    }
+    confirmation = data as unknown as ConfirmationRow;
+  } else {
+    // Búsqueda server-side para no confiar solo en la lista que recibió el
+    // navegador. Se combinan los tres campos y se prioriza el nombre exacto.
+    const pattern = `%${cleanName}%`;
+    const [byName, byEmail, byPhone] = await Promise.all([
+      supabase
+        .from("event_confirmations")
+        .select("id, event_id, name, email, phone_normalized, payment_status")
+        .eq("event_id", eventId)
+        .ilike("name", pattern)
+        .limit(10),
+      supabase
+        .from("event_confirmations")
+        .select("id, event_id, name, email, phone_normalized, payment_status")
+        .eq("event_id", eventId)
+        .ilike("email", pattern)
+        .limit(10),
+      supabase
+        .from("event_confirmations")
+        .select("id, event_id, name, email, phone_normalized, payment_status")
+        .eq("event_id", eventId)
+        .ilike("phone_normalized", pattern)
+        .limit(10),
+    ]);
+    const candidates = new Map<string, ConfirmationRow>();
+    for (const row of [
+      ...(byName.data ?? []),
+      ...(byEmail.data ?? []),
+      ...(byPhone.data ?? []),
+    ]) {
+      candidates.set(row.id, row as unknown as ConfirmationRow);
+    }
+    const normalizedName = cleanName.toLocaleLowerCase();
+    confirmation =
+      Array.from(candidates.values()).find(
+        (row) => row.name.trim().toLocaleLowerCase() === normalizedName,
+      ) ?? Array.from(candidates.values())[0] ?? null;
+  }
+
+  // En un evento de pago, un nombre nuevo solo se puede registrar si el
+  // admin confirma el pago en puerta. Un confirmado parcialmente pagado ya
+  // está habilitado por el contrato actual del evento.
+  const currentPaymentStatus = confirmation?.payment_status ?? null;
+  const registrationAllowedWithoutNewPayment =
+    !isPaidEvent ||
+    currentPaymentStatus === "paid" ||
+    currentPaymentStatus === "paid_manual" ||
+    currentPaymentStatus === "partial";
+  if (isPaidEvent && !registrationAllowedWithoutNewPayment && !paid) {
+    return {
+      ok: false,
+      note: "Pago pendiente. Marca “Pagado en puerta” para registrar el acceso.",
+    };
+  }
+  if (currentPaymentStatus === "revoked") {
+    return { ok: false, note: "Este registro tiene el pago revocado y no puede entrar." };
+  }
+
+  // Si es una persona nueva de un evento de pago, creamos la confirmation
+  // antes del pago para que el ledger conserve la identidad exacta.
+  if (!confirmation && isPaidEvent && paid) {
+    const created = await createConfirmation({
+      eventId,
+      name: cleanName,
+      source: "manual",
+    });
+    if (!created.ok || !created.confirmation) {
+      return { ok: false, note: created.note || "No se pudo registrar la persona." };
+    }
+    confirmation = {
+      id: created.confirmation.id,
+      event_id: eventId,
+      name: created.confirmation.name,
+      email: created.confirmation.email ?? null,
+      phone_normalized: created.confirmation.phoneNormalized ?? null,
+      payment_status: created.confirmation.paymentStatus ?? "pending",
+    };
+  }
+
+  let paymentStatus = currentPaymentStatus ?? (isPaidEvent ? "pending" : "not_required");
+  const needsManualPayment =
+    isPaidEvent &&
+    paid &&
+    paymentStatus !== "paid" &&
+    paymentStatus !== "paid_manual" &&
+    paymentStatus !== "partial";
+  if (confirmation && needsManualPayment) {
+    const paymentResult = await registerManualPayment({
+      eventId,
+      confirmationId: confirmation.id,
+      method: "cash",
+      amountMXN: eventPriceMXN,
+      notes: "Check-in rápido manual en puerta",
+      actorEmail: admin.email ?? "admin@qlick",
+    });
+    if (!paymentResult.ok) {
+      return { ok: false, note: paymentResult.error ?? "No se pudo registrar el pago." };
+    }
+    paymentStatus = paymentResult.paymentStatus ?? "paid";
+  }
+
+  const attendeeBase = {
+    event_id: eventId,
+    confirmation_id: confirmation?.id ?? null,
+    name: confirmation?.name?.trim() || cleanName,
+    email: confirmation?.email ?? null,
+    phone_normalized: confirmation?.phone_normalized ?? null,
+    checked_in_at: nowIso,
+    checked_in_by: admin.email ?? null,
+    source: "manual" as const,
+  };
+
+  // Reutilizamos un attendee linkeado, o un walk-in manual del mismo nombre,
+  // para que un doble click no genere dos filas cuando no hay contacto.
+  const existingQueries = confirmation
+    ? [
+        supabase
+          .from("event_attendees")
+          .select("id")
+          .eq("event_id", eventId)
+          .eq("confirmation_id", confirmation.id)
+          .limit(1),
+        confirmation.phone_normalized
+          ? supabase
+              .from("event_attendees")
+              .select("id, confirmation_id")
+              .eq("event_id", eventId)
+              .eq("phone_normalized", confirmation.phone_normalized)
+              .is("confirmation_id", null)
+              .limit(1)
+          : Promise.resolve({ data: [], error: null }),
+      ]
+    : [
+        supabase
+          .from("event_attendees")
+          .select("id")
+          .eq("event_id", eventId)
+          .is("confirmation_id", null)
+          .ilike("name", cleanName)
+          .limit(1),
+      ];
+  const existingResults = await Promise.all(existingQueries);
+  const existingId = (existingResults.flatMap((result) => result.data ?? [])[0] as { id?: string } | undefined)?.id;
+
+  let attendeeId = existingId ?? null;
+  if (attendeeId) {
+    const { error } = await supabase
+      .from("event_attendees")
+      .update(attendeeBase)
+      .eq("id", attendeeId);
+    if (error) {
+      return { ok: false, note: `No se pudo actualizar el asistente (${error.code ?? "?"}).` };
+    }
+  } else {
+    const { data, error } = await supabase
+      .from("event_attendees")
+      .insert(attendeeBase)
+      .select("id")
+      .maybeSingle();
+    if (error || !data) {
+      return { ok: false, note: `No se pudo crear el asistente (${error?.code ?? "?"}).` };
+    }
+    attendeeId = (data as { id: string }).id;
+  }
+
+  try {
+    await logAdminAction({
+      actor_email: admin.email ?? "admin@qlick",
+      action: "check_in_quick_manual",
+      entity_type: "event_attendee",
+      entity_id: attendeeId,
+      metadata: {
+        eventId,
+        confirmationId: confirmation?.id ?? null,
+        name: attendeeBase.name,
+        paid,
+        paymentStatus,
+      },
+    });
+  } catch {
+    // El attendee y el pago ya son la fuente de verdad; el audit es secundario.
+  }
+
+  revalidatePath(`/admin/eventos/${eventId}`);
+  return {
+    ok: true,
+    attendeeId: attendeeId ?? undefined,
+    confirmationId: confirmation?.id,
+    paymentStatus,
+    note: needsManualPayment
+      ? `Check-in rápido de ${attendeeBase.name} registrado y pago marcado.`
+      : paid && isPaidEvent
+        ? `Check-in rápido de ${attendeeBase.name} registrado; pago o apartado ya registrado.`
+      : `Check-in rápido de ${attendeeBase.name} registrado en Asistentes.`,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────

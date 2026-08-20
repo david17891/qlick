@@ -1,20 +1,18 @@
 "use client";
 
 /**
- * CheckInTabClient — Client Component con los forms de la tab Check-in.
+ * Controles de la pestaña Check-in.
  *
- * Tiene:
- *  - Form "Generar QRs" (llama a `generateQrTokensAction` server action).
- *  - Botón de descarga CSV (toma el `csv` que devuelve la server action).
- *  - Form "Check-in manual" (búsqueda por nombre/email/phone + select
- *    opcional para elegir un confirmado).
- *  - Feedback inline de cada action.
+ * El flujo rápido está pensado para la puerta: busca un registrado por
+ * nombre/email/teléfono, permite confirmar el cobro y redirige a Asistentes
+ * al terminar. El QR sigue siendo el camino principal.
  */
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   generateQrTokensAction,
-  manualCheckInAction,
+  quickManualCheckInAction,
 } from "../_actions";
 
 interface ConfirmationOption {
@@ -22,22 +20,45 @@ interface ConfirmationOption {
   name: string;
   email: string | null;
   phone: string | null;
+  paymentStatus: string | null;
 }
 
 interface Props {
   eventId: string;
   hasTokens: boolean;
+  eventPriceMXN: number;
   confirmations: ConfirmationOption[];
 }
 
-export function CheckInTabClient({ eventId, hasTokens, confirmations }: Props) {
+export function CheckInTabClient({
+  eventId,
+  hasTokens,
+  eventPriceMXN,
+  confirmations,
+}: Props) {
+  const router = useRouter();
   const [isPendingGen, startTransitionGen] = useTransition();
-  const [isPendingCheck, startTransitionCheck] = useTransition();
+  const [isPendingQuick, startTransitionQuick] = useTransition();
   const [genNote, setGenNote] = useState<string | null>(null);
-  const [genOk, setGenOk] = useState<boolean>(false);
+  const [genOk, setGenOk] = useState(false);
   const [csv, setCsv] = useState<string | null>(null);
-  const [checkNote, setCheckNote] = useState<string | null>(null);
-  const [checkOk, setCheckOk] = useState<boolean>(false);
+  const [quickNote, setQuickNote] = useState<string | null>(null);
+  const [quickOk, setQuickOk] = useState(false);
+  const [name, setName] = useState("");
+  const [selectedConfirmationId, setSelectedConfirmationId] = useState("");
+  const [paid, setPaid] = useState(eventPriceMXN <= 0);
+
+  const suggestions = useMemo(() => {
+    const query = name.trim().toLocaleLowerCase();
+    if (!query) return confirmations.slice(0, 8);
+    return confirmations
+      .filter((confirmation) =>
+        [confirmation.name, confirmation.email, confirmation.phone]
+          .filter(Boolean)
+          .some((value) => value!.toLocaleLowerCase().includes(query)),
+      )
+      .slice(0, 8);
+  }, [confirmations, name]);
 
   function onGenerateQr(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -66,25 +87,37 @@ export function CheckInTabClient({ eventId, hasTokens, confirmations }: Props) {
     URL.revokeObjectURL(url);
   }
 
-  function onManualCheckIn(event: React.FormEvent<HTMLFormElement>) {
+  function selectConfirmation(confirmation: ConfirmationOption) {
+    setName(confirmation.name);
+    setSelectedConfirmationId(confirmation.id);
+    if (
+      confirmation.paymentStatus === "paid" ||
+      confirmation.paymentStatus === "paid_manual" ||
+      confirmation.paymentStatus === "partial"
+    ) {
+      setPaid(true);
+    }
+  }
+
+  function onQuickCheckIn(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setCheckNote(null);
-    const form = event.currentTarget;
-    const fd = new FormData(form);
+    setQuickNote(null);
+    const fd = new FormData(event.currentTarget);
     fd.set("eventId", eventId);
-    startTransitionCheck(async () => {
-      const result = await manualCheckInAction(null, fd);
-      setCheckOk(result.ok);
-      setCheckNote(result.note);
+    if (selectedConfirmationId) fd.set("confirmationId", selectedConfirmationId);
+    if (paid) fd.set("paid", "true");
+    startTransitionQuick(async () => {
+      const result = await quickManualCheckInAction(null, fd);
+      setQuickOk(result.ok);
+      setQuickNote(result.note);
       if (result.ok) {
-        form.reset();
+        router.push(`/admin/eventos/${eventId}?tab=attendees`);
       }
     });
   }
 
   return (
     <div className="p-5 border-b border-brand-50 space-y-4">
-      {/* Toolbar: generar QRs + descarga CSV */}
       <div className="rounded-xl border border-brand-100 bg-brand-50/30 p-4">
         <h3 className="text-xs font-bold uppercase text-brand-600 mb-3">
           🎟️ Generar QRs para imprimir
@@ -114,90 +147,118 @@ export function CheckInTabClient({ eventId, hasTokens, confirmations }: Props) {
           )}
         </div>
         {genNote && (
-          <p
-            className={`text-xs mt-2 ${
-              genOk ? "text-emerald-700" : "text-rose-700"
-            }`}
-          >
+          <p className={`text-xs mt-2 ${genOk ? "text-emerald-700" : "text-rose-700"}`}>
             {genOk ? "✓" : "✗"} {genNote}
           </p>
         )}
         <p className="text-[10px] text-ink-muted mt-2">
-          El CSV incluye el QR como data URL PNG para imprimir. Re-generar
-          es idempotente: si un asistente ya tiene token activo, se
-          reutiliza.
+          El CSV incluye el QR como data URL PNG para imprimir. Regenerar es
+          idempotente para tokens activos.
         </p>
       </div>
 
-      {/* Check-in manual */}
-      <div className="rounded-xl border border-brand-100 bg-white p-4">
-        <h3 className="text-xs font-bold uppercase text-brand-600 mb-3">
-          🙋 Check-in manual
-        </h3>
-        <form
-          onSubmit={onManualCheckIn}
-          className="flex flex-wrap items-end gap-3"
-        >
-          <div className="flex-1 min-w-[220px]">
-            <label
-              htmlFor="checkin-q"
-              className="block text-xs font-semibold text-ink-muted mb-1"
-            >
-              Buscar asistente
+      <div className="rounded-xl border-2 border-emerald-200 bg-emerald-50/40 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+          <div>
+            <h3 className="text-sm font-bold uppercase text-emerald-800">
+              ⚡ Check-in rápido manual
+            </h3>
+            <p className="text-xs text-emerald-900/80 mt-1">
+              Busca a un registrado o escribe un nombre nuevo. Al terminar se
+              abre directamente la pestaña Asistentes.
+            </p>
+          </div>
+          {eventPriceMXN > 0 && (
+            <span className="text-[10px] font-semibold text-emerald-900">
+              Evento de ${eventPriceMXN.toLocaleString("es-MX")} MXN
+            </span>
+          )}
+        </div>
+
+        <form onSubmit={onQuickCheckIn} className="space-y-3">
+          <div>
+            <label htmlFor="quick-checkin-name" className="block text-xs font-semibold text-ink-muted mb-1">
+              Nombre o búsqueda
             </label>
             <input
-              id="checkin-q"
-              name="q"
+              id="quick-checkin-name"
+              name="name"
               type="search"
               required
-              placeholder="Nombre, email o teléfono…"
-              className="w-full px-3 py-2 border border-brand-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-300"
+              minLength={2}
+              value={name}
+              onChange={(event) => {
+                setName(event.target.value);
+                setSelectedConfirmationId("");
+              }}
+              placeholder="Ej. Ana López, teléfono o correo…"
+              className="w-full px-3 py-3 border border-emerald-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-300"
             />
           </div>
-          {confirmations.length > 0 && (
-            <div className="min-w-[200px]">
-              <label
-                htmlFor="checkin-conf"
-                className="block text-xs font-semibold text-ink-muted mb-1"
-              >
-                O elegir de confirmados
-              </label>
-              <select
-                id="checkin-conf"
-                name="confirmationId"
-                className="px-3 py-2 border border-brand-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-300"
-                defaultValue=""
-              >
-                <option value="">—</option>
-                {confirmations.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                    {c.email ? ` · ${c.email}` : ""}
-                  </option>
-                ))}
-              </select>
+
+          {suggestions.length > 0 && (
+            <div className="rounded-lg border border-emerald-200 bg-white divide-y divide-emerald-50 max-h-52 overflow-y-auto">
+              <p className="px-3 py-2 text-[10px] uppercase font-semibold text-ink-muted">
+                Registrados encontrados · toca uno para seleccionarlo
+              </p>
+              {suggestions.map((confirmation) => {
+                const selected = confirmation.id === selectedConfirmationId;
+                const paidStatus =
+                  confirmation.paymentStatus === "paid" ||
+                  confirmation.paymentStatus === "paid_manual" ||
+                  confirmation.paymentStatus === "partial";
+                return (
+                  <button
+                    key={confirmation.id}
+                    type="button"
+                    onClick={() => selectConfirmation(confirmation)}
+                    className={`w-full text-left px-3 py-2 text-sm hover:bg-emerald-50 ${selected ? "bg-emerald-100" : ""}`}
+                  >
+                    <span className="font-semibold text-ink">{confirmation.name}</span>
+                    <span className="block text-[11px] text-ink-muted">
+                      {confirmation.phone ?? confirmation.email ?? "sin contacto"}
+                      {paidStatus ? " · pagado/apartado" : " · pago pendiente"}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           )}
+
+          {eventPriceMXN > 0 && (
+            <label className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-white px-3 py-3 text-sm text-ink cursor-pointer">
+              <input
+                type="checkbox"
+                name="paid"
+                checked={paid}
+                onChange={(event) => setPaid(event.target.checked)}
+                className="h-4 w-4 accent-emerald-600"
+              />
+              <span>
+                <strong>Pagado en puerta</strong>
+                <span className="block text-[11px] text-ink-muted">
+                  Registra efectivo y habilita el acceso financiero.
+                </span>
+              </span>
+            </label>
+          )}
+
           <button
             type="submit"
-            disabled={isPendingCheck}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-500 text-white hover:bg-emerald-600 transition disabled:opacity-50"
+            disabled={isPendingQuick || name.trim().length < 2}
+            className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-3 rounded-lg text-sm font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
           >
-            {isPendingCheck ? "Chequeando…" : "✓ Check-in manual"}
+            {isPendingQuick ? "Registrando…" : "⚡ Check-in rápido manual"}
           </button>
         </form>
-        {checkNote && (
-          <p
-            className={`text-xs mt-2 ${
-              checkOk ? "text-emerald-700" : "text-rose-700"
-            }`}
-          >
-            {checkOk ? "✓" : "✗"} {checkNote}
+        {quickNote && (
+          <p className={`text-xs mt-3 ${quickOk ? "text-emerald-800" : "text-rose-700"}`}>
+            {quickOk ? "✓" : "✗"} {quickNote}
           </p>
         )}
-        <p className="text-[10px] text-ink-muted mt-2">
-          Si el asistente no está en la lista, se registra como walk-in y
-          el admin puede matchearlo después en la tab Asistentes.
+        <p className="text-[10px] text-emerald-900/70 mt-2">
+          Si el QR falla, este camino deja el check-in en la misma lista de
+          Asistentes y conserva el registro de pago cuando corresponde.
         </p>
       </div>
     </div>
