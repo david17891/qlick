@@ -296,23 +296,37 @@ html, body {
   align-items: end;
 }
 
+.sig-block {
+  min-width: 0;
+}
+.sig-block.multiple {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+.sig-block .signatory {
+  min-width: 0;
+}
 .sig-block .signature {
-  height: 90px;
+  height: 76px;
   display: flex;
   align-items: flex-end;
 }
 .sig-block .signature img {
-  height: 84px;
+  height: 68px;
   width: auto;
+  max-width: 100%;
   display: block;
-  margin-left: -14px;
+  margin-left: -10px;
 }
 .sig-block .name {
   font-family: 'Plus Jakarta Sans', sans-serif;
   font-weight: 600;
   font-size: 13px;
   color: var(--ink);
-  margin-top: 6px;
+  margin-top: 4px;
+  padding-top: 5px;
+  border-top: 1px solid var(--slate-300);
   letter-spacing: 0.3px;
 }
 .sig-block .role {
@@ -436,6 +450,36 @@ html, body {
 }
 .cert-actions-hint strong { color: #fbbf24; }
 
+.preprint-page {
+  min-height: 100vh;
+  background: #1A1024;
+}
+.preprint-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+.preprint-toolbar .cert-actions-print {
+  margin-top: 0;
+}
+.preprint-block-link {
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  text-decoration: none;
+}
+.preprint-block-link:hover { background: rgba(251, 191, 36, 0.1); }
+.preprint-certificate-pages .stage {
+  page-break-after: always;
+}
+.preprint-certificate-pages .stage:last-child {
+  page-break-after: auto;
+}
+
 /* Errores (en pantalla) */
 .cert-auth-error {
   max-width: 480px;
@@ -473,6 +517,12 @@ html, body {
     height: 210mm !important;
     overflow: hidden !important;
   }
+  .preprint-page {
+    background: #ffffff !important;
+    min-height: auto !important;
+    width: auto !important;
+    height: auto !important;
+  }
   .no-print { display: none !important; }
 
   .stage {
@@ -482,6 +532,15 @@ html, body {
     display: block !important;
     width: 297mm !important;
     height: 210mm !important;
+  }
+
+  .preprint-certificate-pages .stage {
+    page-break-after: always;
+    break-after: page;
+  }
+  .preprint-certificate-pages .stage:last-child {
+    page-break-after: auto;
+    break-after: auto;
   }
 
   .cert {

@@ -294,31 +294,38 @@ const styles = StyleSheet.create({
     marginTop: 24,
   },
   sigBlock: {
-    flex: 1.4,
+    flex: 1.6,
+  },
+  signatoryGrid: {
+    display: "flex",
+    flexDirection: "row",
+    gap: 16,
+    paddingRight: 18,
+  },
+  signatoryBlock: {
+    flex: 1,
+    minWidth: 0,
   },
   signature: {
-    height: 64,
-    marginLeft: -10, // compensa el bbox del PNG (ver asset-loading notes)
+    height: 48,
+    marginLeft: -6, // compensa el bbox de las firmas transparentes
+    marginBottom: 2,
   },
   instructorName: {
     fontFamily: FONT_FAMILY.sans,
     fontWeight: 700,
-    fontSize: 12,
+    fontSize: 10,
     color: COLORS.ink,
-    marginTop: 6,
+    marginTop: 2,
     paddingTop: 4,
     borderTopWidth: 1,
     borderTopColor: COLORS.slate300,
-    paddingRight: 20,
-    marginRight: 20,
   },
   instructorTitle: {
     fontFamily: FONT_FAMILY.sans,
-    fontSize: 10,
+    fontSize: 9,
     color: COLORS.slate500,
     marginTop: 3,
-    paddingRight: 20,
-    marginRight: 20,
   },
 
   qrBlock: {
@@ -490,15 +497,16 @@ export function CertificatePDF({ data }: { data: CertificateData }) {
           {/* Bottom: signature + QR */}
           <View style={styles.bottom}>
             <View style={styles.sigBlock}>
-              {/* eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf/renderer Image no soporta alt */}
-              <Image
-                src={data.signatureDataUrl}
-                style={styles.signature}
-              />
-              <Text style={styles.instructorName}>{data.instructorName}</Text>
-              <Text style={styles.instructorTitle}>
-                {data.instructorTitle}
-              </Text>
+              <View style={styles.signatoryGrid}>
+                {data.signatories.map((signatory) => (
+                  <View key={signatory.name} style={styles.signatoryBlock}>
+                    {/* eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf/renderer Image no soporta alt */}
+                    <Image src={signatory.signatureDataUrl} style={styles.signature} />
+                    <Text style={styles.instructorName}>{signatory.name}</Text>
+                    <Text style={styles.instructorTitle}>{signatory.title}</Text>
+                  </View>
+                ))}
+              </View>
             </View>
 
             <View style={styles.qrBlock}>

@@ -33,6 +33,10 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { generateQrPngDataUrl, getCertQrUrl } from "@/lib/certificates/qr-helper";
 import { loadAssetAsDataUrl } from "@/lib/certificates/asset-loader";
 import { formatDateLong } from "@/lib/certificates/format-helpers";
+import {
+  getSignatoriesForEvent,
+  parseSignatoriesSnapshot,
+} from "@/lib/certificates/signatories";
 import { PrintCertButton } from "./_components/PrintCertButton";
 import "./cert.css";
 
@@ -52,6 +56,7 @@ interface EventCertRow {
 interface EventRow {
   id: string;
   title: string;
+  slug: string | null;
   starts_at: string;
   ends_at: string | null;
   location: string | null;
@@ -72,13 +77,15 @@ interface CertData {
   eventDuration: string;
   eventLocation: string;
   reason: string;
-  instructorName: string;
-  instructorTitle: string;
   folio: string;
   issueDateLong: string;
   issueDateShort: string;
   qrDataUrl: string;
-  signatureDataUrl: string;
+  signatories: Array<{
+    name: string;
+    title: string;
+    signatureDataUrl: string;
+  }>;
   qIconDataUrl: string;
   certUrl: string;
 }
@@ -196,7 +203,7 @@ export default async function CertPage({ params }: CertPageProps) {
   const [{ data: evData }, { data: attData }] = await Promise.all([
     sbQuery
       .from("events")
-      .select("id, title, starts_at, ends_at, location")
+      .select("id, title, slug, starts_at, ends_at, location")
       .eq("id", cert.event_id)
       .maybeSingle(),
     sbQuery
@@ -215,16 +222,21 @@ export default async function CertPage({ params }: CertPageProps) {
     (meta.attendeeName as string) ?? attendee.name?.trim() ?? "Asistente";
   const eventTitle = (meta.eventTitle as string) ?? event.title;
   const eventLocation = (meta.eventLocation as string) ?? event.location ?? "Por confirmar";
-  const instructorName = (meta.instructorName as string) ?? "Paul Velásquez";
-  const instructorTitle =
-    (meta.instructorTitle as string) ?? "CEO & Fundador · Imparte este programa";
+  const signatoryConfig =
+    parseSignatoriesSnapshot(meta.signatories) ??
+    getSignatoriesForEvent(event.slug);
   const certUrl = getCertQrUrl();
 
   // 5. Generar QR + cargar assets (operación async).
-  const [qrDataUrl, signatureDataUrl, qIconDataUrl] = await Promise.all([
+  const [qrDataUrl, qIconDataUrl, signatories] = await Promise.all([
     generateQrPngDataUrl({ data: certUrl, size: 256, errorCorrectionLevel: "H" }),
-    Promise.resolve(loadAssetAsDataUrl("paul-signature.png")),
     Promise.resolve(loadAssetAsDataUrl("qlick-q-icon.png")),
+    Promise.all(
+      signatoryConfig.map(async (signatory) => ({
+        ...signatory,
+        signatureDataUrl: loadAssetAsDataUrl(signatory.assetFilename),
+      })),
+    ),
   ]);
 
   const [attendeeNamePlain, attendeeNameAccent] = splitName(attendeeName);
@@ -241,13 +253,11 @@ export default async function CertPage({ params }: CertPageProps) {
     reason:
       (meta.reason as string) ??
       "por haber completado satisfactoriamente el programa de formación en marketing digital e inteligencia artificial, demostrando dominio de estrategias, herramientas y metodologías de alto impacto.",
-    instructorName,
-    instructorTitle,
     folio: cert.folio,
     issueDateLong: formatDateLong(issuedAt),
     issueDateShort: formatDateShort(issuedAt),
     qrDataUrl,
-    signatureDataUrl,
+    signatories,
     qIconDataUrl,
     certUrl,
   };
@@ -382,13 +392,17 @@ export default async function CertPage({ params }: CertPageProps) {
 
             {/* Bottom row */}
             <div className="bottom">
-              <div className="sig-block">
-                <div className="signature">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={certData.signatureDataUrl} alt={`Firma de ${certData.instructorName}`} />
-                </div>
-                <div className="name">{certData.instructorName}</div>
-                <div className="role">{certData.instructorTitle}</div>
+              <div className={`sig-block${certData.signatories.length > 1 ? " multiple" : ""}`}>
+                {certData.signatories.map((signatory) => (
+                  <div className="signatory" key={signatory.name}>
+                    <div className="signature">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={signatory.signatureDataUrl} alt={`Firma de ${signatory.name}`} />
+                    </div>
+                    <div className="name">{signatory.name}</div>
+                    <div className="role">{signatory.title}</div>
+                  </div>
+                ))}
               </div>
 
               <div className="verify-block">

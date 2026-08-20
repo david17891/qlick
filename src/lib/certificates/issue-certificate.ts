@@ -28,14 +28,16 @@ import { renderCertificatePdf } from "./render-certificate";
 import { generateFolio } from "./folio";
 import { generateQrPngDataUrl, getCertQrUrl } from "./qr-helper";
 import { loadAssetAsDataUrl } from "./asset-loader";
+import { getSignatoriesForEvent } from "./signatories";
 import type { CertificateData } from "./types";
+import type { Json } from "@/types/supabase";
 
 // ---------------------------------------------------------------------------
 // Constantes de branding
 // ---------------------------------------------------------------------------
 
 const INSTRUCTOR_NAME = "Paul Velásquez";
-const INSTRUCTOR_TITLE = "CEO & Fundador";
+const INSTRUCTOR_TITLE = "Ponente";
 const TEMPLATE_VARIANT = "concept-c" as const;
 /**
  * Etiqueta del tipo de evento. Por ahora constante porque la tabla `events`
@@ -133,12 +135,13 @@ export async function issueCertificate(
   }
 
   // 4. Intentar emision via RPC (con retry por UNIQUE en folio).
-  const rpcResult = await callIssueRpcWithRetry(supabase, input, name);
+  const rpcResult = await callIssueRpcWithRetry(supabase, input, name, event.slug);
 
   // 5. Render PDF (re-uso del folio, sea nuevo o ya emitido).
   const certData = await buildCertificateData({
     name,
     eventTitle: event.title,
+    eventSlug: event.slug,
     startsAt: event.starts_at,
     endsAt: event.ends_at,
     location: event.location ?? "Por confirmar",
@@ -179,12 +182,14 @@ async function callIssueRpcWithRetry(
   supabase: SupabaseAdminClient,
   input: IssueCertificateInput,
   attendeeName: string,
+  eventSlug: string | null,
   maxAttempts = 5,
 ): Promise<RpcRow> {
   let lastError: unknown = null;
   let metadata = {
     instructor_name: INSTRUCTOR_NAME,
     instructor_title: INSTRUCTOR_TITLE,
+    signatories: getSignatoriesForEvent(eventSlug),
   };
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -198,7 +203,7 @@ async function callIssueRpcWithRetry(
         p_attendee_id: input.attendeeId,
         p_folio: candidateFolio,
         p_template_variant: TEMPLATE_VARIANT,
-        p_metadata: metadata,
+        p_metadata: metadata as unknown as Json,
         ...(input.adminUserId != null
           ? { p_admin_user_id: input.adminUserId }
           : {}),
@@ -243,6 +248,7 @@ async function callIssueRpcWithRetry(
 interface CertificateBuildContext {
   name: string;
   eventTitle: string;
+  eventSlug: string | null;
   startsAt: string;
   endsAt: string | null;
   location: string;
@@ -262,7 +268,10 @@ async function buildCertificateData(
   });
 
   // Assets (sync — fs.readFileSync)
-  const signatureDataUrl = loadAssetAsDataUrl("paul-signature.png");
+  const signatories = getSignatoriesForEvent(ctx.eventSlug).map((signatory) => ({
+    ...signatory,
+    signatureDataUrl: loadAssetAsDataUrl(signatory.assetFilename),
+  }));
   const qIconDataUrl = loadAssetAsDataUrl("qlick-q-icon.png");
 
   return {
@@ -275,9 +284,9 @@ async function buildCertificateData(
     eventLocation: ctx.location,
     instructorName: INSTRUCTOR_NAME,
     instructorTitle: INSTRUCTOR_TITLE,
+    signatories,
     folio: ctx.folio,
     qrDataUrl,
-    signatureDataUrl,
     qIconDataUrl,
     issueDate: formatDateLong(new Date().toISOString()),
   };
