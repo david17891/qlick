@@ -26,6 +26,10 @@ interface TokenRow {
   attendee_email: string | null;
   checked_in_at: string | null;
   expires_at: string;
+  revoked_at: string | null;
+  is_shared_qr: boolean;
+  max_check_ins: number;
+  check_in_count: number;
 }
 
 export async function GET(req: Request) {
@@ -48,8 +52,9 @@ export async function GET(req: Request) {
   const nowIso = new Date().toISOString();
   const { data, error } = await supabase
     .from("event_qr_tokens" as never)
-    .select("token, attendee_name, attendee_phone_normalized, attendee_email, checked_in_at, expires_at")
+    .select("token, attendee_name, attendee_phone_normalized, attendee_email, checked_in_at, expires_at, revoked_at, is_shared_qr, max_check_ins, check_in_count")
     .eq("event_id" as never, eventId)
+    .is("revoked_at" as never, null)
     .gt("expires_at" as never, nowIso)
     .order("created_at" as never, { ascending: false })
     .limit(10);
@@ -66,6 +71,9 @@ export async function GET(req: Request) {
     attendeePhone: r.attendee_phone_normalized,
     attendeeEmail: r.attendee_email,
     checkedInAt: r.checked_in_at,
+    isSharedQr: r.is_shared_qr,
+    maxCheckIns: r.max_check_ins,
+    checkInCount: r.check_in_count,
   }));
 
   return NextResponse.json({ ok: true, tokens });

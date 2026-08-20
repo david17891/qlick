@@ -25,7 +25,12 @@ function loadEnv() {
 }
 loadEnv();
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SECRET_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
+const hasSupabaseE2eConfig = Boolean(
+  process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SECRET_KEY,
+);
+const supabase = hasSupabaseE2eConfig
+  ? createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SECRET_KEY, { auth: { autoRefreshToken: false, persistSession: false } })
+  : null;
 const sent = [];
 const runId = `promo-e2e-${Date.now()}`;
 const primaryEmail = `${runId}-a@example.com`;
@@ -70,7 +75,10 @@ async function cleanup() {
 
 after(cleanup);
 
-test("promo de dos personas: apartado verificado entrega QR y comprobante a ambas", async () => {
+test(
+  "promo de dos personas: apartado verificado entrega QR y comprobante a ambas",
+  { skip: !hasSupabaseE2eConfig ? "Supabase E2E env no configurado" : false },
+  async () => {
   const starts = new Date(Date.now() + 72 * 60 * 60 * 1000);
   const { data: event, error: eventError } = await supabase.from("events").insert({
     slug: runId,
@@ -163,4 +171,5 @@ test("promo de dos personas: apartado verificado entrega QR y comprobante a amba
   const fullDuplicate = await POST(new Request("http://localhost/api/webhooks/stripe", { method: "POST", headers: { "stripe-signature": fullSignature }, body: fullRaw }));
   assert.equal(fullDuplicate.status, 200);
   assert.equal(sent.length, 8, "el webhook de liquidación duplicado no debe reenviar correos");
-});
+  },
+);

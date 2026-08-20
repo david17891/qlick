@@ -23,6 +23,9 @@ interface TokenInfo {
   attendeePhone: string | null;
   attendeeEmail: string | null;
   checkedInAt: string | null;
+  isSharedQr?: boolean;
+  maxCheckIns?: number;
+  checkInCount?: number;
 }
 
 interface Props {
@@ -119,10 +122,15 @@ export function StaffQrTokenList({ eventId, appBaseUrl }: Props) {
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-ink truncate">
-                      {t.attendeeName}
+                      {t.isSharedQr ? "👥 Pase compartido" : t.attendeeName}
                     </p>
                     <p className="text-[10px] text-ink-muted truncate">
                       {t.attendeePhone ?? t.attendeeEmail ?? "sin contacto"}
+                      {t.isSharedQr && (
+                        <span className="ml-1 font-semibold text-violet-700">
+                          · {t.checkInCount ?? 0}/{t.maxCheckIns ?? 2} accesos
+                        </span>
+                      )}
                       {t.checkedInAt && (
                         <span className="ml-1">· ✓ ya check-in</span>
                       )}
@@ -131,7 +139,7 @@ export function StaffQrTokenList({ eventId, appBaseUrl }: Props) {
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={qrImageUrl}
-                    alt={`QR de ${t.attendeeName}`}
+                    alt={`QR de ${t.isSharedQr ? "pase compartido" : t.attendeeName}`}
                     width={48}
                     height={48}
                     className="rounded border border-brand-100 bg-white"
