@@ -1,5 +1,15 @@
 # Project Status — Snapshot vivo
 
+> **Deploy 2026-08-20 — corrección de horario en pases QR:** el deployment
+> `dpl_DksjRKtbEgEXMeWBD81wMnU2JfRg` quedó `READY` en producción con el
+> commit `f51ed8b`. La vista pública `/check-in/[token]` ahora usa la zona
+> canónica `America/Phoenix` para mostrar el horario del evento: CANACO queda
+> en **4:00 p. m. a 8:00 p. m.**, no 5:00 p. m. La fuente del evento permaneció
+> sin cambios (`23:00 UTC` = `4:00 p. m.` local). Se verificaron en vivo la
+> página pública del evento (200), un pase QR existente con `04:00 p.m.` y sin
+> `05:00 p.m.`, y el PNG del QR (200). No hubo migraciones ni escrituras de
+> pagos, confirmaciones o tokens.
+
 > **Deploy 2026-08-20 — confirmaciones sin contacto:** el deployment
 > `dpl_9we6SKSQKtdNCub7KqRLPvysPwop` quedó `READY` en producción con el
 > commit `c114cca`. El alta manual de confirmados ahora requiere únicamente

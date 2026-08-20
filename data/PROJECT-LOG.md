@@ -1338,3 +1338,9 @@ eservation_enabled se interpretaba como alse (silent clean). Fix: error 400 cla
 - El abridor histórico de saludos ahora respeta `bot_global_mode=closing` y muestra desde el primer `Hola` tarjeta (`/promo`), transferencia/OXXO, los datos de depósito configurados en servidor y botones de pago/asesor.
 - Se verificó en WhatsApp Web producción el saludo, el botón `Transferencia/OXXO`, `LISTO` y `Ya pagué por OXXO`; sin comprobante adjunto el bot pide la foto y no confirma ni habilita QR.
 - PR #89 quedó integrado en `main` (`0bf567e1211d95d2801f50461f1858fb70bc3500`), deployment `dpl_5vrEhZLYSnMBMThaqYrAqA7YVcrU` `READY`. No se borraron datos ni se modificaron cambios locales ajenos.
+
+# 2026-08-20 — Corrección de horario en pases QR
+
+- Se corrigió `src/app/check-in/[token]/CheckInClient.tsx`: el pase usaba `America/Mexico_City` y mostraba 5:00 p. m.; ahora usa la zona canónica `America/Phoenix`, por lo que el evento CANACO muestra 4:00 p. m. a 8:00 p. m.
+- Commit `f51ed8b`; deployment productivo `dpl_DksjRKtbEgEXMeWBD81wMnU2JfRg` quedó `READY` con aliases públicos activos.
+- Verificación: type-check, lint y build pasan; evento público 200; pase QR de Lizzy renderiza `04:00 p.m.` y no `05:00 p.m.`; PNG del QR 200. No hubo cambios en DB, pagos, confirmaciones o tokens.
