@@ -1,5 +1,15 @@
 # Project Status — Snapshot vivo
 
+> **Deploy 2026-08-20 — preimpresión unida a asistentes:** PR #102 quedó
+> mergeada en `main` con commit `275d41f` y Vercel reportó el deployment
+> `6i6WmXTRFnaiDxhMnckiFXqeTdBF` como completado. La preimpresión ahora lee el
+> mismo evento por `event_id`, combina confirmaciones con asistentes que ya
+> tienen `checked_in_at`, deduplica por `confirmation_id` y conserva también
+> los check-ins manuales sin confirmación. Incluye acciones para imprimir solo
+> asistentes, solo pre-asistentes o todos; los nuevos check-ins aparecen al
+> recargar la pantalla. No crea asistentes ni envía mensajes desde esta vista.
+> Validación: type-check, lint, build y checks de GitHub/Vercel correctos.
+
 > **Deploy 2026-08-20 — lista flexible de preimpresión:** PR #100 quedó
 > mergeada en `main` con commit `54825c3` y Vercel reportó el deployment
 > `GqU4VYq8kHd5BGwZNmKnbdhK3BFx` como completado. La pantalla de preimpresión
