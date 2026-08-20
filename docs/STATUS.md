@@ -1,5 +1,17 @@
 # Project Status — Snapshot vivo
 
+> **Deploy 2026-08-20 — constancia CANACO y preimpresión:** PR #98 quedó
+> mergeada en `main` con commit `d7a9134` y Vercel reportó el deployment
+> `EaDRgN17r5sfNtpnivADZEwhRtz8` como completado. Se publicó únicamente la
+> constancia CANACO aprobada: Paul Velázquez y Benny Zepeda, firmas
+> transparentes normalizadas, nombres largos adaptables, logo Qlick ampliado,
+> folios `CAN-2026-###` y preimpresión por bloques pagados. El QR conserva como
+> destino `https://qlick.digital/filosofia`; la página fue verificada en vivo y
+> mantiene la frase fija “No basta con existir. Hay que ser imposible de
+> ignorar.” No se incluyeron check-in, multimedia, migraciones ni datos.
+> Validación: type-check, lint, 5 pruebas de certificados, build local y checks
+> de GitHub en `main` (tests, type-check, lint y smoke E2E Supabase) correctos.
+
 > **Deploy 2026-08-18 — pagos manuales visibles desde el saludo:** `dpl_5vrEhZLYSnMBMThaqYrAqA7YVcrU` quedó `READY` en producción con commit `0bf567e`. El modo global continúa en `closing`. El saludo natural `Hola` ya muestra pago con tarjeta (`/promo`), transferencia/OXXO, los datos de depósito configurados en servidor y los botones `Pagar con tarjeta`, `Transferencia/OXXO` y `Hablar con asesor`. La ruta del abridor histórico quedó unificada con el modo cierre; no solicita nombre/correo ni captura desde WhatsApp. En vivo se verificó el saludo, el botón de transferencia y `LISTO`/“Ya pagué por OXXO” sin afirmar comprobante ni habilitar QR antes de revisión. PR #89; 17 pruebas focalizadas pasan. El único fallo de CI es el E2E externo de Supabase sin `supabaseUrl` en GitHub Actions (1,736 pasan). No se borraron datos ni se tocaron cambios locales ajenos.
 
 > **Deploy 2026-08-18 — apartado unificado en CANACO:** la ruta `/promo` ahora ofrece apartado de $200 MXN tanto para una persona ($1,000 total) como para dos ($1,500 total), y conserva el pago completo en ambas opciones. La migración aditiva `20260818090000_canaco_reservation_two_hundred.sql` ya fue aplicada en Supabase Production: `reservation_amount_mxn=200`, saldo individual $800 y el contexto publicado actualizado. El checkout individual conserva el flujo normal y recibe `payment_option=reservation|full`; no se tocaron pagos, confirmaciones, QR ni órdenes históricas. Validación local: 20 pruebas focalizadas, type-check, lint y build correctos; quedó incluido en la producción vigente.
