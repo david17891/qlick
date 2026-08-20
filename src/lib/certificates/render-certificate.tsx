@@ -299,7 +299,7 @@ const styles = StyleSheet.create({
   signatoryGrid: {
     display: "flex",
     flexDirection: "row",
-    gap: 16,
+    gap: 12,
     paddingRight: 18,
   },
   signatoryBlock: {
@@ -307,19 +307,20 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   signature: {
-    height: 48,
+    height: 44,
     marginLeft: -6, // compensa el bbox de las firmas transparentes
     marginBottom: 2,
   },
   instructorName: {
     fontFamily: FONT_FAMILY.sans,
     fontWeight: 700,
-    fontSize: 10,
+    fontSize: 9.5,
     color: COLORS.ink,
     marginTop: 2,
     paddingTop: 4,
     borderTopWidth: 1,
     borderTopColor: COLORS.slate300,
+    maxLines: 1,
   },
   instructorTitle: {
     fontFamily: FONT_FAMILY.sans,
@@ -502,7 +503,7 @@ export function CertificatePDF({ data }: { data: CertificateData }) {
                   <View key={signatory.name} style={styles.signatoryBlock}>
                     {/* eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf/renderer Image no soporta alt */}
                     <Image src={signatory.signatureDataUrl} style={styles.signature} />
-                    <Text style={styles.instructorName}>{signatory.name}</Text>
+                    <Text wrap={false} style={styles.instructorName}>{signatory.name}</Text>
                     <Text style={styles.instructorTitle}>{signatory.title}</Text>
                   </View>
                 ))}

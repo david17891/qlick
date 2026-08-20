@@ -399,7 +399,7 @@ export default async function CertPage({ params }: CertPageProps) {
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={signatory.signatureDataUrl} alt={`Firma de ${signatory.name}`} />
                     </div>
-                    <div className="name">{signatory.name}</div>
+                    <div className="name" title={signatory.name}>{signatory.name}</div>
                     <div className="role">{signatory.title}</div>
                   </div>
                 ))}

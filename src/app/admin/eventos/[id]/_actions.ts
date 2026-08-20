@@ -32,6 +32,7 @@ import { promoteSurveyToLead } from "@/lib/events/promotion";
 import { createConfirmation } from "@/lib/events/confirmations-server";
 import { registerManualPayment } from "@/lib/payments/manual-payment";
 import { getSignatoriesForEvent } from "@/lib/certificates/signatories";
+import type { Json } from "@/types/supabase";
 
 export interface FormState {
   ok: boolean;
@@ -1400,7 +1401,7 @@ export async function sendBatchCertificatesAction(
               signatories: getSignatoriesForEvent(
                 (event as { slug: string | null } | null)?.slug ?? null,
               ),
-            },
+            } as unknown as Json,
             // p_admin_user_id omitido: AdminSession no expone `id` (solo
             // email). La RPC acepta NULL por default — no bloquea el flujo.
           },
