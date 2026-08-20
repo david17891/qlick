@@ -1,5 +1,16 @@
 # Project Status — Snapshot vivo
 
+> **Deploy 2026-08-20 — lista flexible de preimpresión:** PR #100 quedó
+> mergeada en `main` con commit `54825c3` y Vercel reportó el deployment
+> `GqU4VYq8kHd5BGwZNmKnbdhK3BFx` como completado. La pantalla de preimpresión
+> ahora lista todos los confirmados con estado de pago, permite buscar,
+> filtrar, seleccionar y preparar lotes por bloques; preselecciona pagados,
+> apartados y becados/sin pago, pero permite incluir pendientes manualmente.
+> En producción quedaron 39 confirmaciones: 21 pendientes, 9 apartados, 1
+> pagada, 2 pagadas manuales y 6 becadas/sin pago; no se crearon asistentes ni
+> check-ins. Se agregó una confirmación manual becada sin datos de contacto.
+> Validación: type-check, lint, build y checks de GitHub/Vercel correctos.
+
 > **Deploy 2026-08-20 — constancia CANACO y preimpresión:** PR #98 quedó
 > mergeada en `main` con commit `d7a9134` y Vercel reportó el deployment
 > `EaDRgN17r5sfNtpnivADZEwhRtz8` como completado. Se publicó únicamente la
