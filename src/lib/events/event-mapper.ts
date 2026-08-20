@@ -157,6 +157,7 @@ export function mapEventConfirmationRowToEventConfirmation(
       payStatus === "partial" ||
       payStatus === "pending_verification" ||
       payStatus === "paid" ||
+      payStatus === "paid_manual" ||
       payStatus === "revoked" ||
       payStatus === "not_required"
         ? payStatus

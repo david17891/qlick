@@ -91,6 +91,11 @@ export async function CheckInTab({
     ]);
 
   const totalQr = tokensResult.tokens.length;
+  const qrPhones = new Set(
+    tokensResult.tokens
+      .map((token) => token.attendeePhone)
+      .filter((phone): phone is string => Boolean(phone)),
+  );
   const qrCheckedIn = tokensResult.tokens.filter(
     (t) => t.checkedInAt !== null,
   ).length;
@@ -265,6 +270,8 @@ export async function CheckInTab({
           email: c.email ?? null,
           phone: c.phoneNormalized ?? c.phoneRaw ?? null,
           paymentStatus: c.paymentStatus ?? null,
+          registrationStatus: c.registrationStatus ?? null,
+          hasQr: Boolean(c.phoneNormalized && qrPhones.has(c.phoneNormalized)),
         }))}
       />
 
