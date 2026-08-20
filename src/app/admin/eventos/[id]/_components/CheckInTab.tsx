@@ -13,6 +13,7 @@
  * implementado inline con un Client Component import.
  */
 
+import Link from "next/link";
 import { Card, Badge } from "@/components/ui";
 import { formatDate } from "@/lib/utils";
 import { getEventQrTokens } from "@/lib/qr/event-tokens";
@@ -219,6 +220,22 @@ export async function CheckInTab({
           Genera los QRs para &quot;{eventTitle}&quot;, descarga el CSV
           imprimible y haz check-in manual si alguien no trae su QR.
         </p>
+      </div>
+
+      <div className="p-5 border-b border-brand-50 bg-violet-50/50 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h3 className="text-sm font-bold text-violet-950">📜 Certificados y preimpresión</h3>
+          <p className="mt-1 text-xs text-violet-900/75">
+            Arma lotes con asistentes y pre-asistentes, busca por nombre, filtra por pago
+            y prepara los PDFs por bloques. El acceso está disponible aunque todavía no haya check-ins.
+          </p>
+        </div>
+        <Link
+          href={`/admin/eventos/${eventId}/certificados-preimpresion`}
+          className="inline-flex shrink-0 items-center justify-center rounded-md bg-violet-700 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-violet-800"
+        >
+          Abrir preimpresión
+        </Link>
       </div>
 
       {/* FIX 2026-07-06: warning banner si hay attendees sin nombre real.
