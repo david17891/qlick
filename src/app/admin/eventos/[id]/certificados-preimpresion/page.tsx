@@ -44,6 +44,7 @@ interface PreprintRow {
   id: string;
   name: string;
   paymentStatus: string;
+  kind: "attendee" | "pre_attendee";
 }
 
 function splitName(fullName: string): [string, string] {
@@ -144,22 +145,50 @@ export default async function CertificatePreprintPage({ params, searchParams }: 
   if (!admin) notFound();
 
   const supabase = createSupabaseAdminClient();
-  const [{ data: event }, { data: confirmations, error }] = await Promise.all([
+  const [{ data: event }, { data: confirmations, error: confirmationsError }, { data: attendees, error: attendeesError }] = await Promise.all([
     supabase.from("events").select("id, title, slug, starts_at, ends_at").eq("id", params.id).maybeSingle(),
     supabase.from("event_confirmations").select("id, name, payment_status").eq("event_id", params.id),
+    supabase.from("event_attendees").select("id, name, confirmation_id, checked_in_at").eq("event_id", params.id).not("checked_in_at", "is", null),
   ]);
-  if (!event || error) notFound();
+  if (!event || confirmationsError || attendeesError) notFound();
 
-  const rows: PreprintRow[] = (confirmations ?? [])
+  const confirmationById = new Map(
+    (confirmations ?? []).map((confirmation) => [confirmation.id, confirmation]),
+  );
+  const checkedInConfirmationIds = new Set(
+    (attendees ?? []).map((attendee) => attendee.confirmation_id).filter(Boolean),
+  );
+
+  const attendeeRows: PreprintRow[] = (attendees ?? [])
+    .filter((row) => {
+      const name = (row.name ?? "").trim();
+      return name.length >= 2 && !PLACEHOLDER_NAMES.has(name.toLowerCase());
+    })
+    .map((row) => ({
+      id: `attendee:${row.id}`,
+      name: row.name!.trim(),
+      paymentStatus: confirmationById.get(row.confirmation_id ?? "")?.payment_status ?? "attendee",
+      kind: "attendee" as const,
+    }));
+
+  const preAttendeeRows: PreprintRow[] = (confirmations ?? [])
+    .filter((row) => !checkedInConfirmationIds.has(row.id))
     .filter((row) => {
       const name = row.name.trim();
       return name.length >= 2 && !PLACEHOLDER_NAMES.has(name.toLowerCase());
     })
-    .map((row) => ({ id: row.id, name: row.name.trim(), paymentStatus: row.payment_status }))
+    .map((row) => ({
+      id: `confirmation:${row.id}`,
+      name: row.name.trim(),
+      paymentStatus: row.payment_status,
+      kind: "pre_attendee" as const,
+    }));
+
+  const rows: PreprintRow[] = [...attendeeRows, ...preAttendeeRows]
     .sort((a, b) => a.name.localeCompare(b.name, "es"));
 
   const defaultSelectedIds = rows
-    .filter((row) => COVERED_PAYMENT_STATUSES.has(row.paymentStatus))
+    .filter((row) => row.kind === "attendee" || COVERED_PAYMENT_STATUSES.has(row.paymentStatus))
     .map((row) => row.id);
   const hasExplicitSelection = typeof searchParams?.seleccion === "string";
   const requestedSelection = new Set(
@@ -183,7 +212,7 @@ export default async function CertificatePreprintPage({ params, searchParams }: 
 
   return (
     <main className="preprint-page">
-      <header className="cert-actions no-print"><Link className="cert-actions-back" href={`/admin/eventos/${params.id}`}>← Volver al evento</Link><h1 className="cert-actions-title">Preimpresión de constancias · {event.title}</h1><p className="cert-actions-hint">Aquí aparecen todos los confirmados con nombre real y su estado de pago. No crea asistentes, no marca check-in y no envía mensajes. Usa <strong>Ctrl+P → Guardar como PDF</strong>, A4 horizontal y sin encabezados. El QR abre <strong>qlick.digital/filosofia</strong>, la frase de marca de Qlick.</p><div className="preprint-toolbar"><PrintCertButton />{block > 0 ? <Link className="cert-actions-back" href={`/admin/eventos/${params.id}/certificados-preimpresion?tamano=${blockSize}&bloque=todos${hasExplicitSelection ? `&seleccion=${encodeURIComponent(selectedIds.join(","))}` : ""}`}>Ver todos</Link> : null}{Array.from({ length: blockCount }, (_, index) => <Link key={index} className="preprint-block-link" href={`/admin/eventos/${params.id}/certificados-preimpresion?tamano=${blockSize}&bloque=${index + 1}${hasExplicitSelection ? `&seleccion=${encodeURIComponent(selectedIds.join(","))}` : ""}`}>Bloque {index + 1}</Link>)}</div><p className="cert-actions-hint">{rows.length} confirmados · {selectedRows.length} seleccionados para generar · {block > 0 ? `mostrando bloque ${block} de ${blockCount}` : "mostrando todos"} · {blockSize} por bloque</p></header>
+      <header className="cert-actions no-print"><Link className="cert-actions-back" href={`/admin/eventos/${params.id}`}>← Volver al evento</Link><h1 className="cert-actions-title">Preimpresión de constancias · {event.title}</h1><p className="cert-actions-hint">La lista está unida a este evento: incorpora asistentes con check-in y pre-asistentes confirmados, sin duplicar a quien ya hizo check-in. No crea asistentes ni envía mensajes. Usa <strong>Ctrl+P → Guardar como PDF</strong>, A4 horizontal y sin encabezados. El QR abre <strong>qlick.digital/filosofia</strong>, la frase de marca de Qlick.</p><div className="preprint-toolbar"><PrintCertButton />{block > 0 ? <Link className="cert-actions-back" href={`/admin/eventos/${params.id}/certificados-preimpresion?tamano=${blockSize}&bloque=todos${hasExplicitSelection ? `&seleccion=${encodeURIComponent(selectedIds.join(","))}` : ""}`}>Ver todos</Link> : null}{Array.from({ length: blockCount }, (_, index) => <Link key={index} className="preprint-block-link" href={`/admin/eventos/${params.id}/certificados-preimpresion?tamano=${blockSize}&bloque=${index + 1}${hasExplicitSelection ? `&seleccion=${encodeURIComponent(selectedIds.join(","))}` : ""}`}>Bloque {index + 1}</Link>)}</div><p className="cert-actions-hint">{attendeeRows.length} asistentes · {preAttendeeRows.length} pre-asistentes · {selectedRows.length} seleccionados para generar · {block > 0 ? `mostrando bloque ${block} de ${blockCount}` : "mostrando todos"} · {blockSize} por bloque</p></header>
       <CertificatePreprintSelector eventId={params.id} rows={rows} defaultSelectedIds={defaultSelectedIds} selectedIds={selectedIds} hasExplicitSelection={hasExplicitSelection} blockSize={blockSize} />
       <div className="preprint-certificate-pages">{visibleRows.map((row, index) => <PreprintSheet key={`${row.id}-${index}`} name={row.name} eventTitle={event.title} startsAt={event.starts_at} endsAt={event.ends_at} signatories={signatories} qrDataUrl={qrDataUrl} printNumber={stableNumberById.get(row.id) ?? index + 1} />)}</div>
       {rows.length === 0 ? <div className="cert-auth-error no-print"><h1>No hay confirmados con nombre real</h1><p>Cuando agregues registros, aparecerán aquí para armar el lote de impresión.</p></div> : null}
