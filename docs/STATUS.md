@@ -1,5 +1,16 @@
 # Project Status — Snapshot vivo
 
+> **Deploy 2026-08-20 — acceso visible a preimpresión:** el deployment
+> `dpl_7GAAQhHvWvHuoeLSwUFQAKuZyeJD` quedó `READY` en producción con el
+> commit `7cb5b5f` y aliases `https://qlick.digital` /
+> `https://www.qlick.digital`. El enlace `Abrir preimpresión` ahora aparece
+> directamente en la cabecera de Check-in, incluso cuando el evento todavía
+> tiene cero check-ins; conserva la vista unificada de asistentes y
+> pre-asistentes, búsqueda por nombre, filtros de pago y selección por bloques.
+> Smoke HTTP productivo: `/`, la ruta protegida de preimpresión y `/filosofia`
+> respondieron correctamente después de sus redirecciones normales. No hubo
+> migraciones ni escrituras de datos en esta publicación.
+
 > **Deploy 2026-08-20 — preimpresión unida a asistentes:** PR #102 quedó
 > mergeada en `main` con commit `275d41f` y Vercel reportó el deployment
 > `6i6WmXTRFnaiDxhMnckiFXqeTdBF` como completado. La preimpresión ahora lee el

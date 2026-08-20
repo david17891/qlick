@@ -1,3 +1,16 @@
+## 2026-08-20 — acceso visible a preimpresión en Check-in
+
+- Se publicó el commit `7cb5b5f` en producción mediante promoción del preview
+  validado; deployment `dpl_7GAAQhHvWvHuoeLSwUFQAKuZyeJD` quedó `READY` con los
+  aliases productivos de Qlick.
+- El acceso a `/admin/eventos/[id]/certificados-preimpresion` quedó visible en
+  la cabecera de Check-in aunque todavía no existan asistentes registrados;
+  esto resuelve el caso CANACO con cero check-ins sin crear datos nuevos.
+- Verificación: type-check, lint y build local correctos; preview Vercel
+  `READY`; smoke HTTP productivo en `/`, la ruta protegida de preimpresión y
+  `/filosofia` correcto después de redirecciones normales. No se tocaron
+  confirmaciones, pagos, asistentes, QR ni migraciones.
+
 ## 2026-08-16 — cierre con promoción y aviso de asesor
 
 - El modo `closing` conserva respuestas factuales del evento, pero cada respuesta informativa dirige directamente a `/promo` y ofrece `Hablar con asesor` sin pedir permiso para enviar el enlace ni usar lenguaje de confirmación anticipada.
