@@ -363,6 +363,7 @@ export interface EventConfirmation {
    *   - 'paid'                -> pago confirmado (via Stripe webhook,
    *                               via validacion contra Stripe API, o via
    *                               admin puro con cash/transfer).
+   *   - 'paid_manual'         -> pago registrado manualmente por admin/staff.
    *   - 'revoked'             -> admin revoco (voucher expiro, devolucion).
    *
    * El admin UI consume este flag en la tabla de confirmados y en el
@@ -374,6 +375,7 @@ export interface EventConfirmation {
     | "partial"
     | "pending_verification"
     | "paid"
+    | "paid_manual"
     | "revoked";
 }
 
