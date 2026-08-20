@@ -1,5 +1,14 @@
 # Project Status — Snapshot vivo
 
+> **Deploy 2026-08-20 — confirmaciones sin contacto:** el deployment
+> `dpl_9we6SKSQKtdNCub7KqRLPvysPwop` quedó `READY` en producción con el
+> commit `c114cca`. El alta manual de confirmados ahora requiere únicamente
+> el nombre; teléfono y correo son opcionales. Si no hay contacto, se crea la
+> confirmación directamente en el evento, no un lead vacío; el envío de QR por
+> email solo se ofrece cuando hay correo. Smoke HTTP productivo: `/`, el
+> evento protegido y la preimpresión respondieron correctamente después de
+> sus redirecciones normales. No hubo migraciones ni escrituras de datos.
+
 > **Deploy 2026-08-20 — acceso visible a preimpresión:** el deployment
 > `dpl_7GAAQhHvWvHuoeLSwUFQAKuZyeJD` quedó `READY` en producción con el
 > commit `7cb5b5f` y aliases `https://qlick.digital` /

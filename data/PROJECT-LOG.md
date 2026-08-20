@@ -1,3 +1,15 @@
+## 2026-08-20 — confirmaciones nuevas sin teléfono obligatorio
+
+- Se publicó `c114cca` mediante preview Vercel `READY` y promoción controlada;
+  producción quedó `READY` en `dpl_9we6SKSQKtdNCub7KqRLPvysPwop`.
+- El alta manual de confirmados acepta solo nombre para agilizar registros en
+  puerta. Email y teléfono siguen disponibles, pero son opcionales.
+- Cuando no hay contacto, no se crea un lead vacío ni se intenta enviar QR por
+  email; la confirmación queda vinculada al evento y disponible para check-in
+  manual y preimpresión. Smoke HTTP productivo correcto en `/`, evento y
+  preimpresión protegidos tras redirecciones normales. No hubo migraciones ni
+  escrituras de datos.
+
 ## 2026-08-20 — acceso visible a preimpresión en Check-in
 
 - Se publicó el commit `7cb5b5f` en producción mediante promoción del preview
