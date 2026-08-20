@@ -19,6 +19,7 @@
  */
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import {
   getCertificateBatchPreviewAction,
   sendBatchCertificatesAction,
@@ -126,6 +127,12 @@ export function CertificateBatchPanel({ eventId, eventTitle }: Props) {
         >
           {isPendingPreview ? "Cargando..." : "📧 Preparar envio de certs"}
         </button>
+        <Link
+          href={`/admin/eventos/${eventId}/certificados-preimpresion`}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-bold border border-brand-200 text-brand-700 hover:bg-brand-50 transition ml-2"
+        >
+          🖨️ Preimprimir constancias pagadas
+        </Link>
         {error && (
           <p className="text-xs text-red-600 mt-3">{error}</p>
         )}
