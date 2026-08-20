@@ -118,14 +118,14 @@ const styles = StyleSheet.create({
     width: PANEL_WIDTH - 90, // deja espacio para la diagonal en el top-right
   },
   qIcon: {
-    width: 70,
-    height: 100,
-    marginBottom: 16,
+    width: 123,
+    height: 174,
+    marginBottom: 18,
   },
   wordmark: {
     fontFamily: FONT_FAMILY.sans,
     fontWeight: 800,
-    fontSize: 32,
+    fontSize: 43,
     letterSpacing: -0.8,
     color: COLORS.white,
     lineHeight: 1,
@@ -204,11 +204,20 @@ const styles = StyleSheet.create({
   },
   eyebrowLabel: {
     fontFamily: FONT_FAMILY.sans,
-    fontSize: 9,
-    letterSpacing: 3,
+    fontSize: 18,
+    letterSpacing: 4,
+    lineHeight: 1,
     color: COLORS.purple700,
     textTransform: "uppercase",
     fontWeight: 600,
+  },
+  eyebrowDate: {
+    fontFamily: FONT_FAMILY.sans,
+    fontSize: 9,
+    fontWeight: 500,
+    color: COLORS.slate500,
+    marginTop: 7,
+    letterSpacing: 1.5,
   },
   eyebrowFolioBlock: {
     textAlign: "right",
@@ -294,31 +303,39 @@ const styles = StyleSheet.create({
     marginTop: 24,
   },
   sigBlock: {
-    flex: 1.4,
+    flex: 1.6,
+  },
+  signatoryGrid: {
+    display: "flex",
+    flexDirection: "row",
+    gap: 12,
+    paddingRight: 18,
+  },
+  signatoryBlock: {
+    flex: 1,
+    minWidth: 0,
   },
   signature: {
-    height: 64,
-    marginLeft: -10, // compensa el bbox del PNG (ver asset-loading notes)
+    height: 44,
+    marginLeft: -6, // compensa el bbox de las firmas transparentes
+    marginBottom: 2,
   },
   instructorName: {
     fontFamily: FONT_FAMILY.sans,
     fontWeight: 700,
-    fontSize: 12,
+    fontSize: 9.5,
     color: COLORS.ink,
-    marginTop: 6,
+    marginTop: 2,
     paddingTop: 4,
     borderTopWidth: 1,
     borderTopColor: COLORS.slate300,
-    paddingRight: 20,
-    marginRight: 20,
+    maxLines: 1,
   },
   instructorTitle: {
     fontFamily: FONT_FAMILY.sans,
-    fontSize: 10,
+    fontSize: 11,
     color: COLORS.slate500,
     marginTop: 3,
-    paddingRight: 20,
-    marginRight: 20,
   },
 
   qrBlock: {
@@ -359,6 +376,13 @@ function firstWordAndRest(name: string): { first: string; rest: string } {
     first: trimmed.slice(0, sp),
     rest: trimmed.slice(sp + 1),
   };
+}
+
+function getHeroNameStyle(name: string): { fontSize?: number; letterSpacing?: number } {
+  const length = name.trim().replace(/\s+/g, " ").length;
+  if (length >= 24) return { fontSize: 42, letterSpacing: -1 };
+  if (length >= 18) return { fontSize: 48, letterSpacing: -1.5 };
+  return {};
 }
 
 // ---------------------------------------------------------------------------
@@ -451,7 +475,8 @@ export function CertificatePDF({ data }: { data: CertificateData }) {
           {/* Eyebrow row */}
           <View style={styles.eyebrowRow}>
             <Text style={styles.eyebrowLabel}>
-              Certificado de Asistencia
+              CONSTANCIA
+              <Text style={styles.eyebrowDate}>{data.eventDate}</Text>
             </Text>
             <View style={styles.eyebrowFolioBlock}>
               <Text style={styles.eyebrowFolioLabel}>Folio</Text>
@@ -465,7 +490,7 @@ export function CertificatePDF({ data }: { data: CertificateData }) {
             <Text style={styles.heroPresentedTo}>
               Presentado a
             </Text>
-            <Text style={styles.heroName}>
+            <Text style={[styles.heroName, getHeroNameStyle(data.attendeeName)]}>
               <Text style={styles.heroNameAccent}>{firstWord}</Text>
               {nameRest ? " " : ""}
               <Text style={styles.heroNameRest}>{nameRest}</Text>
@@ -490,15 +515,16 @@ export function CertificatePDF({ data }: { data: CertificateData }) {
           {/* Bottom: signature + QR */}
           <View style={styles.bottom}>
             <View style={styles.sigBlock}>
-              {/* eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf/renderer Image no soporta alt */}
-              <Image
-                src={data.signatureDataUrl}
-                style={styles.signature}
-              />
-              <Text style={styles.instructorName}>{data.instructorName}</Text>
-              <Text style={styles.instructorTitle}>
-                {data.instructorTitle}
-              </Text>
+              <View style={styles.signatoryGrid}>
+                {data.signatories.map((signatory) => (
+                  <View key={signatory.name} style={styles.signatoryBlock}>
+                    {/* eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf/renderer Image no soporta alt */}
+                    <Image src={signatory.signatureDataUrl} style={styles.signature} />
+                    <Text wrap={false} style={styles.instructorName}>{signatory.name}</Text>
+                    <Text style={styles.instructorTitle}>{signatory.title}</Text>
+                  </View>
+                ))}
+              </View>
             </View>
 
             <View style={styles.qrBlock}>
