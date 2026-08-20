@@ -369,6 +369,13 @@ function firstWordAndRest(name: string): { first: string; rest: string } {
   };
 }
 
+function getHeroNameStyle(name: string): { fontSize?: number; letterSpacing?: number } {
+  const length = name.trim().replace(/\s+/g, " ").length;
+  if (length >= 24) return { fontSize: 42, letterSpacing: -1 };
+  if (length >= 18) return { fontSize: 48, letterSpacing: -1.5 };
+  return {};
+}
+
 // ---------------------------------------------------------------------------
 // Componente principal
 // ---------------------------------------------------------------------------
@@ -473,7 +480,7 @@ export function CertificatePDF({ data }: { data: CertificateData }) {
             <Text style={styles.heroPresentedTo}>
               Presentado a
             </Text>
-            <Text style={styles.heroName}>
+            <Text style={[styles.heroName, getHeroNameStyle(data.attendeeName)]}>
               <Text style={styles.heroNameAccent}>{firstWord}</Text>
               {nameRest ? " " : ""}
               <Text style={styles.heroNameRest}>{nameRest}</Text>

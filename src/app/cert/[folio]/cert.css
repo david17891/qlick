@@ -254,6 +254,14 @@ html, body {
   color: var(--ink);
   margin-top: 14px;
 }
+.hero .name.reduced {
+  font-size: 64px;
+  letter-spacing: -2.5px;
+}
+.hero .name.compact {
+  font-size: 52px;
+  letter-spacing: -1.5px;
+}
 .hero .name .word { display: block; }
 .hero .name .accent {
   background: linear-gradient(135deg, var(--purple-700) 0%, var(--purple-500) 100%);

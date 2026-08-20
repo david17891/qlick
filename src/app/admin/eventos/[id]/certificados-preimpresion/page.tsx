@@ -51,6 +51,13 @@ function splitName(fullName: string): [string, string] {
   return [normalized.slice(0, splitAt), normalized.slice(splitAt + 1)];
 }
 
+function nameClass(fullName: string): string {
+  const length = fullName.trim().replace(/\s+/g, " ").length;
+  if (length >= 24) return "name compact";
+  if (length >= 18) return "name reduced";
+  return "name";
+}
+
 function formatDateShort(iso: string): string {
   const date = new Date(iso);
   const months = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
@@ -121,7 +128,7 @@ function PreprintSheet({
         <div className="course-info"><div className="label">PROGRAMA</div><div className="title">{titleWithBreak(eventTitle)}</div><div className="meta">{formatDateLong(startsAt)} · {formatTime(startsAt)} hrs · {formatDuration(startsAt, endsAt)}</div></div>
         <div className="right">
           <div className="eyebrow-row"><div className="label">QLICK CERTIFIED · CONSTANCIA</div><div className="folio">PREIMPRESIÓN<div className="num">{preprintFolio}</div></div></div>
-          <div className="hero"><div className="small">Constancia preparada · {formatDateLong(new Date().toISOString())}</div><div className="presented-to">Se otorga la presente a</div><div className="name"><span className="word">{plainName}</span><span className="word accent">{accentName}</span></div><div className="deco-line"><svg viewBox="0 0 20 20"><path d="M10 0l1.5 8.5L20 10l-8.5 1.5L10 20l-1.5-8.5L0 10l8.5-1.5z" fill="currentColor" /></svg></div><div className="reason">por su participación y registro en el programa de formación de Qlick Marketing Digital.</div></div>
+          <div className="hero"><div className="small">Constancia preparada · {formatDateLong(new Date().toISOString())}</div><div className="presented-to">Se otorga la presente a</div><div className={nameClass(name)}><span className="word">{plainName}</span><span className="word accent">{accentName}</span></div><div className="deco-line"><svg viewBox="0 0 20 20"><path d="M10 0l1.5 8.5L20 10l-8.5 1.5L10 20l-1.5-8.5L0 10l8.5-1.5z" fill="currentColor" /></svg></div><div className="reason">por su participación y registro en el programa de formación de Qlick Marketing Digital.</div></div>
           <div className="bottom"><div className={`sig-block${signatories.length > 1 ? " multiple" : ""}`}>{signatories.map((signatory) => <div className="signatory" key={signatory.name}><div className="signature"><img src={`/certificates/${signatory.assetFilename}`} alt={`Firma de ${signatory.name}`} /></div><div className="name" title={signatory.name}>{signatory.name}</div><div className="role">{signatory.title}</div></div>)}</div><div className="verify-block"><div className="label">Escanea</div><div className="qr"><img src={qrDataUrl} alt="QR de Qlick" /></div><div className="date">Preimpresión · {formatDateShort(new Date().toISOString())}</div></div></div>
         </div>
         <svg className="sparkle s1" width="22" height="22" viewBox="0 0 20 20"><path d="M10 0l1.5 8.5L20 10l-8.5 1.5L10 20l-1.5-8.5L0 10l8.5-1.5z" fill="#FBBF24" /></svg><svg className="sparkle s2" width="14" height="14" viewBox="0 0 20 20"><path d="M10 0l1.5 8.5L20 10l-8.5 1.5L10 20l-1.5-8.5L0 10l8.5-1.5z" fill="#A855F7" /></svg>

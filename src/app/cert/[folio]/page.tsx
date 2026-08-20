@@ -148,6 +148,13 @@ function splitName(fullName: string): [string, string] {
   return [trimmed.slice(0, sp), trimmed.slice(sp + 1)];
 }
 
+function nameClass(fullName: string): string {
+  const length = fullName.trim().replace(/\s+/g, " ").length;
+  if (length >= 24) return "name compact";
+  if (length >= 18) return "name reduced";
+  return "name";
+}
+
 export default async function CertPage({ params }: CertPageProps) {
   const folio = params.folio?.trim();
   if (!folio) return notFound();
@@ -375,7 +382,7 @@ export default async function CertPage({ params }: CertPageProps) {
             <div className="hero">
               <div className="small">Certificado Oficial · {certData.issueDateLong}</div>
               <div className="presented-to">Se otorga la presente a</div>
-              <div className="name">
+              <div className={nameClass(certData.attendeeName)}>
                 <span className="word">{certData.attendeeNamePlain}</span>
                 <span className="word accent">{certData.attendeeNameAccent}</span>
               </div>
